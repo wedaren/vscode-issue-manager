@@ -16,6 +16,86 @@
       {
         "command": "issue-manager.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "issueManager.createIssue",
+        "title": "新建问题",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.deleteIssue",
+        "title": "删除"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "issueManager.createIssue",
+          "when": "view == issueManager.views.isolated",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "issueManager.deleteIssue",
+          "when": "view == 'issueManager.views.isolated'",
+          "group": "modification@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "问题管理插件",
+      "properties": {
+        "issueManager.issueDir": {
+          "type": "string",
+          "default": "",
+          "description": "【必须】指定一个绝对路径作为存放所有问题（.md文件）的根目录。"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "issue-manager",
+          "title": "问题管理",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "issue-manager": [
+        {
+          "id": "issueManager.views.overview",
+          "name": "问题总览",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.isolated",
+          "name": "孤立问题",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.focused",
+          "name": "关注问题",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "issueManager.views.isolated",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.overview",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.focused",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
       }
     ]
   },
