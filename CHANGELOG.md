@@ -1,9 +1,9 @@
-# Change Log
+# 变更日志
 
-All notable changes to the "issue-manager" extension will be documented in this file.
+“issue-manager”扩展的所有显著变更都将记录在此文件中。
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+查看 [Keep a Changelog](http://keepachangelog.com/) 获取关于如何组织此文件的建议。
 
-## [Unreleased]
+## [未发布]
 
-- Initial release
+- 初始版本
