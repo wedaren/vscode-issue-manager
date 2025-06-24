@@ -25,6 +25,10 @@
       {
         "command": "issueManager.deleteIssue",
         "title": "删除"
+      },
+      {
+        "command": "issueManager.disassociateIssue",
+        "title": "解除关联"
       }
     ],
     "menus": {
@@ -40,6 +44,11 @@
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.isolated'",
           "group": "modification@1"
+        },
+        {
+          "command": "issueManager.disassociateIssue",
+          "when": "view == 'issueManager.views.overview'",
+          "group": "modification@2"
         }
       ]
     },

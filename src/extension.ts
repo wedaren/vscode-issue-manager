@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IsolatedIssuesProvider, IssueTreeItem } from './views/IsolatedIssuesProvider';
+import { IssueOverviewProvider } from './views/IssueOverviewProvider';
+import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { getIssueDir } from './config';
+import { TreeNode } from './data/treeManager';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -29,7 +32,32 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“孤立问题”视图
 	const isolatedIssuesProvider = new IsolatedIssuesProvider(context);
-	vscode.window.registerTreeDataProvider('issueManager.views.isolated', isolatedIssuesProvider);
+	// vscode.window.registerTreeDataProvider('issueManager.views.isolated', isolatedIssuesProvider);
+
+	// 注册“问题总览”视图
+	const issueOverviewProvider = new IssueOverviewProvider();
+	// vscode.window.registerTreeDataProvider('issueManager.views.overview', issueOverviewProvider);
+
+	// 注册拖拽控制器
+	const dndController = new IssueDragAndDropController(issueOverviewProvider);
+
+	// 使用 createTreeView 注册视图，并附加拖拽控制器
+	const overviewView = vscode.window.createTreeView('issueManager.views.overview', {
+		treeDataProvider: issueOverviewProvider,
+		dragAndDropController: dndController
+	});
+	context.subscriptions.push(overviewView);
+
+	const isolatedView = vscode.window.createTreeView('issueManager.views.isolated', {
+		treeDataProvider: isolatedIssuesProvider,
+		dragAndDropController: dndController
+	});
+	context.subscriptions.push(isolatedView);
+
+	// 注册一个命令，用于手动刷新“孤立问题”视图
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.isolatedIssues.refresh', () => {
+		isolatedIssuesProvider.refresh();
+	}));
 
 	// 注册“创建问题”命令
 	const createIssueCommand = vscode.commands.registerCommand('issueManager.createIssue', async () => {
@@ -89,6 +117,13 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(deleteIssueCommand);
+
+	// 注册“解除关联”命令
+	const disassociateIssueCommand = vscode.commands.registerCommand('issueManager.disassociateIssue', (node: TreeNode) => {
+		issueOverviewProvider.disassociateIssue(node);
+	});
+
+	context.subscriptions.push(disassociateIssueCommand);
 }
 
 // 当您的扩展被停用时，将调用此方法
