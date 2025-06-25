@@ -23,8 +23,21 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createIssueFromOverview",
+        "title": "新建问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.deleteIssue",
         "title": "删除"
+      },
+      {
+        "command": "issueManager.disassociateIssue",
+        "title": "解除关联"
+      },
+      {
+        "command": "issueManager.createChildIssue",
+        "title": "新建问题"
       }
     ],
     "menus": {
@@ -33,12 +46,27 @@
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.isolated",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.createIssueFromOverview",
+          "when": "view == issueManager.views.overview",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.isolated'",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.disassociateIssue",
+          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "group": "modification@2"
+        },
+        {
+          "command": "issueManager.createChildIssue",
+          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
           "group": "modification@1"
         }
       ]
@@ -111,17 +139,21 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.101.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/uuid": "^10.0.0",
+    "@types/vscode": "^1.101.0",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
-    "eslint": "^9.21.0",
-    "typescript": "^5.7.3",
-    "ts-loader": "^9.5.2",
-    "webpack": "^5.98.0",
-    "webpack-cli": "^6.0.1",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.21.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.7.3",
+    "webpack": "^5.98.0",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "uuid": "^11.1.0"
   }
 }

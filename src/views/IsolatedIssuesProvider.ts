@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
-import { getIssueTitle } from '../utils/markdown';
+import { getTitle } from '../utils/markdown';
+import { readTree } from '../data/treeManager';
 
 // 定义一个更具体的 TreeItem 类型，确保 resourceUri 总是存在
 export class IssueTreeItem extends vscode.TreeItem {
@@ -71,15 +72,35 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTree
 
         if (element) {
             // 在孤立问题视图中，我们是一个扁平列表，所以只有根节点有子节点
-            return Promise.resolve([]);
+            return []
         }
 
         try {
-            const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(issueDir));
-            const mdFiles = entries.filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.md'));
+            // 1. 读取当前的树状结构，获取所有已关联的文件路径
+            const treeData = await readTree();
+            const associatedFiles = new Set<string>();
+            function collectPaths(nodes: any[]) {
+                for (const node of nodes) {
+                    associatedFiles.add(path.normalize(node.filePath));
+                    if (node.children) {
+                        collectPaths(node.children);
+                    }
+                }
+            }
+            collectPaths(treeData.rootNodes);
 
-            // 获取每个文件的统计信息（包含创建时间）
-            const filesWithStats = await Promise.all(mdFiles.map(async ([name, type]) => {
+            // 2. 读取问题目录下的所有 .md 文件
+            const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(issueDir));
+            const allMdFiles = entries.filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.md'));
+
+            // 3. 过滤出未被关联的文件
+            const isolatedMdFiles = allMdFiles.filter(([name, type]) => {
+                const relativePath = path.normalize(name);
+                return !associatedFiles.has(relativePath);
+            });
+
+            // 4. 为孤立文件创建 TreeItem
+            const filesWithStats = await Promise.all(isolatedMdFiles.map(async ([name, type]) => {
                 const fileUri = vscode.Uri.file(path.join(issueDir, name));
                 const stat = await vscode.workspace.fs.stat(fileUri);
                 return { name, uri: fileUri, ctime: stat.ctime };
@@ -89,7 +110,7 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTree
             filesWithStats.sort((a, b) => b.ctime - a.ctime);
 
             const treeItems = await Promise.all(filesWithStats.map(async (file) => {
-                const title = await getIssueTitle(file.uri);
+                const title = await getTitle(file.uri);
                 const item = new IssueTreeItem(title, file.uri);
                 item.command = {
                     command: 'vscode.open',
@@ -105,7 +126,7 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTree
             if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
                 vscode.window.showErrorMessage(`配置的问题目录不存在: ${issueDir}`);
             } else {
-                vscode.window.showErrorMessage(`读取问题目录时出错: ${error}`);
+                vscode.window.showErrorMessage(`加载孤立问题时出错: ${error}`);
             }
             return [];
         }
