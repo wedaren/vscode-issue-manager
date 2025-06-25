@@ -65,7 +65,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         const treeData = await readTree();
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, target.id) : undefined;
         const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === ISSUE_MIME_TYPE && transferItem.value).pop() || [];
-        const fromOverview = dataTransfer.get('application/vnd.code.tree.issuemanager.views.overview');
+        const fromOverview = dataTransfer.get(ISSUE_MIME_TYPE);
         const fromIsolated = dataTransfer.get('application/vnd.code.tree.issuemanager.views.isolated');
         const fromEditor = dataTransfer.get('text/uri-list');
 
