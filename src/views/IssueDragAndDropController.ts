@@ -16,10 +16,19 @@ interface DraggedItem {
 }
 
 export class IssueDragAndDropController implements vscode.TreeDragAndDropController<TreeNode | IssueTreeItem> {
-    dropMimeTypes: readonly string[] = [ISSUE_MIME_TYPE];
-    dragMimeTypes: readonly string[] = [ISSUE_MIME_TYPE];
+    public dropMimeTypes:  string[] = [];
+    public dragMimeTypes:  string[] = [];
 
-    constructor(private overviewProvider: IssueOverviewProvider) {}
+    constructor(private overviewProvider: IssueOverviewProvider, type: 'isolated' | 'overview') {
+        if (type === 'isolated') {
+            this.dragMimeTypes = [ISSUE_MIME_TYPE];
+        } else if (type === 'overview') {
+            this.dropMimeTypes = [ISSUE_MIME_TYPE,'text/uri-list'];
+            this.dragMimeTypes = [ISSUE_MIME_TYPE];
+        } else {
+            throw new Error(`Unsupported type: ${type}`);
+        }
+    }
 
     public async handleDrag(
         source: readonly (TreeNode | IssueTreeItem)[],
@@ -38,6 +47,12 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         treeDataTransfer.set(ISSUE_MIME_TYPE, new vscode.DataTransferItem(transferData));
     }
 
+    /**
+     * 兼容 VS Code TreeView 拖拽 transferItem.value 类型：
+     * - 同一视图内拖拽时为原始对象
+     * - 跨视图拖拽时为 JSON 字符串
+     * 需统一判断类型，必要时 JSON.parse
+     */
     public async handleDrop(
         target: TreeNode | undefined,
         dataTransfer: vscode.DataTransfer,
@@ -51,12 +66,24 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, target.id) : undefined;
 
         for (const [mimeType, transferItem] of dataTransfer) {
+            
+            console.log('[issue-manager] handleDrop mimeType:', mimeType);
             if (token.isCancellationRequested) {
                 return;
             }
 
-            if (mimeType === ISSUE_MIME_TYPE) {
-                const draggedItems: DraggedItem[] = transferItem.value;
+            if (mimeType === ISSUE_MIME_TYPE && transferItem.value) {
+                
+                let draggedItems: DraggedItem[] = transferItem.value;
+                // 兼容 VS Code 拖拽 API 类型差异
+                if (typeof draggedItems === 'string') {
+                    try {
+                        draggedItems = JSON.parse(draggedItems);
+                    } catch {
+                        // 解析失败，按字符串处理或报错
+                    }
+                }
+
                 for (const dragged of draggedItems) {
                     let nodeToMove: TreeNode | null = null;
 
@@ -67,6 +94,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                             continue; // 跳过无效操作
                         }
                         nodeToMove = this.findAndRemoveNode(treeData.rootNodes, dragged.id);
+                        targetNodeInTree && (targetNodeInTree.expanded = true); // 确保移动后节点展开状态
                     } else if (dragged.type === 'isolated') {
                         const relativePath = path.relative(issueDir, dragged.filePath);
                         nodeToMove = {
@@ -81,6 +109,33 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                     }
                 }
             }
+
+            // 支持 text/uri-list 拖拽类型（主流 VS Code 拖拽编辑器标签页行为）
+            if (mimeType === 'text/uri-list' && transferItem.value) {
+                console.log('[issue-manager] text/uri-list drop event:', transferItem.value);
+                const uriList = (typeof transferItem.value === 'string') ? transferItem.value.split(/\r?\n/) : [];
+                for (const uriStr of uriList) {
+                    if (!uriStr.startsWith('file://')) { continue; }
+                    const fileUri = vscode.Uri.parse(uriStr);
+                    const absPath = fileUri.fsPath;
+                    console.log('[issue-manager] text/uri-list file:', absPath);
+                    if (!absPath.endsWith('.md')) {
+                        vscode.window.showWarningMessage('只能拖拽 Markdown (.md) 文件到问题总览。');
+                        continue;
+                    }
+                    if (!absPath.startsWith(issueDir)) {
+                        vscode.window.showWarningMessage('只能拖拽“问题目录”内的 .md 文件。');
+                        continue;
+                    }
+                    const relativePath = path.relative(issueDir, absPath);
+                    const nodeToAdd: TreeNode = {
+                        id: uuidv4(),
+                        filePath: relativePath,
+                        children: [],
+                    };
+                    this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
+                }
+            }
         }
 
         await writeTree(treeData);
@@ -93,6 +148,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
             if (!target.children) {
                 target.children = [];
             }
+            target.expanded = true; 
             target.children.push(nodeToAdd);
         } else {
             treeData.rootNodes.push(nodeToAdd);

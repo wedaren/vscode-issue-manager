@@ -39,18 +39,17 @@ export function activate(context: vscode.ExtensionContext) {
 	// vscode.window.registerTreeDataProvider('issueManager.views.overview', issueOverviewProvider);
 
 	// 注册拖拽控制器
-	const dndController = new IssueDragAndDropController(issueOverviewProvider);
 
 	// 使用 createTreeView 注册视图，并附加拖拽控制器
 	const overviewView = vscode.window.createTreeView('issueManager.views.overview', {
 		treeDataProvider: issueOverviewProvider,
-		dragAndDropController: dndController
+		dragAndDropController: new IssueDragAndDropController(issueOverviewProvider, 'overview')
 	});
 	context.subscriptions.push(overviewView);
 
 	const isolatedView = vscode.window.createTreeView('issueManager.views.isolated', {
 		treeDataProvider: isolatedIssuesProvider,
-		dragAndDropController: dndController
+		dragAndDropController: new IssueDragAndDropController(issueOverviewProvider, 'isolated')
 	});
 	context.subscriptions.push(isolatedView);
 
