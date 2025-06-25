@@ -23,12 +23,21 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createIssueFromOverview",
+        "title": "新建问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.deleteIssue",
         "title": "删除"
       },
       {
         "command": "issueManager.disassociateIssue",
         "title": "解除关联"
+      },
+      {
+        "command": "issueManager.createChildIssue",
+        "title": "新建问题"
       }
     ],
     "menus": {
@@ -36,6 +45,11 @@
         {
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.isolated",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.createIssueFromOverview",
+          "when": "view == issueManager.views.overview",
           "group": "navigation@1"
         }
       ],
@@ -49,6 +63,11 @@
           "command": "issueManager.disassociateIssue",
           "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
           "group": "modification@2"
+        },
+        {
+          "command": "issueManager.createChildIssue",
+          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "group": "modification@1"
         }
       ]
     },

@@ -93,6 +93,18 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
       return;
     }
 
+    // 判断是否有子节点
+    if (node.children && node.children.length > 0) {
+      const confirm = await vscode.window.showWarningMessage(
+        '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
+        { modal: true },
+        '确定'
+      );
+      if (confirm !== '确定') {
+        return;
+      }
+    }
+
     const { success } = removeNodeFromData(this.treeData, node.id);
 
     if (success) {
@@ -101,7 +113,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
       // Notify IsolatedIssuesProvider to refresh as a node has been disassociated
       vscode.commands.executeCommand('issueManager.isolatedIssues.refresh');
     } else {
-        vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
+      vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
     }
   }
 }

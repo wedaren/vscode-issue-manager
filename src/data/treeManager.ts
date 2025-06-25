@@ -148,7 +148,7 @@ export function addNode(tree: TreeData, filePath: string, parentId: string | nul
     if (parentId === null) {
         // Add to root
         if (index === undefined) {
-            tree.rootNodes.push(newNode);
+            tree.rootNodes.unshift(newNode);
         } else {
             tree.rootNodes.splice(index, 0, newNode);
         }
@@ -158,7 +158,7 @@ export function addNode(tree: TreeData, filePath: string, parentId: string | nul
     const { node: parent } = findNodeById(tree.rootNodes, parentId) || {};
     if (parent) {
         if (index === undefined) {
-            parent.children.push(newNode);
+            parent.children.unshift(newNode);
         } else {
             parent.children.splice(index, 0, newNode);
         }

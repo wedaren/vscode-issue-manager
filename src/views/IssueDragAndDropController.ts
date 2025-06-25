@@ -16,14 +16,14 @@ interface DraggedItem {
 }
 
 export class IssueDragAndDropController implements vscode.TreeDragAndDropController<TreeNode | IssueTreeItem> {
-    public dropMimeTypes:  string[] = [];
-    public dragMimeTypes:  string[] = [];
+    public dropMimeTypes: string[] = [];
+    public dragMimeTypes: string[] = [];
 
     constructor(private overviewProvider: IssueOverviewProvider, type: 'isolated' | 'overview') {
         if (type === 'isolated') {
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else if (type === 'overview') {
-            this.dropMimeTypes = [ISSUE_MIME_TYPE,'text/uri-list'];
+            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list'];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else {
             throw new Error(`Unsupported type: ${type}`);
@@ -35,7 +35,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         treeDataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
-        
+
         const transferData: DraggedItem[] = source.map(item => {
             if (item instanceof IssueTreeItem) {
                 return { type: 'isolated', filePath: item.resourceUri.fsPath };
@@ -64,78 +64,73 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         }
         const treeData = await readTree();
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, target.id) : undefined;
+        const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === ISSUE_MIME_TYPE && transferItem.value).pop() || [];
+        const fromOverview = dataTransfer.get('application/vnd.code.tree.issuemanager.views.overview');
+        const fromIsolated = dataTransfer.get('application/vnd.code.tree.issuemanager.views.isolated');
+        const fromEditor = dataTransfer.get('text/uri-list');
 
-        for (const [mimeType, transferItem] of dataTransfer) {
-            
-            console.log('[issue-manager] handleDrop mimeType:', mimeType);
-            if (token.isCancellationRequested) {
-                return;
-            }
+        if (fromOverview && transferItem) {
+            const draggedItems: DraggedItem[] = transferItem.value;
 
-            if (mimeType === ISSUE_MIME_TYPE && transferItem.value) {
-                
-                let draggedItems: DraggedItem[] = transferItem.value;
-                // 兼容 VS Code 拖拽 API 类型差异
-                if (typeof draggedItems === 'string') {
-                    try {
-                        draggedItems = JSON.parse(draggedItems);
-                    } catch {
-                        // 解析失败，按字符串处理或报错
+            for (const dragged of draggedItems) {
+                let nodeToMove: TreeNode | null = null;
+
+                if (dragged.type === 'overview' && dragged.id) {
+                    const sourceNode = this.findNode(treeData.rootNodes, dragged.id);
+                    if (sourceNode && this.isAncestor(sourceNode, targetNodeInTree)) {
+                        vscode.window.showWarningMessage('无法将一个节点移动到它自己的子节点下。');
+                        continue; // 跳过无效操作
                     }
-                }
+                    nodeToMove = this.findAndRemoveNode(treeData.rootNodes, dragged.id);
+                    nodeToMove && this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
 
-                for (const dragged of draggedItems) {
-                    let nodeToMove: TreeNode | null = null;
-
-                    if (dragged.type === 'overview' && dragged.id) {
-                        const sourceNode = this.findNode(treeData.rootNodes, dragged.id);
-                        if (sourceNode && this.isAncestor(sourceNode, targetNodeInTree)) {
-                            vscode.window.showWarningMessage('无法将一个节点移动到它自己的子节点下。');
-                            continue; // 跳过无效操作
-                        }
-                        nodeToMove = this.findAndRemoveNode(treeData.rootNodes, dragged.id);
-                        targetNodeInTree && (targetNodeInTree.expanded = true); // 确保移动后节点展开状态
-                    } else if (dragged.type === 'isolated') {
-                        const relativePath = path.relative(issueDir, dragged.filePath);
-                        nodeToMove = {
-                            id: uuidv4(),
-                            filePath: relativePath,
-                            children: [],
-                        };
-                    }
-
-                    if (nodeToMove) {
-                        this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
-                    }
                 }
             }
 
-            // 支持 text/uri-list 拖拽类型（主流 VS Code 拖拽编辑器标签页行为）
-            if (mimeType === 'text/uri-list' && transferItem.value) {
-                console.log('[issue-manager] text/uri-list drop event:', transferItem.value);
-                const uriList = (typeof transferItem.value === 'string') ? transferItem.value.split(/\r?\n/) : [];
-                for (const uriStr of uriList) {
-                    if (!uriStr.startsWith('file://')) { continue; }
-                    const fileUri = vscode.Uri.parse(uriStr);
-                    const absPath = fileUri.fsPath;
-                    console.log('[issue-manager] text/uri-list file:', absPath);
-                    if (!absPath.endsWith('.md')) {
-                        vscode.window.showWarningMessage('只能拖拽 Markdown (.md) 文件到问题总览。');
-                        continue;
-                    }
-                    if (!absPath.startsWith(issueDir)) {
-                        vscode.window.showWarningMessage('只能拖拽“问题目录”内的 .md 文件。');
-                        continue;
-                    }
-                    const relativePath = path.relative(issueDir, absPath);
-                    const nodeToAdd: TreeNode = {
+
+        } else if (fromIsolated && transferItem) {
+            const draggedItems: DraggedItem[] = JSON.parse(transferItem.value);
+            for (const dragged of draggedItems) {
+                let nodeToMove: TreeNode | null = null;
+
+                if (dragged.type === 'isolated') {
+                    const relativePath = path.relative(issueDir, dragged.filePath);
+                    nodeToMove = {
                         id: uuidv4(),
                         filePath: relativePath,
                         children: [],
                     };
-                    this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
+                }
+
+                if (nodeToMove) {
+                    this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
                 }
             }
+
+        } else if (fromEditor) {
+            const transferItemValue = fromEditor.value;
+            const uriList = (typeof transferItemValue === 'string') ? transferItemValue.split(/\r?\n/) : [];
+            for (const uriStr of uriList) {
+                if (!uriStr.startsWith('file://')) { continue; }
+                const fileUri = vscode.Uri.parse(uriStr);
+                const absPath = fileUri.fsPath;
+                if (!absPath.endsWith('.md')) {
+                    vscode.window.showWarningMessage('只能拖拽 Markdown (.md) 文件到问题总览。');
+                    continue;
+                }
+                if (!absPath.startsWith(issueDir)) {
+                    vscode.window.showWarningMessage('只能拖拽“问题目录”内的 .md 文件。');
+                    continue;
+                }
+                const relativePath = path.relative(issueDir, absPath);
+                const nodeToAdd: TreeNode = {
+                    id: uuidv4(),
+                    filePath: relativePath,
+                    children: [],
+                };
+                this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
+            }
+
         }
 
         await writeTree(treeData);
@@ -148,7 +143,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
             if (!target.children) {
                 target.children = [];
             }
-            target.expanded = true; 
+            target.expanded = true;
             target.children.push(nodeToAdd);
         } else {
             treeData.rootNodes.push(nodeToAdd);
