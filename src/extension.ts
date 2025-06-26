@@ -8,6 +8,7 @@ import { TreeNode, readTree, writeTree, addNode, TreeData, isFocusedRootId, stri
 import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { LLMService } from './llm/LLMService';
+import { debounce } from './utils/debounce';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -114,7 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
 	 * @param issueUri 要添加的问题文件的 URI
 	 * @param parentId 父节点的 ID，如果为 null 则作为根节点
 	 */
-	async function addIssueToTree(issueUri: vscode.Uri, parentId: string | null) {
+	async function addIssueToTree(issueUri: vscode.Uri, parentId: string | null | undefined) {
 		const issueDir = getIssueDir();
 		if (!issueDir) { return; } // 安全检查
 
@@ -126,38 +127,13 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.executeCommand('issueManager.refreshAllView');
 	}
 
-	/**
-	 * 提示用户输入标题，然后创建问题。
-	 * @param parentId 新建 issue 的父节点 ID
-	 * @param isAddToTree 如果为 true，则将 issue 添加到总览树中；否则，它将成为一个孤立问题。
-	 */
-	async function promptForIssueTitleAndCreate(parentId: string | null, isAddToTree: boolean) {
-		const issueDir = getIssueDir();
-		if (!issueDir) {
-			vscode.window.showErrorMessage('请先在设置中配置“issueManager.issueDir”');
-			vscode.commands.executeCommand('workbench.action.openSettings', 'issueManager.issueDir');
-			return;
-		}
 
-		const title = await vscode.window.showInputBox({
-			prompt: '请输入您的问题标题',
-			placeHolder: '例如：如何配置 VS Code 的主题？'
-		});
-		if (title) {
-			const newFileUri = await createIssueFile(title);
-			if (newFileUri && isAddToTree) {
-				await addIssueToTree(newFileUri, parentId);
-			}
-			// 如果 isAddToTree 为 false，文件被创建后，FileSystemWatcher 会自动侦测到
-			// 并刷新“孤立问题”视图，因此这里无需额外操作。
-		}
-	}
 
 
 	/**
 	 * 智能创建工作流
 	 */
-	async function smartCreateIssue() {
+	async function smartCreateIssue(parentId: string | null | undefined = null, isAddToTree: boolean = false) {
 		const issueDir = getIssueDir();
 		if (!issueDir) {
 			vscode.window.showErrorMessage('请先在设置中配置“issueManager.issueDir”');
@@ -167,9 +143,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 		const quickPick = vscode.window.createQuickPick();
 		quickPick.placeholder = '请输入您的问题...';
+		quickPick.matchOnDescription = true; // 允许根据描述匹配
 
 		let quickPickValue = '';
-		quickPick.onDidChangeValue(async (value) => {
+		quickPick.onDidChangeValue(debounce(async (value) => {
 			quickPickValue = value;
 			if (!value) {
 				quickPick.items = [];
@@ -189,23 +166,28 @@ export function activate(context: vscode.ExtensionContext) {
 			try {
 				// 调用 LLM 服务获取建议
 				const suggestions = await LLMService.getSuggestions(value);
+				console.log('LLM Suggestions:', suggestions); // 添加日志
 
 				// 构建新的列表项
 				const newItems: vscode.QuickPickItem[] = [originalInputItem];
 
 				// 添加优化建议
-				suggestions.optimized.forEach(opt => {
-					newItems.push({ label: `[创建新笔记] ${opt}` });
-				});
+				if (suggestions.optimized.length > 0) {
+					newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
+					suggestions.optimized.forEach(opt => {
+						newItems.push({ label: `[创建新笔记] ${opt}`, description: opt.includes(value) ? opt : value });
+					});
+				}
+
 
 				// 添加分隔符和相似笔记
 				if (suggestions.similar.length > 0) {
 					newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
 					suggestions.similar.forEach(sim => {
-						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.filePath });
+						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.title.includes(value) ? sim.title : value, detail: sim.filePath });
 					});
 				}
-
+				console.log('QuickPick newItems:', newItems); // 添加日志
 				quickPick.items = newItems;
 			} catch (error) {
 				console.error('Error getting suggestions from LLMService:', error);
@@ -215,7 +197,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// 结束加载状态
 				quickPick.busy = false;
 			}
-		});
+		}, 500));
 
 		quickPick.onDidAccept(async () => {
 			const selectedItem = quickPick.selectedItems[0];
@@ -223,20 +205,26 @@ export function activate(context: vscode.ExtensionContext) {
 				quickPick.hide();
 				return;
 			}
-
+			let uri: vscode.Uri | null = null;
 			// 根据选择的类型执行操作
 			if (selectedItem.label.startsWith('[创建新笔记]')) {
 				// 从 label 中提取标题
 				const title = selectedItem.label.replace('[创建新笔记] ', '');
 				if (title) {
-					await createIssueFile(title);
+					uri = await createIssueFile(title);
 				}
 			} else if (selectedItem.label.startsWith('[打开已有笔记]')) {
 				// 从 description 中获取文件路径
-				const filePath = selectedItem.description;
+				const filePath = selectedItem.detail;
 				if (filePath) {
-					const uri = vscode.Uri.file(filePath);
-					await vscode.window.showTextDocument(uri);
+					uri = vscode.Uri.file(filePath);
+				}
+			}
+			if (uri) {
+
+				await vscode.window.showTextDocument(uri);
+				if (isAddToTree) {
+					await addIssueToTree(uri, parentId);
 				}
 			}
 
@@ -283,19 +271,20 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 修改“新建子问题”命令，复用工具函数
 	const createChildIssueCommand = vscode.commands.registerCommand('issueManager.createChildIssue', async (parentNode?: TreeNode) => {
-		const id = parentNode?.id && stripFocusedRootId(parentNode.id);
-		await promptForIssueTitleAndCreate(id || null, true);
+		const id: string | null | undefined = parentNode?.id && stripFocusedRootId(parentNode.id);
+		await smartCreateIssue(id || null, true);
 	});
 	context.subscriptions.push(createChildIssueCommand);
 	// 注册“创建问题”命令
 	const createIssueCommand = vscode.commands.registerCommand('issueManager.createIssue', async () => {
-		// await promptForIssueTitleAndCreate(null, false);
-		await smartCreateIssue();
+		await smartCreateIssue(null);
 	});
 	context.subscriptions.push(createIssueCommand);
 
-	const createIssueFromOverviewCommand = vscode.commands.registerCommand('issueManager.createIssueFromOverview', async () => {
-		await promptForIssueTitleAndCreate(null, true);
+	const createIssueFromOverviewCommand = vscode.commands.registerCommand('issueManager.createIssueFromOverview', async (node?: TreeNode) => {
+		const selectedNode = node || (overviewView.selection.length > 0 ? overviewView.selection[0] : undefined);
+		const parentId: string | null | undefined = selectedNode?.id ? stripFocusedRootId(selectedNode.id) : null;
+		await smartCreateIssue(parentId, true);
 	});
 	context.subscriptions.push(createIssueFromOverviewCommand);
 
