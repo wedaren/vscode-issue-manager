@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { TreeData, TreeNode, readTree, writeTree } from '../data/treeManager';
+import { TreeData, TreeNode, readTree, stripFocusedRootId, writeTree } from '../data/treeManager';
 import { IssueTreeItem, IsolatedIssuesProvider } from './IsolatedIssuesProvider';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
@@ -67,6 +67,14 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         }
 
         const treeData = await readTree();
+        if(!target && this.viewMode === 'focused') {
+            vscode.window.showErrorMessage('请先选择一个节点作为目标。');
+            return;
+        }
+        if(target && this.viewMode === 'focused') {
+            target.id = stripFocusedRootId(target.id); // 确保 focused 模式下的目标节点 ID 是正确的
+        }
+
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, target.id) : undefined;
         const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === ISSUE_MIME_TYPE && transferItem.value).pop() || [];
         const fromOverview = dataTransfer.get('application/vnd.code.tree.issuemanager.views.overview');

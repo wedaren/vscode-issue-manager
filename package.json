@@ -69,22 +69,22 @@
         },
         {
           "command": "issueManager.disassociateIssue",
-          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')  && viewItem == 'issueNode'",
           "group": "modification@2"
         },
         {
           "command": "issueManager.createChildIssue",
-          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')",
           "group": "modification@1"
         },
         {
           "command": "issueManager.focusIssue",
-          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem == 'issueNode'",
           "group": "modification@3"
         },
         {
           "command": "issueManager.removeFocus",
-          "when": "view == 'issueManager.views.focused' && viewItem == 'issueNode'",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem == 'focusedNode'",
           "group": "modification@3"
         }
       ]
@@ -111,6 +111,11 @@
     "views": {
       "issue-manager": [
         {
+          "id": "issueManager.views.focused",
+          "name": "关注问题",
+          "icon": "resources/icon.svg"
+        },
+        {
           "id": "issueManager.views.overview",
           "name": "问题总览",
           "icon": "resources/icon.svg"
@@ -118,11 +123,6 @@
         {
           "id": "issueManager.views.isolated",
           "name": "孤立问题",
-          "icon": "resources/icon.svg"
-        },
-        {
-          "id": "issueManager.views.focused",
-          "name": "关注问题",
           "icon": "resources/icon.svg"
         }
       ]

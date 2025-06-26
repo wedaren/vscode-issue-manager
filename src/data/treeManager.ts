@@ -264,6 +264,35 @@ export function isAncestor(tree: TreeData, potentialAncestorId: string, nodeId: 
     return found;
 }
 
+/**
+ * 查找并返回给定节点的所有祖先。
+ * @param nodeId 要查找其祖先的节点的 ID。
+ * @param tree 完整的树数据。
+ * @returns 一个包含所有祖先节点的数组，从根节点到直接父节点排序。
+ */
+export function getAncestors(nodeId: string, tree: TreeData): TreeNode[] {
+    const ancestors: TreeNode[] = [];
+    
+    // 查找从根到一个节点的路径
+    const findPath = (nodes: TreeNode[], path: TreeNode[]): boolean => {
+        for (const node of nodes) {
+            const currentPath = [...path, node];
+            if (node.id === nodeId) {
+                // 找到了节点，路径（不包括节点自身）就是其祖先
+                ancestors.push(...currentPath.slice(0, -1));
+                return true;
+            }
+            if (node.children && findPath(node.children, currentPath)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    findPath(tree.rootNodes, []);
+    return ancestors;
+}
+
 // ========== focused.json 相关 ========== //
 
 export interface FocusedData {
@@ -352,4 +381,29 @@ export function validateFocusList(focusList: string[], treeData: TreeData): stri
   const allIds = new Set<string>();
   walkTree(treeData.rootNodes, (node) => allIds.add(node.id));
   return focusList.filter(id => allIds.has(id));
+}
+
+// =====================
+// FocusedRoot 工具函数
+// =====================
+
+/**
+ * 判断 id 是否为关注视图根节点 id（带 __focusedRoot 后缀）。
+ */
+export function isFocusedRootId(id: string): boolean {
+  return id.endsWith('__focusedRoot');
+}
+
+/**
+ * 给 id 添加 __focusedRoot 后缀。
+ */
+export function toFocusedRootId(id: string): string {
+  return id + '__focusedRoot';
+}
+
+/**
+ * 去除 id 的 __focusedRoot 后缀。
+ */
+export function stripFocusedRootId(id: string): string {
+  return id.endsWith('__focusedRoot') ? id.replace(/__focusedRoot$/, '') : id;
 }
