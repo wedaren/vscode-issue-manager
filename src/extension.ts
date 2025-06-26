@@ -7,6 +7,7 @@ import { getIssueDir } from './config';
 import { TreeNode, readTree, writeTree, addNode, TreeData, isFocusedRootId, stripFocusedRootId } from './data/treeManager';
 import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
+import { LLMService } from './llm/LLMService';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -168,25 +169,77 @@ export function activate(context: vscode.ExtensionContext) {
 		quickPick.placeholder = '请输入您的问题...';
 
 		let quickPickValue = '';
-		quickPick.onDidChangeValue(value => {
+		quickPick.onDidChangeValue(async (value) => {
 			quickPickValue = value;
-			if (value) {
-				quickPick.items = [{ label: `[创建新笔记] ${value}`, description: '使用原始输入创建新笔记' }];
-			} else {
+			if (!value) {
 				quickPick.items = [];
+				return;
+			}
+
+			// 初始时，只显示原始输入
+			const originalInputItem: vscode.QuickPickItem = {
+				label: `[创建新笔记] ${value}`,
+				description: '使用原始输入创建新笔记'
+			};
+			quickPick.items = [originalInputItem];
+
+			// 设置为加载状态
+			quickPick.busy = true;
+
+			try {
+				// 调用 LLM 服务获取建议
+				const suggestions = await LLMService.getSuggestions(value);
+
+				// 构建新的列表项
+				const newItems: vscode.QuickPickItem[] = [originalInputItem];
+
+				// 添加优化建议
+				suggestions.optimized.forEach(opt => {
+					newItems.push({ label: `[创建新笔记] ${opt}` });
+				});
+
+				// 添加分隔符和相似笔记
+				if (suggestions.similar.length > 0) {
+					newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
+					suggestions.similar.forEach(sim => {
+						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.filePath });
+					});
+				}
+
+				quickPick.items = newItems;
+			} catch (error) {
+				console.error('Error getting suggestions from LLMService:', error);
+				// 出错时，至少保证原始输入项仍然可用
+				quickPick.items = [originalInputItem];
+			} finally {
+				// 结束加载状态
+				quickPick.busy = false;
 			}
 		});
 
 		quickPick.onDidAccept(async () => {
 			const selectedItem = quickPick.selectedItems[0];
-			if (selectedItem) {
-				// 简单实现：直接使用输入值创建
-				const title = quickPickValue;
+			if (!selectedItem) {
+				quickPick.hide();
+				return;
+			}
+
+			// 根据选择的类型执行操作
+			if (selectedItem.label.startsWith('[创建新笔记]')) {
+				// 从 label 中提取标题
+				const title = selectedItem.label.replace('[创建新笔记] ', '');
 				if (title) {
 					await createIssueFile(title);
-					// 文件创建后，孤立问题视图会自动更新
+				}
+			} else if (selectedItem.label.startsWith('[打开已有笔记]')) {
+				// 从 description 中获取文件路径
+				const filePath = selectedItem.description;
+				if (filePath) {
+					const uri = vscode.Uri.file(filePath);
+					await vscode.window.showTextDocument(uri);
 				}
 			}
+
 			quickPick.hide();
 		});
 
