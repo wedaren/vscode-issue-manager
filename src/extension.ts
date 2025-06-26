@@ -4,7 +4,8 @@ import { IsolatedIssuesProvider, IssueTreeItem } from './views/IsolatedIssuesPro
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { getIssueDir } from './config';
-import { TreeNode, readTree, writeTree, addNode, writeFocused, readFocused, validateFocusList, TreeData } from './data/treeManager';
+import { TreeNode, readTree, writeTree, addNode, TreeData } from './data/treeManager';
+import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 
 /**
@@ -205,39 +206,29 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“添加到关注”命令
 	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: TreeNode) => {
+		const issueDir = getIssueDir();
+		if (!issueDir) { return; }
 		if (!node || !node.id) {
 			vscode.window.showErrorMessage('未找到要关注的问题节点。');
 			return;
 		}
-		// 读取当前 focused.json
-		const focusedData = await readFocused();
-		if (!focusedData.focusList.includes(node.id)) {
-			focusedData.focusList.push(node.id);
-			await writeFocused(focusedData);
-			focusedIssuesProvider.loadData();
-			vscode.window.showInformationMessage('已添加到关注问题。');
-		} else {
-			vscode.window.showInformationMessage('该问题已在关注列表中。');
-		}
+		await addFocus(issueDir, node.id);
+		await focusedIssuesProvider.refresh();
+		vscode.window.showInformationMessage('已添加到关注问题。');
 	});
 	context.subscriptions.push(focusIssueCommand);
 
 	// 注册“移除关注”命令
 	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: TreeNode) => {
+		const issueDir = getIssueDir();
+		if (!issueDir) { return; }
 		if (!node || !node.id) {
 			vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
 			return;
 		}
-		const focusedData = await readFocused();
-		const idx = focusedData.focusList.indexOf(node.id);
-		if (idx !== -1) {
-			focusedData.focusList.splice(idx, 1);
-			await writeFocused(focusedData);
-			focusedIssuesProvider.loadData();
-			vscode.window.showInformationMessage('已移除关注。');
-		} else {
-			vscode.window.showInformationMessage('该问题不在关注列表中。');
-		}
+		await removeFocus(issueDir, node.id);
+		await focusedIssuesProvider.refresh();
+		vscode.window.showInformationMessage('已移除关注。');
 	});
 	context.subscriptions.push(removeFocusCommand);
 

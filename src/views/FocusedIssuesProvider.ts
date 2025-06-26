@@ -21,15 +21,14 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
   }
 
   /** 刷新视图 */
-  refresh(): void {
-    this.loadData();
+  async refresh() {
+    await this.loadData();
   }
 
   /** 加载数据（tree.json 和 focused.json） */
   async loadData() {
     this.treeData = await readTree();
     this.focusedData = await readFocused();
-    // 后续可在此处做过滤树构建
     this._onDidChangeTreeData.fire();
   }
 
@@ -65,36 +64,76 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
   }
 
   /**
-   * 构建关注过滤树，仅包含 focusList 节点及其所有后代（不包含祖先）。
+   * 构建关注过滤树，包含 focusList 节点及其所有祖先和后代。
    */
   private buildFilteredTree(): TreeNode[] {
-    if (!this.treeData || !this.focusedData) { return []; }
-    const focusSet = new Set(this.focusedData.focusList);
+    if (!this.treeData || !this.focusedData || this.focusedData.focusList.length === 0) {
+      return [];
+    }
+
     const idToNode = new Map<string, TreeNode>();
-    // 建立 id 到节点的映射
-    const collectMap = (nodes: TreeNode[]) => {
+    const parentMap = new Map<string, string>(); // childId -> parentId
+
+    const buildMaps = (nodes: TreeNode[], parentId?: string) => {
       for (const node of nodes) {
         idToNode.set(node.id, node);
-        if (node.children) { collectMap(node.children); }
+        if (parentId) {
+          parentMap.set(node.id, parentId);
+        }
+        if (node.children) {
+          buildMaps(node.children, node.id);
+        }
       }
     };
-    collectMap(this.treeData.rootNodes);
 
-    // 只收集所有关注节点及其后代
-    const result: TreeNode[] = [];
-    const collectDescendants = (node: TreeNode): TreeNode => {
-      return {
-        ...node,
-        children: node.children.map(collectDescendants)
-      };
-    };
-    for (const id of focusSet) {
-      const node = idToNode.get(id);
-      if (node) {
-        result.push(collectDescendants(node));
+    buildMaps(this.treeData.rootNodes);
+
+    const nodesToShow = new Set<string>();
+
+    // 1. 添加所有关注节点及其所有祖先和后代
+    for (const focusId of this.focusedData.focusList) {
+      // 添加自身
+      if (idToNode.has(focusId)) {
+        nodesToShow.add(focusId);
+
+        // 添加所有后代
+        const addDescendants = (nodeId: string) => {
+          const node = idToNode.get(nodeId);
+          if (node && node.children) {
+            for (const child of node.children) {
+              nodesToShow.add(child.id);
+              addDescendants(child.id);
+            }
+          }
+        };
+        addDescendants(focusId);
+
+        // 添加所有祖先
+        let currentId = focusId;
+        while (parentMap.has(currentId)) {
+          const parentId = parentMap.get(currentId)!;
+          nodesToShow.add(parentId);
+          currentId = parentId;
+        }
       }
     }
-    return result;
+
+    // 2. 基于需要展示的节点，递归构建新树
+    const buildNewTree = (nodes: TreeNode[]): TreeNode[] => {
+      const result: TreeNode[] = [];
+      for (const node of nodes) {
+        if (nodesToShow.has(node.id)) {
+          const newNode: TreeNode = { ...node };
+          if (node.children) {
+            newNode.children = buildNewTree(node.children);
+          }
+          result.push(newNode);
+        }
+      }
+      return result;
+    };
+
+    return buildNewTree(this.treeData.rootNodes);
   }
 
   getChildren(element?: TreeNode): Thenable<TreeNode[]> {
