@@ -72,7 +72,7 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTree
 
         if (element) {
             // 在孤立问题视图中，我们是一个扁平列表，所以只有根节点有子节点
-            return []
+            return [];
         }
 
         try {

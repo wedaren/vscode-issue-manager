@@ -153,6 +153,48 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 
+	/**
+	 * 智能创建工作流
+	 */
+	async function smartCreateIssue() {
+		const issueDir = getIssueDir();
+		if (!issueDir) {
+			vscode.window.showErrorMessage('请先在设置中配置“issueManager.issueDir”');
+			vscode.commands.executeCommand('workbench.action.openSettings', 'issueManager.issueDir');
+			return;
+		}
+
+		const quickPick = vscode.window.createQuickPick();
+		quickPick.placeholder = '请输入您的问题...';
+
+		let quickPickValue = '';
+		quickPick.onDidChangeValue(value => {
+			quickPickValue = value;
+			if (value) {
+				quickPick.items = [{ label: `[创建新笔记] ${value}`, description: '使用原始输入创建新笔记' }];
+			} else {
+				quickPick.items = [];
+			}
+		});
+
+		quickPick.onDidAccept(async () => {
+			const selectedItem = quickPick.selectedItems[0];
+			if (selectedItem) {
+				// 简单实现：直接使用输入值创建
+				const title = quickPickValue;
+				if (title) {
+					await createIssueFile(title);
+					// 文件创建后，孤立问题视图会自动更新
+				}
+			}
+			quickPick.hide();
+		});
+
+		quickPick.onDidHide(() => quickPick.dispose());
+		quickPick.show();
+	}
+
+
 	// 注册“删除问题”命令
 	const deleteIssueCommand = vscode.commands.registerCommand('issueManager.deleteIssue', async (item: IssueTreeItem) => {
 		if (!item || !item.resourceUri) {
@@ -194,7 +236,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(createChildIssueCommand);
 	// 注册“创建问题”命令
 	const createIssueCommand = vscode.commands.registerCommand('issueManager.createIssue', async () => {
-		await promptForIssueTitleAndCreate(null, false);
+		// await promptForIssueTitleAndCreate(null, false);
+		await smartCreateIssue();
 	});
 	context.subscriptions.push(createIssueCommand);
 
