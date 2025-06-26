@@ -4,7 +4,9 @@ import { IsolatedIssuesProvider, IssueTreeItem } from './views/IsolatedIssuesPro
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { getIssueDir } from './config';
-import { TreeNode, readTree, writeTree, addNode } from './data/treeManager';
+import { TreeNode, readTree, writeTree, addNode, TreeData, isFocusedRootId, stripFocusedRootId } from './data/treeManager';
+import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
+import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -50,14 +52,36 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const isolatedView = vscode.window.createTreeView('issueManager.views.isolated', {
 		treeDataProvider: isolatedIssuesProvider,
-		dragAndDropController: new IssueDragAndDropController(issueOverviewProvider, 'isolated'),
+		dragAndDropController: new IssueDragAndDropController(isolatedIssuesProvider, 'isolated'),
 		canSelectMany: true // 允许多选
 	});
 	context.subscriptions.push(isolatedView);
 
+	// 注册“关注问题”视图
+	const focusedIssuesProvider = new FocusedIssuesProvider();
+	const focusedView = vscode.window.createTreeView('issueManager.views.focused', {
+		treeDataProvider: focusedIssuesProvider,
+		dragAndDropController: new IssueDragAndDropController(focusedIssuesProvider, 'focused'),
+		canSelectMany: true
+	});
+	context.subscriptions.push(focusedView);
+
+	// 激活时加载一次数据
+	focusedIssuesProvider.loadData();
+
+	// 可根据需要注册命令刷新关注视图
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.focusedIssues.refresh', () => {
+		focusedIssuesProvider.loadData();
+	}));
+
 	// 注册一个命令，用于手动刷新“孤立问题”视图
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.isolatedIssues.refresh', () => {
 		isolatedIssuesProvider.refresh();
+	}));
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.refreshAllView', () => {
+		isolatedIssuesProvider.refresh();
+		focusedIssuesProvider.refresh();
+		issueOverviewProvider.refresh();
 	}));
 
 	/**
@@ -98,9 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
 		addNode(treeData, relPath, parentId);
 		await writeTree(treeData);
 
-		// 刷新两个视图，确保状态同步
-		issueOverviewProvider.refresh();
-		isolatedIssuesProvider.refresh();
+		vscode.commands.executeCommand('issueManager.refreshAllView');
 	}
 
 	/**
@@ -158,15 +180,16 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(deleteIssueCommand);
 
 	// 注册“解除关联”命令
-	const disassociateIssueCommand = vscode.commands.registerCommand('issueManager.disassociateIssue', (node: TreeNode) => {
-		issueOverviewProvider.disassociateIssue(node);
+	const disassociateIssueCommand = vscode.commands.registerCommand('issueManager.disassociateIssue', async (node: TreeNode) => {
+		await issueOverviewProvider.disassociateIssue(node) && vscode.commands.executeCommand('issueManager.refreshAllView');
 	});
 
 	context.subscriptions.push(disassociateIssueCommand);
 
 	// 修改“新建子问题”命令，复用工具函数
 	const createChildIssueCommand = vscode.commands.registerCommand('issueManager.createChildIssue', async (parentNode?: TreeNode) => {
-		await promptForIssueTitleAndCreate(parentNode?.id || null, true);
+		const id = parentNode?.id && stripFocusedRootId(parentNode.id);
+		await promptForIssueTitleAndCreate(id || null, true);
 	});
 	context.subscriptions.push(createChildIssueCommand);
 	// 注册“创建问题”命令
@@ -179,6 +202,35 @@ export function activate(context: vscode.ExtensionContext) {
 		await promptForIssueTitleAndCreate(null, true);
 	});
 	context.subscriptions.push(createIssueFromOverviewCommand);
+
+	// 注册“添加到关注”命令
+	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: TreeNode) => {
+		const issueDir = getIssueDir();
+		if (!issueDir) { return; }
+		if (!node || !node.id) {
+			vscode.window.showErrorMessage('未找到要关注的问题节点。');
+			return;
+		}
+		await addFocus(issueDir, node.id);
+		vscode.commands.executeCommand('issueManager.refreshAllView');
+		vscode.window.showInformationMessage('已添加到关注问题。');
+	});
+	context.subscriptions.push(focusIssueCommand);
+
+	// 注册“移除关注”命令
+	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: TreeNode) => {
+		const issueDir = getIssueDir();
+		if (!issueDir) { return; }
+		if (!node || !node.id) {
+			vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
+			return;
+		}
+		const realId = stripFocusedRootId(node.id);
+		await removeFocus(issueDir, realId);
+		vscode.commands.executeCommand('issueManager.refreshAllView');
+		vscode.window.showInformationMessage('已移除关注。');
+	});
+	context.subscriptions.push(removeFocusCommand);
 
 }
 

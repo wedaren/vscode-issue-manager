@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { TreeData, TreeNode, readTree, writeTree } from '../data/treeManager';
-import { IssueTreeItem } from './IsolatedIssuesProvider';
+import { TreeData, TreeNode, readTree, stripFocusedRootId, writeTree } from '../data/treeManager';
+import { IssueTreeItem, IsolatedIssuesProvider } from './IsolatedIssuesProvider';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
+import { FocusedIssuesProvider } from './FocusedIssuesProvider';
+
 
 // 自定义拖拽数据类型
 const ISSUE_MIME_TYPE = 'application/vnd.code.tree.issue-manager';
@@ -19,14 +21,15 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
     public dropMimeTypes: string[] = [];
     public dragMimeTypes: string[] = [];
 
-    constructor(private overviewProvider: IssueOverviewProvider, type: 'isolated' | 'overview') {
-        if (type === 'isolated') {
+    constructor(private viewProvider: IssueOverviewProvider | IsolatedIssuesProvider | FocusedIssuesProvider, private viewMode: 'isolated' | 'overview' | 'focused') {
+        if (viewMode === 'isolated') {
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
-        } else if (type === 'overview') {
+        } else if (viewMode === 'overview') {
             this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list'];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
-        } else {
-            throw new Error(`Unsupported type: ${type}`);
+        } else if (viewMode === 'focused') {
+            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list'];
+            this.dragMimeTypes = [ISSUE_MIME_TYPE];
         }
     }
 
@@ -62,7 +65,16 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         if (!issueDir) {
             return;
         }
+
         const treeData = await readTree();
+        if(!target && this.viewMode === 'focused') {
+            vscode.window.showErrorMessage('请先选择一个节点作为目标。');
+            return;
+        }
+        if(target && this.viewMode === 'focused') {
+            target.id = stripFocusedRootId(target.id); // 确保 focused 模式下的目标节点 ID 是正确的
+        }
+
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, target.id) : undefined;
         const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === ISSUE_MIME_TYPE && transferItem.value).pop() || [];
         const fromOverview = dataTransfer.get('application/vnd.code.tree.issuemanager.views.overview');
@@ -103,7 +115,11 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 }
 
                 if (nodeToMove) {
-                    this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
+                    if (this.viewMode === 'focused') {
+                        targetNodeInTree && this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
+                    } else {
+                        this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
+                    }
                 }
             }
 
@@ -134,8 +150,8 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         }
 
         await writeTree(treeData);
-        this.overviewProvider.refresh();
-        vscode.commands.executeCommand('issueManager.isolatedIssues.refresh');
+        // this.viewProvider.refresh();
+        vscode.commands.executeCommand('issueManager.refreshAllView');
     }
 
     private addNodeToTree(treeData: TreeData, nodeToAdd: TreeNode, target: TreeNode | null | undefined): void {

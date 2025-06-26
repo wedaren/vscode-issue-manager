@@ -3,6 +3,7 @@ import * as path from 'path';
 import { readTree, writeTree, TreeData, TreeNode, removeNode as removeNodeFromData, findNodeById } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
+import { readFocused } from '../data/focusedManager';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeNode | undefined | null | void> = new vscode.EventEmitter<TreeNode | undefined | null | void>();
@@ -36,29 +37,33 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
   async getTreeItem(element: TreeNode): Promise<vscode.TreeItem> {
     const issueDir = getIssueDir();
     if (!issueDir) {
-        throw new Error("Issue directory is not configured.");
+      throw new Error("Issue directory is not configured.");
     }
 
     // Handle the placeholder case
     if (element.id === 'placeholder-no-issues') {
-        return new vscode.TreeItem("从“孤立问题”视图拖拽问题至此", vscode.TreeItemCollapsibleState.None);
+      return new vscode.TreeItem("从“孤立问题”视图拖拽问题至此", vscode.TreeItemCollapsibleState.None);
     }
 
     const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
     const title = await getTitle(uri);
 
-    const item = new vscode.TreeItem(title, 
-        element.children && element.children.length > 0 
-        ? (element.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) 
+    // 判断是否已关注
+    const focusedData = readFocused(issueDir);
+    const isFocused = focusedData.focusList.includes(element.id);
+
+    const item = new vscode.TreeItem(title,
+      element.children && element.children.length > 0
+        ? (element.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
         : vscode.TreeItemCollapsibleState.None);
 
     item.id = element.id;
     item.resourceUri = uri;
-    item.contextValue = 'issueNode'; // Use this for when clauses in package.json
+    item.contextValue = isFocused ? 'focusedNode' : 'issueNode'; // 根据关注状态设置 contextValue
     item.command = {
-        command: 'vscode.open',
-        title: 'Open File',
-        arguments: [uri],
+      command: 'vscode.open',
+      title: 'Open File',
+      arguments: [uri],
     };
 
     return item;
@@ -88,9 +93,9 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
     return findNodeById(this.treeData.rootNodes, id)?.node || null;
   }
 
-  async disassociateIssue(node: TreeNode): Promise<void> {
+  async disassociateIssue(node: TreeNode): Promise<boolean> {
     if (!this.treeData || node.id === 'placeholder-no-issues') {
-      return;
+      return false;
     }
 
     // 判断是否有子节点
@@ -101,7 +106,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
         '确定'
       );
       if (confirm !== '确定') {
-        return;
+        return false;
       }
     }
 
@@ -109,11 +114,10 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
 
     if (success) {
       await writeTree(this.treeData);
-      this.loadData();
-      // Notify IsolatedIssuesProvider to refresh as a node has been disassociated
-      vscode.commands.executeCommand('issueManager.isolatedIssues.refresh');
+      return true;
     } else {
       vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
+      return false;
     }
   }
 }
