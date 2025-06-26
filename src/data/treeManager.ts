@@ -263,3 +263,93 @@ export function isAncestor(tree: TreeData, potentialAncestorId: string, nodeId: 
     });
     return found;
 }
+
+// ========== focused.json 相关 ========== //
+
+export interface FocusedData {
+  version: string;
+  focusList: string[]; // 节点 id 列表
+}
+
+const FOCUSED_FILE = 'focused.json';
+
+/**
+ * 获取 focused.json 文件的绝对路径。
+ * @returns 如果 issueDir 未配置，则返回 null。
+ */
+const getFocusedDataPath = (): string | null => {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return null;
+  }
+  // 确保 .issueManager 目录存在
+  const dataDir = path.join(issueDir, '.issueManager');
+  try {
+    if (!require('fs').existsSync(dataDir)) {
+      require('fs').mkdirSync(dataDir, { recursive: true });
+    }
+  } catch (e) {
+    vscode.window.showErrorMessage('创建 .issueManager 目录失败。');
+    return null;
+  }
+  return path.join(dataDir, FOCUSED_FILE);
+};
+
+const defaultFocusedData: FocusedData = {
+  version: '1.0.0',
+  focusList: [],
+};
+
+/**
+ * 读取 focused.json 文件。
+ * @returns FocusedData 对象，若不存在或损坏则返回默认结构。
+ */
+export const readFocused = async (): Promise<FocusedData> => {
+  const focusedPath = getFocusedDataPath();
+  if (!focusedPath) {
+    return { ...defaultFocusedData };
+  }
+  try {
+    const content = await vscode.workspace.fs.readFile(vscode.Uri.file(focusedPath));
+    const data = JSON.parse(content.toString());
+    // 简单校验
+    if (!Array.isArray(data.focusList)) { throw new Error('focusList 必须为数组'); }
+    return {
+      version: typeof data.version === 'string' ? data.version : '1.0.0',
+      focusList: data.focusList.filter((id: any) => typeof id === 'string'),
+    };
+  } catch (error) {
+    // 文件不存在或解析失败，返回默认
+    return { ...defaultFocusedData };
+  }
+};
+
+/**
+ * 写入 focused.json 文件。
+ * @param data FocusedData 对象。
+ */
+export const writeFocused = async (data: FocusedData): Promise<void> => {
+  const focusedPath = getFocusedDataPath();
+  if (!focusedPath) {
+    vscode.window.showErrorMessage('无法写入关注数据，问题目录未配置。');
+    return;
+  }
+  const content = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
+  try {
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(focusedPath), content);
+  } catch (error) {
+    vscode.window.showErrorMessage(`写入 focused.json 失败: ${error}`);
+  }
+};
+
+/**
+ * 校验 focused.json 的 focusList 是否都能在 tree.json 中找到对应节点。
+ * @param focusList 关注 id 列表。
+ * @param treeData 当前树结构。
+ * @returns 有效 id 列表。
+ */
+export function validateFocusList(focusList: string[], treeData: TreeData): string[] {
+  const allIds = new Set<string>();
+  walkTree(treeData.rootNodes, (node) => allIds.add(node.id));
+  return focusList.filter(id => allIds.has(id));
+}

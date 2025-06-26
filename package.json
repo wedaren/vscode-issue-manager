@@ -38,6 +38,14 @@
       {
         "command": "issueManager.createChildIssue",
         "title": "新建问题"
+      },
+      {
+        "command": "issueManager.focusIssue",
+        "title": "添加到关注"
+      },
+      {
+        "command": "issueManager.removeFocus",
+        "title": "移除关注"
       }
     ],
     "menus": {
@@ -68,6 +76,16 @@
           "command": "issueManager.createChildIssue",
           "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
           "group": "modification@1"
+        },
+        {
+          "command": "issueManager.focusIssue",
+          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "group": "modification@3"
+        },
+        {
+          "command": "issueManager.removeFocus",
+          "when": "view == 'issueManager.views.focused' && viewItem == 'issueNode'",
+          "group": "modification@3"
         }
       ]
     },
