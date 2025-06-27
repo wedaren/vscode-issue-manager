@@ -11,13 +11,15 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
 
   private treeData: TreeData | null = null;
 
-  constructor() {
+  constructor(private context: vscode.ExtensionContext) {
     this.loadData();
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('issueManager.issueDir')) {
         this.loadData();
       }
     });
+
+    
   }
 
   private async loadData(): Promise<void> {
