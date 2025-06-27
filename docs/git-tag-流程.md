@@ -1,30 +1,39 @@
-# Git 打 tag 并推送到远程的标准流程
+# Git 打 tag 并推送到远程的标准流程（推荐方式）
 
-1. 查看当前最新 tag（可选，便于确定新版本号）：
+## 自动化推荐：结合 GitHub Actions 自动打 tag 与发布
 
-   ```sh
-   git describe --tags --abbrev=0
-   ```
+> 推荐：已配置 GitHub Actions 工作流，main 分支的 package.json 版本号发生变化时，会自动检测并打上对应 tag（如 v0.0.4），随后自动发布扩展，无需手动打 tag。
+>
+> 只需正常提交并合并 main 分支，版本号变更后自动完成全部流程。
+>
+> 如需手动流程，请参考下文。
 
-2. 按需确定新 tag 号（如 bugfix 则第三位 +1，feature 则第二位 +1，主版本则第一位 +1）。
+---
 
-3. 打上新 tag（如 v0.0.3）：
+## 推荐：用 npm version 保证 tag 与 package.json 版本号一致
 
-   ```sh
-   git tag v0.0.3
-   ```
-
-4. 推送 tag 到远程仓库：
+1. 查看当前版本号（可选）：
 
    ```sh
-   git push origin v0.0.3
+   cat package.json | grep '"version"'
    ```
 
-5. （可选）推送所有本地 tag：
+2. 使用 npm version 自动升级版本（如 patch/minor/major），并生成 tag：
 
    ```sh
-   git push --tags
+   npm version patch   # 或 minor/major
    ```
+   - 自动修改 package.json 的 version 字段
+   - 生成对应的 commit
+   - 打上同名 tag（如 v0.0.4）
+
+3. 推送 commit 和 tag 到远程：
+
+   ```sh
+   git push && git push --tags
+   ```
+
+> 建议：始终用 npm version 管理版本号和 tag，避免手动不一致。如需自定义 tag 名称，可用 `npm version 0.0.4`。
 
 ---
 
@@ -34,9 +43,9 @@
   - Y：新功能
   - Z：修复/小改动
 
-## 建议
+## 其他建议
 - 打 tag 前确保本地 commit 已推送到远程。
-- tag message 可用 `git tag -a v0.0.3 -m "说明"` 方式添加。
+- tag message 可用 `npm version patch -m "说明"` 或 `git tag -a v0.0.3 -m "说明"`。
 - 推送后可在 GitHub Releases 页面补充说明。
 
 ---
