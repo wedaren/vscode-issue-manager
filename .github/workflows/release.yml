@@ -5,53 +5,12 @@ name: Publish VS Code Extension
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'package.json'
     tags:
       - 'v*.*.*'  # 仅在推送符合语义化版本号的 tag 时触发
 
 jobs:
-  tag-version:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 获取当前版本号
-        id: get_version
-        run: |
-          VERSION=$(jq -r .version package.json)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: 检查 tag 是否已存在
-        id: check_tag
-        run: |
-          git fetch --tags
-          TAG_EXISTS=$(git tag -l "v${{ steps.get_version.outputs.version }}")
-          if [ -n "$TAG_EXISTS" ]; then
-            echo "Tag already exists."
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 创建并推送 tag
-        if: steps.check_tag.outputs.exists == 'false'
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag v${{ steps.get_version.outputs.version }}
-          git push origin v${{ steps.get_version.outputs.version }}
-
   publish:
-    needs: tag-version
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
