@@ -16,8 +16,9 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
 
-  constructor() {
+  constructor(private context: vscode.ExtensionContext) {
     // 可在此处注册文件监听等
+    
   }
 
   /** 刷新视图 */

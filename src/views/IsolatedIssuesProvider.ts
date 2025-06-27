@@ -22,37 +22,12 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTree
 
     private _onDidChangeTreeData: vscode.EventEmitter<IssueTreeItem | undefined | null | void> = new vscode.EventEmitter<IssueTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<IssueTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
-    private watcher: vscode.FileSystemWatcher | undefined;
-
     constructor(private context: vscode.ExtensionContext) {
-        this.setupWatcher();
-
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('issueManager.issueDir')) {
-                this.setupWatcher();
                 this.refresh();
             }
         });
-    }
-
-    private setupWatcher(): void {
-        // 清理旧的监视器
-        if (this.watcher) {
-            this.watcher.dispose();
-        }
-
-        const issueDir = getIssueDir();
-        if (issueDir) {
-            const pattern = new vscode.RelativePattern(vscode.Uri.file(issueDir), '**/*.md');
-            this.watcher = vscode.workspace.createFileSystemWatcher(pattern);
-
-            // 当文件被创建、更改或删除时，刷新视图
-            this.watcher.onDidCreate(() => this.refresh());
-            this.watcher.onDidChange(() => this.refresh());
-            this.watcher.onDidDelete(() => this.refresh());
-
-            this.context.subscriptions.push(this.watcher);
-        }
     }
 
     refresh(): void {

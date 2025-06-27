@@ -39,7 +39,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// vscode.window.registerTreeDataProvider('issueManager.views.isolated', isolatedIssuesProvider);
 
 	// 注册“问题总览”视图
-	const issueOverviewProvider = new IssueOverviewProvider();
+	const issueOverviewProvider = new IssueOverviewProvider(context);
 	// vscode.window.registerTreeDataProvider('issueManager.views.overview', issueOverviewProvider);
 
 	// 注册拖拽控制器
@@ -60,7 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(isolatedView);
 
 	// 注册“关注问题”视图
-	const focusedIssuesProvider = new FocusedIssuesProvider();
+	const focusedIssuesProvider = new FocusedIssuesProvider(context);
 	const focusedView = vscode.window.createTreeView('issueManager.views.focused', {
 		treeDataProvider: focusedIssuesProvider,
 		dragAndDropController: new IssueDragAndDropController(focusedIssuesProvider, 'focused'),
@@ -85,6 +85,22 @@ export function activate(context: vscode.ExtensionContext) {
 		focusedIssuesProvider.refresh();
 		issueOverviewProvider.refresh();
 	}));
+
+	// 监听 issueDir 下的 Markdown 文件变化，刷新相关视图
+	const issueDir = getIssueDir();
+	if (issueDir) {
+		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(issueDir, '**/*.md'));
+
+		const debouncedRefresh = debounce(() => {
+			console.log('Markdown file changed, refreshing views...');
+			vscode.commands.executeCommand('issueManager.refreshAllView');
+		}, 500); // 500ms 的防抖延迟
+
+		context.subscriptions.push(watcher);
+		context.subscriptions.push(watcher.onDidChange(debouncedRefresh));
+		context.subscriptions.push(watcher.onDidCreate(debouncedRefresh));
+		context.subscriptions.push(watcher.onDidDelete(debouncedRefresh));
+	}
 
 	/**
 	 * 仅负责在磁盘上创建新的问题文件。
@@ -115,7 +131,7 @@ export function activate(context: vscode.ExtensionContext) {
 	 * @param issueUri 要添加的问题文件的 URI
 	 * @param parentId 父节点的 ID，如果为 null 则作为根节点
 	 */
-	async function addIssueToTree(issueUri: vscode.Uri, parentId: string | null | undefined) {
+	async function addIssueToTree(issueUri: vscode.Uri, parentId: string | null) {
 		const issueDir = getIssueDir();
 		if (!issueDir) { return; } // 安全检查
 
