@@ -9,7 +9,6 @@ on:
       - main
     paths:
       - 'package.json'
-  push:
     tags:
       - 'v*.*.*'  # 仅在推送符合语义化版本号的 tag 时触发
 
