@@ -1,0 +1,33 @@
+# 自动发布 VS Code 扩展到 Marketplace 的 GitHub Actions 工作流
+# 请确保在仓库 Secrets 中设置 VSCE_TOKEN（即 vsce 登录生成的 Personal Access Token）
+
+name: Publish VS Code Extension
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # 仅在推送符合语义化版本号的 tag 时触发
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js 环境
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 安装 vsce 工具
+        run: npm install -g vsce
+
+      - name: 打包并发布扩展
+        env:
+          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+        run: |
+          vsce publish --no-git-tag-version --pat $VSCE_TOKEN
