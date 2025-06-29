@@ -104,18 +104,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 	/**
 	 * 仅负责在磁盘上创建新的问题文件。
+	 * 文件名格式：YYYYMMDD-HHmmss-SSS.md，兼具可读性和唯一性。
 	 * @param title 问题标题
 	 * @returns 新建文件的 URI，如果失败则返回 null。
 	 */
 	async function createIssueFile(title: string): Promise<vscode.Uri | null> {
 		const issueDir = getIssueDir();
 		if (!issueDir) {
-			// 此情况应由调用方处理，但作为安全措施
 			vscode.window.showErrorMessage('问题目录未配置。');
 			return null;
 		}
 		const now = new Date();
-		const filename = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}.md`;
+		const ms = now.getMilliseconds().toString().padStart(3, '0');
+		const filename = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}-${ms}.md`;
 		const filePath = vscode.Uri.file(path.join(issueDir, filename));
 		const content = `# ${title}\n\n`;
 		const contentBytes = Buffer.from(content, 'utf8');
@@ -160,9 +161,13 @@ export function activate(context: vscode.ExtensionContext) {
 		const quickPick = vscode.window.createQuickPick();
 		quickPick.placeholder = '请输入您的问题...';
 		quickPick.matchOnDescription = true; // 允许根据描述匹配
-
+		quickPick.canSelectMany = true; // 支持多选
+		quickPick.show();
 		let quickPickValue = '';
+		let quickPickRequestToken = 0;
+
 		quickPick.onDidChangeValue(debounce(async (value) => {
+			const myToken = ++quickPickRequestToken;
 			quickPickValue = value;
 			if (!value) {
 				quickPick.items = [];
@@ -200,55 +205,79 @@ export function activate(context: vscode.ExtensionContext) {
 				if (suggestions.similar.length > 0) {
 					newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
 					suggestions.similar.forEach(sim => {
-						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.title.includes(value) ? sim.title : value, detail: sim.filePath });
+						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.title.includes(value) ? sim.title : value });
 					});
 				}
-				console.log('QuickPick newItems:', newItems); // 添加日志
-				quickPick.items = newItems;
+				if (myToken === quickPickRequestToken) {
+					quickPick.items = newItems;
+					quickPick.show();
+				}
 			} catch (error) {
-				console.error('Error getting suggestions from LLMService:', error);
-				// 出错时，至少保证原始输入项仍然可用
-				quickPick.items = [originalInputItem];
+				if (myToken === quickPickRequestToken) {
+					quickPick.items = [originalInputItem];
+				}
 			} finally {
-				// 结束加载状态
-				quickPick.busy = false;
+				// 只有最新请求才关闭 busy
+				if (myToken === quickPickRequestToken) {
+					quickPick.busy = false;
+				}
 			}
 		}, 500));
 
 		quickPick.onDidAccept(async () => {
-			const selectedItem = quickPick.selectedItems[0];
-			if (!selectedItem) {
+			const selectedItems = quickPick.selectedItems;
+			if (!selectedItems || selectedItems.length === 0) {
 				quickPick.hide();
 				return;
 			}
-			let uri: vscode.Uri | null = null;
-			// 根据选择的类型执行操作
-			if (selectedItem.label.startsWith('[创建新笔记]')) {
-				// 从 label 中提取标题
-				const title = selectedItem.label.replace('[创建新笔记] ', '');
-				if (title) {
-					uri = await createIssueFile(title);
-				}
-			} else if (selectedItem.label.startsWith('[打开已有笔记]')) {
-				// 从 description 中获取文件路径
-				const filePath = selectedItem.detail;
-				if (filePath) {
-					uri = vscode.Uri.file(filePath);
-				}
-			}
-			if (uri) {
 
-				await vscode.window.showTextDocument(uri);
-				if (isAddToTree) {
-					await addIssueToTree(uri, parentId);
+			// 允许“新建”与“打开已有”同时发生
+			let uris: vscode.Uri[] = [];
+			// 先处理所有新建
+			for (const item of selectedItems) {
+				if (item.label.startsWith('[创建新笔记]')) {
+					const title = item.label.replace('[创建新笔记] ', '');
+					if (title) {
+						const uri = await createIssueFile(title);
+						if (uri) {
+							uris.push(uri);
+							if (isAddToTree) {
+								// 自动添加到树中
+								addIssueToTree(uri, parentId);
+							}
+						}
+					}
 				}
 			}
 
 			quickPick.hide();
-		});
 
-		quickPick.onDidHide(() => quickPick.dispose());
-		quickPick.show();
+			// 再处理所有打开
+			for (const item of selectedItems) {
+				if (item.label.startsWith('[打开已有笔记]')) {
+					const title = item.label.replace('[打开已有笔记] ', '');
+					if (title) {
+						// 根据标题查找现有文件并打开
+						const issueDir = getIssueDir();
+						if (issueDir) {
+							const filePath = path.join(issueDir, `${title}.md`);
+							const uri = vscode.Uri.file(filePath);
+							uris.push(uri);
+							// 打开多个文件时，每个都在独立 Tab 中打开
+							await vscode.window.showTextDocument(uri, { preview: false });
+						}
+					}
+				}
+			}
+
+			// 如果是添加到树中，最后再刷新视图
+			if (isAddToTree) {
+				setTimeout(() => {
+					vscode.commands.executeCommand('issueManager.refreshAllView');
+				}, 1000);
+			}
+		});
+		context.subscriptions.push(quickPick);
 	}
 
 
