@@ -263,6 +263,10 @@ export function activate(context: vscode.ExtensionContext) {
 							const filePath = path.join(issueDir, `${title}.md`);
 							const uri = vscode.Uri.file(filePath);
 							uris.push(uri);
+							// 修复：如果需要插入到父节点，则调用 addIssueToTree
+							if (isAddToTree) {
+								await addIssueToTree(uri, parentId);
+							}
 							// 打开多个文件时，每个都在独立 Tab 中打开
 							await vscode.window.showTextDocument(uri, { preview: false });
 						}
