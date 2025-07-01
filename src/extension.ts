@@ -4,7 +4,7 @@ import { IsolatedIssuesProvider, IssueTreeItem } from './views/IsolatedIssuesPro
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { getIssueDir } from './config';
-import { TreeNode, readTree, writeTree, addNode, TreeData, isFocusedRootId, stripFocusedRootId } from './data/treeManager';
+import { TreeNode, readTree, writeTree, addNode, TreeData, isFocusedRootId, stripFocusedRootId, updateNodeExpanded } from './data/treeManager';
 import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { LLMService } from './llm/LLMService';
@@ -366,6 +366,26 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(removeFocusCommand);
 
+	// ========== TreeView 展开/折叠状态同步与持久化 ==========
+	function registerExpandCollapseSync(treeView: vscode.TreeView<TreeNode>, viewName: string) {
+		treeView.onDidExpandElement(async (e) => {
+			const treeData = await readTree();
+			if (updateNodeExpanded(treeData.rootNodes, stripFocusedRootId(e.element.id), true)) {
+				await writeTree(treeData);
+				vscode.commands.executeCommand('issueManager.refreshAllView');
+			}
+		});
+		treeView.onDidCollapseElement(async (e) => {
+			const treeData = await readTree();
+			if (updateNodeExpanded(treeData.rootNodes, stripFocusedRootId(e.element.id), false)) {
+				await writeTree(treeData);
+				vscode.commands.executeCommand('issueManager.refreshAllView');
+			}
+		});
+	}
+
+	registerExpandCollapseSync(overviewView as vscode.TreeView<TreeNode>, 'overview');
+	registerExpandCollapseSync(focusedView as vscode.TreeView<TreeNode>, 'focused');
 }
 
 // 当您的扩展被停用时，将调用此方法

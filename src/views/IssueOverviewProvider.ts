@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, writeTree, TreeData, TreeNode, removeNode as removeNodeFromData, findNodeById } from '../data/treeManager';
+import { readTree, writeTree, TreeData, TreeNode, removeNode as removeNodeFromData } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { readFocused } from '../data/focusedManager';
@@ -73,26 +73,15 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
 
   getChildren(element?: TreeNode): vscode.ProviderResult<TreeNode[]> {
     if (element) {
-      return element.children;
+      return [...element.children];
     }
 
     if (this.treeData && this.treeData.rootNodes.length > 0) {
-      return this.treeData.rootNodes;
+      return [...this.treeData.rootNodes];
     }
 
     // Show a placeholder message when there are no nodes
     return [{ id: 'placeholder-no-issues', filePath: '', children: [] }];
-  }
-
-  public getTreeData(): TreeData | null {
-    return this.treeData;
-  }
-
-  public getNode(id: string): TreeNode | null {
-    if (!this.treeData) {
-      return null;
-    }
-    return findNodeById(this.treeData.rootNodes, id)?.node || null;
   }
 
   async disassociateIssue(node: TreeNode): Promise<boolean> {
