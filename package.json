@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
