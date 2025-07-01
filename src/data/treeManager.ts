@@ -407,3 +407,24 @@ export function toFocusedRootId(id: string): string {
 export function stripFocusedRootId(id: string): string {
   return id.endsWith('__focusedRoot') ? id.replace(/__focusedRoot$/, '') : id;
 }
+
+// 新增：递归查找并更新节点 expanded 字段的工具函数
+/**
+ * 递归查找并更新指定节点的 expanded 字段。
+ * @param nodes 节点数组
+ * @param id 目标节点 id
+ * @param expanded 展开状态
+ * @returns 是否找到并更新
+ */
+export function updateNodeExpanded(nodes: TreeNode[], id: string, expanded: boolean): boolean {
+  for (const node of nodes) {
+    if (node.id === id) {
+      node.expanded = expanded;
+      return true;
+    }
+    if (node.children && updateNodeExpanded(node.children, id, expanded)) {
+      return true;
+    }
+  }
+  return false;
+}
