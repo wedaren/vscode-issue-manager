@@ -3,6 +3,8 @@
 
 name: Publish VS Code Extension
 
+run-name: '🚀 Release version ${{ github.ref_name }}'
+
 on:
   push:
     tags:
