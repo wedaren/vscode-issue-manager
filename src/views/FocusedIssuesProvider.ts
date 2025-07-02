@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, readFocused, TreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedRootId, toFocusedRootId } from '../data/treeManager';
+import { readTree, readFocused, TreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
 import * as path from 'path';
 import { getTitle } from '../utils/markdown';
 import { getIssueDir } from '../config';
@@ -44,8 +44,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
       return new vscode.TreeItem("暂无关注问题，请在“问题总览”视图中右键选择“添加到关注”", vscode.TreeItemCollapsibleState.None);
     }
 
-    // 如果 id 带 __focusedRoot 后缀，取原 id
-    const realId = stripFocusedRootId(element.id);
+    const realId = stripFocusedId(element.id);
     const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
     const title = await getTitle(uri);
 
@@ -97,11 +96,11 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
 
     // 每个 focusList 节点都独立收集其完整子树，顶层节点 id 加后缀
     const result: TreeNode[] = [];
-    const collectDescendants = (node: TreeNode): TreeNode => {
+    const collectDescendants = (node: TreeNode ,rootId:string): TreeNode => {
       return {
         ...node,
-        // 子节点保持原 id
-        children: node.children ? node.children.map(collectDescendants) : []
+        id: toFocusedId(node.id, rootId),
+        children: node.children ? node.children.map(n=>collectDescendants(n, rootId)) : []
       };
     };
     for (const id of new Set(this.focusedData.focusList)) {
@@ -109,8 +108,8 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
       if (node) {
         // 顶层节点 id 加后缀，避免与树中其他位置重复
         const topNode: TreeNode = {
-          ...collectDescendants(node),
-          id: toFocusedRootId(id),
+          ...collectDescendants(node,id),
+          id: toFocusedId(id,id),
         };
         result.push(topNode);
       }

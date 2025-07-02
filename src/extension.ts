@@ -4,7 +4,7 @@ import { IsolatedIssuesProvider, IssueTreeItem } from './views/IsolatedIssuesPro
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { getIssueDir } from './config';
-import { TreeNode, readTree, writeTree, addNode, TreeData, isFocusedRootId, stripFocusedRootId, updateNodeExpanded } from './data/treeManager';
+import { TreeNode, readTree, writeTree, addNode, TreeData, stripFocusedId, updateNodeExpanded } from './data/treeManager';
 import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { LLMService } from './llm/LLMService';
@@ -320,7 +320,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 修改“新建子问题”命令，复用工具函数
 	const createChildIssueCommand = vscode.commands.registerCommand('issueManager.createChildIssue', async (parentNode?: TreeNode) => {
-		const id: string | null | undefined = parentNode?.id && stripFocusedRootId(parentNode.id);
+		const id: string | null | undefined = parentNode?.id && stripFocusedId(parentNode.id);
 		await smartCreateIssue(id || null, true);
 	});
 	context.subscriptions.push(createChildIssueCommand);
@@ -332,7 +332,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const createIssueFromOverviewCommand = vscode.commands.registerCommand('issueManager.createIssueFromOverview', async (node?: TreeNode) => {
 		const selectedNode = node || (overviewView.selection.length > 0 ? overviewView.selection[0] : undefined);
-		const parentId: string | null | undefined = selectedNode?.id ? stripFocusedRootId(selectedNode.id) : null;
+		const parentId: string | null | undefined = selectedNode?.id ? stripFocusedId(selectedNode.id) : null;
 		await smartCreateIssue(parentId, true);
 	});
 	context.subscriptions.push(createIssueFromOverviewCommand);
@@ -345,7 +345,8 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.showErrorMessage('未找到要关注的问题节点。');
 			return;
 		}
-		await addFocus(issueDir, node.id);
+		const realId = stripFocusedId(node.id);
+		await addFocus(issueDir, realId);
 		vscode.commands.executeCommand('issueManager.refreshAllView');
 		vscode.window.showInformationMessage('已添加到关注问题。');
 	});
@@ -359,7 +360,7 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
 			return;
 		}
-		const realId = stripFocusedRootId(node.id);
+		const realId = stripFocusedId(node.id);
 		await removeFocus(issueDir, realId);
 		vscode.commands.executeCommand('issueManager.refreshAllView');
 		vscode.window.showInformationMessage('已移除关注。');
@@ -370,14 +371,14 @@ export function activate(context: vscode.ExtensionContext) {
 	function registerExpandCollapseSync(treeView: vscode.TreeView<TreeNode>, viewName: string) {
 		treeView.onDidExpandElement(async (e) => {
 			const treeData = await readTree();
-			if (updateNodeExpanded(treeData.rootNodes, stripFocusedRootId(e.element.id), true)) {
+			if (updateNodeExpanded(treeData.rootNodes, stripFocusedId(e.element.id), true)) {
 				await writeTree(treeData);
 				vscode.commands.executeCommand('issueManager.refreshAllView');
 			}
 		});
 		treeView.onDidCollapseElement(async (e) => {
 			const treeData = await readTree();
-			if (updateNodeExpanded(treeData.rootNodes, stripFocusedRootId(e.element.id), false)) {
+			if (updateNodeExpanded(treeData.rootNodes, stripFocusedId(e.element.id), false)) {
 				await writeTree(treeData);
 				vscode.commands.executeCommand('issueManager.refreshAllView');
 			}
