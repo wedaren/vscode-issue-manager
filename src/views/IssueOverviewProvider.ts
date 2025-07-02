@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, writeTree, TreeData, TreeNode, removeNode as removeNodeFromData } from '../data/treeManager';
+import { readTree, TreeData, TreeNode } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { readFocused } from '../data/focusedManager';
@@ -82,33 +82,5 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
 
     // Show a placeholder message when there are no nodes
     return [{ id: 'placeholder-no-issues', filePath: '', children: [] }];
-  }
-
-  async disassociateIssue(node: TreeNode): Promise<boolean> {
-    if (!this.treeData || node.id === 'placeholder-no-issues') {
-      return false;
-    }
-
-    // 判断是否有子节点
-    if (node.children && node.children.length > 0) {
-      const confirm = await vscode.window.showWarningMessage(
-        '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
-        { modal: true },
-        '确定'
-      );
-      if (confirm !== '确定') {
-        return false;
-      }
-    }
-
-    const { success } = removeNodeFromData(this.treeData, node.id);
-
-    if (success) {
-      await writeTree(this.treeData);
-      return true;
-    } else {
-      vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
-      return false;
-    }
   }
 }

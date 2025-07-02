@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IsolatedIssuesProvider, IssueTreeItem } from './views/IsolatedIssuesProvider';
-import { IssueOverviewProvider } from './views/IssueOverviewProvider';
-import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { getIssueDir } from './config';
-import { TreeNode, readTree, writeTree, addNode, TreeData, stripFocusedId, updateNodeExpanded } from './data/treeManager';
-import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
+import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
+import { IsolatedIssuesProvider,IssueTreeItem } from './views/IsolatedIssuesProvider';
+import { IssueDragAndDropController } from './views/IssueDragAndDropController';
+import { TreeNode, readTree, writeTree, addNode, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
+import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
 import { LLMService } from './llm/LLMService';
 import { debounce } from './utils/debounce';
 
@@ -313,7 +313,36 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“解除关联”命令
 	const disassociateIssueCommand = vscode.commands.registerCommand('issueManager.disassociateIssue', async (node: TreeNode) => {
-		await issueOverviewProvider.disassociateIssue(node) && vscode.commands.executeCommand('issueManager.refreshAllView');
+		if (!node || node.id === 'placeholder-no-issues') {
+			return;
+		}
+
+		// 判断是否有子节点
+		if (node.children && node.children.length > 0) {
+			const confirm = await vscode.window.showWarningMessage(
+				'该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
+				{ modal: true },
+				'确定'
+			);
+			if (confirm !== '确定') {
+				return;
+			}
+		}
+
+		const treeData = await readTree();
+		if (!treeData) {
+			vscode.window.showErrorMessage('无法读取问题树数据。');
+			return;
+		}
+
+		const { success } = removeNode(treeData, stripFocusedId(node.id));
+
+		if (success) {
+			await writeTree(treeData);
+			vscode.commands.executeCommand('issueManager.refreshAllViews');
+		} else {
+			vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
+		}
 	});
 
 	context.subscriptions.push(disassociateIssueCommand);
