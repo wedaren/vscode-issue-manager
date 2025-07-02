@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { TreeData, TreeNode, readTree, stripFocusedRootId, writeTree } from '../data/treeManager';
+import { TreeData, TreeNode, readTree, stripFocusedId, writeTree } from '../data/treeManager';
 import { IssueTreeItem, IsolatedIssuesProvider } from './IsolatedIssuesProvider';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
@@ -72,7 +72,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
             return;
         }
         if(target && this.viewMode === 'focused') {
-            target.id = stripFocusedRootId(target.id); // 确保 focused 模式下的目标节点 ID 是正确的
+            target.id = stripFocusedId(target.id); // 确保 focused 模式下的目标节点 ID 是正确的
         }
 
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, target.id) : undefined;

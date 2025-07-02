@@ -67,7 +67,7 @@ export function writeFocused(issueDir: string, data: FocusedData): void {
 export function addFocus(issueDir: string, nodeId: string): void {
   const data = readFocused(issueDir);
   if (!data.focusList.includes(nodeId)) {
-    data.focusList.push(nodeId);
+    data.focusList.unshift(nodeId);
     writeFocused(issueDir, data);
   }
 }

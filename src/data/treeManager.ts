@@ -52,11 +52,11 @@ function walkTree(nodes: TreeNode[], callback: (node: TreeNode) => void) {
  * @returns A set of relative file paths.
  */
 export function getAssociatedFiles(tree: TreeData): Set<string> {
-    const associatedFiles = new Set<string>();
-    walkTree(tree.rootNodes, (node) => {
-        associatedFiles.add(node.filePath);
-    });
-    return associatedFiles;
+  const associatedFiles = new Set<string>();
+  walkTree(tree.rootNodes, (node) => {
+    associatedFiles.add(node.filePath);
+  });
+  return associatedFiles;
 }
 
 
@@ -138,34 +138,34 @@ export const writeTree = async (data: TreeData): Promise<void> => {
  * @returns The newly created node or null if parent not found.
  */
 export function addNode(tree: TreeData, filePath: string, parentId: string | null, index?: number): TreeNode | null {
-    const newNode: TreeNode = {
-        id: uuidv4(),
-        filePath,
-        children: [],
-        expanded: true,
-    };
+  const newNode: TreeNode = {
+    id: uuidv4(),
+    filePath,
+    children: [],
+    expanded: true,
+  };
 
-    if (parentId === null) {
-        // Add to root
-        if (index === undefined) {
-            tree.rootNodes.unshift(newNode);
-        } else {
-            tree.rootNodes.splice(index, 0, newNode);
-        }
-        return newNode;
+  if (parentId === null) {
+    // Add to root
+    if (index === undefined) {
+      tree.rootNodes.unshift(newNode);
+    } else {
+      tree.rootNodes.splice(index, 0, newNode);
     }
+    return newNode;
+  }
 
-    const { node: parent } = findNodeById(tree.rootNodes, parentId) || {};
-    if (parent) {
-        if (index === undefined) {
-            parent.children.unshift(newNode);
-        } else {
-            parent.children.splice(index, 0, newNode);
-        }
-        return newNode;
+  const { node: parent } = findNodeById(tree.rootNodes, parentId) || {};
+  if (parent) {
+    if (index === undefined) {
+      parent.children.unshift(newNode);
+    } else {
+      parent.children.splice(index, 0, newNode);
     }
+    return newNode;
+  }
 
-    return null;
+  return null;
 }
 
 /**
@@ -175,19 +175,19 @@ export function addNode(tree: TreeData, filePath: string, parentId: string | nul
  * @returns An object containing the removed node and a success flag.
  */
 export function removeNode(tree: TreeData, nodeId: string): { removedNode: TreeNode | null, success: boolean } {
-    const found = findNodeById(tree.rootNodes, nodeId);
-    if (!found) {
-        return { removedNode: null, success: false };
-    }
-
-    const { node, parentList } = found;
-    const index = parentList.findIndex(n => n.id === nodeId);
-    if (index > -1) {
-        parentList.splice(index, 1);
-        return { removedNode: node, success: true };
-    }
-
+  const found = findNodeById(tree.rootNodes, nodeId);
+  if (!found) {
     return { removedNode: null, success: false };
+  }
+
+  const { node, parentList } = found;
+  const index = parentList.findIndex(n => n.id === nodeId);
+  if (index > -1) {
+    parentList.splice(index, 1);
+    return { removedNode: node, success: true };
+  }
+
+  return { removedNode: null, success: false };
 }
 
 
@@ -199,24 +199,24 @@ export function removeNode(tree: TreeData, nodeId: string): { removedNode: TreeN
  * @param targetIndex The index to move to in the new parent's children array.
  */
 export function moveNode(tree: TreeData, sourceId: string, targetParentId: string | null, targetIndex: number) {
-    const { removedNode } = removeNode(tree, sourceId);
+  const { removedNode } = removeNode(tree, sourceId);
 
-    if (!removedNode) {
-        return; // Source node not found
-    }
+  if (!removedNode) {
+    return; // Source node not found
+  }
 
-    if (targetParentId === null) {
-        // Move to root
-        tree.rootNodes.splice(targetIndex, 0, removedNode);
+  if (targetParentId === null) {
+    // Move to root
+    tree.rootNodes.splice(targetIndex, 0, removedNode);
+  } else {
+    const { node: targetParent } = findNodeById(tree.rootNodes, targetParentId) || {};
+    if (targetParent) {
+      targetParent.children.splice(targetIndex, 0, removedNode);
     } else {
-        const { node: targetParent } = findNodeById(tree.rootNodes, targetParentId) || {};
-        if (targetParent) {
-            targetParent.children.splice(targetIndex, 0, removedNode);
-        } else {
-            // If target parent doesn't exist, add it back to the root to avoid data loss.
-            tree.rootNodes.push(removedNode);
-        }
+      // If target parent doesn't exist, add it back to the root to avoid data loss.
+      tree.rootNodes.push(removedNode);
     }
+  }
 }
 
 
@@ -227,19 +227,19 @@ export function moveNode(tree: TreeData, sourceId: string, targetParentId: strin
  * @returns An object containing the found node and its parent list, or null if not found.
  */
 export function findNodeById(nodes: TreeNode[], id: string): { node: TreeNode, parentList: TreeNode[] } | null {
-    for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        if (node.id === id) {
-            return { node, parentList: nodes };
-        }
-        if (node.children && node.children.length > 0) {
-            const found = findNodeById(node.children, id);
-            if (found) {
-                return found;
-            }
-        }
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node.id === id) {
+      return { node, parentList: nodes };
     }
-    return null;
+    if (node.children && node.children.length > 0) {
+      const found = findNodeById(node.children, id);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -250,18 +250,18 @@ export function findNodeById(nodes: TreeNode[], id: string): { node: TreeNode, p
  * @returns True if the first node is an ancestor of the second, false otherwise.
  */
 export function isAncestor(tree: TreeData, potentialAncestorId: string, nodeId: string): boolean {
-    const { node: startNode } = findNodeById(tree.rootNodes, potentialAncestorId) || {};
-    if (!startNode) {
-        return false;
-    }
+  const { node: startNode } = findNodeById(tree.rootNodes, potentialAncestorId) || {};
+  if (!startNode) {
+    return false;
+  }
 
-    let found = false;
-    walkTree(startNode.children, (node) => {
-        if (node.id === nodeId) {
-            found = true;
-        }
-    });
-    return found;
+  let found = false;
+  walkTree(startNode.children, (node) => {
+    if (node.id === nodeId) {
+      found = true;
+    }
+  });
+  return found;
 }
 
 /**
@@ -271,26 +271,26 @@ export function isAncestor(tree: TreeData, potentialAncestorId: string, nodeId: 
  * @returns 一个包含所有祖先节点的数组，从根节点到直接父节点排序。
  */
 export function getAncestors(nodeId: string, tree: TreeData): TreeNode[] {
-    const ancestors: TreeNode[] = [];
-    
-    // 查找从根到一个节点的路径
-    const findPath = (nodes: TreeNode[], path: TreeNode[]): boolean => {
-        for (const node of nodes) {
-            const currentPath = [...path, node];
-            if (node.id === nodeId) {
-                // 找到了节点，路径（不包括节点自身）就是其祖先
-                ancestors.push(...currentPath.slice(0, -1));
-                return true;
-            }
-            if (node.children && findPath(node.children, currentPath)) {
-                return true;
-            }
-        }
-        return false;
-    };
+  const ancestors: TreeNode[] = [];
 
-    findPath(tree.rootNodes, []);
-    return ancestors;
+  // 查找从根到一个节点的路径
+  const findPath = (nodes: TreeNode[], path: TreeNode[]): boolean => {
+    for (const node of nodes) {
+      const currentPath = [...path, node];
+      if (node.id === nodeId) {
+        // 找到了节点，路径（不包括节点自身）就是其祖先
+        ancestors.push(...currentPath.slice(0, -1));
+        return true;
+      }
+      if (node.children && findPath(node.children, currentPath)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  findPath(tree.rootNodes, []);
+  return ancestors;
 }
 
 // ========== focused.json 相关 ========== //
@@ -387,27 +387,45 @@ export function validateFocusList(focusList: string[], treeData: TreeData): stri
 // FocusedRoot 工具函数
 // =====================
 
+
 /**
- * 判断 id 是否为关注视图根节点 id（带 __focusedRoot 后缀）。
+ * 判断给定的 id 是否为“聚焦”状态。
+ * 
+ * 如果 id 字符串中包含 '::'，则认为该 id 处于聚焦状态。
+ *
+ * @param id - 要检查的字符串 id。
+ * @returns 如果 id 包含 '::'，返回 true；否则返回 false。
  */
+export function isFocusedId(id: string): boolean {
+  return id.includes('::');
+}
+
+/**
+ * 将给定的 `id` 和 `focusedRootID` 组合成一个聚焦ID字符串。
+ *
+ * @param id - 要组合的节点ID。
+ * @param focusedRootID - 当前聚焦的根节点ID。
+ * @returns 由 `id` 和 `focusedRootID` 通过 "::" 连接组成的字符串。
+ */
+export function toFocusedId(id: string, focusedRootID: string): string {
+  return id + "::" + focusedRootID;
+}
+
+/**
+ * 从给定的字符串 ID 中移除聚焦部分，仅返回冒号前的部分。
+ *
+ * @param id - 包含聚焦部分的字符串 ID，格式通常为 "主ID::聚焦ID"。
+ * @returns 移除聚焦部分后的主 ID 字符串。
+ */
+export function stripFocusedId(id: string): string {
+  return id.split("::")[0]
+}
+
 export function isFocusedRootId(id: string): boolean {
-  return id.endsWith('__focusedRoot');
+  // 判断 id 是否包含 '::'，如果包含则认为是聚焦根节点
+  const [nodeID, rootID] = id.split("::");
+  return nodeID === rootID;
 }
-
-/**
- * 给 id 添加 __focusedRoot 后缀。
- */
-export function toFocusedRootId(id: string): string {
-  return id + '__focusedRoot';
-}
-
-/**
- * 去除 id 的 __focusedRoot 后缀。
- */
-export function stripFocusedRootId(id: string): string {
-  return id.endsWith('__focusedRoot') ? id.replace(/__focusedRoot$/, '') : id;
-}
-
 // 新增：递归查找并更新节点 expanded 字段的工具函数
 /**
  * 递归查找并更新指定节点的 expanded 字段。
