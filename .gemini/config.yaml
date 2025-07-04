@@ -1,0 +1,58 @@
+# Gemini Code Assist 配置文件
+# 用于 VS Code 扩展项目的代码审查配置
+
+# 语言设置
+language: "zh-CN"  # 使用简体中文进行代码审查和回复
+
+# 交互风格设置
+have_fun: false  # 使用正式、专业的语调，适合严肃的开发项目
+
+# 代码审查配置
+code_review:
+  # 启用代码审查功能
+  disable: false
+  
+  # 评论严重程度阈值 - 只显示中等及以上级别的问题
+  comment_severity_threshold: MEDIUM
+  
+  # 不限制评论数量，确保所有重要问题都被发现
+  max_review_comments: -1
+  
+  # PR 开启时的行为配置
+  pull_request_opened:
+    help: false          # 不显示帮助信息，保持简洁
+    summary: true        # 自动生成 PR 摘要
+    code_review: true    # 自动进行代码审查
+
+# 忽略模式 - 跳过不需要审查的文件
+ignore_patterns:
+  # 测试文件
+  - "*.test.ts"
+  - "*.test.js"
+  - "src/test/**"
+  
+  # 构建产物和依赖
+  - "out/**"
+  - "dist/**"
+  - "node_modules/**"
+  
+  # VS Code 相关配置文件
+  - ".vscode/**"
+  - ".vscode-test/**"
+  - "*.vsix"
+  
+  # 文档文件（可选，如果希望审查文档可以移除）
+  - "*.md"
+  - "docs/**"
+  
+  # 配置文件
+  - "package-lock.json"
+  - "tsconfig.json"
+  - "webpack.config.js"
+  - "eslint.config.mjs"
+  - ".gitignore"
+  - ".vscodeignore"
+  
+  # 许可证和变更日志
+  - "LICENSE"
+  - "CHANGELOG.md"
