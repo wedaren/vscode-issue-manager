@@ -1,6 +1,9 @@
 # Gemini Code Assist 配置文件
 # 用于 VS Code 扩展项目的代码审查配置
 
+# 语言设置
+language: "zh-CN"  # 使用简体中文进行代码审查和回复
+
 # 交互风格设置
 have_fun: false  # 使用正式、专业的语调，适合严肃的开发项目
 
