@@ -171,10 +171,10 @@ export function activate(context: vscode.ExtensionContext) {
 		quickPick.canSelectMany = true; // 支持多选
 		quickPick.show();
 		let quickPickValue = '';
-		let quickPickRequestToken = 0;
+		let requestSequence = 0;
 
 		quickPick.onDidChangeValue(debounce(async (value) => {
-			const myToken = ++quickPickRequestToken;
+			const mySequence = ++requestSequence;
 			quickPickValue = value;
 			if (!value) {
 				quickPick.items = [];
@@ -215,28 +215,32 @@ export function activate(context: vscode.ExtensionContext) {
 						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.title.includes(value) ? sim.title : value });
 					});
 				}
-				if (myToken === quickPickRequestToken) {
+				if (mySequence === requestSequence) {
 					quickPick.items = newItems;
 					quickPick.show();
 				}
 			} catch (error) {
-				if (myToken === quickPickRequestToken) {
+				if (mySequence === requestSequence) {
 					quickPick.items = [originalInputItem];
 				}
 			} finally {
 				// 只有最新请求才关闭 busy
-				if (myToken === quickPickRequestToken) {
+				if (mySequence === requestSequence) {
 					quickPick.busy = false;
 				}
 			}
 		}, 500));
 
 		quickPick.onDidAccept(async () => {
+			requestSequence++; // 立即使所有后续异步响应失效
+
 			const selectedItems = quickPick.selectedItems;
 			if (!selectedItems || selectedItems.length === 0) {
 				quickPick.hide();
 				return;
 			}
+
+			quickPick.hide(); // 立即隐藏，防止用户进一步交互
 
 			// 允许“新建”与“打开已有”同时发生
 			let uris: vscode.Uri[] = [];
@@ -256,8 +260,6 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 			}
-
-			quickPick.hide();
 
 			// 再处理所有打开
 			for (const item of selectedItems) {
@@ -287,8 +289,14 @@ export function activate(context: vscode.ExtensionContext) {
 					vscode.commands.executeCommand('issueManager.refreshAllViews');
 				}, 1000);
 			}
+			
+			quickPick.dispose();
 		});
-		context.subscriptions.push(quickPick);
+
+		// 监听 QuickPick 隐藏事件，确保资源清理
+		quickPick.onDidHide(() => {
+			quickPick.dispose();
+		});
 	}
 
 
