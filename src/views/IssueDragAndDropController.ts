@@ -151,7 +151,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
 
         await writeTree(treeData);
         // this.viewProvider.refresh();
-        vscode.commands.executeCommand('issueManager.refreshAllView');
+        vscode.commands.executeCommand('issueManager.refreshAllViews');
     }
 
     private addNodeToTree(treeData: TreeData, nodeToAdd: TreeNode, target: TreeNode | null | undefined): void {
