@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -66,7 +66,9 @@
               "description": "要保存的完整 Markdown 内容，包括标题、正文和任何必要的格式"
             }
           },
-          "required": ["content"]
+          "required": [
+            "content"
+          ]
         },
         "when": "issueManager.isDirConfigured"
       }
