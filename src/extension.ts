@@ -289,8 +289,6 @@ export function activate(context: vscode.ExtensionContext) {
 					vscode.commands.executeCommand('issueManager.refreshAllViews');
 				}, 1000);
 			}
-			
-			quickPick.dispose();
 		});
 
 		// 监听 QuickPick 隐藏事件，确保资源清理
