@@ -82,7 +82,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.isolatedIssues.refresh', () => {
 		isolatedIssuesProvider.refresh();
 	}));
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.refreshAllView', () => {
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.refreshAllViews', () => {
 		isolatedIssuesProvider.refresh();
 		focusedIssuesProvider.refresh();
 		issueOverviewProvider.refresh();
@@ -102,7 +102,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		const debouncedRefresh = debounce(() => {
 			console.log('Markdown file changed, refreshing views...');
-			vscode.commands.executeCommand('issueManager.refreshAllView');
+			vscode.commands.executeCommand('issueManager.refreshAllViews');
 		}, 500); // 500ms 的防抖延迟
 
 		context.subscriptions.push(watcher);
@@ -148,7 +148,7 @@ export function activate(context: vscode.ExtensionContext) {
 		addNode(treeData, relPath, parentId);
 		await writeTree(treeData);
 
-		vscode.commands.executeCommand('issueManager.refreshAllView');
+		vscode.commands.executeCommand('issueManager.refreshAllViews');
 	}
 
 
@@ -284,7 +284,7 @@ export function activate(context: vscode.ExtensionContext) {
 			// 如果是添加到树中，最后再刷新视图
 			if (isAddToTree) {
 				setTimeout(() => {
-					vscode.commands.executeCommand('issueManager.refreshAllView');
+					vscode.commands.executeCommand('issueManager.refreshAllViews');
 				}, 1000);
 			}
 		});
@@ -383,7 +383,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 		const realId = stripFocusedId(node.id);
 		await addFocus(issueDir, realId);
-		vscode.commands.executeCommand('issueManager.refreshAllView');
+		vscode.commands.executeCommand('issueManager.refreshAllViews');
 		vscode.window.showInformationMessage('已添加到关注问题。');
 	});
 	context.subscriptions.push(focusIssueCommand);
@@ -398,7 +398,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 		const realId = stripFocusedId(node.id);
 		await removeFocus(issueDir, realId);
-		vscode.commands.executeCommand('issueManager.refreshAllView');
+		vscode.commands.executeCommand('issueManager.refreshAllViews');
 		vscode.window.showInformationMessage('已移除关注。');
 	});
 	context.subscriptions.push(removeFocusCommand);
@@ -409,14 +409,14 @@ export function activate(context: vscode.ExtensionContext) {
 			const treeData = await readTree();
 			if (updateNodeExpanded(treeData.rootNodes, stripFocusedId(e.element.id), true)) {
 				await writeTree(treeData);
-				vscode.commands.executeCommand('issueManager.refreshAllView');
+				vscode.commands.executeCommand('issueManager.refreshAllViews');
 			}
 		});
 		treeView.onDidCollapseElement(async (e) => {
 			const treeData = await readTree();
 			if (updateNodeExpanded(treeData.rootNodes, stripFocusedId(e.element.id), false)) {
 				await writeTree(treeData);
-				vscode.commands.executeCommand('issueManager.refreshAllView');
+				vscode.commands.executeCommand('issueManager.refreshAllViews');
 			}
 		});
 	}
