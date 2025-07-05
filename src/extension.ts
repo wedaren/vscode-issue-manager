@@ -9,6 +9,8 @@ import { TreeNode, readTree, writeTree, addNode, removeNode, stripFocusedId, upd
 import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
 import { LLMService } from './llm/LLMService';
 import { debounce } from './utils/debounce';
+import { RecordContentTool } from './llm/RecordContentTool';
+import { generateFileName } from './utils/fileUtils';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -86,6 +88,13 @@ export function activate(context: vscode.ExtensionContext) {
 		issueOverviewProvider.refresh();
 	}));
 
+	// 注册统一的刷新视图命令，用于Language Model Tool等功能
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.refreshViews', () => {
+		isolatedIssuesProvider.refresh();
+		focusedIssuesProvider.refresh();
+		issueOverviewProvider.refresh();
+	}));
+
 	// 监听 issueDir 下的 Markdown 文件变化，刷新相关视图
 	const issueDir = getIssueDir();
 	if (issueDir) {
@@ -114,9 +123,7 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.showErrorMessage('问题目录未配置。');
 			return null;
 		}
-		const now = new Date();
-		const ms = now.getMilliseconds().toString().padStart(3, '0');
-		const filename = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}-${ms}.md`;
+		const filename = generateFileName();
 		const filePath = vscode.Uri.file(path.join(issueDir, filename));
 		const content = `# ${title}\n\n`;
 		const contentBytes = Buffer.from(content, 'utf8');
@@ -416,6 +423,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 	registerExpandCollapseSync(overviewView as vscode.TreeView<TreeNode>, 'overview');
 	registerExpandCollapseSync(focusedView as vscode.TreeView<TreeNode>, 'focused');
+
+	// 注册 Language Model Tool
+	if (vscode.lm && vscode.lm.registerTool) {
+		context.subscriptions.push(
+			vscode.lm.registerTool('issueManager_recordContent', new RecordContentTool())
+		);
+	}
 }
 
 // 当您的扩展被停用时，将调用此方法

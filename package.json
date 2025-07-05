@@ -49,6 +49,28 @@
         "title": "移除关注"
       }
     ],
+    "languageModelTools": [
+      {
+        "name": "issueManager_recordContent",
+        "displayName": "新建问题笔记/文档",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "recordContent",
+        "icon": "$(notebook)",
+        "userDescription": "将聊天内容记录到新的 Markdown 文档中",
+        "modelDescription": "当用户要求新建笔记时使用此工具。支持的触发短语包括：'创建文档'、'创建笔记'、'新建问题' 、'新建文档' 等。工具会创建一个新的 Markdown 文件来保存指定的内容。",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string",
+              "description": "要保存的完整 Markdown 内容，包括标题、正文和任何必要的格式"
+            }
+          },
+          "required": ["content"]
+        },
+        "when": "issueManager.isDirConfigured"
+      }
+    ],
     "menus": {
       "view/title": [
         {
