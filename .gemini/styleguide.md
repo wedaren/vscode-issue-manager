@@ -1,5 +1,7 @@
 # VS Code 扩展项目编码风格指南
 
+## 使用中文回答
+
 ## 项目概述
 
 这是一个 VS Code 扩展项目，用于实现问题管理功能。项目使用 TypeScript 开发，遵循现代 JavaScript/TypeScript 最佳实践。
