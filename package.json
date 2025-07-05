@@ -15,10 +15,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "issue-manager.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "issueManager.createIssue",
         "title": "新建问题",
         "icon": "$(add)"
