@@ -26,29 +26,34 @@ export interface FocusedData {
  * 获取 focused.json 文件的绝对路径。
  * @returns 如果 issueDir 未配置，则返回 null。
  */
-const getFocusedDataPath = (): string | null => {
+const getFocusedDataPath = async (): Promise<string | null> => {
   const issueDir = getIssueDir();
   if (!issueDir) {
     return null;
   }
   // 确保 .issueManager 目录存在
   const dataDir = path.join(issueDir, '.issueManager');
+  const dataDirUri = getUri(dataDir);
   try {
-    if (!require('fs').existsSync(dataDir)) {
-      require('fs').mkdirSync(dataDir, { recursive: true });
+    await vscode.workspace.fs.stat(dataDirUri);
+  } catch {
+    // 如果 stat 失败，假定目录不存在并尝试创建它
+    try {
+      await vscode.workspace.fs.createDirectory(dataDirUri);
+    } catch (e) {
+      vscode.window.showErrorMessage(`创建 .issueManager 目录失败: ${e}`);
+      return null;
     }
-  } catch (e) {
-    vscode.window.showErrorMessage('创建 .issueManager 目录失败。');
-    return null;
   }
   return path.join(dataDir, FOCUSED_FILE);
 };
+
 /**
  * 异步读取 focused.json 文件，若不存在则返回默认结构
  */
 export async function readFocused(): Promise<FocusedData> {
   try {
-    const filePath = getFocusedDataPath();
+    const filePath = await getFocusedDataPath();
     if (!filePath) {
       throw new Error('Issue directory is not configured.');
     }
@@ -72,7 +77,7 @@ export async function readFocused(): Promise<FocusedData> {
  * @param data FocusedData 对象。
  */
 export const writeFocused = async (data: FocusedData): Promise<void> => {
-  const focusedPath = getFocusedDataPath();
+  const focusedPath = await getFocusedDataPath();
   if (!focusedPath) {
     vscode.window.showErrorMessage('无法写入关注数据，问题目录未配置。');
     return;

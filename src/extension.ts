@@ -396,6 +396,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“移除关注”命令
 	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: TreeNode) => {
+		        if (!node?.id) {  
+            vscode.window.showErrorMessage('未找到要移除关注的问题节点。');  
+            return;  
+        }
 		const realId = stripFocusedId(node.id);
 		await removeFocus(realId);
 		vscode.commands.executeCommand('issueManager.refreshAllViews');
@@ -404,10 +408,10 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(removeFocusCommand);
 
 	// 注册“置顶关注”命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', (node: TreeNode) => {
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', async (node: TreeNode) => {
 		if (node?.id) {
 			const realId = stripFocusedId(node.id);
-			pinFocus(realId);
+			await pinFocus(realId);
 			vscode.commands.executeCommand('issueManager.focusedIssues.refresh');
 		}
 	}));
