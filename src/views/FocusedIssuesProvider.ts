@@ -55,11 +55,19 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
 
     item.id = element.id;
     item.resourceUri = uri;
-    if(isFocusedRootId(element.id)){
-      item.contextValue = 'focusedNode'; // 用于 package.json 的 when 子句
+
+    if (isFocusedRootId(element.id)) {
+      const focusIndex = this.focusedData?.focusList.indexOf(realId);
+      // 第一个关注的根节点，不显示置顶
+      if (focusIndex === 0) {
+        item.contextValue = 'focusedNodeFirst';
+      } else {
+        item.contextValue = 'focusedNode'; // 用于 package.json 的 when 子句
+      }
     } else {
       item.contextValue = 'issueNode';
     }
+
     item.command = {
       command: 'vscode.open',
       title: 'Open File',

@@ -83,3 +83,17 @@ export function removeFocus(issueDir: string, nodeId: string): void {
     writeFocused(issueDir, data);
   }
 }
+
+/**
+ * 置顶关注节点
+ */
+export function pinFocus(issueDir: string, nodeId: string): void {
+  const data = readFocused(issueDir);
+  const index = data.focusList.indexOf(nodeId);
+  // 只有当节点存在且不为第一个时才需要移动
+  if (index > 0) {
+    const [item] = data.focusList.splice(index, 1);
+    data.focusList.unshift(item);
+    writeFocused(issueDir, data);
+  }
+}

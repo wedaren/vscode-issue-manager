@@ -6,7 +6,7 @@ import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { IsolatedIssuesProvider,IssueTreeItem } from './views/IsolatedIssuesProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { TreeNode, readTree, writeTree, addNode, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
-import { addFocus, removeFocus, readFocused, writeFocused } from './data/focusedManager';
+import { addFocus, removeFocus, readFocused, writeFocused, pinFocus } from './data/focusedManager';
 import { LLMService } from './llm/LLMService';
 import { debounce } from './utils/debounce';
 import { RecordContentTool } from './llm/RecordContentTool';
@@ -408,6 +408,17 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage('已移除关注。');
 	});
 	context.subscriptions.push(removeFocusCommand);
+
+	// 注册“置顶关注”命令
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', (node: TreeNode) => {
+		const issueDir = getIssueDir();
+		if (!issueDir) { return; }
+		if (node?.id) {
+			const realId = stripFocusedId(node.id);
+			pinFocus(issueDir, realId);
+			vscode.commands.executeCommand('issueManager.focusedIssues.refresh');
+		}
+	}));
 
 	// ========== TreeView 展开/折叠状态同步与持久化 ==========
 	function registerExpandCollapseSync(treeView: vscode.TreeView<TreeNode>, viewName: string) {
