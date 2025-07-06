@@ -43,6 +43,10 @@
       {
         "command": "issueManager.removeFocus",
         "title": "移除关注"
+      },
+      {
+        "command": "issueManager.pinFocus",
+        "title": "置顶"
       }
     ],
     "languageModelTools": [
@@ -105,7 +109,12 @@
         },
         {
           "command": "issueManager.removeFocus",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem == 'focusedNode'",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && (viewItem == 'focusedNode' || viewItem == 'focusedNodeFirst')",
+          "group": "modification@3"
+        },
+        {
+          "command": "issueManager.pinFocus",
+          "when": "view == 'issueManager.views.focused' && viewItem == 'focusedNode'",
           "group": "modification@3"
         }
       ]

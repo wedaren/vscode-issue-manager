@@ -51,7 +51,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
     const title = await getTitle(uri);
 
     // 判断是否已关注
-    const focusedData = readFocused(issueDir);
+    const focusedData = await readFocused();
     const isFocused = focusedData.focusList.includes(element.id);
 
     const item = new vscode.TreeItem(title,

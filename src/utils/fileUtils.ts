@@ -1,3 +1,5 @@
+import * as vscode from 'vscode';
+
 /**
  * 生成基于时间戳的文件名
  * 格式：YYYYMMDD-HHmmss-SSS.md，兼具可读性和唯一性。
@@ -13,4 +15,13 @@ export function generateFileName(): string {
     const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
     
     return `${year}${month}${day}-${hours}${minutes}${seconds}-${milliseconds}.md`;
+}
+
+/**
+ * 将字符串路径转换为 vscode.Uri 对象。
+ * @param fsPath 文件系统路径
+ * @returns vscode.Uri 对象
+ */
+export function getUri(fsPath: string): vscode.Uri {
+  return vscode.Uri.file(fsPath);
 }
