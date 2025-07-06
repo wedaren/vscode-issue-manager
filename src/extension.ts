@@ -6,7 +6,7 @@ import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { IsolatedIssuesProvider,IssueTreeItem } from './views/IsolatedIssuesProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { TreeNode, readTree, writeTree, addNode, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
-import { addFocus, removeFocus, readFocused, writeFocused, pinFocus } from './data/focusedManager';
+import { addFocus, removeFocus, pinFocus } from './data/focusedManager';
 import { LLMService } from './llm/LLMService';
 import { debounce } from './utils/debounce';
 import { RecordContentTool } from './llm/RecordContentTool';
