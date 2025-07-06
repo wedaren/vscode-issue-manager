@@ -388,7 +388,7 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 		const realId = stripFocusedId(node.id);
-		await addFocus(issueDir, realId);
+		await addFocus(realId);
 		vscode.commands.executeCommand('issueManager.refreshAllViews');
 		vscode.window.showInformationMessage('已添加到关注问题。');
 	});
@@ -396,14 +396,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“移除关注”命令
 	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: TreeNode) => {
-		const issueDir = getIssueDir();
-		if (!issueDir) { return; }
-		if (!node || !node.id) {
-			vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
-			return;
-		}
 		const realId = stripFocusedId(node.id);
-		await removeFocus(issueDir, realId);
+		await removeFocus(realId);
 		vscode.commands.executeCommand('issueManager.refreshAllViews');
 		vscode.window.showInformationMessage('已移除关注。');
 	});
@@ -411,11 +405,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“置顶关注”命令
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', (node: TreeNode) => {
-		const issueDir = getIssueDir();
-		if (!issueDir) { return; }
 		if (node?.id) {
 			const realId = stripFocusedId(node.id);
-			pinFocus(issueDir, realId);
+			pinFocus(realId);
 			vscode.commands.executeCommand('issueManager.focusedIssues.refresh');
 		}
 	}));

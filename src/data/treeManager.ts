@@ -353,35 +353,7 @@ export const readFocused = async (): Promise<FocusedData> => {
   }
 };
 
-/**
- * 写入 focused.json 文件。
- * @param data FocusedData 对象。
- */
-export const writeFocused = async (data: FocusedData): Promise<void> => {
-  const focusedPath = getFocusedDataPath();
-  if (!focusedPath) {
-    vscode.window.showErrorMessage('无法写入关注数据，问题目录未配置。');
-    return;
-  }
-  const content = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
-  try {
-    await vscode.workspace.fs.writeFile(vscode.Uri.file(focusedPath), content);
-  } catch (error) {
-    vscode.window.showErrorMessage(`写入 focused.json 失败: ${error}`);
-  }
-};
 
-/**
- * 校验 focused.json 的 focusList 是否都能在 tree.json 中找到对应节点。
- * @param focusList 关注 id 列表。
- * @param treeData 当前树结构。
- * @returns 有效 id 列表。
- */
-export function validateFocusList(focusList: string[], treeData: TreeData): string[] {
-  const allIds = new Set<string>();
-  walkTree(treeData.rootNodes, (node) => allIds.add(node.id));
-  return focusList.filter(id => allIds.has(id));
-}
 
 // =====================
 // FocusedRoot 工具函数

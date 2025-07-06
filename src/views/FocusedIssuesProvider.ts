@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, readFocused, TreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
+import { readTree, TreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
+import { readFocused } from '../data/focusedManager';
+
 import * as path from 'path';
 import { getTitle } from '../utils/markdown';
 import { getIssueDir } from '../config';
