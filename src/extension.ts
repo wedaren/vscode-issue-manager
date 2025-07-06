@@ -396,7 +396,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“移除关注”命令
 	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: TreeNode) => {
-		        if (!node?.id) {  
+		if (!node?.id) {
             vscode.window.showErrorMessage('未找到要移除关注的问题节点。');  
             return;  
         }
