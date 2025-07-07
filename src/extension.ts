@@ -135,22 +135,23 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	/**
-	 * 将指定文件路径的 issue 添加到 tree.json 数据中。
-	 * @param issueUri 要添加的问题文件的 URI
+	 * 将指定文件路径的多个 issue 添加到 tree.json 数据中。
+	 * @param issueUris 要添加的问题文件的 URI 数组
 	 * @param parentId 父节点的 ID，如果为 null 则作为根节点
 	 */
-	async function addIssueToTree(issueUri: vscode.Uri, parentId: string | null) {
+	async function addIssueToTree(issueUris: vscode.Uri[], parentId: string | null) {
 		const issueDir = getIssueDir();
 		if (!issueDir) { return; } // 安全检查
 
 		const treeData = await readTree();
-		const relPath = path.relative(issueDir, issueUri.fsPath);
-		addNode(treeData, relPath, parentId);
+		for (const issueUri of issueUris) {
+			const relPath = path.relative(issueDir, issueUri.fsPath);
+			addNode(treeData, relPath, parentId);
+		}
 		await writeTree(treeData);
 
 		vscode.commands.executeCommand('issueManager.refreshAllViews');
 	}
-
 
 
 
@@ -212,7 +213,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (suggestions.similar.length > 0) {
 					newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
 					suggestions.similar.forEach(sim => {
-						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.title.includes(value) ? sim.title : value });
+						newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: sim.title.includes(value) ? sim.title : value, detail: sim.filePath });
 					});
 				}
 				if (mySequence === requestSequence) {
@@ -240,7 +241,6 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			quickPick.hide(); // 立即隐藏，防止用户进一步交互
 
 			// 允许“新建”与“打开已有”同时发生
 			let uris: vscode.Uri[] = [];
@@ -252,10 +252,6 @@ export function activate(context: vscode.ExtensionContext) {
 						const uri = await createIssueFile(title);
 						if (uri) {
 							uris.push(uri);
-							if (isAddToTree) {
-								// 自动添加到树中
-								addIssueToTree(uri, parentId);
-							}
 						}
 					}
 				}
@@ -264,31 +260,26 @@ export function activate(context: vscode.ExtensionContext) {
 			// 再处理所有打开
 			for (const item of selectedItems) {
 				if (item.label.startsWith('[打开已有笔记]')) {
-					const title = item.label.replace('[打开已有笔记] ', '');
-					if (title) {
-						// 根据标题查找现有文件并打开
-						const issueDir = getIssueDir();
-						if (issueDir) {
-							const filePath = path.join(issueDir, `${title}.md`);
-							const uri = vscode.Uri.file(filePath);
+					if (item.detail) {
+						try {
+							const uri = vscode.Uri.file(item.detail);
+							// 尝试访问文件以确认其是否存在
+							await vscode.workspace.fs.stat(uri);
 							uris.push(uri);
-							// 修复：如果需要插入到父节点，则调用 addIssueToTree
-							if (isAddToTree) {
-								await addIssueToTree(uri, parentId);
-							}
-							// 打开多个文件时，每个都在独立 Tab 中打开
-							await vscode.window.showTextDocument(uri, { preview: false });
+							await vscode.window.showTextDocument(uri);
+						} catch (error) {
+							// 如果文件不存在或发生其他错误，则显示错误消息
+							vscode.window.showErrorMessage(`无法打开文件，文件可能已被移动或删除: ${item.detail}`);
 						}
 					}
 				}
 			}
-
-			// 如果是添加到树中，最后再刷新视图
-			if (isAddToTree) {
-				setTimeout(() => {
-					vscode.commands.executeCommand('issueManager.refreshAllViews');
-				}, 1000);
+			if (uris.length && isAddToTree) {
+				await addIssueToTree(uris, parentId);
 			}
+
+			quickPick.hide();
+
 		});
 
 		// 监听 QuickPick 隐藏事件，确保资源清理
