@@ -5,6 +5,16 @@ import { getTitle } from '../utils/markdown';
 
 type ViewMode = 'list' | 'group';
 
+/**
+ * 分组的类型，决定了其子节点的展示方式。
+ * - `direct`: 直接展示文件。
+ * - `by-day`: 子节点按天分组。
+ * - `by-week`: 子节点按周分组。
+ * - `day`: 日期分组，直接展示文件。
+ * - `week`: 周分组，子节点按天分组。
+ */
+type GroupType = 'direct' | 'by-day' | 'by-week' | 'day' | 'week';
+
 interface FileStat {
   file: string;
   filePath: string;
@@ -16,7 +26,7 @@ class GroupTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
     public readonly files: FileStat[],
-    public readonly type: 'day' | 'week' | 'month' | 'top'
+    public readonly type: GroupType
   ) {
     super(label, vscode.TreeItemCollapsibleState.Collapsed);
     this.description = `(${files.length})`;
@@ -115,61 +125,24 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    */
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     if (element instanceof GroupTreeItem) {
-      // Day groups directly show files
-      if (element.type === 'day') {
-        return Promise.all(element.files.map(fileStat => this.createFileTreeItem(fileStat)));
+      switch (element.type) {
+        // 这些类型的分组直接展示其下的文件
+        case 'direct':
+        case 'day':
+          return Promise.all(element.files.map(fileStat => this.createFileTreeItem(fileStat)));
+
+        // 这些类型的分组需要进一步按“天”进行子分组
+        case 'by-day':
+        case 'week':
+          return this.createDaySubgroups(element.files);
+
+        // 这种类型的分组需要进一步按“周”进行子分组
+        case 'by-week':
+          return this.createWeekSubgroups(element.files);
+
+        default:
+          return Promise.resolve([]);
       }
-
-      // Top-level groups that don't have subgroups
-      if (element.label === '今天' || element.label === '昨天' || element.label === '更早') {
-        return Promise.all(element.files.map(fileStat => this.createFileTreeItem(fileStat)));
-      }
-
-      // 'Recent Week' group gets subdivided by day
-      if (element.label === '最近一周') {
-        return this.createDaySubgroups(element.files);
-      }
-
-      // 'Recent Month' group gets subdivided by week
-      if (element.label === '最近一月') {
-        const filesByWeek = new Map<string, FileStat[]>();
-        const now = new Date();
-        
-        const startOfThisWeek = this.getStartOfWeek(now);
-        const startOfLastWeek = this.getStartOfWeek(new Date(now.setDate(now.getDate() - 7)));
-
-        for (const file of element.files) {
-          const fileDate = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
-          let weekLabel = ``;
-
-          if (fileDate >= startOfThisWeek) {
-            weekLabel = '本周';
-          } else if (fileDate >= startOfLastWeek) {
-            weekLabel = '上周';
-          } else {
-            const fileWeekNumber = this.getWeekNumber(fileDate);
-            const [start, end] = this.getWeekDateRange(fileDate.getFullYear(), fileWeekNumber);
-            weekLabel = `第 ${fileWeekNumber} 周 (${start} - ${end})`;
-          }
-
-          if (!filesByWeek.has(weekLabel)) {
-            filesByWeek.set(weekLabel, []);
-          }
-          filesByWeek.get(weekLabel)!.push(file);
-        }
-
-        const weekGroups = Array.from(filesByWeek.entries()).map(([label, weekFiles]) => {
-          return new GroupTreeItem(label, weekFiles, 'week');
-        });
-        return Promise.resolve(weekGroups);
-      }
-
-      // Week groups get subdivided by day
-      if (element.type === 'week') {
-        return this.createDaySubgroups(element.files);
-      }
-
-      return Promise.resolve([]);
     }
 
     const fileStats = await this.getFileStats();
@@ -183,7 +156,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     // Group mode
     const groups = this.groupFiles(fileStats);
-    return groups.map(group => new GroupTreeItem(group.label, group.files, 'top'));
+    return groups.map(group => new GroupTreeItem(group.label, group.files, group.type));
   }
 
   /**
@@ -233,6 +206,54 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     this.fileStatsCache = fileStats;
     return this.fileStatsCache;
+  }
+
+  /**
+   * 将一组文件按“周”进行分组。
+   * @param files 要分组的文件列表。
+   * @returns GroupTreeItem 数组。
+   */
+  private createWeekSubgroups(files: FileStat[]): Promise<GroupTreeItem[]> {
+    const now = new Date();
+    const startOfWeek = this.getStartOfWeek(new Date());
+    const startOfLastWeek = new Date(startOfWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const weekGroupDefinitions: { label: string, type: GroupType, test: (fileDate: Date) => boolean, files: FileStat[] }[] = [
+      { label: '本周', type: 'by-day', test: (fileDate) => this.normalizeDate(fileDate) >= startOfWeek, files: [] },
+      { label: '上周', type: 'by-day', test: (fileDate) => this.normalizeDate(fileDate) >= startOfLastWeek && this.normalizeDate(fileDate) < startOfWeek, files: [] },
+    ];
+
+    const otherWeeks: { [week: string]: FileStat[] } = {};
+
+    for (const file of files) {
+      const fileDate = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
+      let matched = false;
+      for (const group of weekGroupDefinitions) {
+        if (group.test(fileDate)) {
+          group.files.push(file);
+          matched = true;
+          break; // 文件只属于第一个匹配的分组
+        }
+      }
+      if (!matched) {
+        const fileWeekNumber = this.getWeekNumber(fileDate);
+        const [start, end] = this.getWeekDateRange(fileDate.getFullYear(), fileWeekNumber);
+        const weekLabel = `第 ${fileWeekNumber} 周 (${start} - ${end})`;
+
+        if (!otherWeeks[weekLabel]) {
+          otherWeeks[weekLabel] = [];
+        }
+        otherWeeks[weekLabel].push(file);
+      }
+    }
+
+    // 合并所有分组
+    const allGroups = [
+      ...weekGroupDefinitions.filter(g => g.files.length > 0).map(g => new GroupTreeItem(g.label, g.files, 'week')),
+      ...Object.entries(otherWeeks).map(([label, weekFiles]) => new GroupTreeItem(label, weekFiles, 'week'))
+    ];
+
+    return Promise.resolve(allGroups);
   }
 
   /**
@@ -305,37 +326,46 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     return [format(start), format(end)];
   }
 
-  private groupFiles(files: FileStat[]): { label: string, files: FileStat[] }[] {
+  /**
+   * 将日期标准化为当天的零点。
+   * @param date 要标准化的日期。
+   * @returns 标准化后的新日期对象。
+   */
+  private normalizeDate(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  private groupFiles(files: FileStat[]): { label: string, files: FileStat[], type: GroupType }[] {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = this.normalizeDate(now);
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
     const oneWeekAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000); // 7 days including today
     const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
 
-    const groups: { [key: string]: FileStat[] } = {
-        '今天': [],
-        '昨天': [],
-        '最近一周': [],
-        '最近一月': [],
-        '更早': [],
-    };
+    // 使用声明式的方式定义分组规则
+    const groupDefinitions: { label: string, type: GroupType, test: (fileDateSource: Date) => boolean, files: FileStat[] }[] = [
+      // “是不是今天？”—— 这是“相等”比较，必须用净化后的日期
+      { label: '今天', type: 'direct', test: (fileDateSource) => this.normalizeDate(fileDateSource).getTime() === today.getTime(), files: [] },
+      { label: '昨天', type: 'direct', test: (fileDateSource) => this.normalizeDate(fileDateSource).getTime() === yesterday.getTime(), files: [] },
+      // “是不是在某个范围？”—— 为了逻辑统一和健壮性，所有比较都应基于净化后的日期
+      { label: '最近一周', type: 'by-day', test: (fileDateSource) => this.normalizeDate(fileDateSource) >= oneWeekAgo, files: [] },
+      { label: '最近一月', type: 'by-week', test: (fileDateSource) => this.normalizeDate(fileDateSource) >= oneMonthAgo, files: [] },
+      { label: '更早', type: 'by-week', test: () => true, files: [] }, // 默认捕获所有剩余文件
+    ];
 
     for (const file of files) {
-        const fileDateSource = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
-        const fileDate = new Date(fileDateSource.getFullYear(), fileDateSource.getMonth(), fileDateSource.getDate());
-        if (fileDate.getTime() === today.getTime()) {
-            groups['今天'].push(file);
-        } else if (fileDate.getTime() === yesterday.getTime()) {
-            groups['昨天'].push(file);
-        } else if (fileDateSource >= oneWeekAgo) {
-            groups['最近一周'].push(file);
-        } else if (fileDateSource >= oneMonthAgo) {
-            groups['最近一月'].push(file);
-        } else {
-            groups['更早'].push(file);
+      const fileDateSource = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
+      
+      for (const group of groupDefinitions) {
+        if (group.test(fileDateSource)) {
+          group.files.push(file);
+          break; // 每个文件只属于第一个匹配的分组
         }
+      }
     }
 
-    return Object.entries(groups).map(([label, files]) => ({ label, files }));
+    return groupDefinitions
+      .filter(g => g.files.length > 0)
+      .map(g => ({ label: g.label, files: g.files, type: g.type }));
   }
 }
