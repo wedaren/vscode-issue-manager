@@ -76,13 +76,13 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
       arguments: [uri],
     };
 
-    // 生成并设置 tooltip
+    // 生成并设置 description
     const ancestors = getAncestors(realId, this.treeData);
     const ancestorTitles = await Promise.all(
       ancestors.map(ancestor => getTitle(vscode.Uri.file(path.join(issueDir, ancestor.filePath))))
     );
-    if (ancestorTitles.length > 0) {
-        item.tooltip = `/ ${ancestorTitles.join(' / ')}`;
+    if (ancestorTitles.length > 0 && isFocusedRootId(element.id)) {
+        item.description = `/ ${ancestorTitles.join(' / ')}`;
     }
 
     return item;
