@@ -275,7 +275,7 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			}
 			if (uris.length && isAddToTree) {
-				addIssueToTree(uris, parentId);
+				await addIssueToTree(uris, parentId);
 			}
 
 			quickPick.hide();
