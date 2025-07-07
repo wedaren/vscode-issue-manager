@@ -132,17 +132,21 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       if (element.label === '最近一月') {
         const filesByWeek = new Map<string, FileStat[]>();
         const now = new Date();
-        const currentWeekNumber = this.getWeekNumber(now);
+        
+        const startOfThisWeek = this.getStartOfWeek(now);
+        const startOfLastWeek = this.getStartOfWeek(new Date(now.setDate(now.getDate() - 7)));
 
         for (const file of element.files) {
-          const fileWeekNumber = this.getWeekNumber(file.mtime);
+          const fileDate = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
           let weekLabel = ``;
-          if (fileWeekNumber === currentWeekNumber) {
+
+          if (fileDate >= startOfThisWeek) {
             weekLabel = '本周';
-          } else if (fileWeekNumber === currentWeekNumber - 1) {
+          } else if (fileDate >= startOfLastWeek) {
             weekLabel = '上周';
           } else {
-            const [start, end] = this.getWeekDateRange(file.mtime.getFullYear(), fileWeekNumber);
+            const fileWeekNumber = this.getWeekNumber(fileDate);
+            const [start, end] = this.getWeekDateRange(fileDate.getFullYear(), fileWeekNumber);
             weekLabel = `第 ${fileWeekNumber} 周 (${start} - ${end})`;
           }
 
@@ -204,10 +208,25 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     return groups.map(group => new GroupTreeItem(group.label, group.files, 'top'));
   }
 
+  /**
+   * 获取给定日期所在周的开始日期（周一）。
+   * @param date The date.
+   * @returns The first day of the week (Monday).
+   */
+  private getStartOfWeek(date: Date): Date {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // 将周日(0)视为一周的最后一天
+    d.setDate(diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
   private async createDaySubgroups(files: FileStat[]): Promise<GroupTreeItem[]> {
     const filesByDay = new Map<string, FileStat[]>();
     for (const file of files) {
-      const dayKey = this.formatDateWithWeekday(file.mtime);
+      const fileDate = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
+      const dayKey = this.formatDateWithWeekday(fileDate);
       if (!filesByDay.has(dayKey)) {
         filesByDay.set(dayKey, []);
       }
