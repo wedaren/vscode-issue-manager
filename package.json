@@ -49,7 +49,7 @@
         "title": "置顶"
       },
       {
-        "command": "issueManager.views.recent.refresh",
+        "command": "issueManager.refreshAllViews",
         "title": "刷新",
         "icon": "$(refresh)"
       },
@@ -117,7 +117,7 @@
           "group": "navigation@1"
         },
         {
-          "command": "issueManager.views.recent.refresh",
+          "command": "issueManager.refreshAllViews",
           "when": "view == issueManager.views.recent",
           "group": "navigation"
         },
