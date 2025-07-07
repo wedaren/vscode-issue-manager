@@ -35,6 +35,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
   private viewMode: ViewMode = 'list'; // 默认为列表模式
   private sortOrder: 'mtime' | 'ctime' = 'ctime'; // 默认为创建时间
+  private fileStatsCache: FileStat[] | null = null;
 
   constructor(private context: vscode.ExtensionContext) {
 
@@ -96,6 +97,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 刷新视图。
    */
   refresh(): void {
+    this.fileStatsCache = null; // 清空缓存
     this._onDidChangeTreeData.fire();
   }
 
@@ -170,19 +172,49 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       return Promise.resolve([]);
     }
 
+    const fileStats = await this.getFileStats();
+    if (!fileStats) {
+      return [];
+    }
+
+    if (this.viewMode === 'list') {
+      return Promise.all(fileStats.map(fileStat => this.createFileTreeItem(fileStat)));
+    }
+
+    // Group mode
+    const groups = this.groupFiles(fileStats);
+    return groups.map(group => new GroupTreeItem(group.label, group.files, 'top'));
+  }
+
+  /**
+   * 从缓存或文件系统获取文件统计信息。
+   * @returns FileStat 数组或 null
+   */
+  private async getFileStats(): Promise<FileStat[] | null> {
+    if (this.fileStatsCache) {
+      return this.fileStatsCache;
+    }
+
     const issueDir = getIssueDir();
     if (!issueDir) {
-      return [];
+      return null;
     }
 
     // 使用 VS Code 的文件系统 API 获取 .md 文件列表，兼容多平台和虚拟文件系统
     const files: string[] = [];
     const dirUri = vscode.Uri.file(issueDir);
-    for (const [name, type] of await vscode.workspace.fs.readDirectory(dirUri)) {
-      if (type === vscode.FileType.File && name.endsWith('.md')) {
-        files.push(name);
+    try {
+      for (const [name, type] of await vscode.workspace.fs.readDirectory(dirUri)) {
+        if (type === vscode.FileType.File && name.endsWith('.md')) {
+          files.push(name);
+        }
       }
+    } catch (error) {
+      console.error(`Error reading issue directory ${issueDir}:`, error);
+      vscode.window.showErrorMessage(`无法读取问题目录: ${issueDir}`);
+      return null;
     }
+
     console.log(`Found ${files.length} markdown files in ${issueDir}`);
     const fileStats: FileStat[] = await Promise.all(
       files.map(async (file) => {
@@ -199,13 +231,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       return timeB - timeA;
     });
 
-    if (this.viewMode === 'list') {
-      return Promise.all(fileStats.map(fileStat => this.createFileTreeItem(fileStat)));
-    }
-
-    // Group mode
-    const groups = this.groupFiles(fileStats);
-    return groups.map(group => new GroupTreeItem(group.label, group.files, 'top'));
+    this.fileStatsCache = fileStats;
+    return this.fileStatsCache;
   }
 
   /**
