@@ -213,7 +213,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * @param files 要分组的文件列表。
    * @returns GroupTreeItem 数组。
    */
-  private createWeekSubgroups(files: FileStat[]): Promise<GroupTreeItem[]> {
+  private createWeekSubgroups(files: FileStat[]): GroupTreeItem[] {
     const now = new Date();
     const startOfWeek = this.getStartOfWeek(new Date());
     const startOfLastWeek = new Date(startOfWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -253,7 +253,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       ...Object.entries(otherWeeks).map(([label, weekFiles]) => new GroupTreeItem(label, weekFiles, 'week'))
     ];
 
-    return Promise.resolve(allGroups);
+    return allGroups;
   }
 
   /**
@@ -270,7 +270,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     return d;
   }
 
-  private async createDaySubgroups(files: FileStat[]): Promise<GroupTreeItem[]> {
+  private createDaySubgroups(files: FileStat[]): GroupTreeItem[] {
     const filesByDay = new Map<string, FileStat[]>();
     for (const file of files) {
       const fileDate = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
@@ -284,7 +284,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const dayGroups = Array.from(filesByDay.entries()).map(([dayLabel, dayFiles]) => {
       return new GroupTreeItem(dayLabel, dayFiles, 'day');
     });
-    return Promise.resolve(dayGroups);
+    return dayGroups;
   }
 
   private async createFileTreeItem(fileStat: FileStat): Promise<vscode.TreeItem> {
