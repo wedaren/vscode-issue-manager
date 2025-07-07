@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
@@ -10,6 +9,7 @@ interface FileStat {
   file: string;
   filePath: string;
   mtime: Date;
+  ctime: Date;
 }
 
 class GroupTreeItem extends vscode.TreeItem {
@@ -34,13 +34,28 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private viewMode: ViewMode = 'list'; // 默认为列表模式
+  private sortOrder: 'mtime' | 'ctime' = 'ctime'; // 默认为创建时间
 
   constructor(private context: vscode.ExtensionContext) {
 
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.toggleRecentIssuesViewMode', () => {
-        this.toggleViewMode();
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
+      this.setViewMode('group');
     }));
 
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.list', () => {
+      this.setViewMode('list');
+    }));
+
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.ctime', () => {
+      this.setSortOrder('ctime');
+    }));
+
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.mtime', () => {
+      this.setSortOrder('mtime');
+    }));
+
+    this.setSortContext();
+    this.setViewModeContext();
 
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('issueManager.issueDir')) {
@@ -50,11 +65,31 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   }
 
   /**
-   * 切换视图模式（列表/分组）并刷新视图
+   * 设置视图模式并刷新
+   * @param mode 视图模式
    */
-  toggleViewMode(): void {
-    this.viewMode = this.viewMode === 'list' ? 'group' : 'list';
+  setViewMode(mode: ViewMode): void {
+    this.viewMode = mode;
+    this.setViewModeContext();
     this.refresh();
+  }
+
+  /**
+   * 设置排序顺序并刷新视图
+   * @param order 排序方式
+   */
+  setSortOrder(order: 'mtime' | 'ctime'): void {
+    this.sortOrder = order;
+    this.setSortContext();
+    this.refresh();
+  }
+
+  private setSortContext() {
+    vscode.commands.executeCommand('setContext', 'issueManager.recentIssuesSortOrder', this.sortOrder);
+  }
+
+  private setViewModeContext() {
+    vscode.commands.executeCommand('setContext', 'issueManager.recentIssuesViewMode', this.viewMode);
   }
 
   /**
@@ -136,18 +171,29 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       return [];
     }
 
-    const files = await fs.promises.readdir(issueDir);
-    const mdFiles = files.filter(file => file.endsWith('.md'));
-
+    // 使用 VS Code 的文件系统 API 获取 .md 文件列表，兼容多平台和虚拟文件系统
+    const files: string[] = [];
+    const dirUri = vscode.Uri.file(issueDir);
+    for (const [name, type] of await vscode.workspace.fs.readDirectory(dirUri)) {
+      if (type === vscode.FileType.File && name.endsWith('.md')) {
+        files.push(name);
+      }
+    }
+    console.log(`Found ${files.length} markdown files in ${issueDir}`);
     const fileStats: FileStat[] = await Promise.all(
-      mdFiles.map(async (file) => {
+      files.map(async (file) => {
         const filePath = path.join(issueDir, file);
-        const stats = await fs.promises.stat(filePath);
-        return { file, filePath, mtime: stats.mtime };
+        // VS Code 推荐使用 workspace.fs.stat 以兼容虚拟文件系统
+        const stats = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+        return { file, filePath, mtime: new Date(stats.mtime), ctime: new Date(stats.ctime) };
       })
     );
 
-    fileStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    fileStats.sort((a, b) => {
+      const timeA = this.sortOrder === 'mtime' ? a.mtime.getTime() : a.ctime.getTime();
+      const timeB = this.sortOrder === 'mtime' ? b.mtime.getTime() : b.ctime.getTime();
+      return timeB - timeA;
+    });
 
     if (this.viewMode === 'list') {
       return Promise.all(fileStats.map(fileStat => this.createFileTreeItem(fileStat)));
@@ -185,7 +231,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       arguments: [uri],
     };
     item.contextValue = 'issue'; // 用于右键菜单
-    item.tooltip = new vscode.MarkdownString(`路径: \`${uri.fsPath}\`\\n\\n修改时间: ${fileStat.mtime.toLocaleString()}`);
+    item.tooltip = new vscode.MarkdownString(`路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`);
     return item;
   }
 
@@ -229,22 +275,21 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     };
 
     for (const file of files) {
-        const fileDate = new Date(file.mtime.getFullYear(), file.mtime.getMonth(), file.mtime.getDate());
+        const fileDateSource = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
+        const fileDate = new Date(fileDateSource.getFullYear(), fileDateSource.getMonth(), fileDateSource.getDate());
         if (fileDate.getTime() === today.getTime()) {
             groups['今天'].push(file);
         } else if (fileDate.getTime() === yesterday.getTime()) {
             groups['昨天'].push(file);
-        } else if (file.mtime >= oneWeekAgo) {
+        } else if (fileDateSource >= oneWeekAgo) {
             groups['最近一周'].push(file);
-        } else if (file.mtime >= oneMonthAgo) {
+        } else if (fileDateSource >= oneMonthAgo) {
             groups['最近一月'].push(file);
         } else {
             groups['更早'].push(file);
         }
     }
 
-    return Object.entries(groups)
-        .map(([label, files]) => ({ label, files }))
-        .filter(group => group.files.length > 0);
+    return Object.entries(groups).map(([label, files]) => ({ label, files }));
   }
 }

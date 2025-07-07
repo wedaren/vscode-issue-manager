@@ -54,9 +54,29 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "issueManager.toggleRecentIssuesViewMode",
-        "title": "切换视图模式",
-        "icon": "$(list-selection)"
+        "command": "issueManager.setRecentIssuesViewMode.group",
+        "title": "切换为分组视图",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "issueManager.setRecentIssuesViewMode.list",
+        "title": "切换为列表视图"
+      },
+      {
+        "command": "issueManager.setRecentSort.ctime",
+        "title": "按创建时间排序"
+      },
+      {
+        "command": "issueManager.setRecentSort.mtime",
+        "title": "按修改时间排序",
+        "icon": "$(clock)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "issueManager.recentSortSubmenu",
+        "label": "排序方式",
+        "icon": "$(sort-precedence)"
       }
     ],
     "languageModelTools": [
@@ -101,9 +121,44 @@
           "group": "navigation"
         },
         {
-          "command": "issueManager.toggleRecentIssuesViewMode",
+          "command": "issueManager.setRecentIssuesViewMode.group",
+          "when": "view == issueManager.views.recent && issueManager.recentIssuesViewMode == 'list'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.setRecentIssuesViewMode.list",
+          "when": "view == issueManager.views.recent && issueManager.recentIssuesViewMode == 'group'",
+          "group": "navigation@2"
+        },
+        {
+          "submenu": "issueManager.recentSortSubmenu",
           "when": "view == issueManager.views.recent",
-          "group": "navigation"
+          "group": "navigation@3",
+          "title": "排序方式"
+        }
+      ],
+      "issueManager.recentSortSubmenu": [
+        {
+          "command": "issueManager.setRecentSort.ctime",
+          "when": "issueManager.recentIssuesSortOrder == 'ctime'",
+          "group": "1_sort@1",
+          "toggled": true
+        },
+        {
+          "command": "issueManager.setRecentSort.mtime",
+          "when": "issueManager.recentIssuesSortOrder == 'mtime'",
+          "group": "1_sort@2",
+          "toggled": true
+        },
+        {
+          "command": "issueManager.setRecentSort.ctime",
+          "when": "issueManager.recentIssuesSortOrder != 'ctime'",
+          "group": "1_sort@1"
+        },
+        {
+          "command": "issueManager.setRecentSort.mtime",
+          "when": "issueManager.recentIssuesSortOrder != 'mtime'",
+          "group": "1_sort@2"
         }
       ],
       "view/item/context": [
