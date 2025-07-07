@@ -60,7 +60,8 @@
       },
       {
         "command": "issueManager.setRecentIssuesViewMode.list",
-        "title": "切换为列表视图"
+        "title": "切换为列表视图",
+        "icon": "$(list-tree)"
       },
       {
         "command": "issueManager.setRecentSort.ctime",
