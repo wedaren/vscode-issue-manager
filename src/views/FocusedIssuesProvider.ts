@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, TreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
 import { readFocused } from '../data/focusedManager';
 
 import * as path from 'path';
@@ -11,9 +11,9 @@ import { getIssueDir } from '../config';
  * 关注问题视图的 TreeDataProvider。
  * 仅实现基础框架，后续补充过滤树逻辑。
  */
-export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
-  private _onDidChangeTreeData: EventEmitter<TreeNode | undefined | void> = new EventEmitter<TreeNode | undefined | void>();
-  readonly onDidChangeTreeData: Event<TreeNode | undefined | void> = this._onDidChangeTreeData.event;
+export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
+  private _onDidChangeTreeData: EventEmitter<IssueTreeNode | undefined | void> = new EventEmitter<IssueTreeNode | undefined | void>();
+  readonly onDidChangeTreeData: Event<IssueTreeNode | undefined | void> = this._onDidChangeTreeData.event;
 
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
@@ -35,7 +35,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
     this._onDidChangeTreeData.fire();
   }
 
-  async getTreeItem(element: TreeNode): Promise<vscode.TreeItem> {
+  async getTreeItem(element: IssueTreeNode): Promise<vscode.TreeItem> {
     const issueDir = getIssueDir();
     if (!issueDir || !this.treeData) {
       throw new Error("Issue directory or tree data is not available.");
@@ -92,11 +92,11 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
    * 构建关注过滤树：focusList 中每个节点都独立作为顶层，完整展示其子树。
    * 为避免 VS Code TreeView id 冲突，顶层节点 id 加特殊后缀。
    */
-  private buildFilteredTree(): TreeNode[] {
+  private buildFilteredTree(): IssueTreeNode[] {
     if (!this.treeData || !this.focusedData) { return []; }
-    const idToNode = new Map<string, TreeNode>();
+    const idToNode = new Map<string, IssueTreeNode>();
     // 建立 id 到节点的映射
-    const collectMap = (nodes: TreeNode[]) => {
+    const collectMap = (nodes: IssueTreeNode[]) => {
       for (const node of nodes) {
         idToNode.set(node.id, node);
         if (node.children) { collectMap(node.children); }
@@ -105,8 +105,8 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
     collectMap(this.treeData.rootNodes);
 
     // 每个 focusList 节点都独立收集其完整子树，顶层节点 id 加后缀
-    const result: TreeNode[] = [];
-    const collectDescendants = (node: TreeNode ,rootId:string): TreeNode => {
+    const result: IssueTreeNode[] = [];
+    const collectDescendants = (node: IssueTreeNode ,rootId:string): IssueTreeNode => {
       return {
         ...node,
         id: toFocusedId(node.id, rootId),
@@ -117,7 +117,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
       const node = idToNode.get(id);
       if (node) {
         // 顶层节点 id 加后缀，避免与树中其他位置重复
-        const topNode: TreeNode = {
+        const topNode: IssueTreeNode = {
           ...collectDescendants(node,id),
           id: toFocusedId(id,id),
         };
@@ -127,7 +127,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<TreeNode> {
     return result;
   }
 
-  getChildren(element?: TreeNode): Thenable<TreeNode[]> {
+  getChildren(element?: IssueTreeNode): Thenable<IssueTreeNode[]> {
     if (!this.treeData || !this.focusedData) { return Promise.resolve([]); }
     const filtered = this.buildFilteredTree();
     if (!element) {

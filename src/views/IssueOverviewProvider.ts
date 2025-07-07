@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, TreeNode } from '../data/treeManager';
+import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { readFocused } from '../data/focusedManager';
 
-export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> {
-  private _onDidChangeTreeData: vscode.EventEmitter<TreeNode | undefined | null | void> = new vscode.EventEmitter<TreeNode | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<TreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
+export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
+  private _onDidChangeTreeData: vscode.EventEmitter<IssueTreeNode | undefined | null | void> = new vscode.EventEmitter<IssueTreeNode | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<IssueTreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private treeData: TreeData | null = null;
 
@@ -36,7 +36,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
     this.loadData();
   }
 
-  async getTreeItem(element: TreeNode): Promise<vscode.TreeItem> {
+  async getTreeItem(element: IssueTreeNode): Promise<vscode.TreeItem> {
     const issueDir = getIssueDir();
     if (!issueDir) {
       throw new Error("Issue directory is not configured.");
@@ -71,7 +71,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<TreeNode> 
     return item;
   }
 
-  getChildren(element?: TreeNode): vscode.ProviderResult<TreeNode[]> {
+  getChildren(element?: IssueTreeNode): vscode.ProviderResult<IssueTreeNode[]> {
     if (element) {
       return [...element.children];
     }

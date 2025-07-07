@@ -3,10 +3,10 @@ import * as path from 'path';
 import { getIssueDir } from './config';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
-import { IsolatedIssuesProvider,IssueTreeItem } from './views/IsolatedIssuesProvider';
+import { IsolatedIssuesProvider,IssueItem } from './views/IsolatedIssuesProvider';
 import { RecentIssuesProvider } from './views/RecentIssuesProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
-import { TreeNode, readTree, writeTree, addNode, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
+import { IssueTreeNode, readTree, writeTree, addNode, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
 import { addFocus, removeFocus, pinFocus } from './data/focusedManager';
 import { LLMService } from './llm/LLMService';
 import { debounce } from './utils/debounce';
@@ -334,7 +334,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 
 	// 注册“删除问题”命令
-	const deleteIssueCommand = vscode.commands.registerCommand('issueManager.deleteIssue', async (item: IssueTreeItem) => {
+	const deleteIssueCommand = vscode.commands.registerCommand('issueManager.deleteIssue', async (item: IssueItem) => {
 		if (!item || !item.resourceUri) {
 			vscode.window.showErrorMessage('无法删除问题：未找到有效的文件路径。');
 			return;
@@ -360,7 +360,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(deleteIssueCommand);
 
 	// 注册“解除关联”命令
-	const disassociateIssueCommand = vscode.commands.registerCommand('issueManager.disassociateIssue', async (node: TreeNode) => {
+	const disassociateIssueCommand = vscode.commands.registerCommand('issueManager.disassociateIssue', async (node: IssueTreeNode) => {
 		if (!node || node.id === 'placeholder-no-issues') {
 			return;
 		}
@@ -396,7 +396,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disassociateIssueCommand);
 
 	// 修改“新建子问题”命令，复用工具函数
-	const createChildIssueCommand = vscode.commands.registerCommand('issueManager.createChildIssue', async (parentNode?: TreeNode) => {
+	const createChildIssueCommand = vscode.commands.registerCommand('issueManager.createChildIssue', async (parentNode?: IssueTreeNode) => {
 		const id: string | null | undefined = parentNode?.id && stripFocusedId(parentNode.id);
 		await smartCreateIssue(id || null, true);
 	});
@@ -407,7 +407,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(createIssueCommand);
 
-	const createIssueFromOverviewCommand = vscode.commands.registerCommand('issueManager.createIssueFromOverview', async (node?: TreeNode) => {
+	const createIssueFromOverviewCommand = vscode.commands.registerCommand('issueManager.createIssueFromOverview', async (node?: IssueTreeNode) => {
 		const selectedNode = node || (overviewView.selection.length > 0 ? overviewView.selection[0] : undefined);
 		const parentId: string | null | undefined = selectedNode?.id ? stripFocusedId(selectedNode.id) : null;
 		await smartCreateIssue(parentId, true);
@@ -415,7 +415,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(createIssueFromOverviewCommand);
 
 	// 注册“添加到关注”命令
-	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: TreeNode) => {
+	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueTreeNode) => {
 		const issueDir = getIssueDir();
 		if (!issueDir) { return; }
 		if (!node || !node.id) {
@@ -430,7 +430,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(focusIssueCommand);
 
 	// 注册“移除关注”命令
-	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: TreeNode) => {
+	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueTreeNode) => {
 		if (!node?.id) {
             vscode.window.showErrorMessage('未找到要移除关注的问题节点。');  
             return;  
@@ -443,7 +443,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(removeFocusCommand);
 
 	// 注册“置顶关注”命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', async (node: TreeNode) => {
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', async (node: IssueTreeNode) => {
 		if (node?.id) {
 			const realId = stripFocusedId(node.id);
 			await pinFocus(realId);
@@ -452,7 +452,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}));
 
 	// ========== TreeView 展开/折叠状态同步与持久化 ==========
-	function registerExpandCollapseSync(treeView: vscode.TreeView<TreeNode>, viewName: string) {
+	function registerExpandCollapseSync(treeView: vscode.TreeView<IssueTreeNode>, viewName: string) {
 		treeView.onDidExpandElement(async (e) => {
 			const treeData = await readTree();
 			if (updateNodeExpanded(treeData.rootNodes, stripFocusedId(e.element.id), true)) {
@@ -469,8 +469,8 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 	}
 
-	registerExpandCollapseSync(overviewView as vscode.TreeView<TreeNode>, 'overview');
-	registerExpandCollapseSync(focusedView as vscode.TreeView<TreeNode>, 'focused');
+	registerExpandCollapseSync(overviewView as vscode.TreeView<IssueTreeNode>, 'overview');
+	registerExpandCollapseSync(focusedView as vscode.TreeView<IssueTreeNode>, 'focused');
 
 	// 注册 Language Model Tool
 	if (vscode.lm && vscode.lm.registerTool) {
