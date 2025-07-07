@@ -6,13 +6,14 @@ import { TreeData, TreeNode, readTree, stripFocusedId, writeTree } from '../data
 import { IssueTreeItem, IsolatedIssuesProvider } from './IsolatedIssuesProvider';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
+import { RecentIssuesProvider } from './RecentIssuesProvider';
 
 
 // 自定义拖拽数据类型
 const ISSUE_MIME_TYPE = 'application/vnd.code.tree.issue-manager';
 
 interface DraggedItem {
-    type: 'isolated' | 'overview';
+    type: 'isolated' | 'overview' | 'recent';
     filePath: string;
     id?: string;
 }
@@ -21,15 +22,19 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
     public dropMimeTypes: string[] = [];
     public dragMimeTypes: string[] = [];
 
-    constructor(private viewProvider: IssueOverviewProvider | IsolatedIssuesProvider | FocusedIssuesProvider, private viewMode: 'isolated' | 'overview' | 'focused') {
+    constructor(private viewProvider: IssueOverviewProvider | IsolatedIssuesProvider | FocusedIssuesProvider | RecentIssuesProvider, private viewMode: 'isolated' | 'overview' | 'focused' | 'recent') {
         if (viewMode === 'isolated') {
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
+            this.dropMimeTypes = []; // 孤立问题视图只出不进
         } else if (viewMode === 'overview') {
             this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list'];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else if (viewMode === 'focused') {
             this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list'];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
+        } else if (viewMode === 'recent') {
+            this.dragMimeTypes = [ISSUE_MIME_TYPE];
+            this.dropMimeTypes = []; // 最近问题视图只出不进
         }
     }
 
@@ -41,7 +46,9 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
 
         const transferData: DraggedItem[] = source.map(item => {
             if (item instanceof IssueTreeItem) {
-                return { type: 'isolated', filePath: item.resourceUri.fsPath };
+                // 根据来源视图确定类型
+                const type = this.viewMode === 'isolated' ? 'isolated' : 'recent';
+                return { type: type, filePath: item.resourceUri.fsPath };
             } else {
                 const treeNode = item as TreeNode;
                 return { type: 'overview', id: treeNode.id, filePath: treeNode.filePath };

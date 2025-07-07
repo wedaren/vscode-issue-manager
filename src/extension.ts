@@ -4,6 +4,7 @@ import { getIssueDir } from './config';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { IsolatedIssuesProvider,IssueTreeItem } from './views/IsolatedIssuesProvider';
+import { RecentIssuesProvider } from './views/RecentIssuesProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { TreeNode, readTree, writeTree, addNode, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
 import { addFocus, removeFocus, pinFocus } from './data/focusedManager';
@@ -70,6 +71,15 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(focusedView);
 
+	// 注册“最近问题”视图
+	const recentIssuesProvider = new RecentIssuesProvider(context);
+	const recentIssuesView = vscode.window.createTreeView('issueManager.views.recent', {
+		treeDataProvider: recentIssuesProvider,
+		dragAndDropController: new IssueDragAndDropController(recentIssuesProvider, 'recent'),
+		canSelectMany: true
+	});
+	context.subscriptions.push(recentIssuesView);
+
 	// 激活时加载一次数据
 	focusedIssuesProvider.loadData();
 
@@ -82,10 +92,16 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.isolatedIssues.refresh', () => {
 		isolatedIssuesProvider.refresh();
 	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.recentIssues.refresh', () => {
+		recentIssuesProvider.refresh();
+	}));
+
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.refreshAllViews', () => {
 		isolatedIssuesProvider.refresh();
 		focusedIssuesProvider.refresh();
 		issueOverviewProvider.refresh();
+		recentIssuesProvider.refresh();
 	}));
 
 	// 注册统一的刷新视图命令，用于Language Model Tool等功能
@@ -93,23 +109,51 @@ export function activate(context: vscode.ExtensionContext) {
 		isolatedIssuesProvider.refresh();
 		focusedIssuesProvider.refresh();
 		issueOverviewProvider.refresh();
+		recentIssuesProvider.refresh();
 	}));
 
 	// 监听 issueDir 下的 Markdown 文件变化，刷新相关视图
-	const issueDir = getIssueDir();
-	if (issueDir) {
-		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(issueDir, '**/*.md'));
+	let watcher: vscode.FileSystemWatcher | undefined;
 
-		const debouncedRefresh = debounce(() => {
-			console.log('Markdown file changed, refreshing views...');
+	const setupWatcher = () => {
+		if (watcher) {
+			watcher.dispose();
+			// 从 subscriptions 中移除旧的引用
+			const index = context.subscriptions.indexOf(watcher);
+			if (index !== -1) {
+				context.subscriptions.splice(index, 1);
+			}
+
+		}
+		const issueDir = getIssueDir();
+		if (issueDir) {
+			watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(issueDir, '**/*.md'));
+
+			const debouncedRefresh = debounce(() => {
+				console.log('Markdown file changed, refreshing views...');
+				vscode.commands.executeCommand('issueManager.refreshAllViews');
+			}, 500);
+
+			watcher.onDidChange(debouncedRefresh);
+			watcher.onDidCreate(debouncedRefresh);
+			watcher.onDidDelete(debouncedRefresh);
+
+			context.subscriptions.push(watcher);
+		}
+	};
+
+	// 首次激活时设置监听器
+	setupWatcher();
+
+	// 当配置更改时，重新设置监听器
+	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+		if (e.affectsConfiguration('issueManager.issueDir')) {
+			setupWatcher();
+			// 刷新所有视图以反映新目录的内容
 			vscode.commands.executeCommand('issueManager.refreshAllViews');
-		}, 500); // 500ms 的防抖延迟
+		}
+	}));
 
-		context.subscriptions.push(watcher);
-		context.subscriptions.push(watcher.onDidChange(debouncedRefresh));
-		context.subscriptions.push(watcher.onDidCreate(debouncedRefresh));
-		context.subscriptions.push(watcher.onDidDelete(debouncedRefresh));
-	}
 
 	/**
 	 * 仅负责在磁盘上创建新的问题文件。

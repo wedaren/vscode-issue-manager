@@ -47,6 +47,37 @@
       {
         "command": "issueManager.pinFocus",
         "title": "置顶"
+      },
+      {
+        "command": "issueManager.refreshAllViews",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.setRecentIssuesViewMode.group",
+        "title": "切换为分组视图",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "issueManager.setRecentIssuesViewMode.list",
+        "title": "切换为列表视图",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "issueManager.setRecentSort.ctime",
+        "title": "按创建时间排序"
+      },
+      {
+        "command": "issueManager.setRecentSort.mtime",
+        "title": "按修改时间排序",
+        "icon": "$(clock)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "issueManager.recentSortSubmenu",
+        "label": "排序方式",
+        "icon": "$(sort-precedence)"
       }
     ],
     "languageModelTools": [
@@ -84,6 +115,51 @@
           "command": "issueManager.createIssueFromOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.refreshAllViews",
+          "when": "view == issueManager.views.recent",
+          "group": "navigation"
+        },
+        {
+          "command": "issueManager.setRecentIssuesViewMode.group",
+          "when": "view == issueManager.views.recent && issueManager.recentIssuesViewMode == 'list'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.setRecentIssuesViewMode.list",
+          "when": "view == issueManager.views.recent && issueManager.recentIssuesViewMode == 'group'",
+          "group": "navigation@2"
+        },
+        {
+          "submenu": "issueManager.recentSortSubmenu",
+          "when": "view == issueManager.views.recent",
+          "group": "navigation@3",
+          "title": "排序方式"
+        }
+      ],
+      "issueManager.recentSortSubmenu": [
+        {
+          "command": "issueManager.setRecentSort.ctime",
+          "when": "issueManager.recentIssuesSortOrder == 'ctime'",
+          "group": "1_sort@1",
+          "toggled": true
+        },
+        {
+          "command": "issueManager.setRecentSort.mtime",
+          "when": "issueManager.recentIssuesSortOrder == 'mtime'",
+          "group": "1_sort@2",
+          "toggled": true
+        },
+        {
+          "command": "issueManager.setRecentSort.ctime",
+          "when": "issueManager.recentIssuesSortOrder != 'ctime'",
+          "group": "1_sort@1"
+        },
+        {
+          "command": "issueManager.setRecentSort.mtime",
+          "when": "issueManager.recentIssuesSortOrder != 'mtime'",
+          "group": "1_sort@2"
         }
       ],
       "view/item/context": [
@@ -154,6 +230,11 @@
           "id": "issueManager.views.isolated",
           "name": "孤立问题",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.recent",
+          "name": "最近问题",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -170,6 +251,11 @@
       },
       {
         "view": "issueManager.views.focused",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.recent",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
       }
