@@ -39,7 +39,14 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         treeDataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
-        treeDataTransfer.set(ISSUE_MIME_TYPE, new vscode.DataTransferItem(source));
+        const transferData = source.map(item => {  
+            if (item instanceof IssueItem) {  
+                // 显式转换 Uri 为字符串以保证序列化安全  
+                return { ...item, resourceUri: item.resourceUri.toString() };  
+            }  
+            return item;  
+        });  
+        treeDataTransfer.set(ISSUE_MIME_TYPE, new vscode.DataTransferItem(transferData));  
     }
 
     /**
@@ -69,7 +76,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         const fromOverview = dataTransfer.get('application/vnd.code.tree.issuemanager.views.overview');
         const fromIsolated = dataTransfer.get('application/vnd.code.tree.issuemanager.views.isolated');
         const fromFocused = dataTransfer.get('application/vnd.code.tree.issuemanager.views.focused');
-        const fromResent = dataTransfer.get('application/vnd.code.tree.issuemanager.views.recent');
+        const fromRecent = dataTransfer.get('application/vnd.code.tree.issuemanager.views.recent');
         const fromEditor = dataTransfer.get('text/uri-list');
 
         if (fromOverview && transferItem) {
@@ -112,7 +119,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
             }
 
 
-        } else if ((fromIsolated||fromResent)  && transferItem) {
+        } else if ((fromIsolated||fromRecent)  && transferItem) {
             const draggedItems = (JSON.parse(transferItem.value) as {resourceUri:string}[]).filter(i=>i.resourceUri).map(i=>({
                 ...i,
                 resourceUri: vscode.Uri.parse(i.resourceUri) // 确保 resourceUri 是 Uri 对象
