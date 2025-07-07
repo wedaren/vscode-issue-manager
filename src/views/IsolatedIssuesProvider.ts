@@ -4,8 +4,11 @@ import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { readTree } from '../data/treeManager';
 
-// 定义一个更具体的 TreeItem 类型，确保 resourceUri 总是存在
-export class IssueTreeItem extends vscode.TreeItem {
+/**
+ * 定义 IssueItem 类型，确保每个节点都绑定一个 markdown 文件的 resourceUri。
+ * 该类型专用于视图中的每个 .md 文件项。
+ */
+export class IssueItem extends vscode.TreeItem {
     constructor(
         public readonly label: string,
         public readonly resourceUri: vscode.Uri,
@@ -18,10 +21,10 @@ export class IssueTreeItem extends vscode.TreeItem {
     }
 }
 
-export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTreeItem> {
+export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueItem> {
 
-    private _onDidChangeTreeData: vscode.EventEmitter<IssueTreeItem | undefined | null | void> = new vscode.EventEmitter<IssueTreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<IssueTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData: vscode.EventEmitter<IssueItem | undefined | null | void> = new vscode.EventEmitter<IssueItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<IssueItem | undefined | null | void> = this._onDidChangeTreeData.event;
     constructor(private context: vscode.ExtensionContext) {
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('issueManager.issueDir')) {
@@ -34,11 +37,11 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTree
         this._onDidChangeTreeData.fire();
     }
 
-    getTreeItem(element: IssueTreeItem): vscode.TreeItem {
+    getTreeItem(element: IssueItem): vscode.TreeItem {
         return element;
     }
 
-    async getChildren(element?: IssueTreeItem): Promise<IssueTreeItem[]> {
+    async getChildren(element?: IssueItem): Promise<IssueItem[]> {
         const issueDir = getIssueDir();
         if (!issueDir) {
             // 当目录未配置时，返回空数组，VS Code 将自动显示在 package.json 中定义的 welcome content。
@@ -86,7 +89,7 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueTree
 
             const treeItems = await Promise.all(filesWithStats.map(async (file) => {
                 const title = await getTitle(file.uri);
-                const item = new IssueTreeItem(title, file.uri);
+                const item = new IssueItem(title, file.uri);
                 item.command = {
                     command: 'vscode.open',
                     title: '打开文件',

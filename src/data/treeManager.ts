@@ -19,17 +19,17 @@ export function getRelativePath(filePath: string): string | null {
 }
 
 // 定义树节点和树数据的结构
-export interface TreeNode {
+export interface IssueTreeNode {
   id: string;
   filePath: string; // 相对于 issueDir 的路径
   expanded?: boolean;
-  children: TreeNode[];
+  children: IssueTreeNode[];
 }
 
 export interface TreeData {
   version: string;
   lastModified: string;
-  rootNodes: TreeNode[];
+  rootNodes: IssueTreeNode[];
 }
 
 /**
@@ -37,7 +37,7 @@ export interface TreeData {
  * @param nodes 节点数组。
  * @param callback 回调函数。
  */
-function walkTree(nodes: TreeNode[], callback: (node: TreeNode) => void) {
+function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => void) {
   for (const node of nodes) {
     callback(node);
     if (node.children) {
@@ -137,8 +137,8 @@ export const writeTree = async (data: TreeData): Promise<void> => {
  * @param index The index to insert at. If undefined, adds to the end.
  * @returns The newly created node or null if parent not found.
  */
-export function addNode(tree: TreeData, filePath: string, parentId: string | null, index?: number): TreeNode | null {
-  const newNode: TreeNode = {
+export function addNode(tree: TreeData, filePath: string, parentId: string | null, index?: number): IssueTreeNode | null {
+  const newNode: IssueTreeNode = {
     id: uuidv4(),
     filePath,
     children: [],
@@ -174,7 +174,7 @@ export function addNode(tree: TreeData, filePath: string, parentId: string | nul
  * @param nodeId The id of the node to remove.
  * @returns An object containing the removed node and a success flag.
  */
-export function removeNode(tree: TreeData, nodeId: string): { removedNode: TreeNode | null, success: boolean } {
+export function removeNode(tree: TreeData, nodeId: string): { removedNode: IssueTreeNode | null, success: boolean } {
   const found = findNodeById(tree.rootNodes, nodeId);
   if (!found) {
     return { removedNode: null, success: false };
@@ -226,7 +226,7 @@ export function moveNode(tree: TreeData, sourceId: string, targetParentId: strin
  * @param id The id of the node to find.
  * @returns An object containing the found node and its parent list, or null if not found.
  */
-export function findNodeById(nodes: TreeNode[], id: string): { node: TreeNode, parentList: TreeNode[] } | null {
+export function findNodeById(nodes: IssueTreeNode[], id: string): { node: IssueTreeNode, parentList: IssueTreeNode[] } | null {
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
     if (node.id === id) {
@@ -270,11 +270,11 @@ export function isAncestor(tree: TreeData, potentialAncestorId: string, nodeId: 
  * @param tree 完整的树数据。
  * @returns 一个包含所有祖先节点的数组，从根节点到直接父节点排序。
  */
-export function getAncestors(nodeId: string, tree: TreeData): TreeNode[] {
-  const ancestors: TreeNode[] = [];
+export function getAncestors(nodeId: string, tree: TreeData): IssueTreeNode[] {
+  const ancestors: IssueTreeNode[] = [];
 
   // 查找从根到一个节点的路径
-  const findPath = (nodes: TreeNode[], path: TreeNode[]): boolean => {
+  const findPath = (nodes: IssueTreeNode[], path: IssueTreeNode[]): boolean => {
     for (const node of nodes) {
       const currentPath = [...path, node];
       if (node.id === nodeId) {
@@ -406,7 +406,7 @@ export function isFocusedRootId(id: string): boolean {
  * @param expanded 展开状态
  * @returns 是否找到并更新
  */
-export function updateNodeExpanded(nodes: TreeNode[], id: string, expanded: boolean): boolean {
+export function updateNodeExpanded(nodes: IssueTreeNode[], id: string, expanded: boolean): boolean {
   for (const node of nodes) {
     if (node.id === id) {
       node.expanded = expanded;
