@@ -118,6 +118,12 @@ export function activate(context: vscode.ExtensionContext) {
 	const setupWatcher = () => {
 		if (watcher) {
 			watcher.dispose();
+			// 从 subscriptions 中移除旧的引用
+			const index = context.subscriptions.indexOf(watcher);
+			if (index !== -1) {
+				context.subscriptions.splice(index, 1);
+			}
+
 		}
 		const issueDir = getIssueDir();
 		if (issueDir) {
