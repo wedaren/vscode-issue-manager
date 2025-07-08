@@ -200,6 +200,7 @@
         },
         {
           "command": "issueManager.copyFilename",
+          "when": "viewItem == 'recentIssue' || viewItem == 'issueNode' || viewItem == 'focusedNode' || viewItem == 'focusedNodeFirst' || viewItem == 'isolatedIssue'",
           "group": "modification@4"
         }
       ]

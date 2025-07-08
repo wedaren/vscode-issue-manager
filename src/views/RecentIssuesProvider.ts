@@ -297,7 +297,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       title: 'Open File',
       arguments: [uri],
     };
-    item.contextValue = 'issue'; // 用于右键菜单
+    item.contextValue = 'recentIssue'; // 用于右键菜单
     item.tooltip = new vscode.MarkdownString(`路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`);
     return item;
   }

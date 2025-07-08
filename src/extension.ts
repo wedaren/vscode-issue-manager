@@ -484,8 +484,13 @@ export function activate(context: vscode.ExtensionContext) {
 			if (item && item.resourceUri) {
 				const filePath = item.resourceUri.fsPath;
 				const fileName = path.basename(filePath);
-				await vscode.env.clipboard.writeText(fileName);
-				vscode.window.showInformationMessage(`已复制文件名: ${fileName}`);
+				try {			
+					await vscode.env.clipboard.writeText(fileName);
+					vscode.window.showInformationMessage(`已复制文件名: ${fileName}`);
+				} catch (e) {
+					console.error('Failed to copy filename to clipboard:', e);
+					vscode.window.showErrorMessage('复制文件名失败。');
+				}
 			}
 		})
 	);
