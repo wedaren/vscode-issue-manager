@@ -24,8 +24,8 @@ export interface IssueTreeNode {
   filePath: string; // 相对于 issueDir 的路径
   expanded?: boolean;
   children: IssueTreeNode[];
+  resourceUri?: vscode.Uri; // 运行时属性，不持久化
 }
-
 export interface TreeData {
   version: string;
   lastModified: string;
@@ -94,18 +94,31 @@ const defaultTreeData: TreeData = {
  */
 export const readTree = async (): Promise<TreeData> => {
   const treePath = getTreeDataPath();
-  if (!treePath) {
+  const issueDir = getIssueDir();
+
+  if (!treePath || !issueDir) {
     return { ...defaultTreeData, rootNodes: [] };
   }
 
+  let treeData: TreeData;
   try {
     const content = await vscode.workspace.fs.readFile(vscode.Uri.file(treePath));
     // TODO: 添加更严格的数据校验逻辑
-    return JSON.parse(content.toString());
+    treeData = JSON.parse(content.toString());
   } catch (error) {
     // 如果文件不存在或解析失败，返回默认数据
-    return { ...defaultTreeData, rootNodes: [] };
+    treeData = { ...defaultTreeData, rootNodes: [] };
   }
+
+  // 运行时动态添加 resourceUri
+  walkTree(treeData.rootNodes, (node) => {
+    // 确保 filePath 存在再创建 Uri
+    if (node.filePath) {
+      node.resourceUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), node.filePath);
+    }
+  });
+
+  return treeData;
 };
 
 /**
@@ -120,7 +133,16 @@ export const writeTree = async (data: TreeData): Promise<void> => {
   }
 
   data.lastModified = new Date().toISOString();
-  const content = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
+
+  // 使用 replacer 函数在序列化时忽略 resourceUri 属性
+  const replacer = (key: string, value: any) => {
+    if (key === 'resourceUri') {
+      return undefined; // 忽略此属性
+    }
+    return value;
+  };
+
+  const content = Buffer.from(JSON.stringify(data, replacer, 2), 'utf8');
 
   try {
     await vscode.workspace.fs.writeFile(vscode.Uri.file(treePath), content);
@@ -138,11 +160,17 @@ export const writeTree = async (data: TreeData): Promise<void> => {
  * @returns The newly created node or null if parent not found.
  */
 export function addNode(tree: TreeData, filePath: string, parentId: string | null, index?: number): IssueTreeNode | null {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return null;
+  }
+
   const newNode: IssueTreeNode = {
     id: uuidv4(),
     filePath,
     children: [],
     expanded: true,
+    resourceUri: vscode.Uri.joinPath(vscode.Uri.file(issueDir), filePath),
   };
 
   if (parentId === null) {
