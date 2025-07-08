@@ -106,6 +106,8 @@ export const readTree = async (): Promise<TreeData> => {
     // TODO: 添加更严格的数据校验逻辑
     treeData = JSON.parse(content.toString());
   } catch (error) {
+    // 记录错误有助于调试，特别是对于文件损坏或格式错误的情况  
+    console.error(`Failed to read or parse tree data from ${treePath}:`, error);  
     // 如果文件不存在或解析失败，返回默认数据
     treeData = { ...defaultTreeData, rootNodes: [] };
   }
@@ -135,7 +137,7 @@ export const writeTree = async (data: TreeData): Promise<void> => {
   data.lastModified = new Date().toISOString();
 
   // 使用 replacer 函数在序列化时忽略 resourceUri 属性
-  const replacer = (key: string, value: any) => {
+  const replacer = (key: string, value: unknown) => {
     if (key === 'resourceUri') {
       return undefined; // 忽略此属性
     }
