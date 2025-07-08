@@ -478,6 +478,17 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.lm.registerTool('issueManager_recordContent', new RecordContentTool())
 		);
 	}
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('issueManager.copyFilename', async (item: vscode.TreeItem) => {
+			if (item && item.resourceUri) {
+				const filePath = item.resourceUri.fsPath;
+				const fileName = path.basename(filePath);
+				await vscode.env.clipboard.writeText(fileName);
+				vscode.window.showInformationMessage(`已复制文件名: ${fileName}`);
+			}
+		})
+	);
 }
 
 // 当您的扩展被停用时，将调用此方法

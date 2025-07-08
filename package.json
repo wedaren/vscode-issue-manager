@@ -71,6 +71,11 @@
         "command": "issueManager.setRecentSort.mtime",
         "title": "按修改时间排序",
         "icon": "$(clock)"
+      },
+      {
+        "command": "issueManager.copyFilename",
+        "title": "复制文件名",
+        "category": "Issue Manager"
       }
     ],
     "submenus": [
@@ -192,6 +197,10 @@
           "command": "issueManager.pinFocus",
           "when": "view == 'issueManager.views.focused' && viewItem == 'focusedNode'",
           "group": "modification@3"
+        },
+        {
+          "command": "issueManager.copyFilename",
+          "group": "modification@4"
         }
       ]
     },
