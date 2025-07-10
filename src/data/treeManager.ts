@@ -498,9 +498,14 @@ export const readQuickPickData = async (): Promise<QuickPickPersistedData> => {
   try {
     const content = await vscode.workspace.fs.readFile(vscode.Uri.file(quickPickPath));
     const data = JSON.parse(content.toString());
-    // 简单校验
-    if (!Array.isArray(data.searchHistory)) { throw new Error('searchHistory 必须为数组'); }
-    if (!Array.isArray(data.queryResultCache)) { throw new Error('queryResultCache 必须为数组'); }
+    if (!Array.isArray(data.searchHistory)) { 
+      console.error('searchHistory 必须为数组');
+      return { ...defaultQuickPickData };
+    }
+    if (!Array.isArray(data.queryResultCache)) {
+      console.error('queryResultCache 必须为数组');
+      return { ...defaultQuickPickData };
+     }
     return {
       version: typeof data.version === 'string' ? data.version : '1.0.0',
       searchHistory: data.searchHistory.filter((item: any) => typeof item === 'string'),

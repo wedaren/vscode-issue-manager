@@ -5,21 +5,39 @@ import { createIssueFile, addIssueToTree } from './issueFileUtils';
 import { readQuickPickData, writeQuickPickData, QuickPickPersistedData } from '../data/treeManager';
 import { debounce } from '../utils/debounce';
 // 在模块作用域内维护缓存和历史记录
-export const searchHistory: string[] = [];
-export const queryResultCache = new Map<string, vscode.QuickPickItem[]>();
+export const SEARCH_HISTORY: string[] = [];
+export const QUERY_RESULT_CACHE = new Map<string, vscode.QuickPickItem[]>();
+
 
 // 初始化持久化数据
 let quickPickLoaded = false;
 async function ensureQuickPickLoaded() {
     if (quickPickLoaded) { return; }
     const data: QuickPickPersistedData = await readQuickPickData();
-    searchHistory.length = 0;
-    data.searchHistory.forEach(item => searchHistory.push(item));
-    queryResultCache.clear();
+    SEARCH_HISTORY.length = 0;
+    data.searchHistory.forEach(item => SEARCH_HISTORY.push(item));
+    QUERY_RESULT_CACHE.clear();
     data.queryResultCache.forEach(([key, items]) => {
-        queryResultCache.set(key, items);
+        QUERY_RESULT_CACHE.set(key, items);
     });
     quickPickLoaded = true;
+    try {
+      // 尝试读取持久化数据
+      const data: QuickPickPersistedData = await readQuickPickData();
+      SEARCH_HISTORY.length = 0;
+      data.searchHistory.forEach(item => SEARCH_HISTORY.push(item));
+      QUERY_RESULT_CACHE.clear();
+      data.queryResultCache.forEach(([key, items]) => {
+        QUERY_RESULT_CACHE.set(key, items);
+      });
+      quickPickLoaded = true;
+    } catch (error) {
+      console.error("加载 QuickPick 持久化数据失败:", error);
+      // 回退到默认值，保证插件不会因数据损坏而崩溃
+      SEARCH_HISTORY.length = 0;
+      QUERY_RESULT_CACHE.clear();
+      quickPickLoaded = true;
+    }
 }
 
 // 定义带有历史标志的 QuickPickItem
@@ -33,13 +51,13 @@ interface HistoryQuickPickItem extends vscode.QuickPickItem {
  */
 function updateHistory(newItem: string) {
     if (!newItem) { return; }
-    const index = searchHistory.indexOf(newItem);
+    const index = SEARCH_HISTORY.indexOf(newItem);
     if (index > -1) {
-        searchHistory.splice(index, 1);
+        SEARCH_HISTORY.splice(index, 1);
     }
-    searchHistory.unshift(newItem);
-    if (searchHistory.length > 20) {
-        searchHistory.pop();
+    SEARCH_HISTORY.unshift(newItem);
+    if (SEARCH_HISTORY.length > 20) {
+        SEARCH_HISTORY.pop();
     }
     // 持久化
     persistQuickPickData();
@@ -47,10 +65,10 @@ function updateHistory(newItem: string) {
 
 async function persistQuickPickData() {
     // queryResultCache 只保存最近 20 条
-    const cacheArr: [string, vscode.QuickPickItem[]][] = Array.from(queryResultCache.entries()).slice(0, 20);
+    const cacheArr: [string, vscode.QuickPickItem[]][] = Array.from(QUERY_RESULT_CACHE.entries()).slice(0, 20);
     await writeQuickPickData({
         version: '1.0.0',
-        searchHistory: [...searchHistory],
+        searchHistory: [...SEARCH_HISTORY],
         queryResultCache: cacheArr,
     });
 }
@@ -81,8 +99,8 @@ export async function smartCreateIssue(
     quickPick.onDidChangeValue(debounce(async (value) => {
         if (value) {
             // 检查缓存
-            if (queryResultCache.has(value)) {
-                quickPick.items = queryResultCache.get(value)!;
+            if (QUERY_RESULT_CACHE.has(value)) {
+                quickPick.items = QUERY_RESULT_CACHE.get(value)!;
                 return;
             }
 
@@ -114,7 +132,7 @@ export async function smartCreateIssue(
                     });
                 }
                 quickPick.items = newItems;
-                queryResultCache.set(value, newItems); // 缓存结果
+                QUERY_RESULT_CACHE.set(value, newItems); // 缓存结果
             } catch (error) {
                 // 发生错误时，仅显示原始输入选项
                 if (quickPick.value === requestValue) {
@@ -127,7 +145,7 @@ export async function smartCreateIssue(
             }
         } else {
             // 输入为空时，显示历史记录
-            quickPick.items = searchHistory.map(item => ({
+            quickPick.items = SEARCH_HISTORY.map(item => ({
                 label: `$(history) ${item}`,
                 description: '从历史记录中恢复',
                 isHistory: true
@@ -169,7 +187,7 @@ export async function smartCreateIssue(
 
     // 初始显示历史记录
     // 初始显示历史记录
-    quickPick.items = searchHistory.map(item => ({
+    quickPick.items = SEARCH_HISTORY.map(item => ({
         label: `$(history) ${item}`,
         description: '从历史记录中恢复',
         isHistory: true
