@@ -448,3 +448,86 @@ export function updateNodeExpanded(nodes: IssueTreeNode[], id: string, expanded:
   }
   return false;
 }
+
+// ========== QuickPick 数据相关 ========== //
+
+export interface QuickPickPersistedData {
+  version: string;
+  searchHistory: string[];
+  queryResultCache: [string, vscode.QuickPickItem[]][];
+}
+
+const QUICKPICK_FILE = 'quickPickData.json';
+
+/**
+ * 获取 quickPickData.json 文件的绝对路径。
+ * @returns 如果 issueDir 未配置，则返回 null。
+ */
+const getQuickPickDataPath = (): string | null => {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return null;
+  }
+  const dataDir = path.join(issueDir, '.issueManager');
+  try {
+    if (!require('fs').existsSync(dataDir)) {
+      require('fs').mkdirSync(dataDir, { recursive: true });
+    }
+  } catch (e) {
+    vscode.window.showErrorMessage('创建 .issueManager 目录失败。');
+    return null;
+  }
+  return path.join(dataDir, QUICKPICK_FILE);
+};
+
+const defaultQuickPickData: QuickPickPersistedData = {
+  version: '1.0.0',
+  searchHistory: [],
+  queryResultCache: [],
+};
+
+/**
+ * 读取 quickPickData.json 文件。
+ * @returns QuickPickPersistedData 对象，若不存在或损坏则返回默认结构。
+ */
+export const readQuickPickData = async (): Promise<QuickPickPersistedData> => {
+  const quickPickPath = getQuickPickDataPath();
+  if (!quickPickPath) {
+    return { ...defaultQuickPickData };
+  }
+  try {
+    const content = await vscode.workspace.fs.readFile(vscode.Uri.file(quickPickPath));
+    const data = JSON.parse(content.toString());
+    // 简单校验
+    if (!Array.isArray(data.searchHistory)) { throw new Error('searchHistory 必须为数组'); }
+    if (!Array.isArray(data.queryResultCache)) { throw new Error('queryResultCache 必须为数组'); }
+    return {
+      version: typeof data.version === 'string' ? data.version : '1.0.0',
+      searchHistory: data.searchHistory.filter((item: any) => typeof item === 'string'),
+      queryResultCache: data.queryResultCache,
+    };
+  } catch (error) {
+    console.error(`Failed to read or parse QuickPick data from ${quickPickPath}:`, error);
+    return { ...defaultQuickPickData };
+  }
+};
+
+/**
+ * 将 QuickPick 数据写入 quickPickData.json 文件。
+ * @param data 要写入的 QuickPickPersistedData 对象。
+ */
+export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<void> => {
+  const quickPickPath = getQuickPickDataPath();
+  if (!quickPickPath) {
+    vscode.window.showErrorMessage('无法写入 QuickPick 数据，问题目录未配置。');
+    return;
+  }
+
+  const content = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
+
+  try {
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(quickPickPath), content);
+  } catch (error) {
+    vscode.window.showErrorMessage(`写入 quickPickData.json 失败: ${error}`);
+  }
+};

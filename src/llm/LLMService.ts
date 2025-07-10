@@ -2,7 +2,10 @@ import * as vscode from 'vscode';
 import { getAllMarkdownIssues } from '../utils/markdown';
 
 export class LLMService {
-    public static async getSuggestions(text: string): Promise<{ optimized: string[], similar: { title: string, filePath: string }[] }> {
+    public static async getSuggestions(
+        text: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<{ optimized: string[], similar: { title: string, filePath: string }[] }> {
         const allIssues = await getAllMarkdownIssues();
 
         const prompt = `
@@ -42,11 +45,19 @@ ${JSON.stringify(allIssues, null, 2)}
                 return { optimized: [], similar: [] };
             }
 
+            // 支持取消：如果 options.signal 被触发则抛出异常
+            if (options?.signal?.aborted) {
+                throw new Error('请求已取消');
+            }
+            // sendRequest 不传 signal，改为仅在循环中判断
             const response = await model.sendRequest([
                 vscode.LanguageModelChatMessage.User(prompt)
             ]);
             const fragments: string[] = [];
             for await (const fragment of response.stream) {
+                if (options?.signal?.aborted) {
+                    throw new Error('请求已取消');
+                }
                 // 确保 fragment 是一个对象并且有 value 属性
                 if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
                     fragments.push(fragment.value as string);
@@ -81,8 +92,11 @@ ${JSON.stringify(allIssues, null, 2)}
                 optimized: parsedResponse.optimized || [],
                 similar: parsedResponse.similar || []
             };
-
         } catch (error) {
+            if (options?.signal?.aborted) {
+                // 被主动取消时静默返回空
+                return { optimized: [], similar: [] };
+            }
             vscode.window.showErrorMessage(`调用 Copilot API 失败: ${error}`);
             console.error('Copilot API error:', error);
             return { optimized: [], similar: [] };
