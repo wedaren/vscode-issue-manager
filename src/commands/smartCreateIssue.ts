@@ -100,58 +100,70 @@ export async function smartCreateIssue(
 
     let currentAbortController: AbortController | null = null;
 
-    quickPick.onDidChangeValue(debounce(async (value) => {
-        if (value) {
-            // 2.3. 在 LLM 结果列表顶部添加“清空缓存并重新请求”选项
+    /**
+     * 辅助函数：根据 value 调用 LLM 并刷新 quickPick.items 和缓存
+     */
+    async function fetchAndDisplaySuggestions(value: string, quickPick: vscode.QuickPick<HistoryQuickPickItem>) {
             const clearCacheOption: HistoryQuickPickItem = {
                 label: '$(sync) 清空缓存并重新请求',
                 description: '强制重新调用 LLM',
                 isClearCacheOption: true,
                 alwaysShow: true
             };
-            // 检查缓存
+            const defaultOption = { 
+                label: `[创建新笔记] ${value}`, 
+                description: '按回车可直接用当前输入创建新笔记', 
+                alwaysShow: true 
+            };
+
             if (QUERY_RESULT_CACHE.has(value)) {
                 const items = QUERY_RESULT_CACHE.get(value)!;
-                quickPick.items = [...items, clearCacheOption];
+                quickPick.items = [defaultOption, ...items, clearCacheOption];
                 return;
             }
 
-            quickPick.busy = true;
-            const requestValue = value; // 记录本次请求的输入
-            // 取消上一次请求
-            currentAbortController?.abort();
-            currentAbortController = new AbortController();
-            try {
-                const suggestions = await LLMService.getSuggestions(value, { signal: currentAbortController.signal });
-                // 检查输入是否已变更，防止 stale response
-                if (quickPick.value !== requestValue) {
-                    return;
-                }
-                const newItems: vscode.QuickPickItem[] = [];
-                if (suggestions.optimized.length > 0) {
-                    newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
-                    suggestions.optimized.forEach(opt => {
-                        newItems.push({ label: `[创建新笔记] ${opt}`, alwaysShow: true });
-                    });
-                }
-                if (suggestions.similar.length > 0) {
-                    newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
-                    suggestions.similar.forEach(sim => {
-                        newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: `${path.relative(issueDir,sim.filePath)}`, alwaysShow: true });
-                    });
-                }
-                quickPick.items = [...newItems, clearCacheOption];
-                QUERY_RESULT_CACHE.set(value, newItems); // 缓存结果
-            } catch (error) {
-                // 发生错误时，仅显示原始输入选项
-                if (quickPick.value === requestValue) {
-                    quickPick.items = [clearCacheOption];
-                }
-            } finally {
-                if (quickPick.value === requestValue) {
-                    quickPick.busy = false;
-                }
+            quickPick.selectedItems = [defaultOption]; // 清空选择
+
+
+        quickPick.busy = true;
+        const requestValue = value;
+        // 取消上一次请求
+        currentAbortController?.abort();
+        currentAbortController = new AbortController();
+        try {
+            const suggestions = await LLMService.getSuggestions(value, { signal: currentAbortController.signal });
+            if (quickPick.value !== requestValue) {
+                return;
             }
+            const newItems: vscode.QuickPickItem[] = [];
+            if (suggestions.optimized.length > 0) {
+                newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
+                suggestions.optimized.forEach(opt => {
+                    newItems.push({ label: `[创建新笔记] ${opt}`, alwaysShow: true });
+                });
+            }
+            if (suggestions.similar.length > 0) {
+                newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
+                suggestions.similar.forEach(sim => {
+                    newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: `${path.relative(issueDir || '', sim.filePath)}`, alwaysShow: true });
+                });
+            }
+            quickPick.items = [defaultOption, ...newItems, clearCacheOption];
+            QUERY_RESULT_CACHE.set(value, newItems); // 缓存结果
+        } catch (error) {
+            if (quickPick.value === requestValue) {
+                quickPick.items = [defaultOption, clearCacheOption];
+            }
+        } finally {
+            if (quickPick.value === requestValue) {
+                quickPick.busy = false;
+            }
+        }
+    }
+
+    quickPick.onDidChangeValue(debounce(async (value) => {
+        if (value) {
+            await fetchAndDisplaySuggestions(value, quickPick);
         } else {
             // 输入为空时，显示历史记录
             quickPick.items = SEARCH_HISTORY.map(item => ({
@@ -174,41 +186,7 @@ export async function smartCreateIssue(
                 const currentValue = quickPick.value;
                 if (currentValue) {
                     QUERY_RESULT_CACHE.delete(currentValue); // 从缓存中删除当前项
-                    quickPick.selectedItems = []; // 清空选择
-                    quickPick.busy = true;
-                    // 强制重新请求 LLM
-                    currentAbortController?.abort();
-                    currentAbortController = new AbortController();
-                    try {
-                        const suggestions = await LLMService.getSuggestions(currentValue, { signal: currentAbortController.signal });
-                        // 检查输入是否已变更，防止 stale response
-                        if (quickPick.value !== currentValue) {
-                            return;
-                        }
-                        const newItems: vscode.QuickPickItem[] = [];
-                        if (suggestions.optimized.length > 0) {
-                            newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
-                            suggestions.optimized.forEach(opt => {
-                                newItems.push({ label: `[创建新笔记] ${opt}`, alwaysShow: true });
-                            });
-                        }
-                        if (suggestions.similar.length > 0) {
-                            newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
-                            suggestions.similar.forEach(sim => {
-                                newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: `${path.relative(issueDir,sim.filePath)}`, alwaysShow: true });
-                            });
-                        }
-                        quickPick.items = [...newItems, selectedItem];
-                        QUERY_RESULT_CACHE.set(currentValue, newItems); // 更新缓存
-                    } catch (error) {
-                        if (quickPick.value === currentValue) {
-                            quickPick.items = [selectedItem];
-                        }
-                    } finally {
-                        if (quickPick.value === currentValue) {
-                            quickPick.busy = false;
-                        }
-                    }
+                    await fetchAndDisplaySuggestions(currentValue, quickPick);
                 }
             }
         }
