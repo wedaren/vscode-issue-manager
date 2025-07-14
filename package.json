@@ -20,6 +20,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createIssueFromFocused",
+        "title": "新建问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.createIssueFromOverview",
         "title": "新建问题",
         "icon": "$(add)"
@@ -122,8 +127,13 @@
           "group": "navigation@1"
         },
         {
+          "command": "issueManager.createIssueFromFocused",
+          "when": "view == issueManager.views.focused",
+          "group": "navigation@1"
+        },
+        {
           "command": "issueManager.refreshAllViews",
-          "when": "view == issueManager.views.recent",
+          "when": "view == issueManager.views.recent || view == issueManager.views.focused",
           "group": "navigation"
         },
         {

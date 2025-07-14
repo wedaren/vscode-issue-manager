@@ -94,12 +94,17 @@ export const writeFocused = async (data: FocusedData): Promise<void> => {
 /**
  * 添加关注节点
  */
-export async function addFocus(nodeId: string): Promise<void> {
+export async function addFocus(nodeIds: string[]): Promise<void> {
   const data = await readFocused();
-  if (!data.focusList.includes(nodeId)) {
-    data.focusList.unshift(nodeId);
-    await writeFocused(data);
+  for (const nodeId of nodeIds) {
+    // 如果节点已存在，则不重复添加
+    if (data.focusList.includes(nodeId)) {
+      continue;
+    }else {
+      data.focusList.unshift(nodeId);
+    }
   }
+  await writeFocused(data);
 }
 
 /**
