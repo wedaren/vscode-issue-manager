@@ -158,41 +158,31 @@ export const writeTree = async (data: TreeData): Promise<void> => {
  * @param tree The tree data to modify.
  * @param filePath The relative path of the file to add.
  * @param parentId The id of the parent node. If null, adds to root.
- * @param index The index to insert at. If undefined, adds to the end.
  * @returns The newly created node or null if parent not found.
  */
-export function addNode(tree: TreeData, filePath: string, parentId: string | null, index?: number): IssueTreeNode | null {
+export function addNode(tree: TreeData, filePaths: string[], parentId: string | null): IssueTreeNode[] | null {
   const issueDir = getIssueDir();
   if (!issueDir) {
     return null;
   }
 
-  const newNode: IssueTreeNode = {
+  const newNodes: IssueTreeNode[] = filePaths.map(filePath => ({
     id: uuidv4(),
     filePath,
     children: [],
     expanded: true,
     resourceUri: vscode.Uri.joinPath(vscode.Uri.file(issueDir), filePath),
-  };
+  }));
 
   if (parentId === null) {
-    // Add to root
-    if (index === undefined) {
-      tree.rootNodes.unshift(newNode);
-    } else {
-      tree.rootNodes.splice(index, 0, newNode);
-    }
-    return newNode;
+    tree.rootNodes.unshift(...newNodes);
+    return newNodes;
   }
 
   const { node: parent } = findNodeById(tree.rootNodes, parentId) || {};
   if (parent) {
-    if (index === undefined) {
-      parent.children.unshift(newNode);
-    } else {
-      parent.children.splice(index, 0, newNode);
-    }
-    return newNode;
+    parent.children.unshift(...newNodes);
+    return newNodes;
   }
 
   return null;

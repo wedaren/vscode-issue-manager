@@ -229,12 +229,15 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(createIssueCommand);
 
-	const createIssueFromOverviewCommand = vscode.commands.registerCommand('issueManager.createIssueFromOverview', async (node?: IssueTreeNode) => {
-		const selectedNode = node || (overviewView.selection.length > 0 ? overviewView.selection[0] : undefined);
-		const parentId: string | null | undefined = selectedNode?.id ? stripFocusedId(selectedNode.id) : null;
-		await smartCreateIssue(parentId, true);
+	const createIssueFromOverviewCommand = vscode.commands.registerCommand('issueManager.createIssueFromOverview', async () => {
+		await smartCreateIssue(null, true);
 	});
 	context.subscriptions.push(createIssueFromOverviewCommand);
+
+	const createIssueFromFocusedCommand = vscode.commands.registerCommand('issueManager.createIssueFromFocused', async (node?: IssueTreeNode) => {
+		await smartCreateIssue(null, true, true);
+	});
+	context.subscriptions.push(createIssueFromFocusedCommand);
 
 	// 注册“添加到关注”命令
 	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueTreeNode) => {
@@ -245,7 +248,7 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 		const realId = stripFocusedId(node.id);
-		await addFocus(realId);
+		await addFocus([realId]);
 		vscode.commands.executeCommand('issueManager.refreshAllViews');
 		vscode.window.showInformationMessage('已添加到关注问题。');
 	});
