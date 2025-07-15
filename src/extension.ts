@@ -11,6 +11,7 @@ import { addFocus, removeFocus, pinFocus } from './data/focusedManager';
 import { debounce } from './utils/debounce';
 import { RecordContentTool } from './llm/RecordContentTool';
 import { smartCreateIssue } from './commands/smartCreateIssue';
+import { addIssueToTree } from './commands/issueFileUtils';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -253,6 +254,17 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage('已添加到关注问题。');
 	});
 	context.subscriptions.push(focusIssueCommand);
+
+	const focusIssueFromIsolatedCommand = vscode.commands.registerCommand('issueManager.focusIssueFromIsolated', async (node: IssueItem) => {
+		if( !node || !node.resourceUri) {
+			vscode.window.showErrorMessage('未找到要关注的问题节点。');
+			return;
+		}
+		await addIssueToTree([node.resourceUri], null, true);
+		vscode.window.showInformationMessage('已添加到关注问题。');
+	});
+	context.subscriptions.push(focusIssueFromIsolatedCommand);
+
 
 	// 注册“移除关注”命令
 	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueTreeNode) => {
