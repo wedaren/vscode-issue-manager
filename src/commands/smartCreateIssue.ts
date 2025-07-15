@@ -24,21 +24,21 @@ async function ensureQuickPickLoaded() {
     });
     quickPickLoaded = true;
     try {
-      // 尝试读取持久化数据
-      const data: QuickPickPersistedData = await readQuickPickData();
-      SEARCH_HISTORY.length = 0;
-      data.searchHistory.forEach(item => SEARCH_HISTORY.push(item));
-      QUERY_RESULT_CACHE.clear();
-      data.queryResultCache.forEach(([key, items]) => {
-        QUERY_RESULT_CACHE.set(key, items);
-      });
-      quickPickLoaded = true;
+        // 尝试读取持久化数据
+        const data: QuickPickPersistedData = await readQuickPickData();
+        SEARCH_HISTORY.length = 0;
+        data.searchHistory.forEach(item => SEARCH_HISTORY.push(item));
+        QUERY_RESULT_CACHE.clear();
+        data.queryResultCache.forEach(([key, items]) => {
+            QUERY_RESULT_CACHE.set(key, items);
+        });
+        quickPickLoaded = true;
     } catch (error) {
-      console.error("加载 QuickPick 持久化数据失败:", error);
-      // 回退到默认值，保证插件不会因数据损坏而崩溃
-      SEARCH_HISTORY.length = 0;
-      QUERY_RESULT_CACHE.clear();
-      quickPickLoaded = true;
+        console.error("加载 QuickPick 持久化数据失败:", error);
+        // 回退到默认值，保证插件不会因数据损坏而崩溃
+        SEARCH_HISTORY.length = 0;
+        QUERY_RESULT_CACHE.clear();
+        quickPickLoaded = true;
     }
 }
 
@@ -106,25 +106,25 @@ export async function smartCreateIssue(
      * 辅助函数：根据 value 调用 LLM 并刷新 quickPick.items 和缓存
      */
     async function fetchAndDisplaySuggestions(value: string, quickPick: vscode.QuickPick<HistoryQuickPickItem>) {
-            const clearCacheOption: HistoryQuickPickItem = {
-                label: '$(sync) 清空缓存并重新请求',
-                description: '强制重新调用 LLM',
-                isClearCacheOption: true,
-                alwaysShow: true
-            };
-            const defaultOption = { 
-                label: `[创建新笔记] ${value}`, 
-                description: '按回车可直接用当前输入创建新笔记', 
-                alwaysShow: true 
-            };
+        const clearCacheOption: HistoryQuickPickItem = {
+            label: '$(sync) 清空缓存并重新请求',
+            description: '强制重新调用 LLM',
+            isClearCacheOption: true,
+            alwaysShow: true
+        };
+        const defaultOption = {
+            label: `[创建新笔记] ${value}`,
+            description: '按回车可直接用当前输入创建新笔记',
+            alwaysShow: true
+        };
 
-            if (QUERY_RESULT_CACHE.has(value)) {
-                const items = QUERY_RESULT_CACHE.get(value)!;
-                quickPick.items = [defaultOption, ...items, clearCacheOption];
-                return;
-            }
+        if (QUERY_RESULT_CACHE.has(value)) {
+            const items = QUERY_RESULT_CACHE.get(value)!;
+            quickPick.items = [defaultOption, ...items, clearCacheOption];
+            return;
+        }
 
-            quickPick.selectedItems = [defaultOption]; // 清空选择
+        quickPick.selectedItems = [defaultOption]; // 清空选择
 
 
         quickPick.busy = true;
@@ -248,12 +248,13 @@ async function handleBatchSelection(
                 try {
                     const uri = vscode.Uri.file(item.detail);
                     await vscode.workspace.fs.stat(uri);
+                    uris.push(uri);
                     await vscode.window.showTextDocument(uri);
                 } catch (error) {
                     vscode.window.showErrorMessage(`无法打开文件: ${item.detail}`);
+                }
             }
         }
-    }
     }
     if (uris.length > 0 && isAddToTree) {
         await addIssueToTree(uris, parentId, isAddToFocused);
