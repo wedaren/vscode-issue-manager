@@ -32,16 +32,16 @@ export async function createIssueFile(title: string): Promise<vscode.Uri | null>
  * 将指定文件路径的多个 issue 添加到 tree.json 数据中。
  * @param issueUris 要添加的问题文件的 URI 数组
  * @param parentId 父节点的 ID，如果为 null 则作为根节点
- * @param isAddToFocuesd 是否将新添加的节点添加到关注列表
+ * @param isAddToFocused 是否将新添加的节点添加到关注列表
  */
-export async function addIssueToTree(issueUris: vscode.Uri[], parentId: string | null, isAddToFocuesd: boolean = true): Promise<void> {
+export async function addIssueToTree(issueUris: vscode.Uri[], parentId: string | null, isAddToFocused: boolean = true): Promise<void> {
 	const issueDir = getIssueDir();
 	if (!issueDir) { return; } // 安全检查
 
 	const treeData = await readTree();
 	const relPaths = issueUris.map(issueUri => path.relative(issueDir, issueUri.fsPath));
 	const res = addNode(treeData, relPaths, parentId);
-	if(res && isAddToFocuesd){
+	if(res && isAddToFocused){
 		addFocus(res.map(node => node.id));
 	}
 	await writeTree(treeData);

@@ -93,18 +93,25 @@ export const writeFocused = async (data: FocusedData): Promise<void> => {
 
 /**
  * 添加关注节点
+ * 优化：使用 Set 提高查找效率，仅在有新增时写入文件。
  */
 export async function addFocus(nodeIds: string[]): Promise<void> {
   const data = await readFocused();
-  for (const nodeId of nodeIds) {
-    // 如果节点已存在，则不重复添加
-    if (data.focusList.includes(nodeId)) {
-      continue;
-    }else {
+  const originalSize = data.focusList.length;
+  const allIds = new Set(data.focusList);
+
+  // 使用 reverse() 简化逆序插入，保证批量添加后顺序与输入一致（新关注的排在最前）
+  for (const nodeId of [...nodeIds].reverse()) {
+    if (!allIds.has(nodeId)) {
       data.focusList.unshift(nodeId);
+      allIds.add(nodeId);
     }
   }
-  await writeFocused(data);
+
+  // 只有在有新增时才写入文件，避免无效 I/O
+  if (data.focusList.length > originalSize) {
+    await writeFocused(data);
+  }
 }
 
 /**

@@ -80,12 +80,12 @@ async function persistQuickPickData() {
  * 智能创建工作流
  * @param parentId 父节点ID，可为null
  * @param isAddToTree 是否添加到树结构
- * @param isAddToFocuesd 是否添加到关注列表
+ * @param isAddToFocused 是否添加到关注列表
  */
 export async function smartCreateIssue(
     parentId: string | null | undefined = null,
     isAddToTree: boolean = false,
-    isAddToFocuesd: boolean = false
+    isAddToFocused: boolean = false
 ) {
     await ensureQuickPickLoaded();
     const issueDir = getIssueDir();
@@ -201,12 +201,12 @@ export async function smartCreateIssue(
         if (selectedItems.length > 0) {
             // 用户勾选了至少一项并点击了“确定”
             updateHistory(currentValue);
-            await handleBatchSelection(selectedItems, parentId || null, isAddToTree, isAddToFocuesd);
+            await handleBatchSelection(selectedItems, parentId || null, isAddToTree, isAddToFocused);
             quickPick.hide();
         } else if (currentValue) {
             // 用户没有勾选任何项，但在输入框有值的情况下直接按 Enter
             updateHistory(currentValue);
-            await handleDefaultCreation(currentValue, parentId || null, isAddToTree, isAddToFocuesd);
+            await handleDefaultCreation(currentValue, parentId || null, isAddToTree, isAddToFocused);
             quickPick.hide();
         }
     });
@@ -233,7 +233,7 @@ async function handleBatchSelection(
     selectedItems: readonly vscode.QuickPickItem[],
     parentId: string | null,
     isAddToTree: boolean,
-    isAddToFocuesd: boolean
+    isAddToFocused: boolean
 ) {
     let uris: vscode.Uri[] = [];
     for (const item of selectedItems) {
@@ -256,7 +256,7 @@ async function handleBatchSelection(
     }
     }
     if (uris.length > 0 && isAddToTree) {
-        await addIssueToTree(uris, parentId, isAddToFocuesd);
+        await addIssueToTree(uris, parentId, isAddToFocused);
     }
 }
 
@@ -267,12 +267,12 @@ async function handleDefaultCreation(
     title: string,
     parentId: string | null,
     isAddToTree: boolean,
-    isAddToFocuesd: boolean
+    isAddToFocused: boolean
 ) {
     if (title) {
         const uri = await createIssueFile(title);
         if (uri && isAddToTree) {
-            await addIssueToTree([uri], parentId, isAddToFocuesd);
+            await addIssueToTree([uri], parentId, isAddToFocused);
         }
         if (uri) {
             await vscode.window.showTextDocument(uri);

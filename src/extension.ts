@@ -235,7 +235,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(createIssueFromOverviewCommand);
 
 	const createIssueFromFocusedCommand = vscode.commands.registerCommand('issueManager.createIssueFromFocused', async (node?: IssueTreeNode) => {
-		await smartCreateIssue(null, true ,true);
+		await smartCreateIssue(null, true, true);
 	});
 	context.subscriptions.push(createIssueFromFocusedCommand);
 
