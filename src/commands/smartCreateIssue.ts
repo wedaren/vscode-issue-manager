@@ -248,8 +248,8 @@ async function handleBatchSelection(
                 try {
                     const uri = vscode.Uri.file(item.detail);
                     await vscode.workspace.fs.stat(uri);
-                    await vscode.window.showTextDocument(uri);
                     uris.push(uri);
+                    await vscode.window.showTextDocument(uri);
                 } catch (error) {
                     vscode.window.showErrorMessage(`无法打开文件: ${item.detail}`);
                 }

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { getIssueDir } from './config';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
-import { IsolatedIssuesProvider,IssueItem } from './views/IsolatedIssuesProvider';
+import { IsolatedIssuesProvider, IssueItem } from './views/IsolatedIssuesProvider';
 import { RecentIssuesProvider } from './views/RecentIssuesProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { IssueTreeNode, readTree, writeTree, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
@@ -256,7 +256,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(focusIssueCommand);
 
 	const focusIssueFromIsolatedCommand = vscode.commands.registerCommand('issueManager.focusIssueFromIsolated', async (node: IssueItem) => {
-		if( !node || !node.resourceUri) {
+		if (!node || !node.resourceUri) {
 			vscode.window.showErrorMessage('未找到要关注的问题节点。');
 			return;
 		}
@@ -269,9 +269,9 @@ export function activate(context: vscode.ExtensionContext) {
 	// 注册“移除关注”命令
 	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueTreeNode) => {
 		if (!node?.id) {
-            vscode.window.showErrorMessage('未找到要移除关注的问题节点。');  
-            return;  
-        }
+			vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
+			return;
+		}
 		const realId = stripFocusedId(node.id);
 		await removeFocus(realId);
 		vscode.commands.executeCommand('issueManager.refreshAllViews');
@@ -321,7 +321,7 @@ export function activate(context: vscode.ExtensionContext) {
 			if (item && item.resourceUri) {
 				const filePath = item.resourceUri.fsPath;
 				const fileName = path.basename(filePath);
-				try {			
+				try {
 					await vscode.env.clipboard.writeText(fileName);
 					vscode.window.showInformationMessage(`已复制文件名: ${fileName}`);
 				} catch (e) {
