@@ -179,9 +179,9 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 target.children = [];
             }
             target.expanded = true;
-            target.children.push(nodeToAdd);
+            target.children.unshift(nodeToAdd);
         } else {
-            treeData.rootNodes.push(nodeToAdd);
+            treeData.rootNodes.unshift(nodeToAdd);
         }
     }
 
