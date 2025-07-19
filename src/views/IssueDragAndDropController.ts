@@ -179,9 +179,11 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 target.children = [];
             }
             target.expanded = true;
-            target.children.push(nodeToAdd);
+            // 优化：插入为第一个子节点
+            target.children.unshift(nodeToAdd);
         } else {
-            treeData.rootNodes.push(nodeToAdd);
+            // 顶层节点也插入为第一个
+            treeData.rootNodes.unshift(nodeToAdd);
         }
     }
 
