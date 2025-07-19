@@ -244,14 +244,15 @@ async function handleBatchSelection(
                 if (uri) { uris.push(uri); }
             }
         } else if (item.label.startsWith('[打开已有笔记]')) {
-            if (item.detail) {
+            if (item.description) {
                 try {
-                    const uri = vscode.Uri.file(item.detail);
+                    const issueDir = getIssueDir();
+                    const uri = vscode.Uri.file(path.join(issueDir!, item.description));
                     await vscode.workspace.fs.stat(uri);
                     uris.push(uri);
                     await vscode.window.showTextDocument(uri);
                 } catch (error) {
-                    vscode.window.showErrorMessage(`无法打开文件: ${item.detail}`);
+                    vscode.window.showErrorMessage(`无法打开文件: ${item.description}`);
                 }
             }
         }
