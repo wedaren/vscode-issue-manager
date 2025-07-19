@@ -540,6 +540,8 @@ export const readTitleCacheJson = async (): Promise<Record<string, string>> => {
     const content = await vscode.workspace.fs.readFile(vscode.Uri.file(cachePath));
     return JSON.parse(content.toString());
   } catch (e) {
+    // 错误日志，便于调试缓存文件损坏等问题
+    console.error(`读取或解析 titleCache.json 失败:`, e);
     return {};
   }
 };
