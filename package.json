@@ -240,6 +240,15 @@
           "type": "string",
           "default": "",
           "description": "【必须】指定一个绝对路径作为存放所有问题（.md文件）的根目录。"
+        },
+        "issueManager.recentIssues.defaultMode": {
+          "type": "string",
+          "default": "grouped",
+          "enum": [
+            "grouped",
+            "list"
+          ],
+          "description": "设置最近问题视图的默认显示模式，可选值为 'grouped'（分组模式）或 'list'（列表模式）。"
         }
       }
     },

@@ -42,3 +42,14 @@ export function getIssueDir(): string | undefined {
 
     return issueDir;
 }
+export type ViewMode = 'list' | 'grouped';
+
+/**
+ * 获取最近问题视图的默认显示模式
+ * @returns 'grouped' | 'list'
+ */
+export function getRecentIssuesDefaultMode(): ViewMode {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const mode = config.get<string>('recentIssues.defaultMode');
+    return mode === 'list' ? 'list' : 'grouped'; // 默认值为 grouped
+}

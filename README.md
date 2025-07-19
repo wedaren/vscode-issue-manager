@@ -73,6 +73,15 @@
 | `issueManager.createIssue.enableIntelligence` | 布尔值 | `true` | 启用/禁用 AI 智能创建功能 |
 | `issueManager.createIssue.similarResultsCount` | 数字 | `5` | 相似问题建议数量 |
 | `issueManager.createIssue.optimizedPhrasingsCount` | 数字 | `3` | AI 优化建议数量 |
+| `issueManager.recentIssues.defaultMode` | 字符串 | `grouped` | 最近问题视图默认显示模式，可选值 `'grouped'`（分组）或 `'list'`（列表） |
+
+### 最近问题视图分组与展开说明
+
+最近问题视图支持“列表模式”和“分组模式”两种展示方式。
+
+- 当分组模式为默认或手动切换时，一级分组（如“今天”、“最近一周” 等）会自动展开，方便快速浏览。
+- 子分组（如“本周”下的具体日期分组）默认折叠，避免界面过度冗长。
+- 该行为无需额外配置，已内置于插件逻辑。
 
 ### 配置示例
 
@@ -83,7 +92,8 @@
   "issueManager.issueDir": "/Users/yourname/Documents/MyIssues",
   "issueManager.createIssue.enableIntelligence": true,
   "issueManager.createIssue.similarResultsCount": 5,
-  "issueManager.createIssue.optimizedPhrasingsCount": 3
+  "issueManager.createIssue.optimizedPhrasingsCount": 3,
+  "issueManager.recentIssues.defaultMode": "grouped"
 }
 ```
 
