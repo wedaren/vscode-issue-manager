@@ -244,14 +244,28 @@ async function handleBatchSelection(
                 if (uri) { uris.push(uri); }
             }
         } else if (item.label.startsWith('[打开已有笔记]')) {
-            if (item.detail) {
+            if (item.description) {
                 try {
-                    const uri = vscode.Uri.file(item.detail);
+                    const issueDir = getIssueDir();
+                    if (!issueDir) {
+                        // 此情况应由上层调用者保证，但作为安全措施，在此处处理
+                        vscode.window.showErrorMessage('问题目录未配置，无法打开文件。');
+                        continue;
+                    }
+                    const notePath = path.resolve(issueDir, item.description);
+
+                    // 安全检查：确保解析后的路径在 issueDir 目录内
+                    if (!notePath.startsWith(path.resolve(issueDir))) {
+                        vscode.window.showErrorMessage(`检测到不安全的路径，已阻止打开: ${item.description}`);
+                        continue;
+                    }
+
+                    const uri = vscode.Uri.file(notePath);
                     await vscode.workspace.fs.stat(uri);
                     uris.push(uri);
                     await vscode.window.showTextDocument(uri);
                 } catch (error) {
-                    vscode.window.showErrorMessage(`无法打开文件: ${item.detail}`);
+                    vscode.window.showErrorMessage(`无法打开文件: ${item.description}`);
                 }
             }
         }
