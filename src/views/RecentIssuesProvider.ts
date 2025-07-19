@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getIssueDir } from '../config';
+import { getIssueDir, getRecentIssuesDefaultMode,type ViewMode } from '../config';
 import { getTitle } from '../utils/markdown';
 import { parseFileNameTimestamp } from '../utils/fileUtils';
 
-type ViewMode = 'list' | 'group';
 
 /**
  * 分组的类型，决定了其子节点的展示方式。
@@ -51,10 +50,10 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
   constructor(private context: vscode.ExtensionContext) {
     // 初始化时根据配置项设置默认模式
-    this.viewMode = require('../config').getRecentIssuesDefaultMode();
+    this.viewMode = getRecentIssuesDefaultMode();
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
-      this.setViewMode('group');
+      this.setViewMode('grouped');
     }));
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.list', () => {
@@ -161,10 +160,9 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     // Group mode
     const groups = this.groupFiles(fileStats);
     // 仅“今天”、“昨天”、“最近一周”分组默认展开，其他分组保持折叠
-    const expandedLabels = ['今天', '昨天', '最近一周'];
-    return groups.map(group => new GroupTreeItem(group.label, group.files, group.type, expandedLabels.includes(group.label)));
+    const DEFAULT_EXPANDED_LABELS = ['今天', '昨天', '最近一周'];
+    return groups.map(group => new GroupTreeItem(group.label, group.files, group.type, DEFAULT_EXPANDED_LABELS.includes(group.label)));
   }
-
   /**
    * 从缓存或文件系统获取文件统计信息。
    * @returns FileStat 数组或 null
