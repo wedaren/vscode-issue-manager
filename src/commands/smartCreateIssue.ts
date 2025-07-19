@@ -247,7 +247,20 @@ async function handleBatchSelection(
             if (item.description) {
                 try {
                     const issueDir = getIssueDir();
-                    const uri = vscode.Uri.file(path.join(issueDir!, item.description));
+                    if (!issueDir) {
+                        // 此情况应由上层调用者保证，但作为安全措施，在此处处理
+                        vscode.window.showErrorMessage('问题目录未配置，无法打开文件。');
+                        continue;
+                    }
+                    const notePath = path.resolve(issueDir, item.description);
+
+                    // 安全检查：确保解析后的路径在 issueDir 目录内
+                    if (!notePath.startsWith(path.resolve(issueDir))) {
+                        vscode.window.showErrorMessage(`检测到不安全的路径，已阻止打开: ${item.description}`);
+                        continue;
+                    }
+
+                    const uri = vscode.Uri.file(notePath);
                     await vscode.workspace.fs.stat(uri);
                     uris.push(uri);
                     await vscode.window.showTextDocument(uri);
