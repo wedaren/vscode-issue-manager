@@ -194,8 +194,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       files.map(async (file) => {
         const filePath = path.join(issueDir, file);
         const stats = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
-        const cTime = parseFileNameTimestamp(file);
-        return { file, filePath, mtime: cTime || new Date(stats.mtime), ctime: new Date(stats.ctime) };
+        const creationTimeFromFile = parseFileNameTimestamp(file);
+        return { file, filePath, mtime: new Date(stats.mtime), ctime: creationTimeFromFile || new Date(stats.ctime) };
       })
     );
 

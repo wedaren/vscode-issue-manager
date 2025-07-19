@@ -4,20 +4,18 @@
  * @returns {Date|null} 解析成功返回 Date，否则返回 null
  */
 export function parseFileNameTimestamp(fileName: string): Date | null {
-  const timeRegex = /(\d{8}-\d{6})(?:-(\d{3}))?/;
+  // 使用具名捕获组的正则表达式，提升可读性和健壮性
+  const timeRegex = /(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(\d{3}))?/;
   const match = fileName.match(timeRegex);
   if (match) {
-    const base = match[1];
-    const ms = match[2] || '000';
-    // YYYYMMDD-HHmmss
-    const year = parseInt(base.slice(0, 4));
-    const month = parseInt(base.slice(4, 6)) - 1;
-    const day = parseInt(base.slice(6, 8));
-    const hour = parseInt(base.slice(9, 11));
-    const min = parseInt(base.slice(11, 13));
-    const sec = parseInt(base.slice(13, 15));
-    const msInt = parseInt(ms);
-    return new Date(year, month, day, hour, min, sec, msInt);
+    const year = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1; // Date 构造函数中的月份是从 0 开始的
+    const day = parseInt(match[3], 10);
+    const hour = parseInt(match[4], 10);
+    const min = parseInt(match[5], 10);
+    const sec = parseInt(match[6], 10);
+    const ms = match[7] ? parseInt(match[7], 10) : 0;
+    return new Date(year, month, day, hour, min, sec, ms);
   }
   return null;
 }
