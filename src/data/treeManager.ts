@@ -410,7 +410,7 @@ export function toFocusedId(id: string, focusedRootID: string): string {
  * @returns 移除聚焦部分后的主 ID 字符串。
  */
 export function stripFocusedId(id: string): string {
-  return id.split("::")[0]
+  return id.split("::")[0];
 }
 
 export function isFocusedRootId(id: string): boolean {
@@ -524,5 +524,22 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
     await vscode.workspace.fs.writeFile(vscode.Uri.file(quickPickPath), content);
   } catch (error) {
     vscode.window.showErrorMessage(`写入 quickPickData.json 失败: ${error}`);
+  }
+};
+
+/**
+ * 读取 titleCache.json 文件，返回 { [filePath]: title }
+ */
+export const readTitleCacheJson = async (): Promise<Record<string, string>> => {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return {};
+  }
+  const cachePath = path.join(issueDir, '.issueManager', 'titleCache.json');
+  try {
+    const content = await vscode.workspace.fs.readFile(vscode.Uri.file(cachePath));
+    return JSON.parse(content.toString());
+  } catch (e) {
+    return {};
   }
 };

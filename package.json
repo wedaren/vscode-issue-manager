@@ -85,6 +85,10 @@
         "command": "issueManager.copyFilename",
         "title": "复制文件名",
         "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.viewRelatedIssues",
+        "title": "查看关联问题"
       }
     ],
     "submenus": [
@@ -221,6 +225,11 @@
           "command": "issueManager.copyFilename",
           "when": "viewItem == 'recentIssue' || viewItem == 'issueNode' || viewItem == 'focusedNode' || viewItem == 'focusedNodeFirst' || viewItem == 'isolatedIssue'",
           "group": "modification@4"
+        },
+        {
+          "command": "issueManager.viewRelatedIssues",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')",
+          "group": "modification@5"
         }
       ]
     },
@@ -263,6 +272,11 @@
         {
           "id": "issueManager.views.recent",
           "name": "最近问题",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.related",
+          "name": "关联问题",
           "icon": "resources/icon.svg"
         }
       ]
