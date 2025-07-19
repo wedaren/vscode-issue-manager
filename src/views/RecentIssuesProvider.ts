@@ -27,9 +27,10 @@ class GroupTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
     public readonly files: FileStat[],
-    public readonly type: GroupType
+    public readonly type: GroupType,
+    public readonly expanded: boolean = false // 新增参数，控制展开状态
   ) {
-    super(label, vscode.TreeItemCollapsibleState.Collapsed);
+    super(label, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
     this.description = `(${files.length})`;
     this.contextValue = `group-${type}`;
   }
@@ -44,11 +45,13 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-  private viewMode: ViewMode = 'list'; // 默认为列表模式
+  private viewMode: ViewMode; // 默认值由配置项决定
   private sortOrder: 'mtime' | 'ctime' = 'ctime'; // 默认为创建时间
   private fileStatsCache: FileStat[] | null = null;
 
   constructor(private context: vscode.ExtensionContext) {
+    // 初始化时根据配置项设置默认模式
+    this.viewMode = require('../config').getRecentIssuesDefaultMode();
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
       this.setViewMode('group');
@@ -157,7 +160,9 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     // Group mode
     const groups = this.groupFiles(fileStats);
-    return groups.map(group => new GroupTreeItem(group.label, group.files, group.type));
+    // 仅“今天”、“昨天”、“最近一周”分组默认展开，其他分组保持折叠
+    const expandedLabels = ['今天', '昨天', '最近一周'];
+    return groups.map(group => new GroupTreeItem(group.label, group.files, group.type, expandedLabels.includes(group.label)));
   }
 
   /**
@@ -283,7 +288,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     }
 
     const dayGroups = Array.from(filesByDay.entries()).map(([dayLabel, dayFiles]) => {
-      return new GroupTreeItem(dayLabel, dayFiles, 'day');
+      return new GroupTreeItem(dayLabel, dayFiles, 'day'); 
     });
     return dayGroups;
   }
