@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
+import { getUri } from '../utils/fileUtils';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
@@ -24,15 +25,6 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     /** 刷新视图 */
     refresh(): void {
         this._onDidChangeTreeData.fire();
-    }
-
-    /** 获取视图标题 */
-    getViewTitle(): string {
-        if (!this.contextUri) {
-            return '关联问题';
-        }
-        const title = (this.contextUri.fsPath.split('/').pop() || '');
-        return `关联问题: ${title}`;
     }
 
     /** 获取根节点 */
@@ -78,15 +70,21 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         // 父路径（祖先链）
         const parentIssueNode = parentNodes.pop();
         const parentTitles = await Promise.all(parentNodes.map(n => n.resourceUri ? getTitle(n.resourceUri) : (n.filePath || '')));
+        // 辅助方法：获取节点标题
+        const getNodeTitle = async (n: IssueTreeNode) => {
+            return getTitle(n.resourceUri || getUri(n.filePath));
+        };
+
         const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
-            label: parentIssueNode.resourceUri ? await getTitle(parentIssueNode.resourceUri) : (parentIssueNode.filePath || ''),
+            label: await getNodeTitle(parentIssueNode),
             type: 'parent',
-            tooltip: parentTitles.join(' / '),
+            tooltip: (await Promise.all(parentNodes.map(getNodeTitle))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
         } : undefined;
+
         // 当前问题
         const currentNode: RelatedIssueNode = {
-            label: node.resourceUri ? await getTitle(node.resourceUri) : (node.filePath || ''),
+            label: await getNodeTitle(node),
             type: 'current',
             resourceUri: node.resourceUri,
             children: [],
@@ -94,41 +92,38 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
         // 同级节点
         let siblings: RelatedIssueNode[] = [];
-        if (parentNodes.length > 0) {
-            const parent = parentNodes[parentNodes.length - 1];
-            const siblingPromises = (parent.children || [])
-                .filter((s: IssueTreeNode) => s.id !== node.id)
-                .map(async (s: IssueTreeNode) => ({
-                    label: s.resourceUri ? await getTitle(s.resourceUri) : (s.filePath || ''),
-                    type: 'sibling' as const,
-                    resourceUri: s.resourceUri,
-                    children: [],
-                }));
+        if (parentIssueNode) {
+            const siblingPromises = (parentIssueNode.children || [])
+            .filter((s: IssueTreeNode) => s.id !== node.id)
+            .map(async (s: IssueTreeNode) => ({
+                label: await getNodeTitle(s),
+                type: 'sibling' as const,
+                resourceUri: s.resourceUri,
+                children: [],
+            }));
             siblings = await Promise.all(siblingPromises);
         }
 
         // 子节点
         const childPromises = (node.children || []).map(async (c: IssueTreeNode) => ({
-            label: c.resourceUri ? await getTitle(c.resourceUri) : (c.filePath || ''),
+            label: await getNodeTitle(c),
             type: 'child' as const,
             resourceUri: c.resourceUri,
             children: [],
         }));
         const children: RelatedIssueNode[] = await Promise.all(childPromises);
 
-
         if (parentNode) {
-
             const result: RelatedIssueNode = {
-                label: parentNode.label,
-                type: 'parent',
-                tooltip: parentNode.tooltip,
-                resourceUri: parentNode.resourceUri,
-                children: [
-                    currentNode,
-                    ...siblings,
-                    ...(children.length > 0 ? children : []),
-                ],
+            label: parentNode.label,
+            type: 'parent',
+            tooltip: parentNode.tooltip,
+            resourceUri: parentNode.resourceUri,
+            children: [
+                currentNode,
+                ...siblings,
+                ...(children.length > 0 ? children : []),
+            ],
             };
             return result;
         } else {
