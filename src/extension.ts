@@ -12,6 +12,7 @@ import { debounce } from './utils/debounce';
 import { RecordContentTool } from './llm/RecordContentTool';
 import { smartCreateIssue } from './commands/smartCreateIssue';
 import { addIssueToTree } from './commands/issueFileUtils';
+import { registerRelatedIssuesView } from './views/relatedIssuesViewRegistration';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -331,6 +332,8 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		})
 	);
+
+	registerRelatedIssuesView(context);
 }
 
 // 当您的扩展被停用时，将调用此方法
