@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
+import { parseFileNameTimestamp } from '../utils/fileUtils';
 
 type ViewMode = 'list' | 'group';
 
@@ -192,9 +193,9 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const fileStats: FileStat[] = await Promise.all(
       files.map(async (file) => {
         const filePath = path.join(issueDir, file);
-        // VS Code 推荐使用 workspace.fs.stat 以兼容虚拟文件系统
         const stats = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
-        return { file, filePath, mtime: new Date(stats.mtime), ctime: new Date(stats.ctime) };
+        const creationTimeFromFile = parseFileNameTimestamp(file);
+        return { file, filePath, mtime: new Date(stats.mtime), ctime: creationTimeFromFile || new Date(stats.ctime) };
       })
     );
 

@@ -1,3 +1,24 @@
+/**
+ * 解析文件名中的时间戳，兼容 YYYYMMDD-HHmmss 和 YYYYMMDD-HHmmss-SSS
+ * @param fileName 文件名字符串
+ * @returns {Date|null} 解析成功返回 Date，否则返回 null
+ */
+export function parseFileNameTimestamp(fileName: string): Date | null {
+  // 使用具名捕获组的正则表达式，提升可读性和健壮性
+  const timeRegex = /(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(\d{3}))?/;
+  const match = fileName.match(timeRegex);
+  if (match) {
+    const year = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1; // Date 构造函数中的月份是从 0 开始的
+    const day = parseInt(match[3], 10);
+    const hour = parseInt(match[4], 10);
+    const min = parseInt(match[5], 10);
+    const sec = parseInt(match[6], 10);
+    const ms = match[7] ? parseInt(match[7], 10) : 0;
+    return new Date(year, month, day, hour, min, sec, ms);
+  }
+  return null;
+}
 import * as vscode from 'vscode';
 
 /**
