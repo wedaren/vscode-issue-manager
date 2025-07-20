@@ -235,7 +235,7 @@
       "editor/context": [
         {
           "command": "issueManager.viewRelatedIssues",
-          "when": "resourceExtname == .md && issueManager.isDirConfigured",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
           "group": "navigation@5",
           "title": "发现关联问题"
         }
