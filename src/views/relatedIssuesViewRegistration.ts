@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
+import { IssueTreeNode } from '../data/treeManager';
 
 /**
  * 注册“关联问题视图”及相关命令
@@ -21,11 +22,11 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   }));
 
   // 注册命令：打开并在问题总览中定位
-  context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (resourceUri: vscode.Uri) => {
-    if (!resourceUri) { return; }
+  context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode) => {
+    if (!node || !node.resourceUri) { return; }
     // 打开文件
-    await vscode.window.showTextDocument(resourceUri, { preview: false });
+    await vscode.window.showTextDocument(node.resourceUri, { preview: false });
     // 在问题总览视图定位并高亮
-    await vscode.commands.executeCommand('issueManager.views.overview.reveal', resourceUri, { select: true, focus: true, expand: true });
+    await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
   }));
 }

@@ -69,7 +69,6 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     private async buildReferenceNode(node: IssueTreeNode, parentNodes: IssueTreeNode[]): Promise<RelatedIssueNode> {
         // 父路径（祖先链）
         const parentIssueNode = parentNodes.pop();
-        const parentTitles = await Promise.all(parentNodes.map(n => n.resourceUri ? getTitle(n.resourceUri) : (n.filePath || '')));
         // 辅助方法：获取节点标题
         const getNodeTitle = async (n: IssueTreeNode) => {
             return getTitle(n.resourceUri || getUri(n.filePath));
@@ -78,57 +77,48 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
             label: await getNodeTitle(parentIssueNode),
             type: 'parent',
+            filePath: parentIssueNode.filePath,
+            children: [],
             tooltip: (await Promise.all(parentNodes.map(getNodeTitle))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
+            id: parentIssueNode.id,
         } : undefined;
 
         // 当前问题
         const currentNode: RelatedIssueNode = {
             label: await getNodeTitle(node),
             type: 'current',
+            filePath: node.filePath,
             resourceUri: node.resourceUri,
-            children: [],
+            id: node.id,
+            children: node.children ? await Promise.all(node.children.map(async (child: IssueTreeNode) => ({
+                label: await getNodeTitle(child),
+                type: 'child',
+                filePath: child.filePath,
+                children: [],
+                resourceUri: child.resourceUri,
+                id: child.id,
+            }))) : [],
         };
 
-        // 同级节点
-        let siblings: RelatedIssueNode[] = [];
-        if (parentIssueNode) {
-            const siblingPromises = (parentIssueNode.children || [])
-            .filter((s: IssueTreeNode) => s.id !== node.id)
-            .map(async (s: IssueTreeNode) => ({
-                label: await getNodeTitle(s),
-                type: 'sibling' as const,
-                resourceUri: s.resourceUri,
-                children: [],
-            }));
-            siblings = await Promise.all(siblingPromises);
-        }
-
-        // 子节点
-        const childPromises = (node.children || []).map(async (c: IssueTreeNode) => ({
-            label: await getNodeTitle(c),
-            type: 'child' as const,
-            resourceUri: c.resourceUri,
-            children: [],
-        }));
-        const children: RelatedIssueNode[] = await Promise.all(childPromises);
+        // 已移除同级节点 siblings 相关逻辑，提升代码可读性与维护性
 
         if (parentNode) {
             const result: RelatedIssueNode = {
             label: parentNode.label,
             type: 'parent',
+            filePath: parentNode.filePath,
             tooltip: parentNode.tooltip,
+            id: parentNode.id,
             resourceUri: parentNode.resourceUri,
             children: [
                 currentNode,
-                ...siblings,
-                ...(children.length > 0 ? children : []),
+                // ...siblings
             ],
             };
             return result;
         } else {
             currentNode.type = 'current';
-            currentNode.children = children;
             return currentNode;
         }
     }
@@ -143,7 +133,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.command = element.resourceUri ? {
             command: 'issueManager.openAndRevealIssue',
             title: '打开并定位问题',
-            arguments: [element.resourceUri]
+            arguments: [element]
         } : undefined;
         return item;
     }
@@ -152,11 +142,10 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 /**
  * 关联问题节点类型
  */
-export interface RelatedIssueNode {
+export interface RelatedIssueNode extends IssueTreeNode{
     label: string;
     type: 'parent' | 'current' | 'sibling' | 'child';
     tooltip?: string;
     icon?: string;
-    resourceUri?: vscode.Uri;
-    children?: RelatedIssueNode[];
+    children: RelatedIssueNode[];
 }
