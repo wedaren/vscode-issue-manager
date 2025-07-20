@@ -101,21 +101,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             }))) : [],
         };
 
-        // // 同级节点
-        // let siblings: RelatedIssueNode[] = [];
-        // if (parentIssueNode) {
-        //     const siblingPromises = (parentIssueNode.children || [])
-        //     .filter((s: IssueTreeNode) => s.id !== node.id)
-        //     .map(async (s: IssueTreeNode) => ({
-        //         label: await getNodeTitle(s),
-        //         type: 'sibling' as const,
-        //         resourceUri: s.resourceUri,
-        //         filePath: s.filePath,
-        //         id: s.id,
-        //         children: [],
-        //     }));
-        //     siblings = await Promise.all(siblingPromises);
-        // }
+        // 已移除同级节点 siblings 相关逻辑，提升代码可读性与维护性
 
         if (parentNode) {
             const result: RelatedIssueNode = {
@@ -144,7 +130,6 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
         item.description = element.type === 'parent' ? element.tooltip : '';
         item.contextValue = 'relatedIssueNode';
-        console.log(`Rendering item: ${element} (${element.type})`);
         item.command = element.resourceUri ? {
             command: 'issueManager.openAndRevealIssue',
             title: '打开并定位问题',
@@ -162,7 +147,5 @@ export interface RelatedIssueNode extends IssueTreeNode{
     type: 'parent' | 'current' | 'sibling' | 'child';
     tooltip?: string;
     icon?: string;
-    resourceUri?: vscode.Uri;
-    id: string;
     children: RelatedIssueNode[];
 }

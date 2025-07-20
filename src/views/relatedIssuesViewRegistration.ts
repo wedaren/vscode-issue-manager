@@ -25,9 +25,8 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode) => {
     if (!node || !node.resourceUri) { return; }
     // 打开文件
-    // await vscode.window.showTextDocument(node.resourceUri, { preview: false });
+    await vscode.window.showTextDocument(node.resourceUri, { preview: false });
     // 在问题总览视图定位并高亮
-    console.log(`Revealing issue in overview: ${node.id} (${node.filePath})`);
     await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
   }));
 }
