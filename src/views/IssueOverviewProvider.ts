@@ -6,6 +6,30 @@ import { getTitle } from '../utils/markdown';
 import { readFocused } from '../data/focusedManager';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
+  /**
+   * 查找父节点
+   */
+  getParent(element: IssueTreeNode): IssueTreeNode | null {
+    if (!this.treeData) { return null; }
+    // 递归查找父节点
+    const findParent = (node: IssueTreeNode, target: IssueTreeNode): IssueTreeNode | null => {
+      if (node.children && node.children.some(child => child.id === target.id)) {
+        return node;
+      }
+      if (node.children) {
+        for (const child of node.children) {
+          const parent = findParent(child, target);
+          if (parent) { return parent; }
+        }
+      }
+      return null;
+    };
+    for (const root of this.treeData.rootNodes) {
+      const parent = findParent(root, element);
+      if (parent) { return parent; }
+    }
+    return null;
+  }
   private _onDidChangeTreeData: vscode.EventEmitter<IssueTreeNode | undefined | null | void> = new vscode.EventEmitter<IssueTreeNode | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<IssueTreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
 

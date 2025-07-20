@@ -139,9 +139,10 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.tooltip = element.tooltip;
         item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
         item.description = element.type === 'parent' ? element.tooltip : '';
+        item.contextValue = 'relatedIssueNode';
         item.command = element.resourceUri ? {
-            command: 'vscode.open',
-            title: '打开问题',
+            command: 'issueManager.openAndRevealIssue',
+            title: '打开并定位问题',
             arguments: [element.resourceUri]
         } : undefined;
         return item;
