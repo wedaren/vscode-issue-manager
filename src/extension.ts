@@ -57,10 +57,10 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(overviewView);
 
 	// 注册“问题总览”视图定位命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.overview.reveal', async (resourceUri: vscode.Uri, options?: { select?: boolean; focus?: boolean; expand?: boolean }) => {
-		if (!resourceUri) { return; }
-		// 优化：直接通过数据提供者查找节点，避免重复读取 tree.json
-		const targetNode = issueOverviewProvider.findNodeByUri(resourceUri);
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.overview.reveal', async (targetNode: IssueTreeNode, options?: { select?: boolean; focus?: boolean; expand?: boolean }) => {
+		// if (!resourceUri) { return; }
+		// // 优化：直接通过数据提供者查找节点，避免重复读取 tree.json
+		// const targetNode = issueOverviewProvider.findNodeByUri(resourceUri);
 		if (targetNode) {
 			await overviewView.reveal(targetNode, options || { select: true, focus: true, expand: true });
 		}
