@@ -19,4 +19,13 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
     const resourceUri = uriOrNode instanceof vscode.Uri ? uriOrNode : uriOrNode?.resourceUri;
     relatedIssuesProvider.updateContext(resourceUri);
   }));
+
+  // 注册命令：打开并在问题总览中定位
+  context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (resourceUri: vscode.Uri) => {
+    if (!resourceUri) { return; }
+    // 打开文件
+    await vscode.window.showTextDocument(resourceUri, { preview: false });
+    // 在问题总览视图定位并高亮
+    await vscode.commands.executeCommand('issueManager.views.overview.reveal', resourceUri, { select: true, focus: true, expand: true });
+  }));
 }

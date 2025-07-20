@@ -89,6 +89,10 @@
       {
         "command": "issueManager.viewRelatedIssues",
         "title": "查看关联问题"
+      },
+      {
+        "command": "issueManager.openAndRevealIssue",
+        "title": "在问题总览中查看"
       }
     ],
     "submenus": [
