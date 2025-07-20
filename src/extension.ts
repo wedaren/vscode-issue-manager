@@ -25,30 +25,6 @@ function updateConfigContext() {
 
 // 当您的扩展被激活时，将调用此方法
 export function activate(context: vscode.ExtensionContext) {
-	// 注册“问题总览”视图定位命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.overview.reveal', async (resourceUri: vscode.Uri, options?: { select?: boolean; focus?: boolean; expand?: boolean }) => {
-		if (!resourceUri) { return; }
-		// 查找树节点
-		const treeData = await readTree();
-		let targetNode: IssueTreeNode | undefined;
-		const findNode = (node: IssueTreeNode): IssueTreeNode | undefined => {
-			if (node.resourceUri?.fsPath === resourceUri.fsPath) { return node; }
-			if (node.children) {
-				for (const child of node.children) {
-					const found = findNode(child);
-					if (found) { return found; }
-				}
-			}
-			return undefined;
-		};
-		for (const root of treeData.rootNodes || []) {
-			targetNode = findNode(root);
-			if (targetNode) { break; }
-		}
-		if (targetNode) {
-			await overviewView.reveal(targetNode, options || { select: true, focus: true, expand: true });
-		}
-	}));
 
 	console.log('恭喜，您的扩展“issue-manager”现已激活！');
 
@@ -79,6 +55,17 @@ export function activate(context: vscode.ExtensionContext) {
 		canSelectMany: true // 允许多选
 	});
 	context.subscriptions.push(overviewView);
+
+	// 注册“问题总览”视图定位命令
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.overview.reveal', async (resourceUri: vscode.Uri, options?: { select?: boolean; focus?: boolean; expand?: boolean }) => {
+		if (!resourceUri) { return; }
+		// 优化：直接通过数据提供者查找节点，避免重复读取 tree.json
+		const targetNode = issueOverviewProvider.findNodeByUri(resourceUri);
+		if (targetNode) {
+			await overviewView.reveal(targetNode, options || { select: true, focus: true, expand: true });
+		}
+	}));
+
 
 	const isolatedView = vscode.window.createTreeView('issueManager.views.isolated', {
 		treeDataProvider: isolatedIssuesProvider,
