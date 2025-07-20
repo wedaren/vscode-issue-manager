@@ -228,8 +228,16 @@
         },
         {
           "command": "issueManager.viewRelatedIssues",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent')",
           "group": "modification@5"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "issueManager.viewRelatedIssues",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "group": "navigation@5",
+          "title": "发现关联问题"
         }
       ]
     },
