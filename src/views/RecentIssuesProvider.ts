@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getIssueDir, getRecentIssuesDefaultMode,type ViewMode } from '../config';
+import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
 import { getTitle } from '../utils/markdown';
 import { parseFileNameTimestamp } from '../utils/fileUtils';
 
@@ -71,9 +71,14 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     this.setSortContext();
     this.setViewModeContext();
 
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndViewRelatedIssues', async (uri: vscode.Uri, title: string) => {
-      await vscode.window.showTextDocument(uri);
-      vscode.commands.executeCommand('issueManager.viewRelatedIssues', uri);
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndViewRelatedIssues', async (uri: vscode.Uri) => {
+      try {
+        await vscode.window.showTextDocument(uri);
+        await vscode.commands.executeCommand('issueManager.viewRelatedIssues', uri);
+      } catch (error) {
+        console.error(`打开并查看关联问题失败: ${uri.fsPath}`, error);
+        vscode.window.showErrorMessage('打开并查看关联问题失败。');
+      }
     }));
 
     vscode.workspace.onDidChangeConfiguration(e => {
@@ -291,7 +296,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     }
 
     const dayGroups = Array.from(filesByDay.entries()).map(([dayLabel, dayFiles]) => {
-      return new GroupTreeItem(dayLabel, dayFiles, 'day'); 
+      return new GroupTreeItem(dayLabel, dayFiles, 'day');
     });
     return dayGroups;
   }
@@ -368,7 +373,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     for (const file of files) {
       const fileDateSource = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
-      
+
       for (const group of groupDefinitions) {
         if (group.test(fileDateSource)) {
           group.files.push(file);
