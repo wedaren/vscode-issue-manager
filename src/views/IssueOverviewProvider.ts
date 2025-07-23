@@ -116,7 +116,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
 
     item.id = element.id;
     item.resourceUri = uri;
-    if(isFocused){
+    if (isFocused) {
       item.contextValue = 'focusedNode'; // 根据关注状态设置 contextValue
       item.iconPath = new vscode.ThemeIcon('star');
     } else {
