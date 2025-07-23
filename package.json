@@ -91,6 +91,10 @@
         "title": "查看关联问题"
       },
       {
+        "command": "issueManager.openAndViewRelatedIssues",
+        "title": "打开并查看关联问题"
+      },
+      {
         "command": "issueManager.openAndRevealIssue",
         "title": "在问题总览中查看"
       }
