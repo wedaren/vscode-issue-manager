@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { getIssueDir } from '../config';
+
 import { readTree, IssueTreeNode } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
 
@@ -15,6 +14,7 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
         quickPick.placeholder = '请输入要搜索的问题标题或关键词...';
         quickPick.matchOnDescription = true;
         quickPick.matchOnDetail = false;
+        quickPick.show();
 
         const treeData =  await readTree();
 
@@ -25,7 +25,6 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
         function flatten(nodes: IssueTreeNode[], parentNodes: IssueTreeNode[] = []): FlatNode[] {
             let result: FlatNode[] = [];
             for (const node of nodes) {
-                const filePath = node.filePath || '';
                 result.push({
                     ...node,
                     parentPath: [...parentNodes]
@@ -79,20 +78,25 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
         quickPick.items = items;
         quickPick.busy = false;
 
+        // 关闭时自动释放资源
+        quickPick.onDidHide(() => quickPick.dispose());
+
         quickPick.onDidAccept(async () => {
-            const selected = quickPick.selectedItems[0] as QuickPickItemWithId;
-            if (selected) {
-                // 直接用扁平化节点查找，定位主树节点
-                const node = flatNodes.find(n => n.id === selected.id);
-                if (node) {
-                    await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
-                } else {
-                    vscode.window.showWarningMessage('未找到对应问题节点，无法定位。');
+            try {
+                const selected = quickPick.selectedItems[0] as QuickPickItemWithId;
+                if (selected) {
+                    // 直接用扁平化节点查找，定位主树节点
+                    const node = flatNodes.find(n => n.id === selected.id);
+                    if (node) {
+                        await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+                    } else {
+                        vscode.window.showWarningMessage('未找到对应问题节点，无法定位。');
+                    }
                 }
+            } catch (error) {
+                vscode.window.showWarningMessage('未找到对应问题节点，无法定位。');
             }
-            quickPick.hide();
         });
-        quickPick.show();
     });
     context.subscriptions.push(disposable);
 }
