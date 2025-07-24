@@ -25,6 +25,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.searchIssues",
+        "title": "搜索问题",
+        "icon": "$(search)"
+
+      },
+      {
         "command": "issueManager.createIssueFromOverview",
         "title": "新建问题",
         "icon": "$(add)"
@@ -132,6 +138,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "issueManager.searchIssues",
+          "when": "view == issueManager.views.overview",
+          "group": "navigation@1"
+        },
         {
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.isolated",
