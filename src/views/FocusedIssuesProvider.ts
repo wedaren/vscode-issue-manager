@@ -71,8 +71,8 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     }
 
     item.command = {
-      command: 'vscode.open',
-      title: 'Open File',
+      command: 'issueManager.openAndViewRelatedIssues',
+      title: '打开并查看关联问题',
       arguments: [uri],
     };
 

@@ -123,8 +123,8 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
       item.contextValue = 'issueNode';
     }
     item.command = {
-      command: 'vscode.open',
-      title: 'Open File',
+      command: 'issueManager.openAndViewRelatedIssues',
+      title: '打开并查看关联问题',
       arguments: [uri],
     };
 
