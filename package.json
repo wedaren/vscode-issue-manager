@@ -36,6 +36,7 @@
       },
       {
         "command": "issueManager.deleteIssue",
+        "icon": "$(trash)",
         "title": "删除"
       },
       {
@@ -44,7 +45,8 @@
       },
       {
         "command": "issueManager.createChildIssue",
-        "title": "新建问题"
+        "title": "新建子问题",
+        "icon": "$(add)"
       },
       {
         "command": "issueManager.focusIssue",
@@ -60,7 +62,7 @@
       },
       {
         "command": "issueManager.pinFocus",
-        "title": "置顶"
+        "title": "置顶关注问题"
       },
       {
         "command": "issueManager.refreshAllViews",
@@ -89,6 +91,7 @@
       {
         "command": "issueManager.copyFilename",
         "title": "复制文件名",
+        "icon": "$(file-symlink-file)",
         "category": "Issue Manager"
       },
       {
@@ -227,7 +230,7 @@
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.isolated'",
-          "group": "modification@1"
+          "group": "inline"
         },
         {
           "command": "issueManager.disassociateIssue",
@@ -237,7 +240,7 @@
         {
           "command": "issueManager.createChildIssue",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')",
-          "group": "modification@1"
+          "group": "inline"
         },
         {
           "command": "issueManager.focusIssue",
@@ -256,18 +259,13 @@
         },
         {
           "command": "issueManager.pinFocus",
-          "when": "view == 'issueManager.views.focused' && viewItem == 'focusedNode'",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem == 'focusedNode'",
           "group": "modification@3"
         },
         {
           "command": "issueManager.copyFilename",
           "when": "viewItem == 'recentIssue' || viewItem == 'issueNode' || viewItem == 'focusedNode' || viewItem == 'focusedNodeFirst' || viewItem == 'isolatedIssue'",
-          "group": "modification@4"
-        },
-        {
-          "command": "issueManager.viewRelatedIssues",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent')",
-          "group": "modification@5"
+          "group": "inline"
         }
       ],
       "editor/context": [
