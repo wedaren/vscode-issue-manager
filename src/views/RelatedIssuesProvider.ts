@@ -140,7 +140,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 }
 
 /**
- * 关联问题节点类型
+ * 相关联问题节点类型
  */
 export interface RelatedIssueNode extends IssueTreeNode{
     label: string;

@@ -3,7 +3,7 @@ import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
 import { IssueTreeNode } from '../data/treeManager';
 
 /**
- * 注册“关联问题视图”及相关命令
+ * 注册“相关联问题视图”及相关命令
  */
 export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   // 创建数据提供者实例

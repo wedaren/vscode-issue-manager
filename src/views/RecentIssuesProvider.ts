@@ -76,8 +76,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         await vscode.window.showTextDocument(uri);
         await vscode.commands.executeCommand('issueManager.viewRelatedIssues', uri);
       } catch (error) {
-        console.error(`打开并查看关联问题失败: ${uri.fsPath}`, error);
-        vscode.window.showErrorMessage('打开并查看关联问题失败。');
+        console.error(`打开并查看相关联问题失败: ${uri.fsPath}`, error);
+        vscode.window.showErrorMessage('打开并查看相关联问题失败。');
       }
     }));
 
@@ -303,7 +303,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
   /**
    * 创建最近问题的树节点，并绑定自定义点击命令。
-   * 点击时自动打开文件并查看关联问题。
+   * 点击时自动打开文件并查看相关联问题。
    */
   private async createFileTreeItem(fileStat: FileStat): Promise<vscode.TreeItem> {
     const uri = vscode.Uri.file(fileStat.filePath);
@@ -312,7 +312,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     item.resourceUri = uri;
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
-      title: '打开并查看关联问题',
+      title: '打开并查看相关联问题',
       arguments: [uri],
     };
     item.contextValue = 'recentIssue'; // 用于右键菜单
