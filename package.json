@@ -273,7 +273,7 @@
         },
         {
           "command": "issueManager.moveTo",
-          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "when": "view == 'issueManager.views.overview'",
           "group": "navigation@4"
         }
       ],
