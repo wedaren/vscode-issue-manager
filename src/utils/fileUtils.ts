@@ -3,7 +3,7 @@
  * @param fileName 文件名字符串
  * @returns {Date|null} 解析成功返回 Date，否则返回 null
  */
-export function parseFileNameTimestamp(fileName: string): Date | null {
+function parseFileNameTimestamp(fileName: string): Date | null {
   // 使用具名捕获组的正则表达式，提升可读性和健壮性
   const timeRegex = /(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(\d{3}))?/;
   const match = fileName.match(timeRegex);
@@ -19,6 +19,7 @@ export function parseFileNameTimestamp(fileName: string): Date | null {
   }
   return null;
 }
+import path from 'path';
 import * as vscode from 'vscode';
 
 /**
@@ -45,4 +46,26 @@ export function generateFileName(): string {
  */
 export function getUri(fsPath: string): vscode.Uri {
   return vscode.Uri.file(fsPath);
+}
+
+
+export async function getCtime(fileUri: vscode.Uri): Promise<Date> {
+  const filename = path.basename(fileUri.path);
+  const creationTime = parseFileNameTimestamp(filename);
+  if (creationTime) {
+    return creationTime;
+  }
+  const stat = await vscode.workspace.fs.stat(fileUri);
+  if (stat.ctime) {
+    return new Date(stat.ctime);
+  }
+  return new Date(); // 如果无法获取创建时间，返回当前时间
+}
+
+export async function getMtime(fileUri: vscode.Uri): Promise<Date> {
+  const stat = await vscode.workspace.fs.stat(fileUri);
+  if (stat.mtime) {
+    return new Date(stat.mtime);
+  }
+  return new Date(); // 如果无法获取修改时间，返回当前时间
 }
