@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
-import { readTree } from '../data/treeManager';
+import { getAssociatedFiles, readTree } from '../data/treeManager';
+import { getCtimeOrNow } from '../utils/fileUtils';
 
 /**
  * 定义 IssueItem 类型，确保每个节点都绑定一个 markdown 文件的 resourceUri。
@@ -22,6 +23,14 @@ export class IssueItem extends vscode.TreeItem {
 }
 
 export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueItem> {
+
+    /**
+     * 获取指定元素的父节点。由于是扁平列表，始终返回 null。
+     * 该方法用于支持 VS Code TreeView 的 reveal 机制。
+     */
+    getParent(element: IssueItem): IssueItem | null {
+        return null;
+    }
 
     private _onDidChangeTreeData: vscode.EventEmitter<IssueItem | undefined | null | void> = new vscode.EventEmitter<IssueItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<IssueItem | undefined | null | void> = this._onDidChangeTreeData.event;
@@ -54,38 +63,22 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueItem
         }
 
         try {
-            // 1. 读取当前的树状结构，获取所有已关联的文件路径
-            const treeData = await readTree();
-            const associatedFiles = new Set<string>();
-            function collectPaths(nodes: any[]) {
-                for (const node of nodes) {
-                    associatedFiles.add(path.normalize(node.filePath));
-                    if (node.children) {
-                        collectPaths(node.children);
-                    }
-                }
-            }
-            collectPaths(treeData.rootNodes);
-
-            // 2. 读取问题目录下的所有 .md 文件
+            const associatedFiles = await getAssociatedFiles();
             const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(issueDir));
             const allMdFiles = entries.filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.md'));
 
-            // 3. 过滤出未被关联的文件
             const isolatedMdFiles = allMdFiles.filter(([name, type]) => {
                 const relativePath = path.normalize(name);
                 return !associatedFiles.has(relativePath);
             });
 
-            // 4. 为孤立文件创建 TreeItem
             const filesWithStats = await Promise.all(isolatedMdFiles.map(async ([name, type]) => {
                 const fileUri = vscode.Uri.file(path.join(issueDir, name));
-                const stat = await vscode.workspace.fs.stat(fileUri);
-                return { name, uri: fileUri, ctime: stat.ctime };
+                const ctime = await getCtimeOrNow(fileUri);
+                return { name, uri: fileUri, ctime };
             }));
 
-            // 按创建时间倒序排序
-            filesWithStats.sort((a, b) => b.ctime - a.ctime);
+            filesWithStats.sort((a, b) => b.ctime.getTime() - a.ctime.getTime());
 
             const treeItems = await Promise.all(filesWithStats.map(async (file) => {
                 const title = await getTitle(file.uri);

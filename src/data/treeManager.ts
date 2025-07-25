@@ -48,10 +48,10 @@ function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => voi
 
 /**
  * 查找树中所有引用的文件路径。
- * @param tree The tree data.
  * @returns A set of relative file paths.
  */
-export function getAssociatedFiles(tree: TreeData): Set<string> {
+export async function getAssociatedFiles(): Promise<Set<string>> {
+  const tree = await readTree();
   const associatedFiles = new Set<string>();
   walkTree(tree.rootNodes, (node) => {
     associatedFiles.add(node.filePath);

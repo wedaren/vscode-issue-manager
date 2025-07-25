@@ -7,13 +7,14 @@ import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { IsolatedIssuesProvider, IssueItem } from './views/IsolatedIssuesProvider';
 import { RecentIssuesProvider } from './views/RecentIssuesProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
-import { IssueTreeNode, readTree, writeTree, removeNode, stripFocusedId, updateNodeExpanded } from './data/treeManager';
+import { IssueTreeNode, readTree, writeTree, removeNode, stripFocusedId, updateNodeExpanded, getAssociatedFiles } from './data/treeManager';
 import { addFocus, removeFocus, pinFocus } from './data/focusedManager';
 import { debounce } from './utils/debounce';
 import { RecordContentTool } from './llm/RecordContentTool';
 import { smartCreateIssue } from './commands/smartCreateIssue';
 import { addIssueToTree } from './commands/issueFileUtils';
 import { registerRelatedIssuesView } from './views/relatedIssuesViewRegistration';
+import { getTitle } from './utils/markdown';
 
 /**
  * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
@@ -61,9 +62,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“问题总览”视图定位命令
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.overview.reveal', async (targetNode: IssueTreeNode, options?: { select?: boolean; focus?: boolean; expand?: boolean }) => {
-		// if (!resourceUri) { return; }
-		// // 优化：直接通过数据提供者查找节点，避免重复读取 tree.json
-		// const targetNode = issueOverviewProvider.findNodeByUri(resourceUri);
 		if (targetNode) {
 			await overviewView.reveal(targetNode, options || { select: true, focus: true, expand: true });
 		}
@@ -76,6 +74,17 @@ export function activate(context: vscode.ExtensionContext) {
 		canSelectMany: true // 允许多选
 	});
 	context.subscriptions.push(isolatedView);
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.isolated.reveal', async (uri?: vscode.Uri) => {
+		if (uri) {
+			const associatedFiles = await getAssociatedFiles();
+			const filename = path.basename(uri.fsPath);
+			if (!associatedFiles.has(filename)){
+				const label = await getTitle(uri);
+				const issueItem = new IssueItem(label, uri);
+				await isolatedView.reveal(issueItem, { select: true, focus: true, expand: true });
+			}
+		}
+	}));
 
 	// 注册“关注问题”视图
 	const focusedIssuesProvider = new FocusedIssuesProvider(context);
