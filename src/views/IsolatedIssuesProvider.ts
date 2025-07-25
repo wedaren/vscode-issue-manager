@@ -3,7 +3,7 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { getAssociatedFiles, readTree } from '../data/treeManager';
-import { getCtime } from '../utils/fileUtils';
+import { getCtimeOrNow } from '../utils/fileUtils';
 
 /**
  * 定义 IssueItem 类型，确保每个节点都绑定一个 markdown 文件的 resourceUri。
@@ -74,7 +74,7 @@ export class IsolatedIssuesProvider implements vscode.TreeDataProvider<IssueItem
 
             const filesWithStats = await Promise.all(isolatedMdFiles.map(async ([name, type]) => {
                 const fileUri = vscode.Uri.file(path.join(issueDir, name));
-                const ctime = await getCtime(fileUri);
+                const ctime = await getCtimeOrNow(fileUri);
                 return { name, uri: fileUri, ctime };
             }));
 

@@ -49,23 +49,25 @@ export function getUri(fsPath: string): vscode.Uri {
 }
 
 
-export async function getCtime(fileUri: vscode.Uri): Promise<Date> {
-  const filename = path.basename(fileUri.path);
+export async function getCtimeOrNow(fileUri: vscode.Uri): Promise<Date> {
+  const filename = path.basename(fileUri.fsPath);
   const creationTime = parseFileNameTimestamp(filename);
   if (creationTime) {
     return creationTime;
   }
-  const stat = await vscode.workspace.fs.stat(fileUri);
-  if (stat.ctime) {
+  try {
+    const stat = await vscode.workspace.fs.stat(fileUri);
     return new Date(stat.ctime);
+  } catch {
+    return new Date(); // 如果无法获取创建时间，返回当前时间
   }
-  return new Date(); // 如果无法获取创建时间，返回当前时间
 }
 
-export async function getMtime(fileUri: vscode.Uri): Promise<Date> {
-  const stat = await vscode.workspace.fs.stat(fileUri);
-  if (stat.mtime) {
+export async function getMtimeOrNow(fileUri: vscode.Uri): Promise<Date> {
+  try {
+    const stat = await vscode.workspace.fs.stat(fileUri);
     return new Date(stat.mtime);
+  } catch {
+    return new Date(); // 如果无法获取修改时间，返回当前时间
   }
-  return new Date(); // 如果无法获取修改时间，返回当前时间
 }

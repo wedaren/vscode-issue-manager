@@ -78,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
 		if (uri) {
 			const associatedFiles = await getAssociatedFiles();
 			const filename = path.basename(uri.fsPath);
-			if( !associatedFiles.has(filename)){
+				if (!associatedFiles.has(filename)){
 				const label = await getTitle(uri);
 				const issueItem = new IssueItem(label, uri);
 				await isolatedView.reveal(issueItem, { select: true, focus: true, expand: true });

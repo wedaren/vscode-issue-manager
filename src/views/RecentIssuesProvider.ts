@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
 import { getTitle } from '../utils/markdown';
-import { getCtime, getMtime } from '../utils/fileUtils';
+import { getCtimeOrNow, getMtimeOrNow } from '../utils/fileUtils';
 
 
 /**
@@ -206,8 +206,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const fileStats: FileStat[] = await Promise.all(
       files.map(async (file) => {
         const filePath = path.join(issueDir, file);
-        const ctime = await getCtime(vscode.Uri.file(filePath));
-        const mtime = await getMtime(vscode.Uri.file(filePath));
+        const ctime = await getCtimeOrNow(vscode.Uri.file(filePath));
+        const mtime = await getMtimeOrNow(vscode.Uri.file(filePath));
         return { file, filePath, mtime, ctime };
       })
     );
