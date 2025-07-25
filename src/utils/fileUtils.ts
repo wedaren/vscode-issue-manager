@@ -1,3 +1,7 @@
+import path from 'path';
+import * as vscode from 'vscode';
+
+
 /**
  * 解析文件名中的时间戳，兼容 YYYYMMDD-HHmmss 和 YYYYMMDD-HHmmss-SSS
  * @param fileName 文件名字符串
@@ -19,8 +23,6 @@ function parseFileNameTimestamp(fileName: string): Date | null {
   }
   return null;
 }
-import path from 'path';
-import * as vscode from 'vscode';
 
 /**
  * 生成基于时间戳的文件名
@@ -58,7 +60,8 @@ export async function getCtimeOrNow(fileUri: vscode.Uri): Promise<Date> {
   try {
     const stat = await vscode.workspace.fs.stat(fileUri);
     return new Date(stat.ctime);
-  } catch {
+  } catch (error) {
+    console.error(`获取文件 ${fileUri.fsPath} 的创建时间失败:`, error);
     return new Date(); // 如果无法获取创建时间，返回当前时间
   }
 }
@@ -67,7 +70,8 @@ export async function getMtimeOrNow(fileUri: vscode.Uri): Promise<Date> {
   try {
     const stat = await vscode.workspace.fs.stat(fileUri);
     return new Date(stat.mtime);
-  } catch {
+  } catch (error) {
+    console.error(`获取文件 ${fileUri.fsPath} 的修改时间失败:`, error);
     return new Date(); // 如果无法获取修改时间，返回当前时间
   }
 }
