@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import { readTree, writeTree, IssueTreeNode, TreeData } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
-import * as path from 'path';
-import { getIssueDir } from '../config';
 
 /**
  * “移动到...”命令实现：支持多选节点移动到指定父节点，防止循环引用。
@@ -41,23 +39,20 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     return result;
   }
   const flatNodes = flatten(tree.rootNodes);
-  const issueDir = getIssueDir();
   // 添加“根目录”选项
   const rootItem = {
     iconPath: new vscode.ThemeIcon('root-folder'),
     label: '根目录',
     description: '',
-    node: null as any // 特殊标记
+    node: null as FlatNode | null
   };
   const items = [rootItem, ...await Promise.all(flatNodes.map(async node => {
-    const uri = vscode.Uri.file(path.join(issueDir!, node.filePath));
-    const title = await getTitle(uri);
+    const title = await getTitle(node.resourceUri!);
     // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
     let description = '';
     if (node.parentPath.length > 0) {
       description = [ '', ...(await Promise.all(node.parentPath.map(async n => {
-        const nUri = vscode.Uri.file(path.join(issueDir!, n.filePath));
-        return await getTitle(nUri);
+        return await getTitle(node.resourceUri!);
       })))].join(' / ');
     }
     return {
@@ -75,7 +70,28 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     return;
   }
   // 执行移动
-  // 1. 先从原父节点移除
+  // 只处理“顶层”选中节点，避免父子节点重复操作
+  const selectedIds = new Set(selectedNodes.map(n => n.id));
+
+  // 构建每个节点的父节点映射
+  const parentMap = new Map<string, string | null>();
+  function buildParentMap(nodes: IssueTreeNode[], parentId: string | null) {
+    for (const node of nodes) {
+      parentMap.set(node.id, parentId);
+      if (node.children) {
+        buildParentMap(node.children, node.id);
+      }
+    }
+  }
+  buildParentMap(tree.rootNodes, null);
+
+  // 只保留顶层选中节点（其父节点未被选中）
+  const topLevelSelectedNodes = selectedNodes.filter(node => {
+    const parentId = parentMap.get(node.id);
+    return !parentId || !selectedIds.has(parentId);
+  });
+
+  // 1. 只从原父节点中移除顶层节点
   function removeFromParent(tree: TreeData, nodeId: string) {
     function recur(nodes: IssueTreeNode[]): boolean {
       for (let i = 0; i < nodes.length; i++) {
@@ -92,14 +108,15 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     }
     recur(tree.rootNodes);
   }
-  selectedNodes.forEach(node => removeFromParent(tree, node.id));
-  // 2. 添加到目标节点 children 或根目录
+  topLevelSelectedNodes.forEach(node => removeFromParent(tree, node.id));
+
+  // 2. 将顶层节点添加到目标位置
   if (!pick.node) {
     // 选择根目录，插入到 rootNodes
-    tree.rootNodes.unshift(...selectedNodes);
+    tree.rootNodes.unshift(...topLevelSelectedNodes);
   } else {
     pick.node.children = pick.node.children || [];
-    pick.node.children.unshift(...selectedNodes);
+    pick.node.children.unshift(...topLevelSelectedNodes);
   }
   await writeTree(tree);
   vscode.commands.executeCommand('issueManager.refreshAllViews');
