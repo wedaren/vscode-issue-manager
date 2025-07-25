@@ -115,6 +115,10 @@
         "command": "issueManager.unpinRelatedView",
         "title": "解锁相关联问题视图",
         "icon": "$(pinned)"
+      },
+      {
+        "command": "issueManager.moveTo",
+        "title": "移动到..."
       }
     ],
     "submenus": [
@@ -266,6 +270,11 @@
           "command": "issueManager.copyFilename",
           "when": "viewItem == 'recentIssue' || viewItem == 'issueNode' || viewItem == 'focusedNode' || viewItem == 'focusedNodeFirst' || viewItem == 'isolatedIssue'",
           "group": "inline"
+        },
+        {
+          "command": "issueManager.moveTo",
+          "when": "view == 'issueManager.views.overview' && viewItem == 'issueNode'",
+          "group": "navigation@4"
         }
       ],
       "editor/context": [
