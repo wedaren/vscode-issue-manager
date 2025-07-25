@@ -37,7 +37,7 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   }));
 
   // 注册命令：查看关联问题
-  context.subscriptions.push(vscode.commands.registerCommand('issueManager.viewRelatedIssues', async (uriOrNode: vscode.TreeItem | vscode.Uri) => {
+  context.subscriptions.push(vscode.commands.registerCommand('issueManager.viewRelatedIssues', (uriOrNode: vscode.TreeItem | vscode.Uri) => {
     const resourceUri = uriOrNode instanceof vscode.Uri ? uriOrNode : uriOrNode?.resourceUri;
     if (!isPinned) {
       relatedIssuesProvider.updateContext(resourceUri);
