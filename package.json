@@ -255,7 +255,7 @@
           "command": "issueManager.viewRelatedIssues",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
           "group": "navigation@5",
-          "title": "发现相关联问题"
+          "title": "查看相关联问题"
         }
       ]
     },
