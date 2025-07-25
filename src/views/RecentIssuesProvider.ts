@@ -74,7 +74,11 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndViewRelatedIssues', async (uri: vscode.Uri) => {
       try {
         await vscode.window.showTextDocument(uri);
-        await vscode.commands.executeCommand('issueManager.viewRelatedIssues', uri);
+        // 判断相关联视图是否锁定
+        const isPinned = await vscode.commands.executeCommand<boolean>('getContext', 'issueManager.relatedViewPinned');
+        if (!isPinned) {
+          await vscode.commands.executeCommand('issueManager.viewRelatedIssues', uri);
+        }
       } catch (error) {
         console.error(`打开并查看关联问题失败: ${uri.fsPath}`, error);
         vscode.window.showErrorMessage('打开并查看关联问题失败。');
