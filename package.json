@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -102,13 +102,13 @@
       {
         "command": "issueManager.openAndRevealIssue",
         "title": "在问题总览中查看"
-      }
-      ,{
+      },
+      {
         "command": "issueManager.pinRelatedView",
         "title": "锁定相关联问题视图",
         "icon": "$(pin)"
-      }
-      ,{
+      },
+      {
         "command": "issueManager.unpinRelatedView",
         "title": "解锁相关联问题视图",
         "icon": "$(pinned)"
@@ -187,13 +187,13 @@
           "when": "view == issueManager.views.recent",
           "group": "navigation@3",
           "title": "排序方式"
-        }
-        ,{
+        },
+        {
           "command": "issueManager.pinRelatedView",
           "when": "view == issueManager.views.related && !issueManager.relatedViewPinned",
           "group": "navigation@99"
-        }
-        ,{
+        },
+        {
           "command": "issueManager.unpinRelatedView",
           "when": "view == issueManager.views.related && issueManager.relatedViewPinned",
           "group": "navigation@99"
