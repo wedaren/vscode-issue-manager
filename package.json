@@ -182,7 +182,7 @@
         },
         {
           "command": "issueManager.setRecentIssuesViewMode.list",
-          "when": "view == issueManager.views.recent && issueManager.recentIssuesViewMode == 'group'",
+          "when": "view == issueManager.views.recent && issueManager.recentIssuesViewMode == 'grouped'",
           "group": "navigation@2"
         },
         {
