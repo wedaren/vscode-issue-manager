@@ -42,9 +42,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     /** 查找所有引用该文件的节点 */
     private async findAllReferences(resourceUri: vscode.Uri): Promise<RelatedIssueNode[]> {
-        if (!this.treeData) {
-            this.treeData = await readTree();
-        }
+        this.treeData = await readTree();
         const nodes: RelatedIssueNode[] = [];
         const traverse = async (node: IssueTreeNode, parentNodes: IssueTreeNode[] = []) => {
             if (node.resourceUri?.fsPath === resourceUri.fsPath) {
