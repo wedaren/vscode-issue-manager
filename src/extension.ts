@@ -1,3 +1,4 @@
+import { moveToCommand } from './commands/moveTo';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from './config';
@@ -27,6 +28,13 @@ function updateConfigContext() {
 
 // 当您的扩展被激活时，将调用此方法
 export function activate(context: vscode.ExtensionContext) {
+
+	// 注册“移动到...”命令
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode, selectedNodes?: IssueTreeNode[]) => {
+		// 支持多选，selectedNodes 优先，否则单节点
+		const nodes = selectedNodes && selectedNodes.length > 0 ? selectedNodes : node ? [node] : [];
+		await moveToCommand(nodes);
+	}));
 
 	console.log('恭喜，您的扩展“issue-manager”现已激活！');
 
