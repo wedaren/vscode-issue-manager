@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { readTree, writeTree, IssueTreeNode, TreeData } from '../data/treeManager';
+import { readTree, writeTree, IssueTreeNode, removeNode } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
 
 /**
@@ -52,7 +52,7 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     let description = '';
     if (node.parentPath.length > 0) {
       description = [ '', ...(await Promise.all(node.parentPath.map(async n => {
-        return await getTitle(node.resourceUri!);
+        return await getTitle(n.resourceUri!);
       })))].join(' / ');
     }
     return {
@@ -92,23 +92,7 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
   });
 
   // 1. 只从原父节点中移除顶层节点
-  function removeFromParent(tree: TreeData, nodeId: string) {
-    function recur(nodes: IssueTreeNode[]): boolean {
-      for (let i = 0; i < nodes.length; i++) {
-        const child = nodes[i];
-        if (child.id === nodeId) {
-          nodes.splice(i, 1);
-          return true;
-        }
-        if (child.children && recur(child.children)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    recur(tree.rootNodes);
-  }
-  topLevelSelectedNodes.forEach(node => removeFromParent(tree, node.id));
+  topLevelSelectedNodes.forEach(node => removeNode(tree, node.id));
 
   // 2. 将顶层节点添加到目标位置
   if (!pick.node) {
