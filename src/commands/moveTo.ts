@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { readTree, writeTree, IssueTreeNode, removeNode } from '../data/treeManager';
+import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
 
 /**
@@ -10,6 +10,9 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     vscode.window.showWarningMessage('请先选择要移动的节点。');
     return;
   }
+  //  支持关注问题视图节点移动
+  selectedNodes.map(i=> i.id = stripFocusedId(i.id));
+
   const tree = await readTree();
   // 收集所有要排除的 id（自身及所有后代）
   const excludeIds = new Set<string>();
@@ -32,7 +35,7 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
         const hasChildren = !!(node.children && node.children.length > 0);
         result.push({ ...node, parentPath: [...parentNodes], hasChildren });
         if (hasChildren) {
-          result = result.concat(flatten(node.children, [...parentNodes, node]));
+          result.push(...flatten(node.children, [...parentNodes, node]));
         }
       }
     }
