@@ -11,7 +11,7 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     return;
   }
   //  支持关注问题视图节点移动
-  selectedNodes.map(i=> i.id = stripFocusedId(i.id));
+  selectedNodes.forEach(i=> i.id = stripFocusedId(i.id));
 
   const tree = await readTree();
   // 收集所有要排除的 id（自身及所有后代）
@@ -54,9 +54,7 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
     let description = '';
     if (node.parentPath.length > 0) {
-      description = [ '', ...(await Promise.all(node.parentPath.map(async n => {
-        return await getTitle(n.resourceUri!);
-      })))].join(' / ');
+      description = [ '', ...(await Promise.all(node.parentPath.map(n => getTitle(n.resourceUri!))))].join(' / ');
     }
     return {
       iconPath: node.hasChildren ? new vscode.ThemeIcon('find-collapsed') : new vscode.ThemeIcon('markdown'),
