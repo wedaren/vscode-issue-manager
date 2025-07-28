@@ -50,11 +50,11 @@
       },
       {
         "command": "issueManager.focusIssue",
-        "title": "添加到关注"
+        "title": "添加关注"
       },
       {
         "command": "issueManager.focusIssueFromIsolated",
-        "title": "添加到关注"
+        "title": "添加关注"
       },
       {
         "command": "issueManager.removeFocus",
@@ -62,7 +62,7 @@
       },
       {
         "command": "issueManager.pinFocus",
-        "title": "置顶关注问题"
+        "title": "置顶关注"
       },
       {
         "command": "issueManager.refreshAllViews",
