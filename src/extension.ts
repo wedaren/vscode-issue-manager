@@ -102,6 +102,22 @@ export function activate(context: vscode.ExtensionContext) {
 		canSelectMany: true
 	});
 	context.subscriptions.push(focusedView);
+	// 注册“关注问题”视图定位命令
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.focused.reveal', async (targetNode: IssueTreeNode, options?: { select?: boolean; focus?: boolean; expand?: boolean }) => {
+		if (targetNode && focusedIssuesProvider.checkInFilteredTree(targetNode)) {
+			console.log('Revealing focused issue:', targetNode.id);
+			await focusedView.reveal(targetNode, options || { select: true, focus: true, expand: true });
+		}
+	}));
+
+	// 注册命令：打开并在问题总览或关注问题中定位
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode) => {
+		if (!node || !node.resourceUri) { return; }
+		// 打开文件
+		await vscode.window.showTextDocument(node.resourceUri, { preview: false });
+		await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+		await vscode.commands.executeCommand('issueManager.views.focused.reveal', node, { select: true, focus: true, expand: true });
+	}));
 
 	// 注册“最近问题”视图
 	const recentIssuesProvider = new RecentIssuesProvider(context);

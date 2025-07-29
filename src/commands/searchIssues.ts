@@ -88,7 +88,7 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
                     // 直接用扁平化节点查找，定位主树节点
                     const node = flatNodes.find(n => n.id === selected.id);
                     if (node) {
-                        await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+                        await vscode.commands.executeCommand('issueManager.openAndRevealIssue', node);
                     } else {
                         vscode.window.showWarningMessage('未找到对应问题节点，无法定位。');
                     }

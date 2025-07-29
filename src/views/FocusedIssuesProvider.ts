@@ -17,10 +17,11 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
 
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
+  private filteredTreeCache: IssueTreeNode[] | null = null;
 
   constructor(private context: vscode.ExtensionContext) {
     // 可在此处注册文件监听等
-    
+
   }
 
   /** 刷新视图 */
@@ -92,7 +93,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
       ancestors.map(ancestor => getTitle(vscode.Uri.file(path.join(issueDir, ancestor.filePath))))
     );
     if (ancestorTitles.length > 0 && isFocusedRootId(element.id)) {
-        item.description = `/ ${ancestorTitles.join(' / ')}`;
+      item.description = `/ ${ancestorTitles.join(' / ')}`;
     }
 
     return item;
@@ -116,11 +117,11 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
 
     // 每个 focusList 节点都独立收集其完整子树，顶层节点 id 加后缀
     const result: IssueTreeNode[] = [];
-    const collectDescendants = (node: IssueTreeNode ,rootId:string): IssueTreeNode => {
+    const collectDescendants = (node: IssueTreeNode, rootId: string): IssueTreeNode => {
       return {
         ...node,
         id: toFocusedId(node.id, rootId),
-        children: node.children ? node.children.map(n=>collectDescendants(n, rootId)) : []
+        children: node.children ? node.children.map(n => collectDescendants(n, rootId)) : []
       };
     };
     for (const id of new Set(this.focusedData.focusList)) {
@@ -128,13 +129,63 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
       if (node) {
         // 顶层节点 id 加后缀，避免与树中其他位置重复
         const topNode: IssueTreeNode = {
-          ...collectDescendants(node,id),
-          id: toFocusedId(id,id),
+          ...collectDescendants(node, id),
+          id: toFocusedId(id, id),
         };
         result.push(topNode);
       }
     }
     return result;
+  }
+
+  /**
+   * 获取指定元素的父节点。
+   * 此方法是 TreeDataProvider 接口的一部分，用于支持 `reveal` 等操作。
+   * @param element 要查找其父节点的元素。
+   * @returns 父节点 `IssueTreeNode`，如果元素是根节点或未找到，则返回 `null`。
+   */
+  getParent(element: IssueTreeNode): IssueTreeNode | null {
+    if (!this.treeData || !this.focusedData) { return null; }
+    // 递归查找父节点
+    const findParent = (node: IssueTreeNode, target: IssueTreeNode): IssueTreeNode | null => {
+      if (node.children && node.children.some(child => stripFocusedId(child.id) === stripFocusedId(target.id))) {
+        return node;
+      }
+      if (node.children) {
+        for (const child of node.children) {
+          const parent = findParent(child, target);
+          if (parent) { return parent; }
+        }
+      }
+      return null;
+    };
+    // 只在过滤后的树中查找
+    const filtered = this.getFilteredTreeFromCache();
+    for (const root of filtered) {
+      const parent = findParent(root, element);
+      if (parent) { return parent; }
+    }
+    return null;
+  }
+
+  getFilteredTreeFromCache(): IssueTreeNode[] {
+    if (!this.filteredTreeCache) {
+      this.filteredTreeCache = this.buildFilteredTree();
+    }
+    return this.filteredTreeCache;
+  }
+  setFilteredTreeCache(filteredTree: IssueTreeNode[]): void {
+    this.filteredTreeCache = filteredTree;
+  }
+
+  checkInFilteredTree(element: IssueTreeNode): boolean {
+    const tree = this.getFilteredTreeFromCache();
+    function checkInFilteredTree(tree: IssueTreeNode[], element: IssueTreeNode): boolean {
+      return tree.some(( { id, children = [] } ) => {
+        return stripFocusedId(id) === stripFocusedId(element.id) || checkInFilteredTree(children, element);
+      });
+    }
+    return checkInFilteredTree(tree, element);
   }
 
   getChildren(element?: IssueTreeNode): Thenable<IssueTreeNode[]> {
@@ -145,6 +196,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
         // Show a placeholder message when there are no nodes
         return Promise.resolve([{ id: 'placeholder-no-focused', filePath: '', children: [] }]);
       } else {
+        this.setFilteredTreeCache(filtered);
         return Promise.resolve(filtered);
       }
     }
