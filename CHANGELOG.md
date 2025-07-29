@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.1] - 2025-07-29
+
+### ✨ 新增
+- feat: 关注问题视图（FocusedIssuesProvider）支持搜搜功能。
+
+### 🐞 修复
+- 修正部分命令标题的中文表述，统一为“关注”相关命名。
+
+
 # 🎉 问题管理插件 v0.1.0 发布说明 🎉
 
 我们非常高兴地宣布，**问题管理插件 (Issue Manager)** 迎来了首个重要里程碑版本 `v0.1.0`！
