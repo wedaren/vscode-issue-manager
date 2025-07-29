@@ -4,10 +4,10 @@ import { readTree, IssueTreeNode } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
 
 /**
- * 问题总览视图搜索命令实现
+ * 关注问题视图与问题总览视图搜索命令实现
  */
 export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
-    const disposable = vscode.commands.registerCommand('issueManager.searchIssues', async () => {
+    const disposable = vscode.commands.registerCommand('issueManager.searchIssues', async (type:'focused' | 'overview') => {
         // 展示 QuickPick
         const quickPick = vscode.window.createQuickPick();
         quickPick.busy = true;
@@ -88,7 +88,7 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
                     // 直接用扁平化节点查找，定位主树节点
                     const node = flatNodes.find(n => n.id === selected.id);
                     if (node) {
-                        await vscode.commands.executeCommand('issueManager.openAndRevealIssue', node);
+                        await vscode.commands.executeCommand('issueManager.openAndRevealIssue', node, type);
                     } else {
                         vscode.window.showWarningMessage('未找到对应问题节点，无法定位。');
                     }

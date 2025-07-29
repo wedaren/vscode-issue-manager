@@ -167,6 +167,28 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     }
     return null;
   }
+  findFirstFocusedNodeById(id: string): { node: IssueTreeNode, parentList: IssueTreeNode[] } | null {
+
+    function findFirstNodeById(nodes: IssueTreeNode[], id: string): { node: IssueTreeNode, parentList: IssueTreeNode[] } | null {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        if (stripFocusedId(node.id) === stripFocusedId(id)) {
+          return { node, parentList: nodes };
+        }
+        if (node.children && node.children.length > 0) {
+          const found = findFirstNodeById(node.children, id);
+          if (found) {
+            return found;
+          }
+        }
+      }
+      return null;
+    }
+
+    const tree = this.getFilteredTreeFromCache();
+    return findFirstNodeById(tree, id);
+  }
+
 
   getFilteredTreeFromCache(): IssueTreeNode[] {
     if (!this.filteredTreeCache) {
@@ -178,25 +200,15 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     this.filteredTreeCache = filteredTree;
   }
 
-  checkInFilteredTree(element: IssueTreeNode): boolean {
-    const tree = this.getFilteredTreeFromCache();
-    function checkInFilteredTree(tree: IssueTreeNode[], element: IssueTreeNode): boolean {
-      return tree.some(( { id, children = [] } ) => {
-        return stripFocusedId(id) === stripFocusedId(element.id) || checkInFilteredTree(children, element);
-      });
-    }
-    return checkInFilteredTree(tree, element);
-  }
-
   getChildren(element?: IssueTreeNode): Thenable<IssueTreeNode[]> {
     if (!this.treeData || !this.focusedData) { return Promise.resolve([]); }
-    const filtered = this.buildFilteredTree();
     if (!element) {
+      const filtered = this.buildFilteredTree();
+      this.setFilteredTreeCache(filtered);
       if (filtered.length === 0) {
         // Show a placeholder message when there are no nodes
         return Promise.resolve([{ id: 'placeholder-no-focused', filePath: '', children: [] }]);
       } else {
-        this.setFilteredTreeCache(filtered);
         return Promise.resolve(filtered);
       }
     }

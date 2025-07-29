@@ -25,7 +25,12 @@
         "icon": "$(add)"
       },
       {
-        "command": "issueManager.searchIssues",
+        "command": "issueManager.searchIssuesInFocused",
+        "title": "搜索问题",
+        "icon": "$(search)"
+      },
+      {
+        "command": "issueManager.searchIssuesInOverview",
         "title": "搜索问题",
         "icon": "$(search)"
       },
@@ -155,8 +160,13 @@
     "menus": {
       "view/title": [
         {
-          "command": "issueManager.searchIssues",
-          "when": "view == issueManager.views.overview || view == issueManager.views.focused",
+          "command": "issueManager.searchIssuesInOverview",
+          "when": "view == issueManager.views.overview",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.searchIssuesInFocused",
+          "when": "view == issueManager.views.focused",
           "group": "navigation@1"
         },
         {
@@ -171,8 +181,7 @@
         },
         {
           "command": "issueManager.createIssueFromFocused",
-          "when": "view == issueManager.views.focused",
-          "group": "navigation@1"
+          "when": "view == issueManager.views.focused"
         },
         {
           "command": "issueManager.refreshAllViews",

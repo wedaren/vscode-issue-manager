@@ -131,7 +131,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.command = element.resourceUri ? {
             command: 'issueManager.openAndRevealIssue',
             title: '打开并定位问题',
-            arguments: [element]
+            arguments: [element, 'overview']
         } : undefined;
         return item;
     }

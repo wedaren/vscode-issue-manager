@@ -104,19 +104,31 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(focusedView);
 	// 注册“关注问题”视图定位命令
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.focused.reveal', async (targetNode: IssueTreeNode, options?: { select?: boolean; focus?: boolean; expand?: boolean }) => {
-		if (targetNode && focusedIssuesProvider.checkInFilteredTree(targetNode)) {
-			console.log('Revealing focused issue:', targetNode.id);
-			await focusedView.reveal(targetNode, options || { select: true, focus: true, expand: true });
-		}
+		await focusedView.reveal(targetNode, options || { select: true, focus: true, expand: true });
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.searchIssuesInFocused', async () => {
+		vscode.commands.executeCommand('issueManager.searchIssues', 'focused');
+	}));
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.searchIssuesInOverview', async () => {
+		vscode.commands.executeCommand('issueManager.searchIssues', 'overview');
 	}));
 
 	// 注册命令：打开并在问题总览或关注问题中定位
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode) => {
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode, type: 'focused' | 'overview') => {
 		if (!node || !node.resourceUri) { return; }
 		// 打开文件
 		await vscode.window.showTextDocument(node.resourceUri, { preview: false });
-		await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
-		await vscode.commands.executeCommand('issueManager.views.focused.reveal', node, { select: true, focus: true, expand: true });
+		if(type === 'overview') {
+			await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+		} else if (type === 'focused') {
+			const {node:target} = focusedIssuesProvider.findFirstFocusedNodeById(node.id) || {};
+			if (target) {
+				await vscode.commands.executeCommand('issueManager.views.focused.reveal', target, { select: true, focus: true, expand: true });
+			} else {
+				await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+			}
+		}
 	}));
 
 	// 注册“最近问题”视图
