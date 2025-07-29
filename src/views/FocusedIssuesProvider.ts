@@ -148,10 +148,10 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     if (!this.treeData || !this.focusedData) { return null; }
     // 递归查找父节点
     const findParent = (node: IssueTreeNode, target: IssueTreeNode): IssueTreeNode | null => {
-      if (node.children && node.children.some(child => stripFocusedId(child.id) === stripFocusedId(target.id))) {
-        return node;
-      }
       if (node.children) {
+        if (node.children.some(child => stripFocusedId(child.id) === stripFocusedId(target.id))) {
+          return node;
+        }
         for (const child of node.children) {
           const parent = findParent(child, target);
           if (parent) { return parent; }
