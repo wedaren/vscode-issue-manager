@@ -45,12 +45,4 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
     vscode.commands.executeCommand('issueManager.views.isolated.reveal', resourceUri);
   }));
 
-  // 注册命令：打开并在问题总览中定位
-  context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode) => {
-    if (!node || !node.resourceUri) { return; }
-    // 打开文件
-    await vscode.window.showTextDocument(node.resourceUri, { preview: false });
-    // 在问题总览视图定位并高亮
-    await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
-  }));
 }
