@@ -81,167 +81,199 @@ async function persistQuickPickData() {
  * @param parentId 父节点ID，可为null
  * @param isAddToTree 是否添加到树结构
  * @param isAddToFocused 是否添加到关注列表
+ * @returns Promise<vscode.Uri[]> 用户最终选择的所有 item 对应的 URI 数组，没有则返回空数组
  */
 export async function smartCreateIssue(
     parentId: string | null | undefined = null,
     isAddToTree: boolean = false,
     isAddToFocused: boolean = false
-) {
+): Promise<vscode.Uri[]> {
     await ensureQuickPickLoaded();
     const issueDir = getIssueDir();
     if (!issueDir) {
-        vscode.window.showErrorMessage('请先在设置中配置“issueManager.issueDir”');
+        vscode.window.showErrorMessage('请先在设置中配置"issueManager.issueDir"');
         vscode.commands.executeCommand('workbench.action.openSettings', 'issueManager.issueDir');
-        return;
+        return [];
     }
 
-    const quickPick = vscode.window.createQuickPick<HistoryQuickPickItem>();
-    quickPick.placeholder = '请输入您的问题，或从历史记录中选择...';
-    quickPick.canSelectMany = true;
-    quickPick.matchOnDescription = true;
+    return new Promise<vscode.Uri[]>((resolve) => {
+        const quickPick = vscode.window.createQuickPick<HistoryQuickPickItem>();
+        quickPick.placeholder = '请输入您的问题，或从历史记录中选择...';
+        quickPick.canSelectMany = true;
+        quickPick.matchOnDescription = true;
 
-    let currentAbortController: AbortController | null = null;
+        let currentAbortController: AbortController | null = null;
 
-    /**
-     * 辅助函数：根据 value 调用 LLM 并刷新 quickPick.items 和缓存
-     */
-    async function fetchAndDisplaySuggestions(value: string, quickPick: vscode.QuickPick<HistoryQuickPickItem>) {
-        const clearCacheOption: HistoryQuickPickItem = {
-            label: '$(sync) 清空缓存并重新请求',
-            description: '强制重新调用 LLM',
-            isClearCacheOption: true,
-            alwaysShow: true
-        };
-        const defaultOption = {
-            label: `[创建新笔记] ${value}`,
-            description: '按回车可直接用当前输入创建新笔记',
-            alwaysShow: true
-        };
-
-        if (QUERY_RESULT_CACHE.has(value)) {
-            const items = QUERY_RESULT_CACHE.get(value)!;
-            quickPick.items = [defaultOption, ...items, clearCacheOption];
-            return;
-        }
-
-        quickPick.selectedItems = [defaultOption]; // 清空选择
+        /**
+         * 辅助函数：根据 value 调用 LLM 并刷新 quickPick.items 和缓存
+         */
+        async function fetchAndDisplaySuggestions(value: string, quickPick: vscode.QuickPick<HistoryQuickPickItem>) {
+            const clearCacheOption: HistoryQuickPickItem = {
+                label: '$(sync) 清空缓存并重新请求',
+                description: '强制重新调用 LLM',
+                isClearCacheOption: true,
+                alwaysShow: true
+            };
+            const defaultOption = {
+                label: `[创建新笔记] ${value}`,
+                description: '按回车可直接用当前输入创建新笔记',
+                alwaysShow: true
+            };
 
 
-        quickPick.busy = true;
-        const requestValue = value;
-        // 取消上一次请求
-        currentAbortController?.abort();
-        currentAbortController = new AbortController();
-        try {
-            const suggestions = await LLMService.getSuggestions(value, { signal: currentAbortController.signal });
-            if (quickPick.value !== requestValue) {
+            quickPick.selectedItems = [];
+
+            if (QUERY_RESULT_CACHE.get(value)?.length) {
+                const items = QUERY_RESULT_CACHE.get(value)!;
+                quickPick.items = [defaultOption, ...items, clearCacheOption];
                 return;
+            } else {
+                quickPick.items = [defaultOption];
             }
-            const newItems: vscode.QuickPickItem[] = [];
-            if (suggestions.optimized.length > 0) {
-                newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
-                suggestions.optimized.forEach(opt => {
-                    newItems.push({ label: `[创建新笔记] ${opt}`, alwaysShow: true });
-                });
-            }
-            if (suggestions.similar.length > 0) {
-                newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
-                suggestions.similar.forEach(sim => {
-                    newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: `${path.relative(issueDir || '', sim.filePath)}`, alwaysShow: true });
-                });
-            }
-            quickPick.items = [defaultOption, ...newItems, clearCacheOption];
-            QUERY_RESULT_CACHE.set(value, newItems); // 缓存结果
-        } catch (error) {
-            if (quickPick.value === requestValue) {
-                quickPick.items = [defaultOption, clearCacheOption];
-            }
-        } finally {
-            if (quickPick.value === requestValue) {
-                quickPick.busy = false;
-            }
-        }
-    }
 
-    quickPick.onDidChangeValue(debounce(async (value) => {
-        if (value) {
-            await fetchAndDisplaySuggestions(value, quickPick);
-        } else {
-            // 输入为空时，显示历史记录
-            quickPick.items = SEARCH_HISTORY.map(item => ({
-                label: `$(history) ${item}`,
-                description: '从历史记录中恢复',
-                isHistory: true
-            } as HistoryQuickPickItem));
-        }
-    }, 500));
 
-    quickPick.onDidChangeSelection(async selection => {
-        if (selection.length === 1) {
-            const selectedItem = selection[0] as HistoryQuickPickItem;
-            if (selectedItem.isHistory) {
-                // 用户的意图是恢复历史
-                quickPick.value = selectedItem.label.replace('$(history) ', '');
-                quickPick.selectedItems = [];
-            } else if (selectedItem.isClearCacheOption) {
-                // 用户的意图是清空缓存并重新请求
-                const currentValue = quickPick.value;
-                if (currentValue) {
-                    QUERY_RESULT_CACHE.delete(currentValue); // 从缓存中删除当前项
-                    await fetchAndDisplaySuggestions(currentValue, quickPick);
+            quickPick.busy = true;
+            const requestValue = value;
+            // 取消上一次请求
+            currentAbortController?.abort();
+            currentAbortController = new AbortController();
+            try {
+                const suggestions = await LLMService.getSuggestions(value, { signal: currentAbortController.signal });
+                if (quickPick.value !== requestValue) {
+                    return;
+                }
+                const newItems: vscode.QuickPickItem[] = [];
+                if (suggestions.optimized.length > 0) {
+                    newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
+                    suggestions.optimized.forEach(opt => {
+                        newItems.push({ label: `[创建新笔记] ${opt}`, alwaysShow: true });
+                    });
+                }
+                if (suggestions.similar.length > 0) {
+                    newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
+                    suggestions.similar.forEach(sim => {
+                        newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: `${path.relative(issueDir || '', sim.filePath)}`, alwaysShow: true });
+                    });
+                }
+                if (newItems.length === 0) {
+                    throw new Error('没有找到相关建议');
+                }
+                quickPick.items = [defaultOption, ...newItems, clearCacheOption];
+                QUERY_RESULT_CACHE.set(value, newItems); // 缓存结果
+            } catch {
+                if (quickPick.value === requestValue) {
+                    quickPick.items = [defaultOption];
+                }
+            } finally {
+                if (quickPick.value === requestValue) {
+                    quickPick.busy = false;
                 }
             }
         }
+        const debounceFetchAndDisplaySuggestions = debounce(async (value) => {
+            await fetchAndDisplaySuggestions(value, quickPick);
+        }, 500);
+
+        quickPick.onDidChangeValue(async (value) => {
+            if (value) {
+                const defaultOption = {
+                    label: `[创建新笔记] ${value}`,
+                    description: '按回车可直接用当前输入创建新笔记',
+                    alwaysShow: true
+                };
+                quickPick.items = [defaultOption];
+                debounceFetchAndDisplaySuggestions(value);
+            } else {
+                // 输入为空时，显示历史记录
+                quickPick.items = SEARCH_HISTORY.map(item => ({
+                    label: `$(history) ${item}`,
+                    description: '从历史记录中恢复',
+                    isHistory: true
+                } as HistoryQuickPickItem));
+            }
+        });
+
+        quickPick.onDidChangeSelection(async selection => {
+            if (selection.length === 1) {
+                const selectedItem = selection[0] as HistoryQuickPickItem;
+                if (selectedItem.isHistory) {
+                    // 用户的意图是恢复历史
+                    quickPick.value = selectedItem.label.replace('$(history) ', '');
+                    quickPick.selectedItems = [];
+                } else if (selectedItem.isClearCacheOption) {
+                    // 用户的意图是清空缓存并重新请求
+                    const currentValue = quickPick.value;
+                    if (currentValue) {
+                        QUERY_RESULT_CACHE.delete(currentValue); // 从缓存中删除当前项
+                        await fetchAndDisplaySuggestions(currentValue, quickPick);
+                    }
+                }
+            }
+        });
+
+        let hasAccepted = false;
+        quickPick.onDidAccept(async () => {
+            hasAccepted = true;
+            const selectedItems = quickPick.selectedItems;
+            const currentValue = quickPick.value;
+
+            if (selectedItems.length > 0) {
+                // 用户勾选了至少一项并点击了"确定"
+                updateHistory(currentValue);
+                const uris = await handleBatchSelection(selectedItems, parentId || null, isAddToTree, isAddToFocused);
+                resolve(uris);
+                quickPick.dispose();
+            } else if (currentValue) {
+                // 用户没有勾选任何项，但在输入框有值的情况下直接按 Enter
+                updateHistory(currentValue);
+                const uri = await handleDefaultCreation(currentValue, parentId || null, isAddToTree, isAddToFocused);
+                resolve(uri ? [uri] : []);
+                quickPick.dispose();
+            }
+        });
+
+        quickPick.onDidHide((...e) => {
+
+            currentAbortController?.abort();
+            if (hasAccepted) {
+                // 如果用户已经接受了选择，则不需要再处理
+                return;
+            } else {
+                resolve([]);
+                quickPick.dispose();
+            }
+        });
+
+        // 初始显示历史记录
+        quickPick.items = SEARCH_HISTORY.map(item => ({
+            label: `$(history) ${item}`,
+            description: '从历史记录中恢复',
+            isHistory: true
+        } as HistoryQuickPickItem));
+        quickPick.show();
     });
-
-    quickPick.onDidAccept(async () => {
-        const selectedItems = quickPick.selectedItems;
-        const currentValue = quickPick.value;
-
-        if (selectedItems.length > 0) {
-            // 用户勾选了至少一项并点击了“确定”
-            updateHistory(currentValue);
-            await handleBatchSelection(selectedItems, parentId || null, isAddToTree, isAddToFocused);
-            quickPick.hide();
-        } else if (currentValue) {
-            // 用户没有勾选任何项，但在输入框有值的情况下直接按 Enter
-            updateHistory(currentValue);
-            await handleDefaultCreation(currentValue, parentId || null, isAddToTree, isAddToFocused);
-            quickPick.hide();
-        }
-    });
-
-    quickPick.onDidHide(() => {
-        currentAbortController?.abort();
-        quickPick.dispose();
-    });
-
-    // 初始显示历史记录
-    // 初始显示历史记录
-    quickPick.items = SEARCH_HISTORY.map(item => ({
-        label: `$(history) ${item}`,
-        description: '从历史记录中恢复',
-        isHistory: true
-    } as HistoryQuickPickItem));
-    quickPick.show();
 }
 
 /**
  * 处理批量选择
+ * @returns 所有成功创建或打开的文件的 URI 数组
  */
 async function handleBatchSelection(
     selectedItems: readonly vscode.QuickPickItem[],
     parentId: string | null,
     isAddToTree: boolean,
     isAddToFocused: boolean
-) {
+): Promise<vscode.Uri[]> {
     let uris: vscode.Uri[] = [];
+
     for (const item of selectedItems) {
         if (item.label.startsWith('[创建新笔记]')) {
             const title = item.label.replace('[创建新笔记] ', '');
             if (title) {
                 const uri = await createIssueFile(title);
-                if (uri) { uris.push(uri); }
+                if (uri) {
+                    uris.push(uri);
+                }
             }
         } else if (item.label.startsWith('[打开已有笔记]')) {
             if (item.description) {
@@ -273,17 +305,19 @@ async function handleBatchSelection(
     if (uris.length > 0 && isAddToTree) {
         await addIssueToTree(uris, parentId, isAddToFocused);
     }
+    return uris;
 }
 
 /**
  * 处理默认（单一）创建
+ * @returns 创建的文件的 URI，没有则返回 null
  */
 async function handleDefaultCreation(
     title: string,
     parentId: string | null,
     isAddToTree: boolean,
     isAddToFocused: boolean
-) {
+): Promise<vscode.Uri | null> {
     if (title) {
         const uri = await createIssueFile(title);
         if (uri && isAddToTree) {
@@ -292,5 +326,7 @@ async function handleDefaultCreation(
         if (uri) {
             await vscode.window.showTextDocument(uri);
         }
+        return uri;
     }
+    return null;
 }

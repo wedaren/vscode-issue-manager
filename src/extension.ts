@@ -281,7 +281,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const createChildIssueHandler = (viewType: 'overview' | 'focused') => {
 		return async (parentNode?: IssueTreeNode) => {
 			const id = parentNode?.id && stripFocusedId(parentNode.id);
-			await smartCreateIssue(id || null, true);
+			const list = await smartCreateIssue(id || null, true);
 			if (parentNode) {
 				const revealCommand = `issueManager.views.${viewType}.reveal`;
 				await vscode.commands.executeCommand(revealCommand, parentNode, { select: true, focus: true, expand: true });
