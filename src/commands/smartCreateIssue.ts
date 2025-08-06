@@ -120,9 +120,7 @@ export async function smartCreateIssue(
                 alwaysShow: true
             };
 
-
             quickPick.selectedItems = [];
-
             if (QUERY_RESULT_CACHE.get(value)?.length) {
                 const items = QUERY_RESULT_CACHE.get(value)!;
                 quickPick.items = [defaultOption, ...items, clearCacheOption];
@@ -130,8 +128,6 @@ export async function smartCreateIssue(
             } else {
                 quickPick.items = [defaultOption];
             }
-
-
             quickPick.busy = true;
             const requestValue = value;
             // 取消上一次请求
@@ -232,7 +228,7 @@ export async function smartCreateIssue(
             }
         });
 
-        quickPick.onDidHide((...e) => {
+        quickPick.onDidHide(() => {
 
             currentAbortController?.abort();
             if (hasAccepted) {
