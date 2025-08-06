@@ -10,7 +10,11 @@ import * as path from 'path';
 export const SEARCH_HISTORY: string[] = [];
 export const QUERY_RESULT_CACHE = new Map<string, vscode.QuickPickItem[]>();
 
-
+const createDefaultOption = (value: string) => ({  
+    label: `[创建新笔记] ${value}`,  
+    description: '按回车可直接用当前输入创建新笔记',  
+    alwaysShow: true  
+});
 // 初始化持久化数据
 let quickPickLoaded = false;
 async function ensureQuickPickLoaded() {
@@ -114,11 +118,7 @@ export async function smartCreateIssue(
                 isClearCacheOption: true,
                 alwaysShow: true
             };
-            const defaultOption = {
-                label: `[创建新笔记] ${value}`,
-                description: '按回车可直接用当前输入创建新笔记',
-                alwaysShow: true
-            };
+            const defaultOption = createDefaultOption(value);
 
             quickPick.selectedItems = [];
             if (QUERY_RESULT_CACHE.get(value)?.length) {
@@ -156,7 +156,8 @@ export async function smartCreateIssue(
                 }
                 quickPick.items = [defaultOption, ...newItems, clearCacheOption];
                 QUERY_RESULT_CACHE.set(value, newItems); // 缓存结果
-            } catch {
+            } catch (error) {
+                console.error('获取建议失败:', error);
                 if (quickPick.value === requestValue) {
                     quickPick.items = [defaultOption];
                 }
@@ -172,11 +173,7 @@ export async function smartCreateIssue(
 
         quickPick.onDidChangeValue(async (value) => {
             if (value) {
-                const defaultOption = {
-                    label: `[创建新笔记] ${value}`,
-                    description: '按回车可直接用当前输入创建新笔记',
-                    alwaysShow: true
-                };
+                const defaultOption = createDefaultOption(value);
                 quickPick.items = [defaultOption];
                 debounceFetchAndDisplaySuggestions(value);
             } else {
