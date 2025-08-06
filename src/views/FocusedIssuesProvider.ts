@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
-import { readFocused } from '../data/focusedManager';
+import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
 
 import * as path from 'path';
 import { getTitle } from '../utils/markdown';
@@ -36,6 +36,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     this._onDidChangeTreeData.fire();
   }
 
+
   async getTreeItem(element: IssueTreeNode): Promise<vscode.TreeItem> {
     const issueDir = getIssueDir();
     if (!issueDir || !this.treeData) {
@@ -67,16 +68,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
       } else {
         item.contextValue = 'focusedNode'; // 用于 package.json 的 when 子句
       }
-
-      if ([0].includes(focusIndex ?? -1)) {
-        item.iconPath = new vscode.ThemeIcon('star-full');
-      } else if ([1, 2].includes(focusIndex ?? -1)) {
-        item.iconPath = new vscode.ThemeIcon('star-half');
-      } else if ([3, 4, 5, 6].includes(focusIndex ?? -1)) {
-        item.iconPath = new vscode.ThemeIcon('star-empty');
-      } else {
-        item.iconPath = new vscode.ThemeIcon('sparkle'); // 默认图标
-      }
+      item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
       item.contextValue = 'issueNode';
     }

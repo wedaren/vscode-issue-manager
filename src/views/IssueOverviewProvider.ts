@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
+import { readTree, TreeData, IssueTreeNode, FocusedData } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
-import { readFocused } from '../data/focusedManager';
+import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
   /**
@@ -65,6 +65,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
   readonly onDidChangeTreeData: vscode.Event<IssueTreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private treeData: TreeData | null = null;
+  private focusedData: FocusedData | null = null;
 
   constructor(private context: vscode.ExtensionContext) {
     this.loadData();
@@ -84,6 +85,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     } else {
       this.treeData = null;
     }
+    this.focusedData = await readFocused();
     this._onDidChangeTreeData.fire();
   }
 
@@ -105,9 +107,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
     const title = await getTitle(uri);
 
-    // 判断是否已关注
-    const focusedData = await readFocused();
-    const isFocused = focusedData.focusList.includes(element.id);
+    const focusIndex = this.focusedData?.focusList.indexOf(element.id) ?? -1;
 
     const item = new vscode.TreeItem(title,
       element.children && element.children.length > 0
@@ -116,9 +116,9 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
 
     item.id = element.id;
     item.resourceUri = uri;
-    if (isFocused) {
+    if (focusIndex > -1) {
       item.contextValue = 'focusedNode'; // 根据关注状态设置 contextValue
-      item.iconPath = new vscode.ThemeIcon('sparkle');
+      item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
       item.contextValue = 'issueNode';
     }
