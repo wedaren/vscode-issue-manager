@@ -12,14 +12,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getUri } from '../utils/fileUtils';
 import { getIssueDir } from '../config';
+import { FocusedData } from './treeManager';
 
 const FOCUSED_VERSION = '1.0.0';
 const FOCUSED_FILE = 'focused.json';
 
-export interface FocusedData {
-  version: string;
-  focusList: string[];
-}
 
 
 /**
@@ -65,7 +62,7 @@ export async function readFocused(): Promise<FocusedData> {
       return { version: data.version, focusList: data.focusList };
     }
     // 结构不合法，返回空结构
-      throw new Error('Invalid focused data structure');
+    throw new Error('Invalid focused data structure');
   } catch (e) {
     // 文件不存在或解析失败，返回空结构
     return { version: FOCUSED_VERSION, focusList: [] };
@@ -122,7 +119,7 @@ export async function removeFocus(nodeId: string): Promise<void> {
   const idx = data.focusList.indexOf(nodeId);
   if (idx !== -1) {
     data.focusList.splice(idx, 1);
-    await writeFocused( data);
+    await writeFocused(data);
   }
 }
 
@@ -137,5 +134,27 @@ export async function pinFocus(nodeId: string): Promise<void> {
     const [item] = data.focusList.splice(index, 1);
     data.focusList.unshift(item);
     await writeFocused(data);
+  }
+}
+
+/**
+ * 根据关注索引返回对应的图标
+ * @param focusIndex 关注列表中的索引
+ */
+export function getFocusedNodeIconPath(focusIndex: number | undefined): vscode.ThemeIcon {
+  // 根据关注索引返回对应的图标，使用 switch 语句提升可读性和维护性
+  switch (focusIndex) {
+    case 0:
+      return new vscode.ThemeIcon('star-full');
+    case 1:
+    case 2:
+      return new vscode.ThemeIcon('star-half');
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+      return new vscode.ThemeIcon('star-empty');
+    default:
+      return new vscode.ThemeIcon('sparkle');
   }
 }
