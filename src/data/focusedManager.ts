@@ -142,14 +142,19 @@ export async function pinFocus(nodeId: string): Promise<void> {
  * @param focusIndex 关注列表中的索引
  */
 export function getFocusedNodeIconPath(focusIndex: number | undefined): vscode.ThemeIcon {
-  if ([0].includes(focusIndex ?? -1)) {
-    return new vscode.ThemeIcon('star-full');
+  // 根据关注索引返回对应的图标，使用 switch 语句提升可读性和维护性
+  switch (focusIndex) {
+    case 0:
+      return new vscode.ThemeIcon('star-full');
+    case 1:
+    case 2:
+      return new vscode.ThemeIcon('star-half');
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+      return new vscode.ThemeIcon('star-empty');
+    default:
+      return new vscode.ThemeIcon('sparkle');
   }
-  if ([1, 2].includes(focusIndex ?? -1)) {
-    return new vscode.ThemeIcon('star-half');
-  }
-  if ([3, 4, 5, 6].includes(focusIndex ?? -1)) {
-    return new vscode.ThemeIcon('star-empty');
-  }
-  return new vscode.ThemeIcon('sparkle');
 }
