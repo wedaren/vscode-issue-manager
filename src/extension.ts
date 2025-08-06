@@ -86,7 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
 		if (uri) {
 			const associatedFiles = await getAssociatedFiles();
 			const filename = path.basename(uri.fsPath);
-			if (!associatedFiles.has(filename)){
+			if (!associatedFiles.has(filename)) {
 				const label = await getTitle(uri);
 				const issueItem = new IssueItem(label, uri);
 				await isolatedView.reveal(issueItem, { select: true, focus: true, expand: true });
@@ -119,10 +119,10 @@ export function activate(context: vscode.ExtensionContext) {
 		if (!node || !node.resourceUri) { return; }
 		// 打开文件
 		await vscode.window.showTextDocument(node.resourceUri, { preview: false });
-		if(type === 'overview') {
+		if (type === 'overview') {
 			await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
 		} else if (type === 'focused') {
-			const {node:target} = focusedIssuesProvider.findFirstFocusedNodeById(node.id) || {};
+			const { node: target } = focusedIssuesProvider.findFirstFocusedNodeById(node.id) || {};
 			if (target) {
 				await vscode.commands.executeCommand('issueManager.views.focused.reveal', target, { select: true, focus: true, expand: true });
 			} else {
@@ -278,12 +278,29 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(disassociateIssueCommand);
 
-	// 修改“新建子问题”命令，复用工具函数
-	const createChildIssueCommand = vscode.commands.registerCommand('issueManager.createChildIssue', async (parentNode?: IssueTreeNode) => {
-		const id: string | null | undefined = parentNode?.id && stripFocusedId(parentNode.id);
-		await smartCreateIssue(id || null, true);
-	});
-	context.subscriptions.push(createChildIssueCommand);
+	const createChildIssueHandler = (viewType: 'overview' | 'focused') => {
+		return async (parentNode?: IssueTreeNode) => {
+			const id = parentNode?.id && stripFocusedId(parentNode.id);
+			await smartCreateIssue(id || null, true);
+			if (parentNode) {
+				const revealCommand = `issueManager.views.${viewType}.reveal`;
+				await vscode.commands.executeCommand(revealCommand, parentNode, { select: true, focus: true, expand: true });
+			}
+		};
+	};
+
+	const createChildIssueCommandInOverview = vscode.commands.registerCommand(
+		'issueManager.createChildIssueInOverview',
+		createChildIssueHandler('overview')
+	);
+
+	const createChildIssueCommandInFocused = vscode.commands.registerCommand(
+		'issueManager.createChildIssueInFocused',
+		createChildIssueHandler('focused')
+	);
+
+	context.subscriptions.push(createChildIssueCommandInOverview, createChildIssueCommandInFocused);
+
 	// 注册“创建问题”命令
 	const createIssueCommand = vscode.commands.registerCommand('issueManager.createIssue', async () => {
 		await smartCreateIssue(null);
