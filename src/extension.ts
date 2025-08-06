@@ -278,22 +278,26 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(disassociateIssueCommand);
 
-	const createChildIssueCommandInOverview = vscode.commands.registerCommand('issueManager.createChildIssueInOverview', async (parentNode?: IssueTreeNode) => {
-		const id: string | null | undefined = parentNode?.id && stripFocusedId(parentNode.id);
-		await smartCreateIssue(id || null, true);
-		if (parentNode) {
-			await vscode.commands.executeCommand('issueManager.views.overview.reveal', parentNode, { select: true, focus: true, expand: true });
-		}
-	});
+	const createChildIssueHandler = (viewType: 'overview' | 'focused') => {
+		return async (parentNode?: IssueTreeNode) => {
+			const id = parentNode?.id && stripFocusedId(parentNode.id);
+			await smartCreateIssue(id || null, true);
+			if (parentNode) {
+				const revealCommand = `issueManager.views.${viewType}.reveal`;
+				await vscode.commands.executeCommand(revealCommand, parentNode, { select: true, focus: true, expand: true });
+			}
+		};
+	};
 
-	const createChildIssueCommandInFocused = vscode.commands.registerCommand('issueManager.createChildIssueInFocused', async (parentNode?: IssueTreeNode) => {
-		const id: string | null | undefined = parentNode?.id && stripFocusedId(parentNode.id);
+	const createChildIssueCommandInOverview = vscode.commands.registerCommand(
+		'issueManager.createChildIssueInOverview',
+		createChildIssueHandler('overview')
+	);
 
-		await smartCreateIssue(id || null, true);
-		if (parentNode) {
-			await vscode.commands.executeCommand('issueManager.views.focused.reveal', parentNode, { select: true, focus: true, expand: true });
-		}
-	});
+	const createChildIssueCommandInFocused = vscode.commands.registerCommand(
+		'issueManager.createChildIssueInFocused',
+		createChildIssueHandler('focused')
+	);
 
 	context.subscriptions.push(createChildIssueCommandInOverview, createChildIssueCommandInFocused);
 
