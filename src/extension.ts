@@ -394,17 +394,24 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('issueManager.copyFilename', async (item: vscode.TreeItem) => {
-			if (item && item.resourceUri) {
-				const filePath = item.resourceUri.fsPath;
+		vscode.commands.registerCommand('issueManager.copyFilename', async (treeItemOrResourceUri: vscode.TreeItem | vscode.Uri) => {
+			let filePath: string | undefined;
+			if (treeItemOrResourceUri instanceof vscode.Uri) {
+				filePath = treeItemOrResourceUri.fsPath;
+			} else if (treeItemOrResourceUri && treeItemOrResourceUri.resourceUri) {
+				filePath = treeItemOrResourceUri.resourceUri.fsPath;
+			}
+			if (filePath) {
 				const fileName = path.basename(filePath);
 				try {
 					await vscode.env.clipboard.writeText(fileName);
 					vscode.window.showInformationMessage(`已复制文件名: ${fileName}`);
 				} catch (e) {
-					console.error('Failed to copy filename to clipboard:', e);
+					console.error('复制文件名到剪贴板失败:', e);
 					vscode.window.showErrorMessage('复制文件名失败。');
 				}
+			} else {
+				vscode.window.showWarningMessage('未找到有效的文件路径，无法复制文件名。');
 			}
 		})
 	);

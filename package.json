@@ -300,8 +300,14 @@
         {
           "command": "issueManager.viewRelatedIssues",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
-          "group": "navigation@5",
+          "group": "navigation@0",
           "title": "查看相关联问题"
+        },
+        {
+          "command": "issueManager.copyFilename",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "group": "navigation@0",
+          "title": "复制文件名"
         }
       ]
     },
