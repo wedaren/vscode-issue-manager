@@ -394,17 +394,35 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('issueManager.copyFilename', async (item: vscode.TreeItem) => {
-			if (item && item.resourceUri) {
-				const filePath = item.resourceUri.fsPath;
-				const fileName = path.basename(filePath);
+		vscode.commands.registerCommand('issueManager.copyFilename', async (treeItemOrResourceUri?: vscode.TreeItem | vscode.Uri) => {
+			// 优先获取 resourceUri，其次尝试使用当前激活编辑器的文件路径
+			let resourceUri: vscode.Uri | undefined;
+
+			if (treeItemOrResourceUri instanceof vscode.Uri) {
+				resourceUri = treeItemOrResourceUri;
+			} else if (treeItemOrResourceUri?.resourceUri) {
+				resourceUri = treeItemOrResourceUri.resourceUri;
+			} else if (vscode.window.activeTextEditor) {
+				// 命令面板调用时，回退到当前激活的编辑器
+				const doc = vscode.window.activeTextEditor.document;
+				const issueDir = getIssueDir();
+				// 仅当激活文件为问题目录下的 Markdown 文件时才继续
+				if (doc.languageId === 'markdown' && issueDir && doc.uri.fsPath.startsWith(issueDir)) {
+					resourceUri = doc.uri;
+				}
+			}
+
+			if (resourceUri) {
+				const fileName = path.basename(resourceUri.fsPath);
 				try {
 					await vscode.env.clipboard.writeText(fileName);
 					vscode.window.showInformationMessage(`已复制文件名: ${fileName}`);
 				} catch (e) {
-					console.error('Failed to copy filename to clipboard:', e);
+					console.error('复制文件名到剪贴板失败:', e);
 					vscode.window.showErrorMessage('复制文件名失败。');
 				}
+			} else {
+				vscode.window.showWarningMessage('未找到有效的文件路径，无法复制文件名。');
 			}
 		})
 	);
