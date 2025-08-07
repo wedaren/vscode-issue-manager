@@ -50,6 +50,8 @@ async function ensureQuickPickLoaded() {
 interface HistoryQuickPickItem extends vscode.QuickPickItem {
     isHistory?: boolean;
     isClearCacheOption?: boolean;
+    action?: 'create' | 'open';  
+    payload?: string; // 对于 'create' 是标题，对于 'open' 是文件路径  
 }
 
 /**
@@ -138,17 +140,28 @@ export async function smartCreateIssue(
                 if (quickPick.value !== requestValue) {
                     return;
                 }
-                const newItems: vscode.QuickPickItem[] = [];
+                const newItems: HistoryQuickPickItem[] = [];
                 if (suggestions.optimized.length > 0) {
                     newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
                     suggestions.optimized.forEach(opt => {
-                        newItems.push({ label: `[创建新笔记] ${opt}`, alwaysShow: true });
+                        newItems.push({ 
+                            label: `[创建新笔记] ${opt}`, 
+                            alwaysShow: true,
+                            action: 'create',
+                            payload: opt
+                        });
                     });
                 }
                 if (suggestions.similar.length > 0) {
                     newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
                     suggestions.similar.forEach(sim => {
-                        newItems.push({ label: `[打开已有笔记] ${sim.title}`, description: `${path.relative(issueDir || '', sim.filePath)}`, alwaysShow: true });
+                        newItems.push({ 
+                            label: `[打开已有笔记] ${sim.title}`, 
+                            description: `${path.relative(issueDir || '', sim.filePath)}`, 
+                            alwaysShow: true,
+                            action: 'open',
+                            payload: `${path.relative(issueDir || '', sim.filePath)}`
+                        });
                     });
                 }
                 if (newItems.length === 0) {
@@ -259,39 +272,36 @@ async function handleBatchSelection(
 ): Promise<vscode.Uri[]> {
     let uris: vscode.Uri[] = [];
 
-    for (const item of selectedItems) {
-        if (item.label.startsWith('[创建新笔记]')) {
-            const title = item.label.replace('[创建新笔记] ', '');
-            if (title) {
-                const uri = await createIssueFile(title);
-                if (uri) {
-                    uris.push(uri);
-                }
+    // 使用扩展后的 HistoryQuickPickItem，直接根据 action 字段判断操作类型
+    for (const item of selectedItems as readonly HistoryQuickPickItem[]) {
+        if (item.action === 'create' && item.payload) {
+            // 创建新笔记
+            const uri = await createIssueFile(item.payload);
+            if (uri) {
+                uris.push(uri);
             }
-        } else if (item.label.startsWith('[打开已有笔记]')) {
-            if (item.description) {
-                try {
-                    const issueDir = getIssueDir();
-                    if (!issueDir) {
-                        // 此情况应由上层调用者保证，但作为安全措施，在此处处理
-                        vscode.window.showErrorMessage('问题目录未配置，无法打开文件。');
-                        continue;
-                    }
-                    const notePath = path.resolve(issueDir, item.description);
-
-                    // 安全检查：确保解析后的路径在 issueDir 目录内
-                    if (!notePath.startsWith(path.resolve(issueDir))) {
-                        vscode.window.showErrorMessage(`检测到不安全的路径，已阻止打开: ${item.description}`);
-                        continue;
-                    }
-
-                    const uri = vscode.Uri.file(notePath);
-                    await vscode.workspace.fs.stat(uri);
-                    uris.push(uri);
-                    await vscode.window.showTextDocument(uri);
-                } catch (error) {
-                    vscode.window.showErrorMessage(`无法打开文件: ${item.description}`);
+        } else if (item.action === 'open' && item.payload) {
+            // 打开已有笔记
+            try {
+                const issueDir = getIssueDir();
+                if (!issueDir) {
+                    vscode.window.showErrorMessage('问题目录未配置，无法打开文件。');
+                    continue;
                 }
+                const notePath = path.resolve(issueDir, item.payload);
+
+                // 安全检查：确保解析后的路径在 issueDir 目录内
+                if (!notePath.startsWith(path.resolve(issueDir))) {
+                    vscode.window.showErrorMessage(`检测到不安全的路径，已阻止打开: ${item.payload}`);
+                    continue;
+                }
+
+                const uri = vscode.Uri.file(notePath);
+                await vscode.workspace.fs.stat(uri);
+                uris.push(uri);
+                await vscode.window.showTextDocument(uri);
+            } catch (error) {
+                vscode.window.showErrorMessage(`无法打开文件: ${item.payload}`);
             }
         }
     }
