@@ -121,9 +121,9 @@ export async function smartCreateIssue(
             const defaultOption = createDefaultOption(value);
 
             quickPick.selectedItems = [];
-            if (QUERY_RESULT_CACHE.get(value)?.length) {
-                const items = QUERY_RESULT_CACHE.get(value)!;
-                quickPick.items = [defaultOption, ...items, clearCacheOption];
+            const cachedItems = QUERY_RESULT_CACHE.get(value);
+            if (cachedItems?.length) {
+                quickPick.items = [defaultOption, ...cachedItems, clearCacheOption];
                 return;
             } else {
                 quickPick.items = [defaultOption];
