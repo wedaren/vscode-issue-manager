@@ -404,7 +404,12 @@ export function activate(context: vscode.ExtensionContext) {
 				resourceUri = treeItemOrResourceUri.resourceUri;
 			} else if (vscode.window.activeTextEditor) {
 				// 命令面板调用时，回退到当前激活的编辑器
-				resourceUri = vscode.window.activeTextEditor.document.uri;
+				const doc = vscode.window.activeTextEditor.document;
+				const issueDir = getIssueDir();
+				// 仅当激活文件为问题目录下的 Markdown 文件时才继续
+				if (doc.languageId === 'markdown' && issueDir && doc.uri.fsPath.startsWith(issueDir)) {
+					resourceUri = doc.uri;
+				}
 			}
 
 			if (resourceUri) {
