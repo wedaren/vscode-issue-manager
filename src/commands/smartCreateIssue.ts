@@ -13,8 +13,10 @@ export const QUERY_RESULT_CACHE = new Map<string, vscode.QuickPickItem[]>();
 const createDefaultOption = (value: string) => ({  
     label: `[创建新笔记] ${value}`,  
     description: '按回车可直接用当前输入创建新笔记',  
-    alwaysShow: true  
-});
+    alwaysShow: true,
+    action: 'create',
+    payload: value
+})  as HistoryQuickPickItem; // 使用扩展后的 HistoryQuickPickItem 类型
 // 初始化持久化数据
 let quickPickLoaded = false;
 async function ensureQuickPickLoaded() {
@@ -155,12 +157,13 @@ export async function smartCreateIssue(
                 if (suggestions.similar.length > 0) {
                     newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
                     suggestions.similar.forEach(sim => {
+                        const relativePath = path.relative(issueDir || '', sim.filePath);
                         newItems.push({ 
                             label: `[打开已有笔记] ${sim.title}`, 
-                            description: `${path.relative(issueDir || '', sim.filePath)}`, 
+                            description: relativePath, 
                             alwaysShow: true,
                             action: 'open',
-                            payload: `${path.relative(issueDir || '', sim.filePath)}`
+                            payload: relativePath
                         });
                     });
                 }
