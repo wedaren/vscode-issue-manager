@@ -5,14 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.5] - 2025-08-07
+
+### ✨ 新增
+- feat: 支持编辑器右键复制文件名
+
+
 ## [0.1.4] - 2025-08-07
 
-### ♻️ 优化
+### 🐞 修复
 - fix: 切换 Copilot 模型为 gpt-4.1
 
 ## [0.1.3] - 2025-08-07
 
-### ♻️ 优化
+### 🐞 修复
 - fix: 修复创建子问题 quickpick 展示异常，优化 quickpick 逻辑 (#50)
 
 
