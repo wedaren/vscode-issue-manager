@@ -5,6 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.3] - 2025-08-07
+
+### ♻️ 优化
+- fix: 修复创建子问题 quickpick 展示异常，优化 quickpick 逻辑 (#50)
+
+
+
 ## [0.1.2] - 2025-08-06
 ### ♻️ 优化
 - feat: 关注问题视图与问题总览视图中的关注节点图标样式保持一致，统一视觉体验。
