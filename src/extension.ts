@@ -394,15 +394,21 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('issueManager.copyFilename', async (treeItemOrResourceUri: vscode.TreeItem | vscode.Uri) => {
-			let filePath: string | undefined;
+		vscode.commands.registerCommand('issueManager.copyFilename', async (treeItemOrResourceUri?: vscode.TreeItem | vscode.Uri) => {
+			// 优先获取 resourceUri，其次尝试使用当前激活编辑器的文件路径
+			let resourceUri: vscode.Uri | undefined;
+
 			if (treeItemOrResourceUri instanceof vscode.Uri) {
-				filePath = treeItemOrResourceUri.fsPath;
-			} else if (treeItemOrResourceUri && treeItemOrResourceUri.resourceUri) {
-				filePath = treeItemOrResourceUri.resourceUri.fsPath;
+				resourceUri = treeItemOrResourceUri;
+			} else if (treeItemOrResourceUri?.resourceUri) {
+				resourceUri = treeItemOrResourceUri.resourceUri;
+			} else if (vscode.window.activeTextEditor) {
+				// 命令面板调用时，回退到当前激活的编辑器
+				resourceUri = vscode.window.activeTextEditor.document.uri;
 			}
-			if (filePath) {
-				const fileName = path.basename(filePath);
+
+			if (resourceUri) {
+				const fileName = path.basename(resourceUri.fsPath);
 				try {
 					await vscode.env.clipboard.writeText(fileName);
 					vscode.window.showInformationMessage(`已复制文件名: ${fileName}`);
