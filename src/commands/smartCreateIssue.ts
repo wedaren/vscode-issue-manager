@@ -8,15 +8,15 @@ import * as path from 'path';
 
 // 在模块作用域内维护缓存和历史记录
 export const SEARCH_HISTORY: string[] = [];
-export const QUERY_RESULT_CACHE = new Map<string, vscode.QuickPickItem[]>();
+export const QUERY_RESULT_CACHE = new Map<string, HistoryQuickPickItem[]>();
 
-const createDefaultOption = (value: string) => ({  
-    label: `[创建新笔记] ${value}`,  
-    description: '按回车可直接用当前输入创建新笔记',  
+const createDefaultOption = (value: string): HistoryQuickPickItem => ({
+    label: `[创建新笔记] ${value}`,
+    description: '按回车可直接用当前输入创建新笔记',
     alwaysShow: true,
     action: 'create',
     payload: value
-})  as HistoryQuickPickItem; // 使用扩展后的 HistoryQuickPickItem 类型
+})
 // 初始化持久化数据
 let quickPickLoaded = false;
 async function ensureQuickPickLoaded() {
@@ -52,7 +52,7 @@ async function ensureQuickPickLoaded() {
 interface HistoryQuickPickItem extends vscode.QuickPickItem {
     isHistory?: boolean;
     isClearCacheOption?: boolean;
-    action?: 'create' | 'open';  
+    action?: 'create' | 'open';
     payload?: string; // 对于 'create' 是标题，对于 'open' 是文件路径  
 }
 
@@ -146,8 +146,8 @@ export async function smartCreateIssue(
                 if (suggestions.optimized.length > 0) {
                     newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
                     suggestions.optimized.forEach(opt => {
-                        newItems.push({ 
-                            label: `[创建新笔记] ${opt}`, 
+                        newItems.push({
+                            label: `[创建新笔记] ${opt}`,
                             alwaysShow: true,
                             action: 'create',
                             payload: opt
@@ -158,9 +158,9 @@ export async function smartCreateIssue(
                     newItems.push({ label: '---', kind: vscode.QuickPickItemKind.Separator });
                     suggestions.similar.forEach(sim => {
                         const relativePath = path.relative(issueDir || '', sim.filePath);
-                        newItems.push({ 
-                            label: `[打开已有笔记] ${sim.title}`, 
-                            description: relativePath, 
+                        newItems.push({
+                            label: `[打开已有笔记] ${sim.title}`,
+                            description: relativePath,
                             alwaysShow: true,
                             action: 'open',
                             payload: relativePath
