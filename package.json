@@ -129,6 +129,11 @@
       {
         "command": "issueManager.moveTo",
         "title": "移动到..."
+      },
+      {
+        "command": "issueManager.openIssueDir",
+        "title": "在 VS Code 中打开问题目录",
+        "icon": "$(home)"
       }
     ],
     "submenus": [
@@ -170,9 +175,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "issueManager.searchIssuesInFocused",
+          "command": "issueManager.openIssueDir",
           "when": "view == issueManager.views.focused",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.searchIssuesInFocused",
+          "when": "view == issueManager.views.focused",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.createIssueFromFocused",
+          "when": "view == issueManager.views.focused",
+          "group": "navigation@3"
         },
         {
           "command": "issueManager.createIssue",
@@ -185,13 +200,9 @@
           "group": "navigation@1"
         },
         {
-          "command": "issueManager.createIssueFromFocused",
-          "when": "view == issueManager.views.focused"
-        },
-        {
           "command": "issueManager.refreshAllViews",
           "when": "view == issueManager.views.recent || view == issueManager.views.focused",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "issueManager.setRecentIssuesViewMode.group",

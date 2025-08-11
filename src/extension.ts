@@ -2,6 +2,7 @@ import { moveToCommand } from './commands/moveTo';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from './config';
+import { registerOpenIssueDirCommand } from './commands/openIssueDir';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { registerSearchIssuesCommand } from './commands/searchIssues';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
@@ -50,6 +51,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“问题总览视图搜索”命令
 	registerSearchIssuesCommand(context);
+
+	registerOpenIssueDirCommand(context);
 	// 注册“孤立问题”视图
 	const isolatedIssuesProvider = new IsolatedIssuesProvider(context);
 	// vscode.window.registerTreeDataProvider('issueManager.views.isolated', isolatedIssuesProvider);
