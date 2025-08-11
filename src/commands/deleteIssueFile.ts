@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { getIssueDir } from '../config';
 import { IssueItem } from '../views/IsolatedIssuesProvider';
 import path from 'path';
 
@@ -27,7 +26,7 @@ export function registerDeleteIssueFile(context: vscode.ExtensionContext, isolat
                 vscode.window.showInformationMessage(`文件 “${path.basename(item.resourceUri.fsPath)}” 已被删除。`);
                 // 视图会自动通过 FileSystemWatcher 刷新，无需手动调用 refresh
             } catch (error) {
-                vscode.window.showErrorMessage(`删除文件时出错: ${error}`);
+                vscode.window.showErrorMessage(`删除文件时出错: ${String(error)}`);
             }
         }
     });
@@ -45,12 +44,9 @@ export function registerDeleteIssueFile(context: vscode.ExtensionContext, isolat
         }
 
         // 验证所有选中项都是IssueItem且有有效的文件路径
-        const validItems: IssueItem[] = [];
-        for (const item of selection) {
-            if (item instanceof IssueItem && item.resourceUri) {
-                validItems.push(item);
-            }
-        }
+        const validItems = selection.filter(  
+            (item): item is IssueItem => item instanceof IssueItem && !!item.resourceUri  
+        );  
         
         if (validItems.length === 0) {
             vscode.window.showErrorMessage('未找到有效的文件路径。');
@@ -70,19 +66,21 @@ export function registerDeleteIssueFile(context: vscode.ExtensionContext, isolat
         );
 
         if (confirm === '确认删除') {
-            let successCount = 0;
-            let failedFiles: string[] = [];
+            const results = await Promise.allSettled(  
+                validItems.map(item => vscode.workspace.fs.delete(item.resourceUri!))  
+            );  
 
-            // 批量删除文件
-            for (const item of validItems) {
-                try {
-                    await vscode.workspace.fs.delete(item.resourceUri!);
-                    successCount++;
-                } catch (error) {
-                    failedFiles.push(path.basename(item.resourceUri!.fsPath));
-                    console.error(`删除文件 ${item.resourceUri!.fsPath} 时出错:`, error);
-                }
-            }
+            const failedFiles: string[] = [];  
+            results.forEach((result, index) => {  
+                if (result.status === 'rejected') {  
+                    const item = validItems[index];  
+                    const fileName = path.basename(item.resourceUri!.fsPath);  
+                    failedFiles.push(fileName);  
+                    console.error(`删除文件 ${fileName} 时出错:`, result.reason);  
+                }  
+            });  
+
+            const successCount = validItems.length - failedFiles.length;  
 
             // 显示结果消息
             if (successCount === validItems.length) {
