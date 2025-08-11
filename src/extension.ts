@@ -5,6 +5,7 @@ import { getIssueDir } from './config';
 import { registerOpenIssueDirCommand } from './commands/openIssueDir';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { registerSearchIssuesCommand } from './commands/searchIssues';
+import { registerDeleteIssueFile } from './commands/deleteIssueFile';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { IsolatedIssuesProvider, IssueItem } from './views/IsolatedIssuesProvider';
 import { RecentIssuesProvider } from './views/RecentIssuesProvider';
@@ -51,7 +52,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册“问题总览视图搜索”命令
 	registerSearchIssuesCommand(context);
-
 	registerOpenIssueDirCommand(context);
 	// 注册“孤立问题”视图
 	const isolatedIssuesProvider = new IsolatedIssuesProvider(context);
@@ -96,6 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	}));
+	registerDeleteIssueFile(context, isolatedView as vscode.TreeView<IssueItem>);
 
 	// 注册“关注问题”视图
 	const focusedIssuesProvider = new FocusedIssuesProvider(context);
@@ -219,31 +220,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 
 
-	// 注册“删除问题”命令
-	const deleteIssueCommand = vscode.commands.registerCommand('issueManager.deleteIssue', async (item: IssueItem) => {
-		if (!item || !item.resourceUri) {
-			vscode.window.showErrorMessage('无法删除问题：未找到有效的文件路径。');
-			return;
-		}
-
-		const confirm = await vscode.window.showWarningMessage(
-			`您确定要永久删除文件 “${path.basename(item.resourceUri.fsPath)}” 吗？此操作无法撤销。`,
-			{ modal: true }, // 模态对话框，阻止其他操作
-			'确认删除'
-		);
-
-		if (confirm === '确认删除') {
-			try {
-				await vscode.workspace.fs.delete(item.resourceUri);
-				vscode.window.showInformationMessage(`文件 “${path.basename(item.resourceUri.fsPath)}” 已被删除。`);
-				// 视图会自动通过 FileSystemWatcher 刷新，无需手动调用 refresh
-			} catch (error) {
-				vscode.window.showErrorMessage(`删除文件时出错: ${error}`);
-			}
-		}
-	});
-
-	context.subscriptions.push(deleteIssueCommand);
 
 	// 注册“解除关联”命令
 	const disassociateIssueCommand = vscode.commands.registerCommand('issueManager.disassociateIssue', async (node: IssueTreeNode) => {
