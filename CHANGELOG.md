@@ -5,7 +5,7 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
-## [未发布] - 2025-08-13
+## [0.1.6] - 2025-08-13
 
 ### ✨ 新增
 - feat: 支持快捷键打开关注问题视图
