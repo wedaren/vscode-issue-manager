@@ -139,6 +139,11 @@
         "command": "issueManager.openIssueDir",
         "title": "在 VS Code 中打开问题目录",
         "icon": "$(home)"
+      },
+      {
+        "command": "issueManager.openFocusedView",
+        "title": "打开关注问题视图",
+        "category": "Issue Manager"
       }
     ],
     "submenus": [
@@ -332,6 +337,14 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "issueManager.openFocusedView",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i",
+        "when": "issueManager.isDirConfigured"
+      }
+    ],
     "configuration": {
       "title": "问题管理插件",
       "properties": {

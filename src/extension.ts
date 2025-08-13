@@ -296,6 +296,16 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(createIssueFromFocusedCommand);
 
+	// 注册"打开关注问题视图"命令
+	const openFocusedViewCommand = vscode.commands.registerCommand('issueManager.openFocusedView', async () => {
+		// 激活问题管理扩展的活动栏
+		await vscode.commands.executeCommand('workbench.view.extension.issue-manager');
+		// 聚焦到关注问题视图
+		await vscode.commands.executeCommand('issueManager.views.focused.focus');
+		vscode.window.showInformationMessage('已打开关注问题视图');
+	});
+	context.subscriptions.push(openFocusedViewCommand);
+
 	// 注册“添加到关注”命令
 	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueTreeNode) => {
 		const issueDir = getIssueDir();
