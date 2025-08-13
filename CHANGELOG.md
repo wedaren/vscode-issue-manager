@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [未发布] - 2025-08-13
+
+### ✨ 新增
+- feat: 支持快捷键打开关注问题视图
+  - 新增命令 `issueManager.openFocusedView`
+  - 配置快捷键：Windows/Linux 下 `Ctrl+Shift+I`，macOS 下 `Cmd+Shift+I`
+  - 快捷键激活后自动打开问题管理器并聚焦到关注问题视图
+  - 仅在插件配置正确时启用该快捷键
+
 ## [0.1.5] - 2025-08-07
 
 ### ✨ 新增
