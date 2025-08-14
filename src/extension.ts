@@ -1,4 +1,3 @@
-import { moveToCommand } from './commands/moveTo';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from './config';
@@ -6,6 +5,7 @@ import { registerOpenIssueDirCommand } from './commands/openIssueDir';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { registerSearchIssuesCommand } from './commands/searchIssues';
 import { registerDeleteIssueFile } from './commands/deleteIssueFile';
+import { moveToCommand } from './commands/moveTo';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
 import { IsolatedIssuesProvider, IssueItem } from './views/IsolatedIssuesProvider';
 import { RecentIssuesProvider } from './views/RecentIssuesProvider';
@@ -18,18 +18,28 @@ import { smartCreateIssue } from './commands/smartCreateIssue';
 import { addIssueToTree } from './commands/issueFileUtils';
 import { registerRelatedIssuesView } from './views/relatedIssuesViewRegistration';
 import { getTitle } from './utils/markdown';
+import { GitSyncService } from './services/GitSyncService';
 
-/**
- * 设置或更新一个上下文变量，用于控制欢迎视图的显示。
- * 当 issueManager.issueDir 配置存在时，此上下文为 true，否则为 false。
- */
-function updateConfigContext() {
-	const issueDir = getIssueDir();
-	vscode.commands.executeCommand('setContext', 'issueManager.isDirConfigured', !!issueDir);
-}
 
 // 当您的扩展被激活时，将调用此方法
 export function activate(context: vscode.ExtensionContext) {
+	console.log('恭喜，您的扩展“issue-manager”现已激活！');
+	// 首次激活时，立即更新上下文
+	const issueDir = getIssueDir();
+	vscode.commands.executeCommand('setContext', 'issueManager.isDirConfigured', !!issueDir);
+
+	// 监听配置变化，以便在用户更改设置后再次更新上下文
+	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+		if (e.affectsConfiguration('issueManager.issueDir')) {
+			const issueDir = getIssueDir();
+			vscode.commands.executeCommand('setContext', 'issueManager.isDirConfigured', !!issueDir);
+		}
+	}));
+
+	// 初始化Git同步服务
+	const gitSyncService = GitSyncService.getInstance();
+	gitSyncService.initialize();
+	context.subscriptions.push(gitSyncService);
 
 	// 注册“移动到...”命令
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode, selectedNodes?: IssueTreeNode[]) => {
@@ -38,17 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
 		await moveToCommand(nodes);
 	}));
 
-	console.log('恭喜，您的扩展“issue-manager”现已激活！');
 
-	// 首次激活时，立即更新上下文
-	updateConfigContext();
-
-	// 监听配置变化，以便在用户更改设置后再次更新上下文
-	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-		if (e.affectsConfiguration('issueManager.issueDir')) {
-			updateConfigContext();
-		}
-	}));
 
 	// 注册“问题总览视图搜索”命令
 	registerSearchIssuesCommand(context);
@@ -296,18 +296,18 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(createIssueFromFocusedCommand);
 
-    const openFocusedViewCommand = vscode.commands.registerCommand('issueManager.openFocusedView', async () => {  
-        try {  
-            // 激活问题管理扩展的活动栏  
-            await vscode.commands.executeCommand('workbench.view.extension.issue-manager');  
-            // 聚焦到关注问题视图  
-            await vscode.commands.executeCommand('issueManager.views.focused.focus');  
-            vscode.window.showInformationMessage('已打开关注问题视图');  
-        } catch (error) {  
-            console.error('打开关注问题视图失败:', error);  
-            vscode.window.showErrorMessage('无法打开关注问题视图，请检查扩展是否正确安装。');  
-        }  
-    });  
+	const openFocusedViewCommand = vscode.commands.registerCommand('issueManager.openFocusedView', async () => {
+		try {
+			// 激活问题管理扩展的活动栏  
+			await vscode.commands.executeCommand('workbench.view.extension.issue-manager');
+			// 聚焦到关注问题视图  
+			await vscode.commands.executeCommand('issueManager.views.focused.focus');
+			vscode.window.showInformationMessage('已打开关注问题视图');
+		} catch (error) {
+			console.error('打开关注问题视图失败:', error);
+			vscode.window.showErrorMessage('无法打开关注问题视图，请检查扩展是否正确安装。');
+		}
+	});
 	context.subscriptions.push(openFocusedViewCommand);
 
 	// 注册“添加到关注”命令
@@ -424,4 +424,8 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // 当您的扩展被停用时，将调用此方法
-export function deactivate() { }
+export async function deactivate() {
+	// 执行最终同步
+	const gitSyncService = GitSyncService.getInstance();
+	await gitSyncService.performFinalSync();
+}

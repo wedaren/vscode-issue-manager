@@ -144,6 +144,12 @@
         "command": "issueManager.openFocusedView",
         "title": "打开关注问题视图",
         "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.synchronizeNow",
+        "title": "立即同步",
+        "category": "Issue Manager",
+        "icon": "$(sync)"
       }
     ],
     "submenus": [
@@ -361,6 +367,26 @@
             "list"
           ],
           "description": "设置最近问题视图的默认显示模式，可选值为 'grouped'（分组模式）或 'list'（列表模式）。"
+        },
+        "issueManager.sync.enableAutosync": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用自动化Git同步功能。启用后，插件将自动监听文件变更并同步到Git仓库。"
+        },
+        "issueManager.sync.autoCommitMessage": {
+          "type": "string",
+          "default": "[Auto-Sync] Changes at {date}",
+          "description": "自动提交时使用的消息模板。可以包含 {date} 占位符表示当前日期时间。"
+        },
+        "issueManager.sync.changeDebounceInterval": {
+          "type": "number",
+          "default": 300,
+          "description": "文件变更后触发自动同步前的等待时间（单位：秒）。默认5分钟。"
+        },
+        "issueManager.sync.periodicPullInterval": {
+          "type": "number",
+          "default": 15,
+          "description": "后台周期性拉取远程更新的时间间隔（单位：分钟）。设置为0可禁用。"
         }
       }
     },
@@ -439,7 +465,8 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
+    "@types/node": "^20.19.10",
+    "@types/sinon": "^17.0.4",
     "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.101.0",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
@@ -447,12 +474,14 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.21.0",
+    "sinon": "^21.0.0",
     "ts-loader": "^9.5.2",
     "typescript": "^5.7.3",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
+    "simple-git": "^3.28.0",
     "uuid": "^11.1.0"
   },
   "repository": {

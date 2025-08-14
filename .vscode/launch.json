@@ -10,7 +10,7 @@
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
-				"/Users/wedaren/repositoryDestinationOfGithub/foam-notes",
+				"/Users/wedaren/repositoryDestinationOfGithub/issue-notes",
 				"--extensionDevelopmentPath=${workspaceFolder}"
 			],
 			"outFiles": [
