@@ -1,13 +1,16 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { simpleGit, SimpleGit, SimpleGitOptions } from 'simple-git';
+import { simpleGit, SimpleGit, SimpleGitOptions, GitError, GitResponseError } from 'simple-git';
 import { getIssueDir, isAutoSyncEnabled, getAutoCommitMessage, getChangeDebounceInterval, getPeriodicPullInterval } from '../config';
 
 export enum SyncStatus {
     Synced = 'synced',           // 已同步，最新状态
     Syncing = 'syncing',         // 正在同步中
     HasLocalChanges = 'local',   // 有本地更改待推送
+    /**
+     * 暂时用不到
+     */
     HasRemoteChanges = 'remote', // 有远程更新待拉取
     Conflict = 'conflict',       // 同步失败或冲突
     Disabled = 'disabled'        // 自动同步已禁用
@@ -292,19 +295,71 @@ export class GitSyncService {
     private handleSyncError(error: any): void {
         console.error('Git sync error:', error);
         
-        // 检查错误类型
+        // 优先使用 simple-git 的特定错误类型进行判断
+        if (error instanceof GitResponseError) {
+            // GitResponseError 通常表示Git操作成功但结果被视为错误（如合并冲突）
+            const response = error.git;
+            if (response && typeof response === 'object') {
+                // 检查是否是合并相关的错误
+                if ('conflicts' in response || 'failed' in response) {
+                    this.enterConflictMode();
+                    return;
+                }
+            }
+            
+            // 检查错误消息是否包含冲突信息
+            if (error.message && (error.message.includes('conflict') || error.message.includes('merge') || 
+                error.message.includes('冲突') || error.message.includes('合并'))) {
+                this.enterConflictMode();
+                return;
+            }
+        }
+        
+        if (error instanceof GitError) {
+            // GitError 表示 Git 进程级别的错误
+            const errorMessage = error.message?.toLowerCase() || '';
+            
+            // 检查网络相关错误
+            if (errorMessage.includes('network') || errorMessage.includes('connection') ||
+                errorMessage.includes('econnreset') || errorMessage.includes('timeout') ||
+                errorMessage.includes('网络') || errorMessage.includes('连接') ||
+                errorMessage.includes('超时')) {
+                this.currentStatus = { 
+                    status: SyncStatus.Conflict, 
+                    message: `网络错误: ${error.message.split('\n')[0]}` 
+                };
+                return;
+            }
+            
+            // 检查认证相关错误
+            if (errorMessage.includes('authentication') || errorMessage.includes('permission') ||
+                errorMessage.includes('access denied') || errorMessage.includes('unauthorized') ||
+                errorMessage.includes('认证') || errorMessage.includes('权限') ||
+                errorMessage.includes('拒绝访问') || errorMessage.includes('未授权')) {
+                this.currentStatus = { 
+                    status: SyncStatus.Conflict, 
+                    message: `认证错误: ${error.message.split('\n')[0]}` 
+                };
+                return;
+            }
+        }
+        
+        // 后备方案：基于错误消息文本的检查（保持向后兼容）
         if (error instanceof Error) {
             const errorMessage = error.message.toLowerCase();
             
             // 检查是否是冲突错误
-            if (errorMessage.includes('conflict') || errorMessage.includes('merge')) {
+            if (errorMessage.includes('conflict') || errorMessage.includes('merge') ||
+                errorMessage.includes('冲突') || errorMessage.includes('合并')) {
                 this.enterConflictMode();
                 return;
             }
             
             // 检查是否是网络错误
             if (errorMessage.includes('network') || errorMessage.includes('connection') || 
-                errorMessage.includes('econnreset') || errorMessage.includes('timeout')) {
+                errorMessage.includes('econnreset') || errorMessage.includes('timeout') ||
+                errorMessage.includes('网络') || errorMessage.includes('连接') ||
+                errorMessage.includes('超时')) {
                 this.currentStatus = { 
                     status: SyncStatus.Conflict, 
                     message: `网络错误: ${error.message.split('\n')[0]}` 
@@ -313,7 +368,8 @@ export class GitSyncService {
             }
             
             // 检查是否是认证错误
-            if (errorMessage.includes('authentication') || errorMessage.includes('permission')) {
+            if (errorMessage.includes('authentication') || errorMessage.includes('permission') ||
+                errorMessage.includes('认证') || errorMessage.includes('权限')) {
                 this.currentStatus = { 
                     status: SyncStatus.Conflict, 
                     message: `认证错误: ${error.message.split('\n')[0]}` 
@@ -322,7 +378,8 @@ export class GitSyncService {
             }
             
             // 检查是否是Git配置错误
-            if (errorMessage.includes('无法变基') || errorMessage.includes('rebase')) {
+            if (errorMessage.includes('无法变基') || errorMessage.includes('rebase') ||
+                errorMessage.includes('cannot rebase') || errorMessage.includes('变基')) {
                 this.currentStatus = { 
                     status: SyncStatus.Conflict, 
                     message: `Git操作错误，请检查仓库状态` 
@@ -331,7 +388,7 @@ export class GitSyncService {
             }
         }
         
-        // 其他错误的通用处理
+        // 通用错误处理
         this.currentStatus = { 
             status: SyncStatus.Conflict, 
             message: `同步失败: ${error instanceof Error ? error.message.split('\n')[0] : '未知错误'}` 
