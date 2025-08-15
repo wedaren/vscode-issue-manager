@@ -495,7 +495,7 @@ export class GitSyncService {
             await git.fetch('origin');
             
             // 拉取当前分支的更新，使用merge而非rebase避免复杂情况
-            await git.pull('origin', currentBranch);
+            await git.pull('origin', currentBranch, { '--no-rebase': null });  
         } catch (error) {
             // 如果拉取失败，尝试简单的拉取
             try {
