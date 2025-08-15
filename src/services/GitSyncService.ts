@@ -527,7 +527,7 @@ export class GitSyncService {
         
         // 生成提交消息
         const template = getAutoCommitMessage();
-        const commitMessage = template.replace('{date}', new Date().toLocaleString('zh-CN'));
+        const commitMessage = template.replace('{date}', new Date().toISOString());  
         
         // 提交
         await git.commit(commitMessage);
