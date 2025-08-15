@@ -49,8 +49,19 @@ export interface SyncStatusInfo {
  * - 在状态栏显示同步状态
  * 
  * 采用单例模式，确保全局只有一个同步服务实例。
+ * 实现了vscode.Disposable接口，可以被添加到扩展的subscriptions中进行资源管理。
+ * 
+ * @example
+ * ```typescript
+ * // 在扩展激活时初始化
+ * const gitSyncService = GitSyncService.getInstance();
+ * gitSyncService.initialize();
+ * context.subscriptions.push(gitSyncService);
+ * 
+ * // 服务会在扩展停用时自动清理资源
+ * ```
  */
-export class GitSyncService {
+export class GitSyncService implements vscode.Disposable {
     private static instance: GitSyncService;
     private statusBarItem: vscode.StatusBarItem;
     private fileWatcher?: vscode.FileSystemWatcher;
