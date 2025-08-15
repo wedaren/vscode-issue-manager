@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -381,7 +381,7 @@
         "issueManager.sync.changeDebounceInterval": {
           "type": "number",
           "default": 300,
-          "description": "文件变更后触发自动同步前的等待时间（单位：秒）。默认值为 300 秒（5 分钟）。"  
+          "description": "文件变更后触发自动同步前的等待时间（单位：秒）。默认值为 300 秒（5 分钟）。"
         },
         "issueManager.sync.periodicPullInterval": {
           "type": "number",
