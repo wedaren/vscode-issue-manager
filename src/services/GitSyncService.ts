@@ -381,7 +381,7 @@ export class GitSyncService implements vscode.Disposable {
         this.updateStatusBar();
     }
 
-    private handleSyncError(error: any): void {
+    private handleSyncError(error: unknown): void {  
         console.error('Git sync error:', error);
         
         // 优先使用 simple-git 的特定错误类型进行判断
@@ -612,13 +612,11 @@ export class GitSyncService implements vscode.Disposable {
             // 拉取当前分支的更新，使用merge而非rebase避免复杂情况
             await git.pull('origin', currentBranch, { '--no-rebase': null });  
         } catch (error) {
-            // 如果拉取失败，尝试简单的拉取
-            try {
-                await git.pull();
-            } catch (fallbackError) {
-                // 如果仍然失败，抛出原始错误
-                throw error;
-            }
+            // 直接抛出错误，由上层统一处理。  
+            // 简单的 git.pull() 可能会根据用户配置意外触发 rebase，  
+            // 导致自动化流程中出现非预期的行为。  
+            // 保持明确的错误处理路径更为安全。  
+            throw error;
         }
     }
 
