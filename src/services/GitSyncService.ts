@@ -4,24 +4,52 @@ import * as path from 'path';
 import { simpleGit, SimpleGit, SimpleGitOptions, GitError, GitResponseError } from 'simple-git';
 import { getIssueDir, isAutoSyncEnabled, getAutoCommitMessage, getChangeDebounceInterval, getPeriodicPullInterval } from '../config';
 
+/**
+ * Git同步状态枚举
+ * 
+ * 定义Git自动同步服务的各种状态，用于状态栏显示和内部状态管理。
+ */
 export enum SyncStatus {
-    Synced = 'synced',           // 已同步，最新状态
-    Syncing = 'syncing',         // 正在同步中
-    HasLocalChanges = 'local',   // 有本地更改待推送
-    /**
-     * 暂时用不到
-     */
-    HasRemoteChanges = 'remote', // 有远程更新待拉取
-    Conflict = 'conflict',       // 同步失败或冲突
-    Disabled = 'disabled'        // 自动同步已禁用
+    /** 已同步，本地和远程仓库保持最新状态 */
+    Synced = 'synced',
+    /** 正在同步中，正在执行Git操作 */
+    Syncing = 'syncing',
+    /** 有本地更改待推送到远程仓库 */
+    HasLocalChanges = 'local',
+    /** 有远程更新待拉取到本地（暂时用不到） */
+    HasRemoteChanges = 'remote',
+    /** 同步失败或存在合并冲突 */
+    Conflict = 'conflict',
+    /** 自动同步功能已禁用 */
+    Disabled = 'disabled'
 }
 
+/**
+ * 同步状态信息接口
+ * 
+ * 包含同步状态的详细信息，用于状态栏显示和错误处理。
+ */
 export interface SyncStatusInfo {
+    /** 当前同步状态 */
     status: SyncStatus;
+    /** 状态描述消息，显示给用户 */
     message: string;
+    /** 上次同步时间，用于显示时间间隔 */
     lastSync?: Date;
 }
 
+/**
+ * Git自动同步服务
+ * 
+ * 提供问题管理扩展的Git自动同步功能，包括：
+ * - 监听问题文件和配置文件的变化
+ * - 自动提交和推送本地更改
+ * - 定期从远程仓库拉取更新
+ * - 处理合并冲突和网络错误
+ * - 在状态栏显示同步状态
+ * 
+ * 采用单例模式，确保全局只有一个同步服务实例。
+ */
 export class GitSyncService {
     private static instance: GitSyncService;
     private statusBarItem: vscode.StatusBarItem;
@@ -41,6 +69,16 @@ export class GitSyncService {
         this.statusBarItem.show();
     }
 
+    /**
+     * 获取GitSyncService的单例实例
+     * 
+     * @returns GitSyncService的唯一实例
+     * @example
+     * ```typescript
+     * const syncService = GitSyncService.getInstance();
+     * syncService.initialize();
+     * ```
+     */
     public static getInstance(): GitSyncService {
         if (!GitSyncService.instance) {
             GitSyncService.instance = new GitSyncService();
@@ -48,6 +86,25 @@ export class GitSyncService {
         return GitSyncService.instance;
     }
 
+    /**
+     * 初始化Git同步服务
+     * 
+     * 设置自动同步功能，包括：
+     * - 注册VS Code命令
+     * - 设置文件监听器
+     * - 配置周期性拉取
+     * - 监听配置变更
+     * - 执行初始同步（如果启用）
+     * 
+     * 应在扩展激活时调用此方法。
+     * 
+     * @example
+     * ```typescript
+     * const syncService = GitSyncService.getInstance();
+     * syncService.initialize();
+     * context.subscriptions.push(syncService);
+     * ```
+     */
     public initialize(): void {
         this.setupAutoSync();
         this.registerCommands();
@@ -241,6 +298,27 @@ export class GitSyncService {
         }
     }
 
+    /**
+     * 执行手动Git同步
+     * 
+     * 用户手动触发的同步操作，执行以下步骤：
+     * 1. 验证问题目录配置和Git仓库状态
+     * 2. 检查并处理任何现有的合并冲突
+     * 3. 从远程仓库拉取最新更改
+     * 4. 提交并推送本地更改（如果有）
+     * 5. 更新同步状态并显示结果消息
+     * 
+     * 此方法通过VS Code命令"issueManager.synchronizeNow"调用，
+     * 也可以通过点击状态栏的同步按钮触发。
+     * 
+     * @returns Promise，在同步完成或失败时解决
+     * 
+     * @example
+     * ```typescript
+     * const syncService = GitSyncService.getInstance();
+     * await syncService.performManualSync();
+     * ```
+     */
     public async performManualSync(): Promise<void> {
         const issueDir = getIssueDir();
         if (!issueDir) {
@@ -598,6 +676,24 @@ export class GitSyncService {
         }
     }
 
+    /**
+     * 释放Git同步服务的所有资源
+     * 
+     * 执行清理操作，包括：
+     * - 清除所有定时器和监听器
+     * - 释放状态栏项目
+     * - 销毁所有可释放资源
+     * 
+     * 此方法应在扩展停用时调用，确保没有资源泄漏。
+     * 实现了VS Code的Disposable接口。
+     * 
+     * @example
+     * ```typescript
+     * // 在扩展的deactivate函数中调用
+     * const syncService = GitSyncService.getInstance();
+     * syncService.dispose();
+     * ```
+     */
     public dispose(): void {
         this.cleanup();
         this.statusBarItem.dispose();
@@ -605,7 +701,29 @@ export class GitSyncService {
         this.disposables = [];
     }
 
-    // VS Code关闭前的最终同步
+    /**
+     * 执行VS Code关闭前的最终同步
+     * 
+     * 在扩展停用前尝试同步任何未保存的本地更改，确保工作不会丢失。
+     * 此方法执行以下检查：
+     * 1. 验证自动同步已启用且不在冲突模式
+     * 2. 检查问题目录和Git仓库状态
+     * 3. 如果有本地更改，尝试提交并推送
+     * 
+     * 如果同步失败，会记录错误但不会阻塞扩展的关闭流程。
+     * 这是一个"尽力而为"的操作，不应该影响用户体验。
+     * 
+     * @returns Promise，在同步尝试完成后解决（无论成功或失败）
+     * 
+     * @example
+     * ```typescript
+     * // 在扩展的deactivate函数中调用
+     * export async function deactivate() {
+     *     const syncService = GitSyncService.getInstance();
+     *     await syncService.performFinalSync();
+     * }
+     * ```
+     */
     public async performFinalSync(): Promise<void> {
         if (!isAutoSyncEnabled() || this.isConflictMode) {
             return;
