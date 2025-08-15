@@ -53,3 +53,35 @@ export function getRecentIssuesDefaultMode(): ViewMode {
     const mode = config.get<string>('recentIssues.defaultMode');
     return mode === 'list' ? 'list' : 'grouped'; // 默认值为 grouped
 }
+
+/**
+ * 获取自动同步是否启用
+ */
+export function isAutoSyncEnabled(): boolean {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<boolean>('sync.enableAutosync', false);
+}
+
+/**
+ * 获取自动提交消息模板
+ */
+export function getAutoCommitMessage(): string {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<string>('sync.autoCommitMessage', '[Auto-Sync] Changes at {date}');
+}
+
+/**
+ * 获取文件变更防抖间隔（秒）
+ */
+export function getChangeDebounceInterval(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<number>('sync.changeDebounceInterval', 300);
+}
+
+/**
+ * 获取周期性拉取间隔（分钟）
+ */
+export function getPeriodicPullInterval(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<number>('sync.periodicPullInterval', 15);
+}
