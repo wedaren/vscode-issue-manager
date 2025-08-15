@@ -319,6 +319,19 @@ export class GitSyncService {
             // GitError 表示 Git 进程级别的错误
             const errorMessage = error.message?.toLowerCase() || '';
             
+            // 检查SSH连接错误
+            if (errorMessage.includes('ssh: connect to host') || 
+                errorMessage.includes('undefined error: 0') ||
+                errorMessage.includes('无法读取远程仓库') ||
+                errorMessage.includes('could not read from remote repository') ||
+                (errorMessage.includes('ssh') && (errorMessage.includes('port 22') || errorMessage.includes('github.com')))) {
+                this.currentStatus = { 
+                    status: SyncStatus.Conflict, 
+                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置` 
+                };
+                return;
+            }
+            
             // 检查网络相关错误
             if (errorMessage.includes('network') || errorMessage.includes('connection') ||
                 errorMessage.includes('econnreset') || errorMessage.includes('timeout') ||
@@ -352,6 +365,19 @@ export class GitSyncService {
             if (errorMessage.includes('conflict') || errorMessage.includes('merge') ||
                 errorMessage.includes('冲突') || errorMessage.includes('合并')) {
                 this.enterConflictMode();
+                return;
+            }
+            
+            // 检查SSH连接错误
+            if (errorMessage.includes('ssh: connect to host') || 
+                errorMessage.includes('undefined error: 0') ||
+                errorMessage.includes('无法读取远程仓库') ||
+                errorMessage.includes('could not read from remote repository') ||
+                (errorMessage.includes('ssh') && (errorMessage.includes('port 22') || errorMessage.includes('github.com')))) {
+                this.currentStatus = { 
+                    status: SyncStatus.Conflict, 
+                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置` 
+                };
                 return;
             }
             
@@ -536,6 +562,18 @@ export class GitSyncService {
         const branchSummary = await git.branch();
         const currentBranch = branchSummary.current;
         await git.push('origin', currentBranch);
+    }
+
+    private async testGitConnectivity(cwd: string): Promise<boolean> {
+        try {
+            const git = this.getGit(cwd);
+            // 尝试简单的远程操作来测试连接性
+            await git.listRemote(['--heads', 'origin']);
+            return true;
+        } catch (error) {
+            console.log('Git connectivity test failed:', error);
+            return false;
+        }
     }
 
     private cleanup(): void {
