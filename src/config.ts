@@ -85,3 +85,19 @@ export function getPeriodicPullInterval(): number {
     const config = vscode.workspace.getConfiguration('issueManager');
     return config.get<number>('sync.periodicPullInterval', 15);
 }
+
+/**
+ * 获取RSS默认更新间隔（分钟）
+ */
+export function getRSSDefaultUpdateInterval(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<number>('rss.defaultUpdateInterval', 60);
+}
+
+/**
+ * 获取RSS是否启用自动更新
+ */
+export function isRSSAutoUpdateEnabled(): boolean {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<boolean>('rss.enableAutoUpdate', true);
+}

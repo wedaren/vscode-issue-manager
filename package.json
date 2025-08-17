@@ -150,6 +150,58 @@
         "title": "立即同步",
         "category": "Issue Manager",
         "icon": "$(sync)"
+      },
+      {
+        "command": "issueManager.rss.addFeed",
+        "title": "添加RSS订阅源",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.rss.removeFeed",
+        "title": "删除订阅源",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.rss.toggleFeed",
+        "title": "启用/禁用订阅源",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "issueManager.rss.updateFeed",
+        "title": "更新订阅源",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.rss.updateAllFeeds",
+        "title": "更新所有订阅源",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "issueManager.rss.switchToFeedsView",
+        "title": "切换到订阅源视图",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "issueManager.rss.switchToArticlesView",
+        "title": "切换到文章视图",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "issueManager.rss.convertToMarkdown",
+        "title": "转换为Markdown"
+      },
+      {
+        "command": "issueManager.rss.addToFocused",
+        "title": "添加到关注问题"
+      },
+      {
+        "command": "issueManager.rss.addToOverview",
+        "title": "添加到问题总览"
+      },
+      {
+        "command": "issueManager.rss.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
       }
     ],
     "submenus": [
@@ -245,6 +297,31 @@
           "command": "issueManager.unpinRelatedView",
           "when": "view == issueManager.views.related && issueManager.relatedViewPinned",
           "group": "navigation@99"
+        },
+        {
+          "command": "issueManager.rss.addFeed",
+          "when": "view == issueManager.views.rss",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.rss.updateAllFeeds",
+          "when": "view == issueManager.views.rss",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.rss.switchToFeedsView",
+          "when": "view == issueManager.views.rss && issueManager.rssViewMode == 'articles'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.rss.switchToArticlesView",
+          "when": "view == issueManager.views.rss && issueManager.rssViewMode == 'feeds'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.rss.refresh",
+          "when": "view == issueManager.views.rss",
+          "group": "navigation@4"
         }
       ],
       "issueManager.recentSortSubmenu": [
@@ -340,6 +417,36 @@
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
           "group": "navigation@0",
           "title": "复制文件名"
+        },
+        {
+          "command": "issueManager.rss.removeFeed",
+          "when": "view == 'issueManager.views.rss' && viewItem == 'rssFeed'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.rss.toggleFeed",
+          "when": "view == 'issueManager.views.rss' && viewItem == 'rssFeed'",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.rss.updateFeed",
+          "when": "view == 'issueManager.views.rss' && viewItem == 'rssFeed'",
+          "group": "modification@2"
+        },
+        {
+          "command": "issueManager.rss.convertToMarkdown",
+          "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.rss.addToFocused",
+          "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
+          "group": "modification@2"
+        },
+        {
+          "command": "issueManager.rss.addToOverview",
+          "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
+          "group": "modification@3"
         }
       ]
     },
@@ -387,6 +494,50 @@
           "type": "number",
           "default": 15,
           "description": "后台周期性拉取远程更新的时间间隔（单位：分钟）。设置为0可禁用。"
+        },
+        "issueManager.rss.enableAutoUpdate": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用RSS订阅源的自动更新功能。"
+        },
+        "issueManager.rss.defaultUpdateInterval": {
+          "type": "number",
+          "default": 60,
+          "description": "RSS订阅源的默认更新间隔（单位：分钟）。"
+        },
+        "issueManager.rss.feeds": {
+          "type": "array",
+          "default": [],
+          "description": "RSS订阅源列表。这是一个内部配置项，通常通过界面操作进行管理。",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "订阅源的唯一标识符"
+              },
+              "name": {
+                "type": "string",
+                "description": "订阅源名称"
+              },
+              "url": {
+                "type": "string",
+                "description": "RSS订阅源的URL"
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "是否启用此订阅源"
+              },
+              "lastUpdated": {
+                "type": "string",
+                "description": "最后更新时间"
+              },
+              "updateInterval": {
+                "type": "number",
+                "description": "更新间隔（分钟）"
+              }
+            }
+          }
         }
       }
     },
@@ -426,6 +577,11 @@
           "id": "issueManager.views.related",
           "name": "相关联问题",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.rss",
+          "name": "RSS问题",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -447,6 +603,11 @@
       },
       {
         "view": "issueManager.views.recent",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.rss",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
       }
@@ -481,6 +642,8 @@
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
+    "@types/node-fetch": "^2.6.13",
+    "node-fetch": "^2.7.0",
     "simple-git": "^3.28.0",
     "uuid": "^11.1.0"
   },
