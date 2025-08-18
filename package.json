@@ -177,6 +177,16 @@
         "icon": "$(sync)"
       },
       {
+        "command": "issueManager.rss.cleanupOldItems",
+        "title": "清理旧文章",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.rss.showHistoryStats",
+        "title": "查看历史统计",
+        "icon": "$(graph)"
+      },
+      {
         "command": "issueManager.rss.switchToFeedsView",
         "title": "切换到订阅源视图",
         "icon": "$(list-tree)"
@@ -326,6 +336,16 @@
           "command": "issueManager.rss.refresh",
           "when": "view == issueManager.views.rss",
           "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.rss.cleanupOldItems",
+          "when": "view == issueManager.views.rss",
+          "group": "navigation@5"
+        },
+        {
+          "command": "issueManager.rss.showHistoryStats",
+          "when": "view == issueManager.views.rss",
+          "group": "navigation@6"
         }
       ],
       "issueManager.recentSortSubmenu": [
@@ -544,6 +564,58 @@
               "updateInterval": {
                 "type": "number",
                 "description": "更新间隔（分钟）"
+              }
+            }
+          }
+        },
+        "issueManager.rss.itemsHistory": {
+          "type": "object",
+          "default": {},
+          "description": "RSS文章历史记录。这是一个内部配置项，用于保存所有RSS文章的历史记录。",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "文章的唯一标识符"
+                },
+                "feedId": {
+                  "type": "string",
+                  "description": "所属订阅源的标识符"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "文章标题"
+                },
+                "link": {
+                  "type": "string",
+                  "description": "文章链接"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "文章描述"
+                },
+                "pubDate": {
+                  "type": "string",
+                  "description": "发布时间"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "文章内容（可选）"
+                },
+                "author": {
+                  "type": "string",
+                  "description": "作者（可选）"
+                },
+                "categories": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "分类标签（可选）"
+                }
               }
             }
           }

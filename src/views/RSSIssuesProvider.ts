@@ -171,6 +171,20 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 this.refresh();
             })
         );
+
+        // 清理旧的历史记录
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.rss.cleanupOldItems', async () => {
+                await this.cleanupOldItems();
+            })
+        );
+
+        // 显示历史统计信息
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.rss.showHistoryStats', async () => {
+                await this.showHistoryStats();
+            })
+        );
     }
 
     /**
@@ -558,6 +572,49 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
             // 添加到问题总览
             await vscode.commands.executeCommand('issueManager.addIssueToTree', [uri], null, false);
             vscode.window.showInformationMessage(`"${item.title}" 已添加到问题总览`);
+        }
+    }
+
+    /**
+     * 清理旧的历史记录
+     */
+    private async cleanupOldItems(): Promise<void> {
+        try {
+            const result = await this.rssService.cleanupOldItems();
+            vscode.window.showInformationMessage(
+                `已清理 ${result.removedCount} 个旧的RSS文章记录`
+            );
+            this.refresh();
+        } catch (error) {
+            vscode.window.showErrorMessage(
+                `清理历史记录失败: ${error instanceof Error ? error.message : String(error)}`
+            );
+        }
+    }
+
+    /**
+     * 显示历史统计信息
+     */
+    private async showHistoryStats(): Promise<void> {
+        try {
+            const stats = await this.rssService.getHistoryStats();
+            
+            let message = 'RSS历史统计:\n\n';
+            for (const [feedId, count] of Object.entries(stats.itemsByFeed)) {
+                const feedName = this.rssService.getFeeds().find(f => f.id === feedId)?.name || feedId;
+                message += `${feedName}: ${count} 篇文章\n`;
+            }
+            message += `\n总计: ${stats.totalItems} 篇文章`;
+            
+            if (stats.oldestDate && stats.newestDate) {
+                message += `\n时间范围: ${stats.oldestDate.toLocaleDateString()} - ${stats.newestDate.toLocaleDateString()}`;
+            }
+            
+            vscode.window.showInformationMessage(message);
+        } catch (error) {
+            vscode.window.showErrorMessage(
+                `获取历史统计失败: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 

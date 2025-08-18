@@ -19,6 +19,7 @@ export class RSSService {
 
     private constructor() {
         this.loadFeeds();
+        this.loadRSSItemsHistory(); // 加载历史文章记录
     }
 
     public static getInstance(): RSSService {
@@ -94,6 +95,7 @@ export class RSSService {
             this.feeds.splice(index, 1);
             this.feedItems.delete(feedId);
             await this.saveFeeds();
+            await this.saveRSSItemsHistory(); // 保存更新后的历史记录
             return true;
         }
         return false;
@@ -149,10 +151,16 @@ export class RSSService {
      */
     public async updateFeed(feed: RSSFeed): Promise<void> {
         try {
-            const items = await this.fetchFeed(feed);
-            this.feedItems.set(feed.id, items);
+            const newItems = await this.fetchFeed(feed);
+            const existingItems = this.feedItems.get(feed.id) || [];
+            
+            // 合并新文章和现有文章，保留历史记录
+            const mergedItems = this.mergeRSSItems(existingItems, newItems);
+            this.feedItems.set(feed.id, mergedItems);
+            
             feed.lastUpdated = new Date();
             await this.saveFeeds();
+            await this.saveRSSItemsHistory(); // 保存文章历史记录
         } catch (error) {
             console.error(`更新RSS订阅源失败 [${feed.name}]:`, error);
             
@@ -338,10 +346,120 @@ export class RSSService {
     }
 
     /**
+     * 加载RSS文章历史记录
+     */
+    private loadRSSItemsHistory(): void {
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const itemsHistory = config.get<{ [feedId: string]: RSSItem[] }>('rss.itemsHistory', {});
+
+        // 转换日期字符串为Date对象并加载到内存
+        for (const [feedId, items] of Object.entries(itemsHistory)) {
+            const convertedItems = items.map(item => ({
+                ...item,
+                pubDate: new Date(item.pubDate)
+            }));
+            this.feedItems.set(feedId, convertedItems);
+        }
+    }
+
+    /**
+     * 保存RSS文章历史记录
+     */
+    private async saveRSSItemsHistory(): Promise<void> {
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const itemsHistory: { [feedId: string]: RSSItem[] } = {};
+
+        // 转换为可序列化的格式
+        for (const [feedId, items] of this.feedItems) {
+            itemsHistory[feedId] = items;
+        }
+
+        await config.update('rss.itemsHistory', itemsHistory, vscode.ConfigurationTarget.Global);
+    }
+
+    /**
+     * 合并RSS文章，保留历史记录并去重
+     */
+    private mergeRSSItems(existingItems: RSSItem[], newItems: RSSItem[]): RSSItem[] {
+        const itemMap = new Map<string, RSSItem>();
+
+        // 首先添加现有文章
+        existingItems.forEach(item => {
+            itemMap.set(item.id, item);
+        });
+
+        // 添加新文章，如果ID相同则更新
+        newItems.forEach(item => {
+            itemMap.set(item.id, item);
+        });
+
+        // 转换回数组并按发布时间排序
+        const mergedItems = Array.from(itemMap.values());
+        mergedItems.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+
+        // 限制每个订阅源最多保存500篇文章，避免数据过多
+        return mergedItems.slice(0, 500);
+    }
+
+    /**
      * 清理资源
      */
     public dispose(): void {
         this.stopAutoUpdate();
+    }
+
+    /**
+     * 清理旧的RSS文章历史记录
+     * @param daysToKeep 保留天数，默认30天
+     */
+    public async cleanupOldItems(daysToKeep: number = 30): Promise<{ removedCount: number }> {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+
+        let removedCount = 0;
+
+        for (const [feedId, items] of this.feedItems) {
+            const originalLength = items.length;
+            const filteredItems = items.filter(item => item.pubDate >= cutoffDate);
+            
+            if (filteredItems.length !== originalLength) {
+                removedCount += (originalLength - filteredItems.length);
+                this.feedItems.set(feedId, filteredItems);
+            }
+        }
+
+        if (removedCount > 0) {
+            await this.saveRSSItemsHistory();
+            console.log(`已清理${removedCount}个${daysToKeep}天前的RSS文章记录`);
+        }
+
+        return { removedCount };
+    }
+
+    /**
+     * 获取RSS文章历史统计信息
+     */
+    public getHistoryStats(): { totalItems: number; oldestDate?: Date; newestDate?: Date; itemsByFeed: Record<string, number> } {
+        let totalItems = 0;
+        let oldestDate: Date | undefined;
+        let newestDate: Date | undefined;
+        const itemsByFeed: Record<string, number> = {};
+
+        for (const [feedId, items] of this.feedItems) {
+            totalItems += items.length;
+            itemsByFeed[feedId] = items.length;
+            
+            for (const item of items) {
+                if (!oldestDate || item.pubDate < oldestDate) {
+                    oldestDate = item.pubDate;
+                }
+                if (!newestDate || item.pubDate > newestDate) {
+                    newestDate = item.pubDate;
+                }
+            }
+        }
+
+        return { totalItems, oldestDate, newestDate, itemsByFeed };
     }
 
     // 静态方法，保持向后兼容
