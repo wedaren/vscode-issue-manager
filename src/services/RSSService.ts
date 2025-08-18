@@ -16,6 +16,8 @@ export class RSSService {
     private feeds: RSSFeed[] = [];
     private feedItems: Map<string, RSSItem[]> = new Map();
     private updateTimer?: NodeJS.Timeout;
+    // 每30分钟检查一次是否需要更新
+    static readonly AUTO_UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
 
     private constructor() {
         this.loadFeeds();
@@ -250,11 +252,9 @@ export class RSSService {
             clearInterval(this.updateTimer);
         }
 
-        // 每30分钟检查一次是否需要更新
-        const AUTO_UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
         this.updateTimer = setInterval(async () => {
             await this.checkAndUpdateFeeds();
-        }, AUTO_UPDATE_CHECK_INTERVAL);
+        }, RSSService.AUTO_UPDATE_CHECK_INTERVAL);
     }
 
     /**
