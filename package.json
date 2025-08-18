@@ -191,6 +191,10 @@
         "title": "转换为Markdown"
       },
       {
+        "command": "issueManager.rss.previewMarkdown",
+        "title": "预览Markdown"
+      },
+      {
         "command": "issueManager.rss.addToFocused",
         "title": "添加到关注问题"
       },
@@ -403,20 +407,6 @@
           "command": "issueManager.moveTo",
           "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused'",
           "group": "navigation@4"
-        }
-      ],
-      "editor/context": [
-        {
-          "command": "issueManager.viewRelatedIssues",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
-          "group": "navigation@0",
-          "title": "查看相关联问题"
-        },
-        {
-          "command": "issueManager.copyFilename",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
-          "group": "navigation@0",
-          "title": "复制文件名"
         },
         {
           "command": "issueManager.rss.removeFeed",
@@ -434,19 +424,38 @@
           "group": "modification@2"
         },
         {
-          "command": "issueManager.rss.convertToMarkdown",
+          "command": "issueManager.rss.previewMarkdown",
           "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
           "group": "modification@1"
         },
         {
-          "command": "issueManager.rss.addToFocused",
+          "command": "issueManager.rss.convertToMarkdown",
           "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
           "group": "modification@2"
         },
         {
-          "command": "issueManager.rss.addToOverview",
+          "command": "issueManager.rss.addToFocused",
           "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
           "group": "modification@3"
+        },
+        {
+          "command": "issueManager.rss.addToOverview",
+          "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
+          "group": "modification@4"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "issueManager.viewRelatedIssues",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "group": "navigation@0",
+          "title": "查看相关联问题"
+        },
+        {
+          "command": "issueManager.copyFilename",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "group": "navigation@0",
+          "title": "复制文件名"
         }
       ]
     },

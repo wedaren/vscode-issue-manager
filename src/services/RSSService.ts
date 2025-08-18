@@ -185,6 +185,38 @@ export class RSSService {
     }
 
     /**
+     * 创建RSS文章的虚拟文件URI
+     */
+    public createVirtualFile(item: RSSItem): vscode.Uri {
+        const feed = this.feeds.find(f => f.id === item.feedId);
+        const feedName = feed?.name || 'RSS';
+        
+        // 生成虚拟文件名
+        const safeTitle = this.sanitizeFilename(item.title);
+        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        const filename = `RSS-${this.sanitizeFilename(feedName)}-${safeTitle}-${timestamp}.md`;
+        
+        // 创建虚拟文件URI，使用自定义scheme
+        const virtualUri = vscode.Uri.parse(`rss-preview:${filename}?itemId=${encodeURIComponent(item.id)}`);
+        return virtualUri;
+    }
+
+    /**
+     * 获取RSS文章的Markdown内容（用于虚拟文件提供器）
+     */
+    public getItemMarkdown(itemId: string): string | null {
+        // 从所有订阅源中查找指定ID的文章
+        for (const [feedId, items] of this.feedItems) {
+            const item = items.find(i => i.id === itemId);
+            if (item) {
+                const feed = this.feeds.find(f => f.id === feedId);
+                return this.generateMarkdownContent(item, feed);
+            }
+        }
+        return null;
+    }
+
+    /**
      * 启动自动更新
      */
     public startAutoUpdate(): void {
@@ -398,15 +430,37 @@ export class RSSService {
      * 生成订阅源ID
      */
     private generateFeedId(): string {
-        return 'feed_' + Date.now().toString() + '_' + Math.random().toString(36).substring(2, 9);
+        // 使用时间戳和随机字符串生成唯一ID
+        const timestamp = Date.now().toString(36);
+        const random = Math.random().toString(36).substring(2, 10);
+        return `feed_${timestamp}_${random}`;
     }
 
     /**
      * 生成文章ID
      */
     private generateItemId(feedId: string, link: string): string {
-        // 使用feedId和link生成唯一ID
-        return `${feedId}_${Buffer.from(link).toString('base64').substring(0, 16)}`;
+        // 使用URL的哈希值生成更短更稳定的ID
+        const hash = this.simpleHash(link);
+        return `${feedId}_${hash}`;
+    }
+
+    /**
+     * 简单的字符串哈希函数
+     */
+    private simpleHash(str: string): string {
+        let hash = 0;
+        if (str.length === 0) {
+            return hash.toString(36);
+        }
+        
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // 转换为32位整数
+        }
+        
+        return Math.abs(hash).toString(36);
     }
 
     /**

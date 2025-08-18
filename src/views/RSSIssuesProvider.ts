@@ -45,9 +45,9 @@ class RSSItemTreeItem extends vscode.TreeItem {
         
         // 点击时在浏览器中打开原文链接
         this.command = {
-            command: 'vscode.open',
+            command: 'issueManager.rss.previewMarkdown',
             title: '打开原文',
-            arguments: [vscode.Uri.parse(item.link)]
+            arguments: [this]
         };
     }
 }
@@ -141,6 +141,13 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
         this.context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.rss.convertToMarkdown', async (item: RSSItemTreeItem) => {
                 await this.convertToMarkdown(item.item);
+            })
+        );
+
+        // 预览Markdown
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.rss.previewMarkdown', async (item: RSSItemTreeItem) => {
+                await this.previewMarkdown(item.item);
             })
         );
 
@@ -506,6 +513,25 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
             vscode.commands.executeCommand('issueManager.refreshAllViews');
             
             vscode.window.showInformationMessage(`文章已转换为Markdown格式并保存`);
+        }
+    }
+
+    /**
+     * 预览Markdown内容（虚拟文件）
+     */
+    private async previewMarkdown(item: RSSItem): Promise<void> {
+        try {
+            // 创建虚拟文件URI
+            const virtualUri = this.rssService.createVirtualFile(item);
+            
+            // 在编辑器中打开虚拟文件
+            const document = await vscode.workspace.openTextDocument(virtualUri);
+            await vscode.window.showTextDocument(document, {preview: true});
+            
+            vscode.window.showInformationMessage('正在预览文章内容，您可以编辑后保存到问题目录');
+        } catch (error) {
+            console.error('预览Markdown失败:', error);
+            vscode.window.showErrorMessage('预览文章失败');
         }
     }
 

@@ -20,6 +20,7 @@ import { registerRelatedIssuesView } from './views/relatedIssuesViewRegistration
 import { getTitle } from './utils/markdown';
 import { GitSyncService } from './services/GitSyncService';
 import { RSSIssuesProvider } from './views/RSSIssuesProvider';
+import { registerRSSVirtualFileProvider } from './views/RSSVirtualFileProvider';
 
 
 // 当您的扩展被激活时，将调用此方法
@@ -437,6 +438,10 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(rssIssuesView);
 	context.subscriptions.push(rssIssuesProvider);
+
+	// 注册RSS虚拟文件提供器
+	const rssVirtualFileProvider = registerRSSVirtualFileProvider(context);
+	context.subscriptions.push(rssVirtualFileProvider);
 }
 
 // 当您的扩展被停用时，将调用此方法
