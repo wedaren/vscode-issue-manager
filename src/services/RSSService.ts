@@ -5,7 +5,7 @@ import { RSSFetcher } from './fetcher/RSSFetcher';
 import { RSSParser } from './parser/RSSParser';
 import { RSSHelper } from './utils/RSSHelper';
 import { getIssueDir } from '../config';
-import { generateFileName, ensureIssueManagerDir, getRSSHistoryFilePath, readJSONFile, writeJSONFile } from '../utils/fileUtils';
+import { generateFileName, ensureIssueManagerDir, getRSSHistoryFilePath, readYAMLFile, writeYAMLFile } from '../utils/fileUtils';
 
 /**
  * RSS服务，负责管理RSS订阅源和获取RSS内容
@@ -349,7 +349,7 @@ export class RSSService {
     }
 
     /**
-     * 从本地文件加载RSS文章历史记录
+     * 从本地YAML文件加载RSS文章历史记录
      */
     private async loadRSSItemsHistory(): Promise<void> {
         const historyFilePath = getRSSHistoryFilePath();
@@ -359,7 +359,7 @@ export class RSSService {
         }
 
         try {
-            const itemsHistory = await readJSONFile<{ [feedId: string]: any[] }>(historyFilePath);
+            const itemsHistory = await readYAMLFile<{ [feedId: string]: any[] }>(historyFilePath);
             if (!itemsHistory) {
                 console.log('RSS历史文件不存在或为空，初始化为空历史记录');
                 return;
@@ -367,11 +367,13 @@ export class RSSService {
 
             // 转换日期字符串为Date对象并加载到内存
             for (const [feedId, items] of Object.entries(itemsHistory)) {
-                const convertedItems = items.map(item => ({
-                    ...item,
-                    pubDate: new Date(item.pubDate)
-                }));
-                this.feedItems.set(feedId, convertedItems);
+                if (Array.isArray(items)) {
+                    const convertedItems = items.map((item: any) => ({
+                        ...item,
+                        pubDate: new Date(item.pubDate)
+                    }));
+                    this.feedItems.set(feedId, convertedItems);
+                }
             }
 
             console.log(`成功加载RSS历史记录，共 ${Object.keys(itemsHistory).length} 个订阅源`);
@@ -381,7 +383,7 @@ export class RSSService {
     }
 
     /**
-     * 保存RSS文章历史记录到本地文件
+     * 保存RSS文章历史记录到本地YAML文件
      */
     private async saveRSSItemsHistory(): Promise<void> {
         const historyFilePath = getRSSHistoryFilePath();
@@ -405,7 +407,7 @@ export class RSSService {
                 itemsHistory[feedId] = items;
             }
 
-            const success = await writeJSONFile(historyFilePath, itemsHistory);
+            const success = await writeYAMLFile(historyFilePath, itemsHistory);
             if (success) {
                 console.log(`RSS历史记录已保存到: ${historyFilePath.fsPath}`);
             } else {

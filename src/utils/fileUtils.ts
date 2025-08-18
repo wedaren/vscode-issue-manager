@@ -1,5 +1,6 @@
 import path from 'path';
 import * as vscode from 'vscode';
+import * as yaml from 'js-yaml';
 
 
 /**
@@ -125,7 +126,7 @@ export function getRSSHistoryFilePath(): vscode.Uri | null {
   if (!issueManagerDir) {
     return null;
   }
-  return vscode.Uri.joinPath(issueManagerDir, 'rss-history.json');
+  return vscode.Uri.joinPath(issueManagerDir, 'rss-history.yaml');
 }
 
 /**
@@ -158,6 +159,45 @@ export async function writeJSONFile(fileUri: vscode.Uri, data: any): Promise<boo
     return true;
   } catch (error) {
     console.error(`写入 JSON 文件失败 ${fileUri.fsPath}:`, error);
+    return false;
+  }
+}
+
+/**
+ * 读取 YAML 文件内容
+ * @param fileUri 文件路径
+ * @returns 解析后的 YAML 对象，失败返回 null
+ */
+export async function readYAMLFile<T = any>(fileUri: vscode.Uri): Promise<T | null> {
+  try {
+    const fileData = await vscode.workspace.fs.readFile(fileUri);
+    const content = Buffer.from(fileData).toString('utf8');
+    return yaml.load(content) as T;
+  } catch (error) {
+    console.error(`读取 YAML 文件失败 ${fileUri.fsPath}:`, error);
+    return null;
+  }
+}
+
+/**
+ * 写入 YAML 文件
+ * @param fileUri 文件路径
+ * @param data 要写入的数据
+ * @returns 写入成功返回 true，失败返回 false
+ */
+export async function writeYAMLFile(fileUri: vscode.Uri, data: any): Promise<boolean> {
+  try {
+    const content = yaml.dump(data, {
+      indent: 2,
+      lineWidth: -1,
+      noRefs: true,
+      sortKeys: false
+    });
+    const uint8Array = Buffer.from(content, 'utf8');
+    await vscode.workspace.fs.writeFile(fileUri, uint8Array);
+    return true;
+  } catch (error) {
+    console.error(`写入 YAML 文件失败 ${fileUri.fsPath}:`, error);
     return false;
   }
 }

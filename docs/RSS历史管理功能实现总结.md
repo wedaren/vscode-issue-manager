@@ -12,7 +12,8 @@
 
 ### 1. 持久化存储
 - 使用本地文件系统存储RSS文章历史记录
-- 存储位置：工作区根目录下的 `.issueManager/rss-history.json`
+- 存储位置：工作区根目录下的 `.issueManager/rss-history.yaml`
+- 数据格式：YAML格式，人性化易读易编辑
 - 数据结构：`Record<string, RSSItem[]>` （按订阅源ID分组）
 - 支持版本控制和跨设备同步
 
@@ -24,12 +25,12 @@
 - 限制每个订阅源最多保存500篇文章
 
 #### `saveRSSItemsHistory()`
-- 保存当前所有RSS文章到本地JSON文件
+- 保存当前所有RSS文章到本地YAML文件
 - 自动创建 `.issueManager` 目录
 - 异步操作，不阻塞主流程
 
 #### `loadRSSItemsHistory()`
-- 从本地JSON文件加载历史记录
+- 从本地YAML文件加载历史记录
 - 在服务初始化时自动调用
 - 容错处理，文件不存在时不影响使用
 
@@ -51,8 +52,10 @@
 #### 配置项
 由于使用本地文件存储，不再需要VS Code配置项。历史记录直接保存在：
 ```
-工作区根目录/.issueManager/rss-history.json
+工作区根目录/.issueManager/rss-history.yaml
 ```
+
+YAML格式便于人工阅读和编辑，相比JSON更加友好。
 
 ## 文件修改清单
 

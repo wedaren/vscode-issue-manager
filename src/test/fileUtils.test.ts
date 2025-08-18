@@ -4,7 +4,7 @@
 
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { getIssueManagerDir, ensureIssueManagerDir, getRSSHistoryFilePath, readJSONFile, writeJSONFile } from '../utils/fileUtils';
+import { getIssueManagerDir, ensureIssueManagerDir, getRSSHistoryFilePath, readYAMLFile, writeYAMLFile } from '../utils/fileUtils';
 
 suite('FileUtils Tests', () => {
 
@@ -24,7 +24,7 @@ suite('FileUtils Tests', () => {
         
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
             assert.ok(historyFilePath, '应该返回有效的文件路径');
-            assert.ok(historyFilePath!.fsPath.endsWith('rss-history.json'), '路径应该以rss-history.json结尾');
+            assert.ok(historyFilePath!.fsPath.endsWith('rss-history.yaml'), '路径应该以rss-history.yaml结尾');
         } else {
             assert.strictEqual(historyFilePath, null, '没有工作区时应该返回null');
         }
@@ -48,7 +48,7 @@ suite('FileUtils Tests', () => {
         }
     });
 
-    test('应该能够写入和读取JSON文件', async () => {
+    test('应该能够写入和读取YAML文件', async () => {
         if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
             console.log('跳过测试：没有工作区');
             return;
@@ -59,7 +59,7 @@ suite('FileUtils Tests', () => {
         assert.ok(issueManagerDir, '应该能够创建目录');
 
         // 创建测试文件路径
-        const testFilePath = vscode.Uri.joinPath(issueManagerDir!, 'test.json');
+        const testFilePath = vscode.Uri.joinPath(issueManagerDir!, 'test.yaml');
         const testData = {
             test: 'data',
             number: 123,
@@ -69,11 +69,11 @@ suite('FileUtils Tests', () => {
 
         try {
             // 写入文件
-            const writeSuccess = await writeJSONFile(testFilePath, testData);
+            const writeSuccess = await writeYAMLFile(testFilePath, testData);
             assert.strictEqual(writeSuccess, true, '应该成功写入文件');
 
             // 读取文件
-            const readData = await readJSONFile(testFilePath);
+            const readData = await readYAMLFile(testFilePath);
             assert.ok(readData, '应该成功读取文件');
             assert.deepStrictEqual(readData, testData, '读取的数据应该与写入的数据一致');
 
@@ -87,16 +87,16 @@ suite('FileUtils Tests', () => {
         }
     });
 
-    test('应该正确处理不存在的JSON文件', async () => {
+    test('应该正确处理不存在的YAML文件', async () => {
         if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
             console.log('跳过测试：没有工作区');
             return;
         }
 
         const issueManagerDir = await ensureIssueManagerDir();
-        const nonExistentFile = vscode.Uri.joinPath(issueManagerDir!, 'non-existent.json');
+        const nonExistentFile = vscode.Uri.joinPath(issueManagerDir!, 'non-existent.yaml');
 
-        const result = await readJSONFile(nonExistentFile);
+        const result = await readYAMLFile(nonExistentFile);
         assert.strictEqual(result, null, '不存在的文件应该返回null');
     });
 });

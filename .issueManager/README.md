@@ -4,7 +4,7 @@
 
 ```
 .issueManager/
-├── rss-history.json    # RSS文章历史记录
+├── rss-history.yaml    # RSS文章历史记录（YAML格式）
 └── (未来可能的其他配置文件)
 ```
 
@@ -30,7 +30,7 @@
 在项目根目录的 `.gitignore` 中添加：
 ```gitignore
 # 排除RSS历史记录，但保留其他配置
-.issueManager/rss-history.json
+.issueManager/rss-history.yaml
 ```
 
 ## 同步方案
@@ -48,31 +48,29 @@
 
 ## 文件格式说明
 
-### rss-history.json
-```json
-{
-  "订阅源ID": [
-    {
-      "id": "文章ID",
-      "feedId": "订阅源ID", 
-      "title": "文章标题",
-      "link": "文章链接",
-      "description": "文章描述",
-      "pubDate": "发布时间(ISO字符串)",
-      "content": "文章内容(可选)",
-      "author": "作者(可选)",
-      "categories": ["分类标签"]
-    }
-  ]
-}
+### rss-history.yaml
+```yaml
+# RSS文章历史记录
+订阅源ID:
+  - id: 文章ID
+    feedId: 订阅源ID
+    title: 文章标题
+    link: 文章链接
+    description: 文章描述
+    pubDate: 发布时间(ISO字符串)
+    content: 文章内容(可选)
+    author: 作者(可选)
+    categories:
+      - 分类标签1
+      - 分类标签2
 ```
 
-这个文件是标准的JSON格式，可以用任何文本编辑器查看和编辑。
+这个文件使用YAML格式，比JSON更易读和编辑。
 
 ## 故障排除
 
 ### 文件损坏
-如果 `rss-history.json` 文件损坏，插件会自动创建新的空文件，不影响正常使用。
+如果 `rss-history.yaml` 文件损坏，插件会自动创建新的空文件，不影响正常使用。
 
 ### 权限问题
 确保VS Code有权限读写工作区目录。在某些情况下可能需要管理员权限。
