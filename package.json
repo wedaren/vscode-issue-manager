@@ -651,8 +651,6 @@
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
-    "@types/node-fetch": "^2.6.13",
-    "node-fetch": "^2.7.0",
     "simple-git": "^3.28.0",
     "uuid": "^11.1.0"
   },
