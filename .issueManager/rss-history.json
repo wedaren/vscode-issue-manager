@@ -1,0 +1,39 @@
+{
+  "example-feed-1": [
+    {
+      "id": "article-1",
+      "feedId": "example-feed-1",
+      "title": "示例文章标题",
+      "link": "https://example.com/article-1",
+      "description": "这是一个示例RSS文章的描述信息",
+      "pubDate": "2025-01-15T10:30:00.000Z",
+      "content": "文章的完整内容...",
+      "author": "作者姓名",
+      "categories": ["技术", "开发"]
+    },
+    {
+      "id": "article-2", 
+      "feedId": "example-feed-1",
+      "title": "另一篇示例文章",
+      "link": "https://example.com/article-2",
+      "description": "第二篇文章的描述",
+      "pubDate": "2025-01-14T15:45:00.000Z",
+      "content": "第二篇文章的内容...",
+      "author": "作者姓名",
+      "categories": ["教程"]
+    }
+  ],
+  "example-feed-2": [
+    {
+      "id": "news-1",
+      "feedId": "example-feed-2", 
+      "title": "新闻标题",
+      "link": "https://news.example.com/news-1",
+      "description": "新闻描述信息",
+      "pubDate": "2025-01-16T08:00:00.000Z",
+      "content": "新闻内容...",
+      "author": "新闻作者",
+      "categories": ["新闻", "时事"]
+    }
+  ]
+}
