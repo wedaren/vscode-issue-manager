@@ -221,7 +221,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 }
             }
 
-            vscode.window.showInformationMessage(`已成功添加 ${rssItems.value.length} 篇RSS文章到问题管理`);
+            vscode.window.showInformationMessage(`已成功添加 ${rssItemsValue.length} 篇RSS文章到问题管理`);
         } catch (error) {
             console.error('处理RSS拖拽失败:', error);
             vscode.window.showErrorMessage('添加RSS文章失败，请重试');

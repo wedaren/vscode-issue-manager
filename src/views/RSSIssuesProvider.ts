@@ -71,7 +71,7 @@ class RSSGroupTreeItem extends vscode.TreeItem {
 /**
  * RSS问题视图提供器
  */
-export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable {
     private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
