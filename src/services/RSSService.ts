@@ -321,7 +321,9 @@ export class RSSService {
 
         markdown += `## 描述\n\n${item.description}\n\n`;
 
-        markdown += `${item.content}\n\n`;
+        if (item.content) {
+            markdown += `${item.content}\n\n`;
+        }
 
         return markdown;
     }

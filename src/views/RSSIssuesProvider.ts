@@ -366,7 +366,7 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
             day: 'numeric', 
             weekday: 'long' 
         };
-        return new Intl.DateTimeFormat('zh-CN', options).format(date);
+        return new Intl.DateTimeFormat(undefined, options).format(date);
     }
 
     /**
