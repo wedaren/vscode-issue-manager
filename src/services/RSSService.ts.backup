@@ -5,7 +5,7 @@ import { RSSFetcher } from './fetcher/RSSFetcher';
 import { RSSParser } from './parser/RSSParser';
 import { RSSHelper } from './utils/RSSHelper';
 import { getIssueDir } from '../config';
-import { generateFileName, ensureIssueManagerDir, getRSSHistoryFilePath, readJSONFile, writeJSONFile } from '../utils/fileUtils';
+import { generateFileName } from '../utils/fileUtils';
 
 /**
  * RSS服务，负责管理RSS订阅源和获取RSS内容
@@ -19,10 +19,7 @@ export class RSSService {
 
     private constructor() {
         this.loadFeeds();
-        // 异步加载历史文章记录，不阻塞构造函数
-        this.loadRSSItemsHistory().catch(error => {
-            console.error('初始化RSS历史记录失败:', error);
-        });
+        this.loadRSSItemsHistory(); // 加载历史文章记录
     }
 
     public static getInstance(): RSSService {
@@ -349,71 +346,35 @@ export class RSSService {
     }
 
     /**
-     * 从本地文件加载RSS文章历史记录
+     * 加载RSS文章历史记录
      */
-    private async loadRSSItemsHistory(): Promise<void> {
-        const historyFilePath = getRSSHistoryFilePath();
-        if (!historyFilePath) {
-            console.log('无法获取RSS历史文件路径，可能没有工作区');
-            return;
-        }
+    private loadRSSItemsHistory(): void {
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const itemsHistory = config.get<{ [feedId: string]: RSSItem[] }>('rss.itemsHistory', {});
 
-        try {
-            const itemsHistory = await readJSONFile<{ [feedId: string]: any[] }>(historyFilePath);
-            if (!itemsHistory) {
-                console.log('RSS历史文件不存在或为空，初始化为空历史记录');
-                return;
-            }
-
-            // 转换日期字符串为Date对象并加载到内存
-            for (const [feedId, items] of Object.entries(itemsHistory)) {
-                const convertedItems = items.map(item => ({
-                    ...item,
-                    pubDate: new Date(item.pubDate)
-                }));
-                this.feedItems.set(feedId, convertedItems);
-            }
-
-            console.log(`成功加载RSS历史记录，共 ${Object.keys(itemsHistory).length} 个订阅源`);
-        } catch (error) {
-            console.error('加载RSS历史记录失败:', error);
+        // 转换日期字符串为Date对象并加载到内存
+        for (const [feedId, items] of Object.entries(itemsHistory)) {
+            const convertedItems = items.map(item => ({
+                ...item,
+                pubDate: new Date(item.pubDate)
+            }));
+            this.feedItems.set(feedId, convertedItems);
         }
     }
 
     /**
-     * 保存RSS文章历史记录到本地文件
+     * 保存RSS文章历史记录
      */
     private async saveRSSItemsHistory(): Promise<void> {
-        const historyFilePath = getRSSHistoryFilePath();
-        if (!historyFilePath) {
-            console.error('无法获取RSS历史文件路径，保存失败');
-            return;
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const itemsHistory: { [feedId: string]: RSSItem[] } = {};
+
+        // 转换为可序列化的格式
+        for (const [feedId, items] of this.feedItems) {
+            itemsHistory[feedId] = items;
         }
 
-        // 确保目录存在
-        const issueManagerDir = await ensureIssueManagerDir();
-        if (!issueManagerDir) {
-            console.error('无法创建 .issueManager 目录，保存失败');
-            return;
-        }
-
-        try {
-            const itemsHistory: { [feedId: string]: RSSItem[] } = {};
-
-            // 转换为可序列化的格式
-            for (const [feedId, items] of this.feedItems) {
-                itemsHistory[feedId] = items;
-            }
-
-            const success = await writeJSONFile(historyFilePath, itemsHistory);
-            if (success) {
-                console.log(`RSS历史记录已保存到: ${historyFilePath.fsPath}`);
-            } else {
-                console.error('保存RSS历史记录失败');
-            }
-        } catch (error) {
-            console.error('保存RSS历史记录时发生错误:', error);
-        }
+        await config.update('rss.itemsHistory', itemsHistory, vscode.ConfigurationTarget.Global);
     }
 
     /**

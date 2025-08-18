@@ -75,3 +75,89 @@ export async function getMtimeOrNow(fileUri: vscode.Uri): Promise<Date> {
     return new Date(); // 如果无法获取修改时间，返回当前时间
   }
 }
+
+/**
+ * 获取工作区的 .issueManager 目录路径
+ * @returns .issueManager 目录的 Uri，如果没有工作区则返回 null
+ */
+export function getIssueManagerDir(): vscode.Uri | null {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    return null;
+  }
+  return vscode.Uri.joinPath(workspaceFolder.uri, '.issueManager');
+}
+
+/**
+ * 确保 .issueManager 目录存在，如果不存在则创建
+ * @returns 创建成功返回目录 Uri，失败返回 null
+ */
+export async function ensureIssueManagerDir(): Promise<vscode.Uri | null> {
+  const issueManagerDir = getIssueManagerDir();
+  if (!issueManagerDir) {
+    console.error('没有找到工作区，无法创建 .issueManager 目录');
+    return null;
+  }
+
+  try {
+    // 检查目录是否存在
+    await vscode.workspace.fs.stat(issueManagerDir);
+    return issueManagerDir;
+  } catch (error) {
+    // 目录不存在，创建它
+    try {
+      await vscode.workspace.fs.createDirectory(issueManagerDir);
+      console.log(`创建 .issueManager 目录: ${issueManagerDir.fsPath}`);
+      return issueManagerDir;
+    } catch (createError) {
+      console.error(`创建 .issueManager 目录失败:`, createError);
+      return null;
+    }
+  }
+}
+
+/**
+ * 获取 RSS 历史记录文件的路径
+ * @returns RSS历史记录文件的 Uri，如果目录不存在则返回 null
+ */
+export function getRSSHistoryFilePath(): vscode.Uri | null {
+  const issueManagerDir = getIssueManagerDir();
+  if (!issueManagerDir) {
+    return null;
+  }
+  return vscode.Uri.joinPath(issueManagerDir, 'rss-history.json');
+}
+
+/**
+ * 读取 JSON 文件内容
+ * @param fileUri 文件路径
+ * @returns 解析后的 JSON 对象，失败返回 null
+ */
+export async function readJSONFile<T = any>(fileUri: vscode.Uri): Promise<T | null> {
+  try {
+    const fileData = await vscode.workspace.fs.readFile(fileUri);
+    const content = Buffer.from(fileData).toString('utf8');
+    return JSON.parse(content) as T;
+  } catch (error) {
+    console.error(`读取 JSON 文件失败 ${fileUri.fsPath}:`, error);
+    return null;
+  }
+}
+
+/**
+ * 写入 JSON 文件
+ * @param fileUri 文件路径
+ * @param data 要写入的数据
+ * @returns 写入成功返回 true，失败返回 false
+ */
+export async function writeJSONFile(fileUri: vscode.Uri, data: any): Promise<boolean> {
+  try {
+    const content = JSON.stringify(data, null, 2);
+    const uint8Array = Buffer.from(content, 'utf8');
+    await vscode.workspace.fs.writeFile(fileUri, uint8Array);
+    return true;
+  } catch (error) {
+    console.error(`写入 JSON 文件失败 ${fileUri.fsPath}:`, error);
+    return false;
+  }
+}

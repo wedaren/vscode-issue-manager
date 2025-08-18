@@ -11,9 +11,10 @@
 ## 技术实现
 
 ### 1. 持久化存储
-- 使用VS Code的配置系统 (`workspace.getConfiguration`) 存储RSS文章历史
-- 配置项：`issueManager.rss.itemsHistory`
+- 使用本地文件系统存储RSS文章历史记录
+- 存储位置：工作区根目录下的 `.issueManager/rss-history.json`
 - 数据结构：`Record<string, RSSItem[]>` （按订阅源ID分组）
+- 支持版本控制和跨设备同步
 
 ### 2. 历史管理方法
 
@@ -23,12 +24,14 @@
 - 限制每个订阅源最多保存500篇文章
 
 #### `saveRSSItemsHistory()`
-- 保存当前所有RSS文章到配置中
+- 保存当前所有RSS文章到本地JSON文件
+- 自动创建 `.issueManager` 目录
 - 异步操作，不阻塞主流程
 
 #### `loadRSSItemsHistory()`
-- 从配置中加载历史记录
+- 从本地JSON文件加载历史记录
 - 在服务初始化时自动调用
+- 容错处理，文件不存在时不影响使用
 
 #### `cleanupOldItems(daysToKeep: number = 30)`
 - 清理指定天数之前的文章
@@ -46,14 +49,9 @@
 2. `issueManager.rss.showHistoryStats` - 显示历史统计
 
 #### 配置项
-```json
-{
-  "issueManager.rss.itemsHistory": {
-    "type": "object",
-    "default": {},
-    "description": "RSS文章历史记录存储"
-  }
-}
+由于使用本地文件存储，不再需要VS Code配置项。历史记录直接保存在：
+```
+工作区根目录/.issueManager/rss-history.json
 ```
 
 ## 文件修改清单
@@ -61,22 +59,29 @@
 ### 主要文件
 1. `src/services/RSSService.ts` - 核心历史管理逻辑
 2. `src/views/RSSIssuesProvider.ts` - UI命令注册
-3. `package.json` - 配置定义和命令声明
+3. `src/utils/fileUtils.ts` - 文件操作工具函数
+4. `package.json` - 命令声明（移除了配置项定义）
 
 ### 修改详情
 
 #### RSSService.ts
 - 添加 `feedItems: Map<string, RSSItem[]>` 存储历史记录
-- 实现历史管理相关方法
+- 实现文件系统操作的历史管理方法
 - 修改 `updateFeed` 逻辑以支持历史合并
+
+#### fileUtils.ts
+- 添加 `getIssueManagerDir()` - 获取.issueManager目录路径
+- 添加 `ensureIssueManagerDir()` - 确保目录存在
+- 添加 `getRSSHistoryFilePath()` - 获取历史文件路径
+- 添加 `readJSONFile()` 和 `writeJSONFile()` - JSON文件操作
 
 #### RSSIssuesProvider.ts
 - 注册历史管理命令
 - 实现 `cleanupOldItems()` 和 `showHistoryStats()` UI方法
 
 #### package.json
-- 添加配置项定义
 - 添加命令声明
+- 移除不再需要的配置项定义
 
 ## 使用方法
 
