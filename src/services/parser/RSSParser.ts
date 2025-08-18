@@ -203,12 +203,12 @@ export class RSSParser {
             return {
                 id: RSSParser.generateItemId(feedId, link),
                 feedId,
-                title: RSSParser.cleanText(title),
+                title,
                 link,
-                description: RSSParser.cleanText(description),
+                description,
                 pubDate: pubDateStr ? new Date(pubDateStr) : new Date(),
-                content: content ? RSSParser.cleanText(content) : undefined,
-                author: author ? RSSParser.cleanText(author) : undefined,
+                content: content || undefined,
+                author: author || undefined,
                 categories: categories.length > 0 ? categories : undefined
             };
         } catch (error) {
@@ -256,12 +256,12 @@ export class RSSParser {
             return {
                 id: RSSParser.generateItemId(feedId, link),
                 feedId,
-                title: RSSParser.cleanText(title),
+                title,
                 link,
-                description: RSSParser.cleanText(summary),
+                description: summary,
                 pubDate: publishedStr ? new Date(publishedStr) : new Date(),
-                content: content ? RSSParser.cleanText(content) : undefined,
-                author: author ? RSSParser.cleanText(author) : undefined,
+                content: content || undefined,
+                author: author || undefined,
                 categories: categories.length > 0 ? categories : undefined
             };
         } catch (error) {
@@ -289,11 +289,11 @@ export class RSSParser {
             return {
                 id: RSSParser.generateItemId(feedId, link),
                 feedId,
-                title: RSSParser.cleanText(title),
+                title,
                 link,
-                description: RSSParser.cleanText(description),
+                description,
                 pubDate: pubDateStr ? new Date(pubDateStr) : new Date(),
-                author: author ? RSSParser.cleanText(author) : undefined
+                author: author || undefined
             };
         } catch (error) {
             console.error('解析RDF item失败:', error);
@@ -353,47 +353,26 @@ export class RSSParser {
             // 尝试多种作者字段
             const author = item.author || item.creator || item.writer;
 
+            // 对于 JSON 数据，可能需要清理 HTML 标签
+            const cleanTitle = typeof title === 'string' ? title.replace(/<[^>]*>/g, '').trim() : String(title).trim();
+            const cleanDescription = typeof description === 'string' ? description.replace(/<[^>]*>/g, '').trim() : String(description).trim();
+            const cleanContent = item.content ? (typeof item.content === 'string' ? item.content.replace(/<[^>]*>/g, '').trim() : String(item.content).trim()) : undefined;
+
             return {
                 id: RSSParser.generateItemId(feedId, link),
                 feedId,
-                title: RSSParser.cleanText(title),
+                title: cleanTitle,
                 link,
-                description: RSSParser.cleanText(description),
+                description: cleanDescription,
                 pubDate,
-                content: item.content ? RSSParser.cleanText(item.content) : undefined,
-                author: author ? RSSParser.cleanText(String(author)) : undefined,
+                content: cleanContent,
+                author: author ? String(author).trim() : undefined,
                 categories: item.categories || item.tags || undefined
             };
         } catch (error) {
             console.error('解析自定义JSON item失败:', error);
             return null;
         }
-    }
-
-    /**
-     * 清理文本内容
-     */
-    private static cleanText(text: string): string {
-        if (typeof text !== 'string') {
-            return String(text);
-        }
-        
-        return text
-            .replace(/<[^>]*>/g, '') // 移除HTML标签
-            .replace(/&[#\w]+;/g, (entity) => { // 解码HTML实体
-                const entities: { [key: string]: string } = {
-                    '&amp;': '&',
-                    '&lt;': '<',
-                    '&gt;': '>',
-                    '&quot;': '"',
-                    '&#39;': "'",
-                    '&apos;': "'",
-                    '&nbsp;': ' '
-                };
-                return entities[entity] || entity;
-            })
-            .replace(/\s+/g, ' ') // 合并多个空白字符
-            .trim();
     }
 
     /**
