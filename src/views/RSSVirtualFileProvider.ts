@@ -5,7 +5,7 @@ import { RSSService } from '../services/RSSService';
  * RSS虚拟文件系统提供器
  * 用于在VS Code中以虚拟文件形式预览RSS文章的Markdown内容
  */
-export class RSSVirtualFileProvider implements vscode.TextDocumentContentProvider {
+export class RSSVirtualFileProvider implements vscode.TextDocumentContentProvider, vscode.Disposable  {
     private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
     readonly onDidChange = this._onDidChange.event;
 

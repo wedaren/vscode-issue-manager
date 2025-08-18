@@ -7,7 +7,7 @@ import { IssueItem, IsolatedIssuesProvider } from './IsolatedIssuesProvider';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
 import { RecentIssuesProvider } from './RecentIssuesProvider';
-import { RSSService } from '../services/RSSService';
+import { RSSItem, RSSService } from '../services/RSSService';
 
 
 // 自定义拖拽数据类型
@@ -172,6 +172,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         } else if (fromRSS) {
             // 处理从RSS视图拖拽过来的文章
             const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === RSS_MIME_TYPE && transferItem.value).pop() || [];
+            
             transferItem && await this.handleRSSDropItems(transferItem, targetNodeInTree || undefined, treeData);
         }
 
@@ -186,8 +187,10 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
     private async handleRSSDropItems(rssItems: vscode.DataTransferItem, targetNodeInTree: IssueTreeNode | undefined, treeData: TreeData): Promise<void> {
         try {
             const rssService = RSSService.getInstance();
+            const rssItemsString = await rssItems.asString();
+            const rssItemsValue = JSON.parse(rssItemsString) as RSSItem[];
 
-            for (const rssData of rssItems.value) {
+            for (const rssData of rssItemsValue) {
                 // 重构RSS数据为RSSItem
                 const rssItem = {
                     id: rssData.id,
@@ -218,7 +221,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 }
             }
 
-            vscode.window.showInformationMessage(`已成功添加 ${rssItems.length} 篇RSS文章到问题管理`);
+            vscode.window.showInformationMessage(`已成功添加 ${rssItems.value.length} 篇RSS文章到问题管理`);
         } catch (error) {
             console.error('处理RSS拖拽失败:', error);
             vscode.window.showErrorMessage('添加RSS文章失败，请重试');
