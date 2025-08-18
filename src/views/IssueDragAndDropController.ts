@@ -193,14 +193,8 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
             for (const rssData of rssItemsValue) {
                 // 重构RSS数据为RSSItem
                 const rssItem = {
-                    id: rssData.id,
-                    feedId: rssData.feedId,
-                    title: rssData.title,
-                    link: rssData.link,
-                    description: rssData.description,
-                    pubDate: new Date(rssData.pubDate),
-                    author: rssData.author,
-                    categories: rssData.categories
+                    ...rssData,  
+                    pubDate: new Date(rssData.pubDate),  
                 };
 
                 // 转换RSS文章为Markdown文件
