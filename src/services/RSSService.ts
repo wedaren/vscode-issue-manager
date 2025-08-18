@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
 import { getIssueDir } from '../config';
+import { generateFileName } from '../utils/fileUtils';
 
 export interface RSSFeed {
     id: string;
@@ -162,12 +163,8 @@ export class RSSService {
         }
 
         const feed = this.feeds.find(f => f.id === item.feedId);
-        const feedName = feed?.name || 'RSS';
         
-        // 生成文件名：RSS-订阅源名-文章标题
-        const safeTitle = this.sanitizeFilename(item.title);
-        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '');
-        const filename = `RSS-${this.sanitizeFilename(feedName)}-${safeTitle}-${timestamp}.md`;
+        const filename = generateFileName();
         const filepath = path.join(issueDir, filename);
 
         // 生成Markdown内容

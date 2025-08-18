@@ -21,6 +21,7 @@ import { getTitle } from './utils/markdown';
 import { GitSyncService } from './services/GitSyncService';
 import { RSSIssuesProvider } from './views/RSSIssuesProvider';
 import { registerRSSVirtualFileProvider } from './views/RSSVirtualFileProvider';
+import { RSSIssueDragAndDropController } from './views/RSSIssueDragAndDropController';
 
 
 // 当您的扩展被激活时，将调用此方法
@@ -434,7 +435,8 @@ export function activate(context: vscode.ExtensionContext) {
 	const rssIssuesProvider = new RSSIssuesProvider(context);
 	const rssIssuesView = vscode.window.createTreeView('issueManager.views.rss', {
 		treeDataProvider: rssIssuesProvider,
-		canSelectMany: false
+		dragAndDropController: new RSSIssueDragAndDropController(),
+		canSelectMany: true // 启用多选以支持批量拖拽
 	});
 	context.subscriptions.push(rssIssuesView);
 	context.subscriptions.push(rssIssuesProvider);

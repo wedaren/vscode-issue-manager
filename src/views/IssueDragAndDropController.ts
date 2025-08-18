@@ -2,15 +2,17 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { TreeData, IssueTreeNode, readTree, stripFocusedId,isFocusedRootId, writeTree } from '../data/treeManager';
+import { TreeData, IssueTreeNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/treeManager';
 import { IssueItem, IsolatedIssuesProvider } from './IsolatedIssuesProvider';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
 import { RecentIssuesProvider } from './RecentIssuesProvider';
+import { RSSService } from '../services/RSSService';
 
 
 // 自定义拖拽数据类型
 const ISSUE_MIME_TYPE = 'application/vnd.code.tree.issue-manager';
+const RSS_MIME_TYPE = 'application/vnd.code.tree.rss-issue-manager';
 
 type DraggedItem = IssueTreeNode | IssueItem
 
@@ -23,10 +25,10 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
             this.dropMimeTypes = []; // 孤立问题视图只出不进
         } else if (viewMode === 'overview') {
-            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list'];
+            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list', RSS_MIME_TYPE];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else if (viewMode === 'focused') {
-            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list'];
+            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list', RSS_MIME_TYPE];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else if (viewMode === 'recent') {
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
@@ -39,14 +41,14 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         treeDataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
-        const transferData = source.map(item => {  
-            if (item instanceof IssueItem) {  
+        const transferData = source.map(item => {
+            if (item instanceof IssueItem) {
                 // 显式转换 Uri 为字符串以保证序列化安全  
-                return { ...item, resourceUri: item.resourceUri.toString() };  
-            }  
-            return item;  
-        });  
-        treeDataTransfer.set(ISSUE_MIME_TYPE, new vscode.DataTransferItem(transferData));  
+                return { ...item, resourceUri: item.resourceUri.toString() };
+            }
+            return item;
+        });
+        treeDataTransfer.set(ISSUE_MIME_TYPE, new vscode.DataTransferItem(transferData));
     }
 
     /**
@@ -66,7 +68,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         }
 
         const treeData = await readTree();
-        if(!target && this.viewMode === 'focused') {
+        if (!target && this.viewMode === 'focused') {
             vscode.window.showErrorMessage('请先选择一个节点作为目标。');
             return;
         }
@@ -78,6 +80,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         const fromFocused = dataTransfer.get('application/vnd.code.tree.issuemanager.views.focused');
         const fromRecent = dataTransfer.get('application/vnd.code.tree.issuemanager.views.recent');
         const fromEditor = dataTransfer.get('text/uri-list');
+        const fromRSS = dataTransfer.get(RSS_MIME_TYPE);
 
         if (fromOverview && transferItem) {
             const draggedItems = transferItem.value as IssueTreeNode[];
@@ -119,8 +122,8 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
             }
 
 
-        } else if ((fromIsolated||fromRecent)  && transferItem) {
-            const draggedItems = (JSON.parse(transferItem.value) as {resourceUri:string}[]).filter(i=>i.resourceUri).map(i=>({
+        } else if ((fromIsolated || fromRecent) && transferItem) {
+            const draggedItems = (JSON.parse(transferItem.value) as { resourceUri: string }[]).filter(i => i.resourceUri).map(i => ({
                 ...i,
                 resourceUri: vscode.Uri.parse(i.resourceUri) // 确保 resourceUri 是 Uri 对象
             }));
@@ -166,11 +169,60 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
             }
 
+        } else if (fromRSS) {
+            // 处理从RSS视图拖拽过来的文章
+            const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === RSS_MIME_TYPE && transferItem.value).pop() || [];
+            transferItem && await this.handleRSSDropItems(transferItem, targetNodeInTree || undefined, treeData);
         }
 
         await writeTree(treeData);
         // this.viewProvider.refresh();
         vscode.commands.executeCommand('issueManager.refreshAllViews');
+    }
+
+    /**
+     * 处理RSS拖拽项目
+     */
+    private async handleRSSDropItems(rssItems: vscode.DataTransferItem, targetNodeInTree: IssueTreeNode | undefined, treeData: TreeData): Promise<void> {
+        try {
+            const rssService = RSSService.getInstance();
+
+            for (const rssData of rssItems.value) {
+                // 重构RSS数据为RSSItem
+                const rssItem = {
+                    id: rssData.id,
+                    feedId: rssData.feedId,
+                    title: rssData.title,
+                    link: rssData.link,
+                    description: rssData.description,
+                    pubDate: new Date(rssData.pubDate),
+                    author: rssData.author,
+                    categories: rssData.categories
+                };
+
+                // 转换RSS文章为Markdown文件
+                const markdownUri = await rssService.convertToMarkdown(rssItem);
+
+                if (markdownUri) {
+                    const issueDir = getIssueDir();
+                    if (issueDir) {
+                        const relativePath = path.relative(issueDir, markdownUri.fsPath);
+                        const nodeToAdd: IssueTreeNode = {
+                            id: uuidv4(),
+                            filePath: relativePath,
+                            children: [],
+                        };
+
+                        this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
+                    }
+                }
+            }
+
+            vscode.window.showInformationMessage(`已成功添加 ${rssItems.length} 篇RSS文章到问题管理`);
+        } catch (error) {
+            console.error('处理RSS拖拽失败:', error);
+            vscode.window.showErrorMessage('添加RSS文章失败，请重试');
+        }
     }
 
     private addNodeToTree(treeData: TreeData, nodeToAdd: IssueTreeNode, target: IssueTreeNode | null | undefined): void {
