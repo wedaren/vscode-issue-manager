@@ -68,14 +68,14 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
         // 删除RSS订阅源
         this.context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.rss.removeFeed', async (item: RSSFeedTreeItem) => {
-                await this.removeFeed(item.feed.id);
+                await this.removeFeed(item);
             })
         );
 
         // 切换订阅源启用状态
         this.context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.rss.toggleFeed', async (item: RSSFeedTreeItem) => {
-                await this.toggleFeed(item.feed.id, !item.feed.enabled);
+                await this.toggleFeed(item);
             })
         );
 
@@ -329,23 +329,17 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
     /**
      * 删除RSS订阅源
      */
-    private async removeFeed(feedId: string): Promise<void> {
-        const feeds = this.rssService.getFeeds();
-        const feed = feeds.find(f => f.id === feedId);
-        if (!feed) {
-            return;
-        }
-
+    private async removeFeed(item: RSSFeedTreeItem): Promise<void> {
         const confirm = await vscode.window.showWarningMessage(
-            `确定要删除RSS订阅源 "${feed.name}" 吗？`,
+            `确定要删除RSS订阅源 "${item.feed.name}" 吗？`,
             { modal: true },
             '确定'
         );
 
         if (confirm === '确定') {
-            const success = await this.rssService.removeFeed(feedId);
+            const success = await this.rssService.removeFeed(item.feed.id);
             if (success) {
-                vscode.window.showInformationMessage(`RSS订阅源 "${feed.name}" 已删除`);
+                vscode.window.showInformationMessage(`RSS订阅源 "${item.feed.name}" 已删除`);
                 this.refresh();
             } else {
                 vscode.window.showErrorMessage('删除RSS订阅源失败');
@@ -356,14 +350,15 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
     /**
      * 切换订阅源启用状态
      */
-    private async toggleFeed(feedId: string, enabled: boolean): Promise<void> {
-        const success = await this.rssService.toggleFeed(feedId, enabled);
+    private async toggleFeed(item: RSSFeedTreeItem): Promise<void> {
+        const newEnabledState = !item.feed.enabled;
+        const success = await this.rssService.toggleFeed(item.feed.id, newEnabledState);
         if (success) {
-            const statusText = enabled ? '启用' : '禁用';
-            vscode.window.showInformationMessage(`RSS订阅源已${statusText}`);
+            const statusText = newEnabledState ? '启用' : '禁用';
+            vscode.window.showInformationMessage(`RSS订阅源 "${item.feed.name}" 已${statusText}`);
             this.refresh();
         } else {
-            vscode.window.showErrorMessage('操作失败');
+            vscode.window.showErrorMessage(`操作失败：无法${newEnabledState ? '启用' : '禁用'}订阅源 "${item.feed.name}"`);
         }
     }
 
