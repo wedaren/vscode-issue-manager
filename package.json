@@ -209,6 +209,16 @@
         "title": "添加到关注问题"
       },
       {
+        "command": "issueManager.rss.configureContentProcessing",
+        "title": "配置内容处理",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "issueManager.rss.configureFeedSpecificProcessing", 
+        "title": "配置订阅源内容处理",
+        "icon": "$(gear)"
+      },
+      {
         "command": "issueManager.rss.addToOverview",
         "title": "添加到问题总览"
       },
@@ -577,6 +587,91 @@
               }
             }
           }
+        },
+        "issueManager.rss.contentProcessing.defaultPreset": {
+          "type": "string",
+          "default": "concise",
+          "enum": [
+            "concise",
+            "summary", 
+            "clean",
+            "plain",
+            "custom"
+          ],
+          "description": "默认的内容处理预设。concise: 简洁模式, summary: 摘要模式, clean: 清洁模式, plain: 纯文本模式, custom: 自定义模式。"
+        },
+        "issueManager.rss.contentProcessing.maxLength": {
+          "type": "number",
+          "default": 500,
+          "description": "内容最大长度限制（字符数）。"
+        },
+        "issueManager.rss.contentProcessing.preserveHtml": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否保留HTML标签。"
+        },
+        "issueManager.rss.contentProcessing.preserveImages": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否保留图片标签。"
+        },
+        "issueManager.rss.contentProcessing.preserveLinks": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否保留链接标签。"
+        },
+        "issueManager.rss.contentProcessing.removeTags": {
+          "type": "array",
+          "default": ["script", "style", "iframe"],
+          "description": "要移除的HTML标签列表。",
+          "items": {
+            "type": "string"
+          }
+        },
+        "issueManager.rss.contentProcessing.summaryMode.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否启用摘要模式。"
+        },
+        "issueManager.rss.contentProcessing.summaryMode.maxSentences": {
+          "type": "number",
+          "default": 3,
+          "description": "摘要模式下最多提取的句子数量。"
+        },
+        "issueManager.rss.contentProcessing.summaryMode.preferredSections": {
+          "type": "array",
+          "default": ["摘要", "总结", "Summary", "Abstract"],
+          "description": "摘要模式下优先提取的章节标题。",
+          "items": {
+            "type": "string"
+          }
+        },
+        "issueManager.rss.contentProcessing.customRules": {
+          "type": "array",
+          "default": [],
+          "description": "自定义内容处理规则（正则表达式）。",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "正则表达式模式"
+              },
+              "replacement": {
+                "type": "string",
+                "description": "替换文本"
+              },
+              "flags": {
+                "type": "string",
+                "description": "正则表达式标志（如: gi, gm等）"
+              }
+            }
+          }
+        },
+        "issueManager.rss.contentProcessing.feedSpecific": {
+          "type": "object",
+          "default": {},
+          "description": "订阅源特定的内容处理配置。这是一个内部配置项，通常通过界面操作进行管理。"
         }
       }
     },

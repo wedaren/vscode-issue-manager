@@ -18,32 +18,32 @@ import { generateFileName } from '../utils/fileUtils';
 export class RSSService {
     private static instance: RSSService;
     private feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }> = new Map();
-    
+
     // 核心服务实例
     private configService: RSSConfigService;
     private scheduler: RSSScheduler;
     private contentService: RSSContentService;
-    
+
     // 初始化状态
     private initializationPromise: Promise<void>;
 
     private constructor() {
         // 初始化配置服务
         this.configService = new RSSConfigService();
-        
+
         // 初始化内容服务
         this.contentService = new RSSContentService(
             this.feedData,
             () => this.saveRSSItemsHistory()
         );
-        
+
         // 初始化调度器
         this.scheduler = new RSSScheduler(
             [],
             (feed) => this.contentService.updateFeed(feed),
             (feedId) => this.getLastUpdatedTime(feedId)
         );
-        
+
         this.initializationPromise = this.initializeAsync();
     }
 
@@ -53,7 +53,7 @@ export class RSSService {
     private async initializeAsync(): Promise<void> {
         await this.configService.loadConfig();
         await this.loadRSSItemsHistory();
-        
+
         // 更新调度器中的订阅源列表
         this.scheduler.updateFeeds(this.configService.getFeeds());
         this.scheduler.startAutoUpdate();
@@ -102,41 +102,41 @@ export class RSSService {
 
             // 添加到配置服务
             const feed = await this.configService.addFeed(name, url);
-            
+
             // 验证RSS URL是否有效
             await this.contentService.fetchFeed(feed);
-            
+
             // 更新调度器
             this.scheduler.updateFeeds(this.configService.getFeeds());
-            
+
             vscode.window.showInformationMessage(`成功添加RSS订阅源: ${name}`);
             return true;
         } catch (error) {
             console.error('添加RSS订阅源失败:', error);
-            
+
             // 显示用户友好的错误提示
             const errorMessage = error instanceof Error ? error.message : '未知错误';
-            
+
             if (errorMessage.includes('检测到HTML页面')) {
                 vscode.window.showErrorMessage(`无法添加订阅源 "${name}": 提供的URL指向HTML页面，请确认URL指向RSS订阅源（支持JSON Feed或XML RSS格式）。`,
                     '查看格式说明').then(selection => {
-                    if (selection === '查看格式说明') {
-                        RSSHelper.showRSSFormatHelp();
-                    }
-                });
+                        if (selection === '查看格式说明') {
+                            RSSHelper.showRSSFormatHelp();
+                        }
+                    });
             } else if (errorMessage.includes('返回空内容')) {
                 vscode.window.showErrorMessage(`无法添加订阅源 "${name}": 订阅源返回空内容，请检查URL是否正确。`);
             } else {
-                vscode.window.showErrorMessage(`无法添加订阅源 "${name}": ${errorMessage}`, 
+                vscode.window.showErrorMessage(`无法添加订阅源 "${name}": ${errorMessage}`,
                     '查看格式说明', '了解JSON Feed').then(selection => {
-                    if (selection === '查看格式说明') {
-                        RSSHelper.showRSSFormatHelp();
-                    } else if (selection === '了解JSON Feed') {
-                        vscode.env.openExternal(vscode.Uri.parse('https://jsonfeed.org/'));
-                    }
-                });
+                        if (selection === '查看格式说明') {
+                            RSSHelper.showRSSFormatHelp();
+                        } else if (selection === '了解JSON Feed') {
+                            vscode.env.openExternal(vscode.Uri.parse('https://jsonfeed.org/'));
+                        }
+                    });
             }
-            
+
             return false;
         }
     }
@@ -149,7 +149,7 @@ export class RSSService {
         if (success) {
             this.feedData.delete(feedId); // 删除数据和状态记录
             await this.saveRSSItemsHistory(); // 保存更新后的历史记录
-            
+
             // 更新调度器
             this.scheduler.updateFeeds(this.configService.getFeeds());
         }
@@ -207,7 +207,7 @@ export class RSSService {
     /**
      * 将RSS文章转换为Markdown格式并保存到问题目录
      */
-    public async convertToMarkdown(item: RSSItem): Promise<vscode.Uri | null> {
+    public async convertToMarkdownUri(item: RSSItem): Promise<vscode.Uri | null> {
         const issueDir = getIssueDir();
         if (!issueDir) {
             vscode.window.showErrorMessage('请先配置问题目录');
@@ -250,7 +250,7 @@ export class RSSService {
     }
 
     /**
-     * 获取RSS文章的Markdown内容（用于虚拟文件提供器）
+     * 获取RSS文章的Markdown内容
      */
     public getItemMarkdown(itemId: string): string | null {
         // 从所有订阅源中查找指定ID的文章
@@ -258,7 +258,7 @@ export class RSSService {
             const item = feedData.items.find((i: RSSItem) => i.id === itemId);
             if (item) {
                 const feed = this.configService.findFeedById(feedId);
-                return RSSMarkdownConverter.generatePreviewMarkdown(item, feed);
+                return RSSMarkdownConverter.convertToMarkdown(item, feed);
             }
         }
         return null;
@@ -285,16 +285,16 @@ export class RSSService {
     private async loadRSSItemsHistory(): Promise<void> {
         // 加载订阅源状态
         const feedStates = await RSSStorageService.loadFeedStates();
-        
+
         // 加载所有订阅源的文章
         const feeds = this.configService.getFeeds();
         const feedItemsMap = await RSSStorageService.loadAllFeedItems(feeds);
-        
+
         // 合并状态和文章数据
         for (const feed of feeds) {
             const state = feedStates.get(feed.id) || {};
             const items = feedItemsMap.get(feed.id) || [];
-            
+
             this.feedData.set(feed.id, {
                 lastUpdated: state.lastUpdated,
                 items: items
@@ -309,12 +309,12 @@ export class RSSService {
         // 准备状态数据
         const feedStates = new Map<string, { lastUpdated?: Date }>();
         const feedItemsMap = new Map<string, RSSItem[]>();
-        
+
         for (const [feedId, feedData] of this.feedData) {
             feedStates.set(feedId, { lastUpdated: feedData.lastUpdated });
             feedItemsMap.set(feedId, feedData.items);
         }
-        
+
         // 使用存储服务保存
         await RSSStorageService.saveFeedStates(feedStates);
         await RSSStorageService.saveAllFeedItems(feedItemsMap);
@@ -359,15 +359,15 @@ export class RSSService {
      */
     public async importHistory(importPath: string, mergeStrategy: 'replace' | 'merge' = 'merge'): Promise<boolean> {
         const result = await RSSHistoryManager.importHistory(
-            this.feedData, 
-            importPath, 
+            this.feedData,
+            importPath,
             mergeStrategy
         );
-        
+
         if (result) {
             await this.saveRSSItemsHistory();
         }
-        
+
         return result;
     }
 
@@ -377,16 +377,16 @@ export class RSSService {
      */
     public async rebuildHistory(daysToFetch: number = 7): Promise<{ rebuiltFeeds: number; totalItems: number }> {
         const result = await RSSHistoryManager.rebuildHistory(
-            this.configService.getFeeds(), 
-            this.feedData, 
+            this.configService.getFeeds(),
+            this.feedData,
             (feed: RSSFeed) => this.contentService.fetchFeed(feed),
             daysToFetch
         );
-        
+
         if (result.rebuiltFeeds > 0) {
             await this.saveRSSItemsHistory();
         }
-        
+
         return result;
     }
 

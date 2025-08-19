@@ -198,7 +198,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 };
 
                 // 转换RSS文章为Markdown文件
-                const markdownUri = await rssService.convertToMarkdown(rssItem);
+                const markdownUri = await rssService.convertToMarkdownUri(rssItem);
 
                 if (markdownUri) {
                     const issueDir = getIssueDir();

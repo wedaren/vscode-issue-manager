@@ -419,7 +419,7 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
      * 转换为Markdown并保存到问题目录
      */
     private async convertToMarkdown(item: RSSItem): Promise<void> {
-        const uri = await this.rssService.convertToMarkdown(item);
+        const uri = await this.rssService.convertToMarkdownUri(item);
         if (uri) {
             // 打开生成的Markdown文件
             await vscode.window.showTextDocument(uri);
@@ -455,7 +455,7 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
      */
     private async addToFocused(item: RSSItem): Promise<void> {
         // 先转换为Markdown
-        const uri = await this.rssService.convertToMarkdown(item);
+        const uri = await this.rssService.convertToMarkdownUri(item);
         if (uri) {
             // 添加到关注问题
             await vscode.commands.executeCommand('issueManager.addIssueToTree', [uri], null, true);
@@ -468,7 +468,7 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
      */
     private async addToOverview(item: RSSItem): Promise<void> {
         // 先转换为Markdown
-        const uri = await this.rssService.convertToMarkdown(item);
+        const uri = await this.rssService.convertToMarkdownUri(item);
         if (uri) {
             // 添加到问题总览
             await vscode.commands.executeCommand('issueManager.addIssueToTree', [uri], null, false);
