@@ -1,6 +1,76 @@
 import { ContentProcessor, ContentProcessingOptions, ContentType } from './ContentProcessor';
 
 /**
+ * HTML实体解码处理器
+ * 解码HTML实体编码（如 &lt; &gt; &quot; &amp; 等）
+ */
+export class HtmlEntityDecodeProcessor implements ContentProcessor {
+    public readonly name = 'html-entity-decode';
+    public readonly description = '解码HTML实体编码';
+
+    private static readonly HTML_ENTITIES: Record<string, string> = {
+        '&lt;': '<',
+        '&gt;': '>',
+        '&amp;': '&',
+        '&quot;': '"',
+        '&#39;': "'",
+        '&apos;': "'",
+        '&nbsp;': ' ',
+        '&copy;': '©',
+        '&reg;': '®',
+        '&trade;': '™',
+        '&hellip;': '…',
+        '&ndash;': '–',
+        '&mdash;': '—',
+        '&lsquo;': '\u2018',
+        '&rsquo;': '\u2019',
+        '&ldquo;': '\u201C',
+        '&rdquo;': '\u201D',
+        '&bull;': '•',
+        '&middot;': '·',
+        '&sect;': '§',
+        '&para;': '¶',
+        '&dagger;': '†',
+        '&Dagger;': '‡',
+        '&permil;': '‰',
+        '&lsaquo;': '‹',
+        '&rsaquo;': '›',
+        '&euro;': '€',
+        '&pound;': '£',
+        '&yen;': '¥',
+        '&cent;': '¢'
+    };
+
+    public process(content: string, options: ContentProcessingOptions = {}): string {
+        let processed = content;
+
+        // 解码命名实体
+        for (const [entity, replacement] of Object.entries(HtmlEntityDecodeProcessor.HTML_ENTITIES)) {
+            processed = processed.replace(new RegExp(entity, 'g'), replacement);
+        }
+
+        // 解码数字实体 (&#数字; 和 &#x十六进制;)
+        processed = processed.replace(/&#(\d+);/g, (match, decimal) => {
+            try {
+                return String.fromCharCode(parseInt(decimal, 10));
+            } catch {
+                return match; // 如果解码失败，保留原文
+            }
+        });
+
+        processed = processed.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+            try {
+                return String.fromCharCode(parseInt(hex, 16));
+            } catch {
+                return match; // 如果解码失败，保留原文
+            }
+        });
+
+        return processed;
+    }
+}
+
+/**
  * HTML清理处理器
  * 清理和过滤HTML内容
  */

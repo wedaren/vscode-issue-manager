@@ -1,5 +1,6 @@
 import { ContentProcessor, ContentProcessingOptions } from './ContentProcessor';
 import { 
+    HtmlEntityDecodeProcessor,
     HtmlCleanupProcessor, 
     LengthTrimProcessor, 
     SummaryExtractProcessor, 
@@ -15,6 +16,7 @@ export class ContentProcessorManager {
 
     constructor() {
         // 注册默认处理器
+        this.registerProcessor(new HtmlEntityDecodeProcessor());
         this.registerProcessor(new HtmlCleanupProcessor());
         this.registerProcessor(new LengthTrimProcessor());
         this.registerProcessor(new SummaryExtractProcessor());
@@ -72,9 +74,9 @@ export class ContentProcessorManager {
      */
     public static createPresets(): Record<string, { processors: string[]; options: ContentProcessingOptions }> {
         return {
-            // 简洁模式：移除HTML，限制长度
+            // 简洁模式：解码HTML实体，移除HTML，限制长度
             'concise': {
-                processors: ['html-cleanup', 'length-trim'],
+                processors: ['html-entity-decode', 'html-cleanup', 'length-trim'],
                 options: {
                     preserveHtml: false,
                     maxLength: 300,
@@ -82,9 +84,9 @@ export class ContentProcessorManager {
                 }
             },
             
-            // 摘要模式：提取摘要，清理HTML
+            // 摘要模式：解码HTML实体，提取摘要，清理HTML
             'summary': {
-                processors: ['html-cleanup', 'summary-extract'],
+                processors: ['html-entity-decode', 'html-cleanup', 'summary-extract'],
                 options: {
                     preserveHtml: false,
                     summaryMode: {
@@ -95,9 +97,9 @@ export class ContentProcessorManager {
                 }
             },
             
-            // 清洁模式：只移除危险的HTML标签
+            // 清洁模式：解码HTML实体，只移除危险的HTML标签
             'clean': {
-                processors: ['html-cleanup'],
+                processors: ['html-entity-decode', 'html-cleanup'],
                 options: {
                     preserveHtml: true,
                     removeTags: ['script', 'style', 'iframe', 'object', 'embed'],
@@ -106,9 +108,9 @@ export class ContentProcessorManager {
                 }
             },
             
-            // 纯文本模式：移除所有HTML标签
+            // 纯文本模式：解码HTML实体，移除所有HTML标签
             'plain': {
-                processors: ['html-cleanup', 'length-trim'],
+                processors: ['html-entity-decode', 'html-cleanup', 'length-trim'],
                 options: {
                     preserveHtml: false,
                     preserveImages: false,
