@@ -188,11 +188,13 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         try {
             const rssService = RSSService.getInstance();
             const rssItemsString = await rssItems.asString();
-            const rssItemsValue = JSON.parse(rssItemsString) as RSSItem[];
+            // 定义一个临时的DTO类型来处理反序列化
+            type RSSItemDTO = Omit<RSSItem, 'pubDate'> & { pubDate: string };
+            const rssItemsValue = JSON.parse(rssItemsString) as RSSItemDTO[];
 
             for (const rssData of rssItemsValue) {
                 // 重构RSS数据为RSSItem
-                const rssItem = {
+                const rssItem: RSSItem = {
                     ...rssData,  
                     pubDate: new Date(rssData.pubDate),  
                 };

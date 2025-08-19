@@ -63,8 +63,8 @@ async function testContentProcessing() {
     console.log('\n' + '='.repeat(50) + '\n');
 
     console.log('5. 测试预览功能：');
-    const previewMarkdown = RSSMarkdownConverter.generatePreviewMarkdown(mockItem, mockFeed, true);
-    console.log('预览内容与转换内容是否一致:', previewMarkdown === defaultMarkdown);
+    const previewMarkdown = RSSMarkdownConverter.convertToMarkdown(mockItem, mockFeed, true);
+    console.log('预览内容与默认转换内容是否一致:', previewMarkdown === defaultMarkdown);
     
     console.log('\n=== 测试完成 ===');
 }

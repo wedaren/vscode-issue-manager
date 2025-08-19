@@ -18,6 +18,9 @@ import { generateFileName } from '../utils/fileUtils';
 export class RSSService {
     private static instance: RSSService;
     private feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }> = new Map();
+    
+    // 文章ID到文章对象的快速查找索引，用于提高预览功能的响应速度
+    private itemMap: Map<string, RSSItem> = new Map();
 
     // 核心服务实例
     private configService: RSSConfigService;
@@ -148,12 +151,38 @@ export class RSSService {
         const success = await this.configService.removeFeed(feedId);
         if (success) {
             this.feedData.delete(feedId); // 删除数据和状态记录
+            this.removeItemsFromMapByFeedId(feedId); // 从索引中删除相关文章
             await this.saveRSSItemsHistory(); // 保存更新后的历史记录
 
             // 更新调度器
             this.scheduler.updateFeeds(this.configService.getFeeds());
         }
         return success;
+    }
+
+    /**
+     * 重建文章ID到文章对象的快速查找索引
+     * 用于提高 getItemMarkdown 等方法的查找性能（O(1)复杂度）
+     */
+    private rebuildItemMap(): void {
+        this.itemMap.clear();
+        for (const [feedId, feedData] of this.feedData) {
+            for (const item of feedData.items) {
+                this.itemMap.set(item.id, item);
+            }
+        }
+    }
+
+    /**
+     * 从索引中删除指定订阅源的所有文章
+     */
+    private removeItemsFromMapByFeedId(feedId: string): void {
+        // 遍历索引，删除属于指定订阅源的文章
+        for (const [itemId, item] of this.itemMap) {
+            if (item.feedId === feedId) {
+                this.itemMap.delete(itemId);
+            }
+        }
     }
 
     /**
@@ -251,15 +280,14 @@ export class RSSService {
 
     /**
      * 获取RSS文章的Markdown内容
+     * 使用索引进行快速查找（O(1)复杂度）
      */
     public getItemMarkdown(itemId: string): string | null {
-        // 从所有订阅源中查找指定ID的文章
-        for (const [feedId, feedData] of this.feedData) {
-            const item = feedData.items.find((i: RSSItem) => i.id === itemId);
-            if (item) {
-                const feed = this.configService.findFeedById(feedId);
-                return RSSMarkdownConverter.convertToMarkdown(item, feed);
-            }
+        // 使用索引快速查找文章
+        const item = this.itemMap.get(itemId);
+        if (item) {
+            const feed = this.configService.findFeedById(item.feedId);
+            return RSSMarkdownConverter.convertToMarkdown(item, feed);
         }
         return null;
     }
@@ -300,6 +328,9 @@ export class RSSService {
                 items: items
             });
         }
+
+        // 重建文章索引以提高查找性能
+        this.rebuildItemMap();
     }
 
     /**
@@ -318,6 +349,9 @@ export class RSSService {
         // 使用存储服务保存
         await RSSStorageService.saveFeedStates(feedStates);
         await RSSStorageService.saveAllFeedItems(feedItemsMap);
+
+        // 重建文章索引，确保索引与最新数据同步
+        this.rebuildItemMap();
     }
 
     /**
@@ -341,7 +375,14 @@ export class RSSService {
      */
     public async compactHistory(): Promise<{ removedItems: number; compactedFeeds: number }> {
         const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);
-        return await RSSHistoryManager.compactHistory(this.feedData, maxItems);
+        const result = await RSSHistoryManager.compactHistory(this.feedData, maxItems);
+        
+        // 压缩后需要重建索引和保存数据
+        if (result.removedItems > 0 || result.compactedFeeds > 0) {
+            await this.saveRSSItemsHistory();
+        }
+        
+        return result;
     }
 
     /**

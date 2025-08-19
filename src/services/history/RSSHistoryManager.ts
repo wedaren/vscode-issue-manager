@@ -168,7 +168,7 @@ export class RSSHistoryManager {
 
             for (const record of importedRecords) {
                 const existingData = feedData.get(record.feedId);
-                const convertedItems = record.items.map((item: any) => ({
+                const convertedItems = record.items.map((item) => ({
                     ...item,
                     pubDate: new Date(item.pubDate)
                 }));
