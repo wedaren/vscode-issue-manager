@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { RSSService } from '../services/RSSService';
 import { RSSFeed, RSSItem } from '../services/types/RSSTypes';
+import { normalizeDate, formatDate, dateToKey, getDateGroupKey, getOrderedGroupKeys, dateKeyToLabel } from '../utils/dateUtils';
 
 /**
  * RSS订阅源节点
@@ -278,34 +279,11 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
             return [];
         }
 
-        // 按日期分组，key 用标准化日期字符串（YYYY-MM-DD），特殊分组用 '今天'、'昨天'、'更早'
+        // 按日期分组
         const groups = new Map<string, RSSItem[]>();
-        const today = new Date();
-        const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-        const oneWeekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-        // 标准化日期字符串
-        const dateToKey = (date: Date) => {
-            return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-        };
-
-        const todayKey = dateToKey(today);
-        const yesterdayKey = dateToKey(yesterday);
 
         for (const item of allItems) {
-            const itemDate = this.normalizeDate(item.pubDate);
-            const itemKey = dateToKey(itemDate);
-
-            let groupKey: string;
-            if (itemKey === todayKey) {
-                groupKey = '今天';
-            } else if (itemKey === yesterdayKey) {
-                groupKey = '昨天';
-            } else if (itemDate >= this.normalizeDate(oneWeekAgo)) {
-                groupKey = itemKey; // 一周内用标准化日期字符串
-            } else {
-                groupKey = '更早';
-            }
+            const groupKey = getDateGroupKey(item.pubDate);
 
             if (!groups.has(groupKey)) {
                 groups.set(groupKey, []);
@@ -314,37 +292,14 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
         }
 
         // 转换为树节点，按顺序排列
-        const orderedKeys = ['今天', '昨天'];
         const result: RSSGroupTreeItem[] = [];
+        const orderedKeys = getOrderedGroupKeys(groups);
 
-        // 添加今天和昨天
         for (const key of orderedKeys) {
             if (groups.has(key)) {
-                result.push(new RSSGroupTreeItem(key, groups.get(key)!));
-                groups.delete(key);
+                const label = dateKeyToLabel(key);
+                result.push(new RSSGroupTreeItem(label, groups.get(key)!));
             }
-        }
-
-        // 一周内的日期分组（标准化日期字符串），按日期倒序
-        const weekDateKeys: string[] = [];
-        for (const [key, items] of groups.entries()) {
-            if (key !== '更早') {
-                weekDateKeys.push(key);
-            }
-        }
-        weekDateKeys.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-
-        for (const key of weekDateKeys) {
-            // 显示时格式化为本地化标签
-            const date = new Date(key);
-            const label = this.formatDate(date);
-            result.push(new RSSGroupTreeItem(label, groups.get(key)!));
-            groups.delete(key);
-        }
-
-        // 添加更早的文章
-        if (groups.has('更早')) {
-            result.push(new RSSGroupTreeItem('更早', groups.get('更早')!));
         }
 
         return result;
@@ -360,25 +315,6 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
             const feedName = feed?.name || 'RSS';
             return new RSSItemTreeItem(item, feedName);
         });
-    }
-
-    /**
-     * 标准化日期（只保留年月日）
-     */
-    private normalizeDate(date: Date): Date {
-        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    }
-
-    /**
-     * 格式化日期
-     */
-    private formatDate(date: Date): string {
-        const options: Intl.DateTimeFormatOptions = { 
-            month: 'long', 
-            day: 'numeric', 
-            weekday: 'long' 
-        };
-        return new Intl.DateTimeFormat(undefined, options).format(date);
     }
 
     /**
