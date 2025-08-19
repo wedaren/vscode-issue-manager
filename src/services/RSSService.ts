@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { RSSFeed, RSSItem } from './types/RSSTypes';
 import { RSSConfig,  DEFAULT_RSS_CONFIG } from './types/RSSConfig';
 import { RSSFetcher } from './fetcher/RSSFetcher';
@@ -236,13 +235,12 @@ export class RSSService {
         const feed = this.feeds.find(f => f.id === item.feedId);
 
         const filename = generateFileName();
-        const filepath = path.join(issueDir, filename);
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), filename);
 
         // 生成Markdown内容
         const markdown = RSSMarkdownConverter.convertToMarkdown(item, feed);
 
         try {
-            const uri = vscode.Uri.file(filepath);
             await vscode.workspace.fs.writeFile(uri, Buffer.from(markdown, 'utf8'));
             return uri;
         } catch (error) {
@@ -600,13 +598,14 @@ export class RSSService {
                 });
             }
 
-            const exportFilePath = exportPath || path.join(getIssueDir() || '', `rss-export-${Date.now()}.jsonl`);
-            const exportUri = vscode.Uri.file(exportFilePath);
+            const exportUri = exportPath 
+                ? vscode.Uri.file(exportPath)
+                : vscode.Uri.joinPath(vscode.Uri.file(getIssueDir() || ''), `rss-export-${Date.now()}.jsonl`);
             
             const success = await writeJSONLFile(exportUri, records);
             if (success) {
-                vscode.window.showInformationMessage(`RSS历史记录已导出到: ${exportFilePath}`);
-                return exportFilePath;
+                vscode.window.showInformationMessage(`RSS历史记录已导出到: ${exportUri.fsPath}`);
+                return exportUri.fsPath;
             } else {
                 vscode.window.showErrorMessage('导出RSS历史记录失败');
                 return null;
