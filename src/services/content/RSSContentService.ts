@@ -52,7 +52,8 @@ export class RSSContentService {
             const existingItems = feedData?.items || [];
             
             // 合并新文章和现有文章，保留历史记录
-            const mergedItems = RSSHistoryManager.mergeRSSItems(existingItems, newItems);
+            const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);
+            const mergedItems = RSSHistoryManager.mergeRSSItems(existingItems, newItems, maxItems);
             
             // 更新数据和状态
             this.feedData.set(feed.id, {
@@ -96,7 +97,7 @@ export class RSSContentService {
             return [];
         }
 
-        return feedData.items
+        return [...feedData.items]
             .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
             .slice(0, limit);
     }

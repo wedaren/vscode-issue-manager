@@ -183,7 +183,8 @@ export class RSSHistoryManager {
                     importedItems += convertedItems.length;
                 } else {
                     // 合并策略：合并文章并去重
-                    const mergedItems = this.mergeRSSItems(existingData.items, convertedItems);
+                    const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);
+                    const mergedItems = this.mergeRSSItems(existingData.items, convertedItems, maxItems);
                     const newLastUpdated = record.lastUpdated && 
                         (!existingData.lastUpdated || new Date(record.lastUpdated) > existingData.lastUpdated)
                         ? new Date(record.lastUpdated) : existingData.lastUpdated;
@@ -262,8 +263,11 @@ export class RSSHistoryManager {
 
     /**
      * 合并RSS文章，保留历史记录并去重
+     * @param existingItems 现有文章列表
+     * @param newItems 新文章列表
+     * @param maxItems 最大保留文章数，默认500
      */
-    public static mergeRSSItems(existingItems: RSSItem[], newItems: RSSItem[]): RSSItem[] {
+    public static mergeRSSItems(existingItems: RSSItem[], newItems: RSSItem[], maxItems: number = 500): RSSItem[] {
         const itemMap = new Map<string, RSSItem>();
 
         // 首先添加现有文章
@@ -280,8 +284,7 @@ export class RSSHistoryManager {
         const mergedItems = Array.from(itemMap.values());
         mergedItems.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
 
-        // 限制每个订阅源最多保存500篇文章，避免数据过多
-        const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);  
+        // 限制保存的文章数量，避免数据过多
         return mergedItems.slice(0, maxItems);  
     }
 
