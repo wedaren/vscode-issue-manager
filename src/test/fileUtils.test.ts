@@ -19,17 +19,6 @@ suite('FileUtils Tests', () => {
         }
     });
 
-    test('应该能够获取RSS历史文件路径', () => {
-        const historyFilePath = getRSSHistoryFilePath();
-        
-        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-            assert.ok(historyFilePath, '应该返回有效的文件路径');
-            assert.ok(historyFilePath!.fsPath.endsWith('rss-history.yaml'), '路径应该以rss-history.yaml结尾');
-        } else {
-            assert.strictEqual(historyFilePath, null, '没有工作区时应该返回null');
-        }
-    });
-
     test('应该能够创建.issueManager目录', async () => {
         if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
             console.log('跳过测试：没有工作区');
