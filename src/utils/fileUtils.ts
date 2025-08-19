@@ -352,12 +352,13 @@ export async function appendToJSONLFile<T = any>(fileUri: vscode.Uri, data: T): 
   }
 }
 
-/**
- * 流式读取 JSONL 文件的最后N条记录（内存友好）
- * @param fileUri 文件路径
- * @param maxRecords 最多读取的记录数
- * @returns 解析后的对象数组，失败返回 null
- */
+/**  
+ * 读取 JSONL 文件的最后N条记录。  
+ * 注意：此实现会一次性读取整个文件到内存，不适合处理超大文件。  
+ * @param fileUri 文件路径  
+ * @param maxRecords 最多读取的记录数  
+ * @returns 解析后的对象数组，失败返回 null  
+ */  
 export async function readLastJSONLRecords<T = any>(fileUri: vscode.Uri, maxRecords: number): Promise<T[] | null> {
   try {
     const fileData = await vscode.workspace.fs.readFile(fileUri);

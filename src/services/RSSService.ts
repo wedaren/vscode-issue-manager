@@ -321,13 +321,6 @@ export class RSSService {
     }
 
     /**
-     * 将分钟转换为毫秒
-     */
-    private minutesToMs(minutes: number): number {
-        return minutes * 60 * 1000;
-    }
-
-    /**
      * 清理旧的RSS文章历史记录
      * @param daysToKeep 保留天数，默认30天
      */
