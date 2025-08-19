@@ -37,6 +37,35 @@ export interface RSSParseResult {
 }
 
 /**
+ * RSS解析统计信息
+ */
+export interface RSSParseStats {
+    /** 成功解析的文章数量 */
+    successCount: number;
+    /** 解析失败的文章数量 */
+    failedCount: number;
+    /** 解析失败的文章信息 */
+    failedItems: Array<{
+        title?: string;
+        link?: string;
+        error: string;
+    }>;
+}
+
+/**
+ * 包含统计信息的RSS解析结果
+ */
+export interface RSSParseResultWithStats {
+    items: RSSItem[];
+    stats: RSSParseStats;
+    feedInfo?: {
+        title?: string;
+        description?: string;
+        link?: string;
+    };
+}
+
+/**
  * 支持的RSS格式类型
  */
 export enum RSSFormat {

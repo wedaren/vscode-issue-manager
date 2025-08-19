@@ -1,27 +1,38 @@
 import * as cheerio from 'cheerio';
-import { RSSItem, RSSFormat, RSSParseResult } from '../types/RSSTypes';
+import { RSSItem, RSSFormat, RSSParseResult, RSSParseResultWithStats, RSSParseStats } from '../types/RSSTypes';
+
+/**
+ * 单个条目解析结果
+ */
+interface ItemParseResult {
+    success: boolean;
+    item?: RSSItem;
+    title?: string;
+    link?: string;
+    error?: string;
+}
 
 /**
  * RSS内容解析器
  */
 export class RSSParser {
     /**
-     * 解析RSS内容（自动检测格式）
+     * 解析RSS内容（自动检测格式），返回包含统计信息的结果
      */
-    public static parseContent(content: string, feedId: string): RSSItem[] {
+    public static parseContentWithStats(content: string, feedId: string): RSSParseResultWithStats {
         const trimmedContent = content.trim();
         
         // 检测内容格式
         if (RSSParser.isXMLContent(trimmedContent)) {
             console.log('检测到XML格式，使用XML解析器');
-            return RSSParser.parseXMLFeed(trimmedContent, feedId);
+            return RSSParser.parseXMLFeedWithStats(trimmedContent, feedId);
         }
         
         try {
             // 尝试解析为JSON
             const jsonData = JSON.parse(content);
             console.log('检测到JSON格式，使用JSON解析器');
-            return RSSParser.parseJSONFeed(jsonData, feedId);
+            return RSSParser.parseJSONFeedWithStats(jsonData, feedId);
         } catch (jsonError) {
             // 提供详细的错误信息
             console.error('JSON解析失败:', jsonError);
@@ -36,6 +47,14 @@ export class RSSParser {
             
             throw new Error(`无法解析订阅源内容。支持的格式包括：1) JSON Feed格式，2) XML RSS/Atom格式。请确认提供的URL返回有效的订阅源数据。错误详情: ${jsonError instanceof Error ? jsonError.message : '未知错误'}`);
         }
+    }
+
+    /**
+     * 解析RSS内容（自动检测格式） - 向后兼容方法
+     */
+    public static parseContent(content: string, feedId: string): RSSItem[] {
+        const result = RSSParser.parseContentWithStats(content, feedId);
+        return result.items;
     }
 
     /**
@@ -80,10 +99,15 @@ export class RSSParser {
     }
 
     /**
-     * 解析XML格式的RSS feed
+     * 解析XML格式的RSS feed - 带统计信息
      */
-    private static parseXMLFeed(xmlContent: string, feedId: string): RSSItem[] {
+    private static parseXMLFeedWithStats(xmlContent: string, feedId: string): RSSParseResultWithStats {
         const items: RSSItem[] = [];
+        const stats: RSSParseStats = {
+            successCount: 0,
+            failedCount: 0,
+            failedItems: []
+        };
 
         try {
             const $ = cheerio.load(xmlContent, { xmlMode: true });
@@ -91,32 +115,56 @@ export class RSSParser {
             // 解析RSS 2.0格式
             if ($('rss').length > 0 || $('channel').length > 0) {
                 $('item').each((_, element) => {
-                    const item = RSSParser.parseRSSItem($, $(element), feedId);
-                    if (item) {
-                        items.push(item);
+                    const result = RSSParser.parseRSSItemSafe($, $(element), feedId);
+                    if (result.success && result.item) {
+                        items.push(result.item);
+                        stats.successCount++;
+                    } else {
+                        stats.failedCount++;
+                        stats.failedItems.push({
+                            title: result.title,
+                            link: result.link,
+                            error: result.error || '未知错误'
+                        });
                     }
                 });
             }
             // 解析Atom格式
             else if ($('feed').length > 0) {
                 $('entry').each((_, element) => {
-                    const item = RSSParser.parseAtomEntry($, $(element), feedId);
-                    if (item) {
-                        items.push(item);
+                    const result = RSSParser.parseAtomEntrySafe($, $(element), feedId);
+                    if (result.success && result.item) {
+                        items.push(result.item);
+                        stats.successCount++;
+                    } else {
+                        stats.failedCount++;
+                        stats.failedItems.push({
+                            title: result.title,
+                            link: result.link,
+                            error: result.error || '未知错误'
+                        });
                     }
                 });
             }
             // 解析RDF格式
             else if ($('rdf\\:RDF, RDF').length > 0) {
                 $('item').each((_, element) => {
-                    const item = RSSParser.parseRDFItem($, $(element), feedId);
-                    if (item) {
-                        items.push(item);
+                    const result = RSSParser.parseRDFItemSafe($, $(element), feedId);
+                    if (result.success && result.item) {
+                        items.push(result.item);
+                        stats.successCount++;
+                    } else {
+                        stats.failedCount++;
+                        stats.failedItems.push({
+                            title: result.title,
+                            link: result.link,
+                            error: result.error || '未知错误'
+                        });
                     }
                 });
             }
 
-            return items;
+            return { items, stats };
         } catch (error) {
             console.error('解析XML RSS失败:', error);
             throw new Error(`XML RSS解析失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -124,42 +172,60 @@ export class RSSParser {
     }
 
     /**
-     * 解析JSON格式的RSS feed
+     * 解析XML格式的RSS feed - 向后兼容方法
      */
-    private static parseJSONFeed(jsonData: any, feedId: string): RSSItem[] {
+    private static parseXMLFeed(xmlContent: string, feedId: string): RSSItem[] {
+        const result = RSSParser.parseXMLFeedWithStats(xmlContent, feedId);
+        return result.items;
+    }
+
+    /**
+     * 解析JSON格式的RSS feed - 带统计信息
+     */
+    private static parseJSONFeedWithStats(jsonData: any, feedId: string): RSSParseResultWithStats {
         const items: RSSItem[] = [];
+        const stats: RSSParseStats = {
+            successCount: 0,
+            failedCount: 0,
+            failedItems: []
+        };
 
         try {
+            let itemsArray: any[] = [];
+
             // 支持JSON Feed 1.1标准
             if (jsonData.version && jsonData.items && Array.isArray(jsonData.items)) {
-                for (const item of jsonData.items) {
-                    const parsedItem = RSSParser.parseJSONItem(item, feedId);
-                    if (parsedItem) {
-                        items.push(parsedItem);
-                    }
-                }
+                itemsArray = jsonData.items;
             }
             // 支持自定义JSON格式
             else if (jsonData.items && Array.isArray(jsonData.items)) {
-                for (const item of jsonData.items) {
-                    const parsedItem = RSSParser.parseCustomJSONItem(item, feedId);
-                    if (parsedItem) {
-                        items.push(parsedItem);
-                    }
-                }
+                itemsArray = jsonData.items;
             }
             // 支持直接的items数组
             else if (Array.isArray(jsonData)) {
-                for (const item of jsonData) {
-                    const parsedItem = RSSParser.parseCustomJSONItem(item, feedId);
-                    if (parsedItem) {
-                        items.push(parsedItem);
-                    }
-                }
+                itemsArray = jsonData;
             }
             else {
                 throw new Error('无效的JSON Feed格式。期望的格式包括: 1) 标准JSON Feed (带有version和items字段), 2) 包含items数组的对象, 3) 直接的文章数组。请检查您的JSON Feed格式是否正确。');
             }
+
+            // 解析每个条目
+            for (const item of itemsArray) {
+                const result = RSSParser.parseJSONItemSafe(item, feedId);
+                if (result.success && result.item) {
+                    items.push(result.item);
+                    stats.successCount++;
+                } else {
+                    stats.failedCount++;
+                    stats.failedItems.push({
+                        title: result.title,
+                        link: result.link,
+                        error: result.error || '未知错误'
+                    });
+                }
+            }
+
+            return { items, stats };
         } catch (error) {
             console.error('解析JSON feed失败:', error);
             
@@ -169,12 +235,251 @@ export class RSSParser {
             
             throw new Error(`解析JSON Feed时发生错误: ${error instanceof Error ? error.message : '未知错误'}`);
         }
-
-        return items;
     }
 
     /**
-     * 解析RSS 2.0格式的item
+     * 解析JSON格式的RSS feed - 向后兼容方法
+     */
+    private static parseJSONFeed(jsonData: any, feedId: string): RSSItem[] {
+        const result = RSSParser.parseJSONFeedWithStats(jsonData, feedId);
+        return result.items;
+    }
+
+    /**
+     * 解析RSS 2.0格式的item - 安全版本
+     */
+    private static parseRSSItemSafe($: cheerio.CheerioAPI, $item: cheerio.Cheerio<any>, feedId: string): ItemParseResult {
+        try {
+            const title = $item.find('title').text().trim();
+            const link = $item.find('link').text().trim() || $item.find('guid').text().trim();
+
+            if (!title || !link) {
+                return {
+                    success: false,
+                    title: title || '无标题',
+                    link: link || '无链接',
+                    error: '缺少必需的标题或链接字段'
+                };
+            }
+
+            const description = $item.find('description').text().trim();
+            const pubDateStr = $item.find('pubDate').text().trim();
+            const author = $item.find('author').text().trim() || 
+                          $item.find('dc\\:creator, creator').text().trim();
+            const content = $item.find('content\\:encoded, encoded').html()?.trim() || $item.find('description').html()?.trim() || description;
+
+            // 处理分类
+            const categories: string[] = [];
+            $item.find('category').each((_, cat) => {
+                const catText = $(cat).text().trim();
+                if (catText) {
+                    categories.push(catText);
+                }
+            });
+
+            return {
+                success: true,
+                item: {
+                    id: RSSParser.generateItemId(feedId, link),
+                    feedId,
+                    title,
+                    link,
+                    description,
+                    pubDate: pubDateStr ? new Date(pubDateStr) : new Date(),
+                    content: content || undefined,
+                    author: author || undefined,
+                    categories: categories.length > 0 ? categories : undefined
+                },
+                title,
+                link
+            };
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : '未知错误';
+            console.error('解析RSS item失败:', error);
+            return {
+                success: false,
+                title: '解析失败',
+                error: errorMsg
+            };
+        }
+    }
+
+    /**
+     * 解析Atom格式的entry - 安全版本
+     */
+    private static parseAtomEntrySafe($: cheerio.CheerioAPI, $entry: cheerio.Cheerio<any>, feedId: string): ItemParseResult {
+        try {
+            const title = $entry.find('title').text().trim();
+            let link = '';
+
+            // Atom的link处理
+            const $link = $entry.find('link[rel="alternate"], link').first();
+            if ($link.length > 0) {
+                link = $link.attr('href') || $link.text().trim();
+            }
+
+            if (!title || !link) {
+                return {
+                    success: false,
+                    title: title || '无标题',
+                    link: link || '无链接',
+                    error: '缺少必需的标题或链接字段'
+                };
+            }
+
+            const summary = $entry.find('summary').text().trim();
+            const content = $entry.find('content').html()?.trim() || $entry.find('summary').html()?.trim() || summary;
+            const publishedStr = $entry.find('published').text().trim() || 
+                               $entry.find('updated').text().trim();
+            
+            // Atom作者处理
+            const author = $entry.find('author name').text().trim() || 
+                          $entry.find('author').text().trim();
+
+            // 处理分类
+            const categories: string[] = [];
+            $entry.find('category').each((_, cat) => {
+                const term = $(cat).attr('term') || $(cat).text().trim();
+                if (term) {
+                    categories.push(term);
+                }
+            });
+
+            return {
+                success: true,
+                item: {
+                    id: RSSParser.generateItemId(feedId, link),
+                    feedId,
+                    title,
+                    link,
+                    description: summary,
+                    pubDate: publishedStr ? new Date(publishedStr) : new Date(),
+                    content: content || undefined,
+                    author: author || undefined,
+                    categories: categories.length > 0 ? categories : undefined
+                },
+                title,
+                link
+            };
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : '未知错误';
+            console.error('解析Atom entry失败:', error);
+            return {
+                success: false,
+                title: '解析失败',
+                error: errorMsg
+            };
+        }
+    }
+
+    /**
+     * 解析RDF格式的item - 安全版本
+     */
+    private static parseRDFItemSafe($: cheerio.CheerioAPI, $item: cheerio.Cheerio<any>, feedId: string): ItemParseResult {
+        try {
+            const title = $item.find('title').text().trim();
+            const link = $item.find('link').text().trim();
+
+            if (!title || !link) {
+                return {
+                    success: false,
+                    title: title || '无标题',
+                    link: link || '无链接',
+                    error: '缺少必需的标题或链接字段'
+                };
+            }
+
+            const description = $item.find('description').text().trim();
+            const pubDateStr = $item.find('dc\\:date, date').text().trim();
+            const author = $item.find('dc\\:creator, creator').text().trim();
+
+            return {
+                success: true,
+                item: {
+                    id: RSSParser.generateItemId(feedId, link),
+                    feedId,
+                    title,
+                    link,
+                    description,
+                    pubDate: pubDateStr ? new Date(pubDateStr) : new Date(),
+                    author: author || undefined
+                },
+                title,
+                link
+            };
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : '未知错误';
+            console.error('解析RDF item失败:', error);
+            return {
+                success: false,
+                title: '解析失败',
+                error: errorMsg
+            };
+        }
+    }
+
+    /**
+     * 解析JSON格式的item - 安全版本
+     */
+    private static parseJSONItemSafe(item: any, feedId: string): ItemParseResult {
+        try {
+            // 支持多种可能的字段名
+            const title = item.title || item.name || item.subject;
+            const link = item.link || item.url || item.href || item.external_url;
+            
+            if (!title || !link) {
+                return {
+                    success: false,
+                    title: title || '无标题',
+                    link: link || '无链接',
+                    error: '缺少必需的标题或链接字段'
+                };
+            }
+
+            // 尝试多种描述字段
+            const description = item.description || item.summary || item.excerpt || item.content_text || '';
+            
+            // 尝试多种日期字段
+            const dateField = item.pubDate || item.publishDate || item.date || item.published || item.created || item.date_published;
+            const pubDate = dateField ? new Date(dateField) : new Date();
+            
+            // 尝试多种作者字段
+            const author = item.author?.name || item.author || item.creator || item.writer;
+
+            // 对于 JSON 数据，可能需要清理 HTML 标签
+            const cleanTitle = typeof title === 'string' ? title.replace(/<[^>]*>/g, '').trim() : String(title).trim();
+            const cleanDescription = typeof description === 'string' ? description.replace(/<[^>]*>/g, '').trim() : String(description).trim();
+            const cleanContent = item.content_html || item.content || item.content_text;
+
+            return {
+                success: true,
+                item: {
+                    id: RSSParser.generateItemId(feedId, link),
+                    feedId,
+                    title: cleanTitle,
+                    link,
+                    description: cleanDescription,
+                    pubDate,
+                    content: cleanContent,
+                    author: author ? String(author).trim() : undefined,
+                    categories: item.categories || item.tags || undefined
+                },
+                title: cleanTitle,
+                link
+            };
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : '未知错误';
+            console.error('解析JSON item失败:', error);
+            return {
+                success: false,
+                title: '解析失败',
+                error: errorMsg
+            };
+        }
+    }
+
+    /**
+     * 解析RSS 2.0格式的item - 向后兼容方法
      */
     private static parseRSSItem($: cheerio.CheerioAPI, $item: cheerio.Cheerio<any>, feedId: string): RSSItem | null {
         try {

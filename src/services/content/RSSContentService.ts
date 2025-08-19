@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RSSFeed, RSSItem } from '../types/RSSTypes';
+import { RSSFeed, RSSItem, RSSParseStats } from '../types/RSSTypes';
 import { RSSFetcher } from '../fetcher/RSSFetcher';
 import { RSSParser } from '../parser/RSSParser';
 import { RSSHistoryManager } from '../history/RSSHistoryManager';
@@ -35,10 +35,35 @@ export class RSSContentService {
     public async fetchFeed(feed: RSSFeed): Promise<RSSItem[]> {
         try {
             const responseText = await RSSFetcher.fetchContent(feed.url);
-            return RSSParser.parseContent(responseText, feed.id);
+            const result = RSSParser.parseContentWithStats(responseText, feed.id);
+            
+            // 显示解析统计信息（如果有失败的条目）
+            if (result.stats.failedCount > 0) {
+                const message = `订阅源 "${feed.name}": 成功解析${result.stats.successCount}篇文章，${result.stats.failedCount}篇因格式错误被跳过`;
+                vscode.window.showWarningMessage(message, '查看详情').then(selection => {
+                    if (selection === '查看详情') {
+                        this.showParseFailureDetails(feed.name, result.stats);
+                    }
+                });
+            }
+            
+            return result.items;
         } catch (error) {
             throw new Error(`获取RSS内容失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+    }
+
+    /**
+     * 显示解析失败的详细信息
+     */
+    private showParseFailureDetails(feedName: string, stats: RSSParseStats): void {
+        const failedItems = stats.failedItems || [];
+        const details = failedItems.map((item, index) => 
+            `${index + 1}. ${item.title || '无标题'} (${item.link || '无链接'})\n   错误: ${item.error}`
+        ).join('\n\n');
+        
+        const message = `订阅源 "${feedName}" 解析失败的文章详情:\n\n${details}`;
+        vscode.window.showInformationMessage(message);
     }
 
     /**

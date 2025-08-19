@@ -119,28 +119,45 @@ export class RSSService {
 
             // 显示用户友好的错误提示
             const errorMessage = error instanceof Error ? error.message : '未知错误';
-
-            if (errorMessage.includes('检测到HTML页面')) {
-                vscode.window.showErrorMessage(`无法添加订阅源 "${name}": 提供的URL指向HTML页面，请确认URL指向RSS订阅源（支持JSON Feed或XML RSS格式）。`,
-                    '查看格式说明').then(selection => {
-                        if (selection === '查看格式说明') {
-                            RSSHelper.showRSSFormatHelp();
-                        }
-                    });
-            } else if (errorMessage.includes('返回空内容')) {
-                vscode.window.showErrorMessage(`无法添加订阅源 "${name}": 订阅源返回空内容，请检查URL是否正确。`);
-            } else {
-                vscode.window.showErrorMessage(`无法添加订阅源 "${name}": ${errorMessage}`,
-                    '查看格式说明', '了解JSON Feed').then(selection => {
-                        if (selection === '查看格式说明') {
-                            RSSHelper.showRSSFormatHelp();
-                        } else if (selection === '了解JSON Feed') {
-                            vscode.env.openExternal(vscode.Uri.parse('https://jsonfeed.org/'));
-                        }
-                    });
-            }
+            await this.handleAddFeedError(name, errorMessage);
 
             return false;
+        }
+    }
+
+    /**
+     * 处理添加RSS订阅源时的错误，显示用户友好的错误消息
+     * @param name 订阅源名称
+     * @param errorMessage 错误消息
+     */
+    private async handleAddFeedError(name: string, errorMessage: string): Promise<void> {
+        if (errorMessage.includes('检测到HTML页面')) {
+            await this.showErrorWithActions(
+                `无法添加订阅源 "${name}": 提供的URL指向HTML页面，请确认URL指向RSS订阅源（支持JSON Feed或XML RSS格式）。`,
+                ['查看格式说明']
+            );
+        } else if (errorMessage.includes('返回空内容')) {
+            vscode.window.showErrorMessage(`无法添加订阅源 "${name}": 订阅源返回空内容，请检查URL是否正确。`);
+        } else {
+            await this.showErrorWithActions(
+                `无法添加订阅源 "${name}": ${errorMessage}`,
+                ['查看格式说明', '了解JSON Feed']
+            );
+        }
+    }
+
+    /**
+     * 显示带有操作按钮的错误消息
+     * @param message 错误消息
+     * @param actions 可用的操作按钮
+     */
+    private async showErrorWithActions(message: string, actions: string[]): Promise<void> {
+        const selection = await vscode.window.showErrorMessage(message, ...actions);
+        
+        if (selection === '查看格式说明') {
+            RSSHelper.showRSSFormatHelp();
+        } else if (selection === '了解JSON Feed') {
+            vscode.env.openExternal(vscode.Uri.parse('https://jsonfeed.org/'));
         }
     }
 

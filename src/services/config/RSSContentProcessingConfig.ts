@@ -58,7 +58,7 @@ export class RSSContentProcessingConfig {
         options?: ContentProcessingOptions;
     } | null {
         const config = vscode.workspace.getConfiguration();
-        const feedConfigs = config.get(`${this.CONFIG_SECTION}.feedSpecific`, {}) as Record<string, any>;
+        const feedConfigs = config.get<Record<string, { preset?: string; processors?: string[]; options?: ContentProcessingOptions; }>>(`${this.CONFIG_SECTION}.feedSpecific`, {});
         
         return feedConfigs[feedId] || null;
     }
