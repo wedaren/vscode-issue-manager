@@ -189,7 +189,7 @@ export class RSSParser {
             const pubDateStr = $item.find('pubDate').text().trim();
             const author = $item.find('author').text().trim() || 
                           $item.find('dc\\:creator, creator').text().trim();
-            const content = $item.find('content\\:encoded, encoded').text().trim() || description;
+            const content = $item.find('content\\:encoded, encoded').html()?.trim() || $item.find('description').html()?.trim() || description;
 
             // 处理分类
             const categories: string[] = [];
@@ -236,7 +236,7 @@ export class RSSParser {
             }
 
             const summary = $entry.find('summary').text().trim();
-            const content = $entry.find('content').text().trim() || summary;
+            const content = $entry.find('content').html()?.trim() || $entry.find('summary').html()?.trim() || summary;
             const publishedStr = $entry.find('published').text().trim() || 
                                $entry.find('updated').text().trim();
             
@@ -356,7 +356,7 @@ export class RSSParser {
             // 对于 JSON 数据，可能需要清理 HTML 标签
             const cleanTitle = typeof title === 'string' ? title.replace(/<[^>]*>/g, '').trim() : String(title).trim();
             const cleanDescription = typeof description === 'string' ? description.replace(/<[^>]*>/g, '').trim() : String(description).trim();
-            const cleanContent = item.content ? (typeof item.content === 'string' ? item.content.replace(/<[^>]*>/g, '').trim() : String(item.content).trim()) : undefined;
+            const cleanContent = item.content;
 
             return {
                 id: RSSParser.generateItemId(feedId, link),

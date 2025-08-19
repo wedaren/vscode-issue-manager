@@ -271,29 +271,35 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
      */
     private getArticleGroups(): RSSGroupTreeItem[] {
         const allItems = this.rssService.getAllItems();
-        
         if (allItems.length === 0) {
             return [];
         }
 
-        // 按日期分组
+        // 按日期分组，key 用标准化日期字符串（YYYY-MM-DD），特殊分组用 '今天'、'昨天'、'更早'
         const groups = new Map<string, RSSItem[]>();
         const today = new Date();
         const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
         const oneWeekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+        // 标准化日期字符串
+        const dateToKey = (date: Date) => {
+            return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+        };
+
+        const todayKey = dateToKey(today);
+        const yesterdayKey = dateToKey(yesterday);
+
         for (const item of allItems) {
             const itemDate = this.normalizeDate(item.pubDate);
-            const todayNormalized = this.normalizeDate(today);
-            const yesterdayNormalized = this.normalizeDate(yesterday);
+            const itemKey = dateToKey(itemDate);
 
             let groupKey: string;
-            if (itemDate.getTime() === todayNormalized.getTime()) {
+            if (itemKey === todayKey) {
                 groupKey = '今天';
-            } else if (itemDate.getTime() === yesterdayNormalized.getTime()) {
+            } else if (itemKey === yesterdayKey) {
                 groupKey = '昨天';
             } else if (itemDate >= this.normalizeDate(oneWeekAgo)) {
-                groupKey = this.formatDate(itemDate);
+                groupKey = itemKey; // 一周内用标准化日期字符串
             } else {
                 groupKey = '更早';
             }
@@ -316,17 +322,20 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
             }
         }
 
-        // 添加一周内的其他日期（按日期倒序）
-        const weekDates: string[] = [];
+        // 一周内的日期分组（标准化日期字符串），按日期倒序
+        const weekDateKeys: string[] = [];
         for (const [key, items] of groups.entries()) {
             if (key !== '更早') {
-                weekDates.push(key);
+                weekDateKeys.push(key);
             }
         }
-        weekDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-        
-        for (const key of weekDates) {
-            result.push(new RSSGroupTreeItem(key, groups.get(key)!));
+        weekDateKeys.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+        for (const key of weekDateKeys) {
+            // 显示时格式化为本地化标签
+            const date = new Date(key);
+            const label = this.formatDate(date);
+            result.push(new RSSGroupTreeItem(label, groups.get(key)!));
             groups.delete(key);
         }
 
