@@ -6,25 +6,10 @@ import { RSSParser } from './parser/RSSParser';
 import { RSSHelper } from './utils/RSSHelper';
 import { RSSMarkdownConverter } from './converters/RSSMarkdownConverter';
 import { RSSStorageService } from './storage/RSSStorageService';
+import { RSSHistoryManager, RSSFeedRecord } from './history/RSSHistoryManager';
+import { RSSStatsService } from './stats/RSSStatsService';
 import { getIssueDir, getRSSDefaultUpdateInterval } from '../config';
 import { generateFileName,  writeJSONLFile, readJSONLFile } from '../utils/fileUtils';
-
-/**
- * RSS服务数据结构：将订阅源状态和文章记录在一起
- */
-interface RSSFeedData {
-    lastUpdated?: string;
-    items: RSSItem[];
-}
-
-/**
- * JSONL格式的RSS记录结构
- */
-interface RSSFeedRecord {
-    feedId: string;
-    lastUpdated?: string;
-    items: RSSItem[];
-}
 
 /**
  * RSS服务，负责管理RSS订阅源和获取RSS内容
@@ -196,7 +181,7 @@ export class RSSService {
             const existingItems = feedData?.items || [];
             
             // 合并新文章和现有文章，保留历史记录
-            const mergedItems = this.mergeRSSItems(existingItems, newItems);
+            const mergedItems = RSSHistoryManager.mergeRSSItems(existingItems, newItems);
             
             // 更新数据和状态
             this.feedData.set(feed.id, {
@@ -439,31 +424,6 @@ export class RSSService {
     }
 
     /**
-     * 合并RSS文章，保留历史记录并去重
-     */
-    private mergeRSSItems(existingItems: RSSItem[], newItems: RSSItem[]): RSSItem[] {
-        const itemMap = new Map<string, RSSItem>();
-
-        // 首先添加现有文章
-        existingItems.forEach(item => {
-            itemMap.set(item.id, item);
-        });
-
-        // 添加新文章，如果ID相同则更新
-        newItems.forEach(item => {
-            itemMap.set(item.id, item);
-        });
-
-        // 转换回数组并按发布时间排序
-        const mergedItems = Array.from(itemMap.values());
-        mergedItems.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
-
-        // 限制每个订阅源最多保存500篇文章，避免数据过多
-        const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);  
-        return mergedItems.slice(0, maxItems);  
-    }
-
-    /**
      * 将分钟转换为毫秒
      */
     private minutesToMs(minutes: number): number {
@@ -482,57 +442,14 @@ export class RSSService {
      * @param daysToKeep 保留天数，默认30天
      */
     public async cleanupOldItems(daysToKeep: number = 30): Promise<{ removedCount: number }> {
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-
-        let removedCount = 0;
-
-        for (const [feedId, feedData] of this.feedData) {
-            const originalLength = feedData.items.length;
-            const filteredItems = feedData.items.filter((item: RSSItem) => item.pubDate >= cutoffDate);
-            
-            if (filteredItems.length !== originalLength) {
-                removedCount += (originalLength - filteredItems.length);
-                this.feedData.set(feedId, {
-                    ...feedData,
-                    items: filteredItems
-                });
-            }
-        }
-
-        if (removedCount > 0) {
-            await this.saveRSSItemsHistory();
-            console.log(`已清理${removedCount}个${daysToKeep}天前的RSS文章记录`);
-        }
-
-        return { removedCount };
+        return await RSSHistoryManager.cleanupOldItems(this.feedData, daysToKeep);
     }
 
     /**
      * 获取RSS文章历史统计信息
      */
     public getHistoryStats(): { totalItems: number; oldestDate?: Date; newestDate?: Date; itemsByFeed: Record<string, number> } {
-        let totalItems = 0;
-        let oldestDate: Date | undefined;
-        let newestDate: Date | undefined;
-        const itemsByFeed: Record<string, number> = {};
-
-        for (const [feedId, feedData] of this.feedData) {
-            const items = feedData.items;
-            totalItems += items.length;
-            itemsByFeed[feedId] = items.length;
-            
-            for (const item of items) {
-                if (!oldestDate || item.pubDate < oldestDate) {
-                    oldestDate = item.pubDate;
-                }
-                if (!newestDate || item.pubDate > newestDate) {
-                    newestDate = item.pubDate;
-                }
-            }
-        }
-
-        return { totalItems, oldestDate, newestDate, itemsByFeed };
+        return RSSStatsService.getHistoryStats(this.feedData);
     }
 
     /**
@@ -540,46 +457,8 @@ export class RSSService {
      * 使用JSONL格式的优势进行高效压缩
      */
     public async compactHistory(): Promise<{ removedItems: number; compactedFeeds: number }> {
-        let removedItems = 0;
-        let compactedFeeds = 0;
-        const maxItemsPerFeed = 500; // 每个订阅源最多保留500篇文章
-
-        for (const [feedId, feedData] of this.feedData) {
-            const originalCount = feedData.items.length;
-            
-            if (originalCount > maxItemsPerFeed) {
-                // 按时间排序，保留最新的文章
-                feedData.items.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
-                feedData.items = feedData.items.slice(0, maxItemsPerFeed);
-                
-                removedItems += (originalCount - feedData.items.length);
-                compactedFeeds++;
-            }
-
-            // 去重：移除相同ID的重复文章
-            const uniqueItems = new Map<string, RSSItem>();
-            for (const item of feedData.items) {
-                if (!uniqueItems.has(item.id)) {
-                    uniqueItems.set(item.id, item);
-                }
-            }
-            
-            if (uniqueItems.size !== feedData.items.length) {
-                const duplicateCount = feedData.items.length - uniqueItems.size;
-                feedData.items = Array.from(uniqueItems.values());
-                removedItems += duplicateCount;
-                if (duplicateCount > 0) {
-                    compactedFeeds++;
-                }
-            }
-        }
-
-        if (removedItems > 0) {
-            await this.saveRSSItemsHistory();
-            console.log(`历史记录压缩完成：移除${removedItems}个项目，优化${compactedFeeds}个订阅源`);
-        }
-
-        return { removedItems, compactedFeeds };
+        const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);
+        return await RSSHistoryManager.compactHistory(this.feedData, maxItems);
     }
 
     /**
@@ -587,34 +466,7 @@ export class RSSService {
      * @param exportPath 导出文件路径
      */
     public async exportHistory(exportPath?: string): Promise<string | null> {
-        try {
-            const records: RSSFeedRecord[] = [];
-            
-            for (const [feedId, feedData] of this.feedData) {
-                records.push({
-                    feedId,
-                    lastUpdated: feedData.lastUpdated?.toISOString(),
-                    items: feedData.items
-                });
-            }
-
-            const exportUri = exportPath 
-                ? vscode.Uri.file(exportPath)
-                : vscode.Uri.joinPath(vscode.Uri.file(getIssueDir() || ''), `rss-export-${Date.now()}.jsonl`);
-            
-            const success = await writeJSONLFile(exportUri, records);
-            if (success) {
-                vscode.window.showInformationMessage(`RSS历史记录已导出到: ${exportUri.fsPath}`);
-                return exportUri.fsPath;
-            } else {
-                vscode.window.showErrorMessage('导出RSS历史记录失败');
-                return null;
-            }
-        } catch (error) {
-            console.error('导出RSS历史记录失败:', error);
-            vscode.window.showErrorMessage('导出失败');
-            return null;
-        }
+        return await RSSHistoryManager.exportHistory(this.feedData, exportPath);
     }
 
     /**
@@ -623,59 +475,17 @@ export class RSSService {
      * @param mergeStrategy 合并策略：'replace' | 'merge'
      */
     public async importHistory(importPath: string, mergeStrategy: 'replace' | 'merge' = 'merge'): Promise<boolean> {
-        try {
-            const importUri = vscode.Uri.file(importPath);
-            const importedRecords = await readJSONLFile<RSSFeedRecord>(importUri);
-            
-            if (!importedRecords || importedRecords.length === 0) {
-                vscode.window.showWarningMessage('导入文件为空或格式不正确');
-                return false;
-            }
-
-            let importedFeeds = 0;
-            let importedItems = 0;
-
-            for (const record of importedRecords) {
-                const existingData = this.feedData.get(record.feedId);
-                const convertedItems = record.items.map((item: any) => ({
-                    ...item,
-                    pubDate: new Date(item.pubDate)
-                }));
-
-                if (mergeStrategy === 'replace' || !existingData) {
-                    // 替换或新增
-                    this.feedData.set(record.feedId, {
-                        lastUpdated: record.lastUpdated ? new Date(record.lastUpdated) : undefined,
-                        items: convertedItems
-                    });
-                    importedFeeds++;
-                    importedItems += convertedItems.length;
-                } else {
-                    // 合并策略：合并文章并去重
-                    const mergedItems = this.mergeRSSItems(existingData.items, convertedItems);
-                    const newLastUpdated = record.lastUpdated && 
-                        (!existingData.lastUpdated || new Date(record.lastUpdated) > existingData.lastUpdated)
-                        ? new Date(record.lastUpdated) : existingData.lastUpdated;
-                    
-                    this.feedData.set(record.feedId, {
-                        lastUpdated: newLastUpdated,
-                        items: mergedItems
-                    });
-                    importedFeeds++;
-                    importedItems += (mergedItems.length - existingData.items.length);
-                }
-            }
-
+        const result = await RSSHistoryManager.importHistory(
+            this.feedData, 
+            importPath, 
+            mergeStrategy
+        );
+        
+        if (result) {
             await this.saveRSSItemsHistory();
-            vscode.window.showInformationMessage(
-                `导入完成: ${importedFeeds}个订阅源，${importedItems}篇新文章`
-            );
-            return true;
-        } catch (error) {
-            console.error('导入RSS历史记录失败:', error);
-            vscode.window.showErrorMessage('导入失败');
-            return false;
         }
+        
+        return result;
     }
 
     /**
@@ -683,42 +493,18 @@ export class RSSService {
      * @param daysToFetch 获取最近几天的文章，默认7天
      */
     public async rebuildHistory(daysToFetch: number = 7): Promise<{ rebuiltFeeds: number; totalItems: number }> {
-        let rebuiltFeeds = 0;
-        let totalItems = 0;
-
-        const enabledFeeds = this.feeds.filter(feed => feed.enabled);
+        const result = await RSSHistoryManager.rebuildHistory(
+            this.feeds, 
+            this.feedData, 
+            (feed: RSSFeed) => this.fetchFeed(feed),
+            daysToFetch
+        );
         
-        for (const feed of enabledFeeds) {
-            try {
-                const items = await this.fetchFeed(feed);
-                const cutoffDate = new Date();
-                cutoffDate.setDate(cutoffDate.getDate() - daysToFetch);
-                
-                // 只保留指定天数内的文章
-                const recentItems = items.filter(item => item.pubDate >= cutoffDate);
-                
-                this.feedData.set(feed.id, {
-                    lastUpdated: new Date(),
-                    items: recentItems
-                });
-                
-                rebuiltFeeds++;
-                totalItems += recentItems.length;
-                
-                console.log(`重建订阅源 "${feed.name}": ${recentItems.length}篇文章`);
-            } catch (error) {
-                console.warn(`重建订阅源 "${feed.name}" 失败:`, error);
-            }
-        }
-
-        if (rebuiltFeeds > 0) {
+        if (result.rebuiltFeeds > 0) {
             await this.saveRSSItemsHistory();
-            vscode.window.showInformationMessage(
-                `历史记录重建完成: ${rebuiltFeeds}个订阅源，共${totalItems}篇文章`
-            );
         }
-
-        return { rebuiltFeeds, totalItems };
+        
+        return result;
     }
 
     // 静态方法，保持向后兼容
