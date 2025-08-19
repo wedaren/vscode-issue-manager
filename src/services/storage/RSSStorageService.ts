@@ -4,13 +4,10 @@ import { RSSItem, RSSFeed } from '../types/RSSTypes';
 import { 
     ensureIssueManagerDir, 
     getRSSConfigFilePath, 
-    getRSSStatesFilePath, 
     getFeedHistoryFilePath,
     writeJSONLFile, 
     readJSONLFile, 
     readLastJSONLRecords, 
-    readJSONFile, 
-    writeJSONFile, 
     checkFileExists, 
     readYAMLFile, 
     writeYAMLFile 
@@ -91,64 +88,46 @@ export class RSSStorageService {
     }
 
     /**
-     * 加载订阅源状态
+     * 加载订阅源状态（从配置文件中的lastUpdated字段）
      */
     public static async loadFeedStates(): Promise<Map<string, { lastUpdated?: Date }>> {
-        const statesFilePath = getRSSStatesFilePath();
         const feedStates = new Map<string, { lastUpdated?: Date }>();
 
-        if (!statesFilePath) {
-            return feedStates;
-        }
-
         try {
-            const states = await readJSONFile<{ [feedId: string]: { lastUpdated?: string } }>(statesFilePath);
-            if (states) {
-                for (const [feedId, state] of Object.entries(states)) {
-                    feedStates.set(feedId, {
-                        lastUpdated: state.lastUpdated ? new Date(state.lastUpdated) : undefined
+            const config = await this.loadConfig();
+            for (const feed of config.feeds) {
+                if (feed.lastUpdated) {
+                    feedStates.set(feed.id, {
+                        lastUpdated: new Date(feed.lastUpdated)
                     });
                 }
-                console.log(`加载RSS状态: ${Object.keys(states).length}个订阅源`);
             }
+            console.log(`加载RSS状态: ${feedStates.size}个订阅源`);
         } catch (error) {
-            console.log('RSS状态文件不存在或加载失败:', error);
+            console.log('RSS状态加载失败:', error);
         }
 
         return feedStates;
     }
 
     /**
-     * 保存订阅源状态
+     * 保存订阅源状态（更新配置文件中的lastUpdated字段）
      */
     public static async saveFeedStates(feedStates: Map<string, { lastUpdated?: Date }>): Promise<boolean> {
-        const statesFilePath = getRSSStatesFilePath();
-        if (!statesFilePath) {
-            console.error('无法获取RSS状态文件路径');
-            return false;
-        }
-
-        // 确保目录存在
-        const issueManagerDir = await ensureIssueManagerDir();
-        if (!issueManagerDir) {
-            console.error('无法创建 .issueManager 目录，保存失败');
-            return false;
-        }
-
         try {
-            const states: { [feedId: string]: { lastUpdated?: string } } = {};
+            const config = await this.loadConfig();
             
-            for (const [feedId, feedData] of feedStates) {
-                if (feedData.lastUpdated) {
-                    states[feedId] = {
-                        lastUpdated: feedData.lastUpdated.toISOString()
-                    };
+            // 更新配置中每个feed的lastUpdated字段
+            for (const feed of config.feeds) {
+                const feedState = feedStates.get(feed.id);
+                if (feedState && feedState.lastUpdated) {
+                    feed.lastUpdated = feedState.lastUpdated.toISOString();
                 }
             }
-
-            const success = await writeJSONFile(statesFilePath, states);
+            
+            const success = await this.saveConfig(config);
             if (success) {
-                console.log(`RSS状态已保存: ${Object.keys(states).length}个订阅源`);
+                console.log(`RSS状态已保存: ${feedStates.size}个订阅源`);
                 return true;
             }
             return false;

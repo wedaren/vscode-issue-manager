@@ -4,7 +4,7 @@
 
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { getIssueManagerDir, ensureIssueManagerDir, getRSSHistoryFilePath, readYAMLFile, writeYAMLFile } from '../utils/fileUtils';
+import { getIssueManagerDir, ensureIssueManagerDir, readYAMLFile, writeYAMLFile } from '../utils/fileUtils';
 
 suite('FileUtils Tests', () => {
 

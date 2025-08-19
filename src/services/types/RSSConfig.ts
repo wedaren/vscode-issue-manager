@@ -13,6 +13,7 @@ export interface RSSFeedConfig {
     url: string;
     enabled: boolean;
     updateInterval?: number; // 分钟，可选，使用全局默认值
+    lastUpdated?: string; // ISO 字符串格式的最后更新时间
     tags?: string[];
     description?: string;
 }

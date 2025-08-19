@@ -143,17 +143,6 @@ export async function ensureIssueManagerDir(): Promise<vscode.Uri | null> {
   }
 }
 
-/**
- * 获取 RSS 历史记录文件的路径
- * @returns RSS历史记录文件的 Uri，如果目录不存在则返回 null
- */
-export function getRSSHistoryFilePath(): vscode.Uri | null {
-  const issueManagerDir = getIssueManagerDir();
-  if (!issueManagerDir) {
-    return null;
-  }
-  return vscode.Uri.joinPath(issueManagerDir, 'rss-history.jsonl');
-}
 
 /**
  * 获取指定订阅源的历史记录文件路径（Git友好的分离存储）
@@ -161,13 +150,22 @@ export function getRSSHistoryFilePath(): vscode.Uri | null {
  * @returns 订阅源历史记录文件的 Uri，如果目录不存在则返回 null
  */
 export function getFeedHistoryFilePath(feedId: string): vscode.Uri | null {
+  // 使用安全的文件名，避免特殊字符
+  const safeFeedId = feedId.replace(/[^a-zA-Z0-9-_]/g, '_');
+  return getIssueManagerFilePath(`rss-feed-${safeFeedId}.jsonl`);
+}
+
+/**
+ * 获取 .issueManager 目录下指定文件的路径
+ * @param fileName 文件名
+ * @returns 文件的 Uri，如果目录不存在则返回 null
+ */
+function getIssueManagerFilePath(fileName: string): vscode.Uri | null {
   const issueManagerDir = getIssueManagerDir();
   if (!issueManagerDir) {
     return null;
   }
-  // 使用安全的文件名，避免特殊字符
-  const safeFeedId = feedId.replace(/[^a-zA-Z0-9-_]/g, '_');
-  return vscode.Uri.joinPath(issueManagerDir, `rss-feed-${safeFeedId}.jsonl`);
+  return vscode.Uri.joinPath(issueManagerDir, fileName);
 }
 
 /**
@@ -175,23 +173,7 @@ export function getFeedHistoryFilePath(feedId: string): vscode.Uri | null {
  * @returns RSS配置文件的 Uri，如果目录不存在则返回 null
  */
 export function getRSSConfigFilePath(): vscode.Uri | null {
-  const issueManagerDir = getIssueManagerDir();
-  if (!issueManagerDir) {
-    return null;
-  }
-  return vscode.Uri.joinPath(issueManagerDir, 'rss-config.yaml');
-}
-
-/**
- * 获取RSS订阅源状态文件路径（分离状态和内容）
- * @returns RSS状态文件的 Uri，如果目录不存在则返回 null
- */
-export function getRSSStatesFilePath(): vscode.Uri | null {
-  const issueManagerDir = getIssueManagerDir();
-  if (!issueManagerDir) {
-    return null;
-  }
-  return vscode.Uri.joinPath(issueManagerDir, 'rss-feed-states.json');
+  return getIssueManagerFilePath('rss-config.yaml');
 }
 
 /**
