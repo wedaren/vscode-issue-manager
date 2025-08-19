@@ -1,8 +1,5 @@
 import * as vscode from 'vscode';
 import { RSSFeed, RSSItem } from './types/RSSTypes';
-import { RSSConfig,  DEFAULT_RSS_CONFIG } from './types/RSSConfig';
-import { RSSFetcher } from './fetcher/RSSFetcher';
-import { RSSParser } from './parser/RSSParser';
 import { RSSHelper } from './utils/RSSHelper';
 import { RSSMarkdownConverter } from './converters/RSSMarkdownConverter';
 import { RSSStorageService } from './storage/RSSStorageService';
@@ -10,27 +7,27 @@ import { RSSHistoryManager, RSSFeedRecord } from './history/RSSHistoryManager';
 import { RSSStatsService } from './stats/RSSStatsService';
 import { RSSScheduler } from './scheduler/RSSScheduler';
 import { RSSContentService } from './content/RSSContentService';
-import { getIssueDir, getRSSDefaultUpdateInterval } from '../config';
-import { generateFileName,  writeJSONLFile, readJSONLFile } from '../utils/fileUtils';
+import { RSSConfigService } from './config/RSSConfigService';
+import { getIssueDir } from '../config';
+import { generateFileName } from '../utils/fileUtils';
 
 /**
- * RSS服务，负责管理RSS订阅源和获取RSS内容
- * 支持JSON Feed格式和传统XML RSS/Atom格式
+ * RSS服务门面 - 协调各个专门的RSS服务
+ * 作为统一的入口点管理RSS功能
  */
 export class RSSService {
     private static instance: RSSService;
-    private feeds: RSSFeed[] = [];
-    private config: RSSConfig = DEFAULT_RSS_CONFIG;
     private feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }> = new Map();
     
     // 核心服务实例
+    private configService: RSSConfigService;
     private scheduler: RSSScheduler;
     private contentService: RSSContentService;
-    
-    // 每30分钟检查一次是否需要更新
-    static readonly AUTO_UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
 
     private constructor() {
+        // 初始化配置服务
+        this.configService = new RSSConfigService();
+        
         // 初始化内容服务
         this.contentService = new RSSContentService(
             this.feedData,
@@ -39,7 +36,7 @@ export class RSSService {
         
         // 初始化调度器
         this.scheduler = new RSSScheduler(
-            this.feeds,
+            [],
             (feed) => this.contentService.updateFeed(feed),
             (feedId) => this.getLastUpdatedTime(feedId)
         );
@@ -51,8 +48,11 @@ export class RSSService {
      * 异步初始化
      */
     private async initializeAsync(): Promise<void> {
-        await this.loadConfig();
+        await this.configService.loadConfig();
         await this.loadRSSItemsHistory();
+        
+        // 更新调度器中的订阅源列表
+        this.scheduler.updateFeeds(this.configService.getFeeds());
         this.scheduler.startAutoUpdate();
     }
 
@@ -67,7 +67,7 @@ export class RSSService {
      * 获取所有RSS订阅源
      */
     public getFeeds(): RSSFeed[] {
-        return [...this.feeds];
+        return this.configService.getFeeds();
     }
 
     /**
@@ -82,20 +82,23 @@ export class RSSService {
      * 添加RSS订阅源（支持JSON Feed和XML RSS格式）
      */
     public async addFeed(name: string, url: string): Promise<boolean> {
-        const id = RSSHelper.generateFeedId();
-        const feed: RSSFeed = {
-            id,
-            name,
-            url,
-            enabled: true,
-            updateInterval: getRSSDefaultUpdateInterval() // 默认60分钟更新一次
-        };
-
         try {
+            // 验证配置
+            const validation = this.configService.validateFeedConfig(name, url);
+            if (!validation.valid) {
+                vscode.window.showErrorMessage(validation.error || '配置验证失败');
+                return false;
+            }
+
+            // 添加到配置服务
+            const feed = await this.configService.addFeed(name, url);
+            
             // 验证RSS URL是否有效
             await this.contentService.fetchFeed(feed);
-            this.feeds.push(feed);
-            await this.saveFeeds();
+            
+            // 更新调度器
+            this.scheduler.updateFeeds(this.configService.getFeeds());
+            
             vscode.window.showInformationMessage(`成功添加RSS订阅源: ${name}`);
             return true;
         } catch (error) {
@@ -132,28 +135,27 @@ export class RSSService {
      * 删除RSS订阅源
      */
     public async removeFeed(feedId: string): Promise<boolean> {
-        const index = this.feeds.findIndex(f => f.id === feedId);
-        if (index !== -1) {
-            this.feeds.splice(index, 1);
+        const success = await this.configService.removeFeed(feedId);
+        if (success) {
             this.feedData.delete(feedId); // 删除数据和状态记录
-            await this.saveFeeds();
             await this.saveRSSItemsHistory(); // 保存更新后的历史记录
-            return true;
+            
+            // 更新调度器
+            this.scheduler.updateFeeds(this.configService.getFeeds());
         }
-        return false;
+        return success;
     }
 
     /**
      * 更新RSS订阅源的启用状态
      */
     public async toggleFeed(feedId: string, enabled: boolean): Promise<boolean> {
-        const feed = this.feeds.find(f => f.id === feedId);
-        if (feed) {
-            feed.enabled = enabled;
-            await this.saveFeeds();
-            return true;
+        const success = await this.configService.toggleFeed(feedId, enabled);
+        if (success) {
+            // 更新调度器
+            this.scheduler.updateFeeds(this.configService.getFeeds());
         }
-        return false;
+        return success;
     }
 
     /**
@@ -168,34 +170,21 @@ export class RSSService {
      * 获取指定订阅源的文章列表
      */
     public getFeedItems(feedId: string): RSSItem[] {
-        const feedData = this.feedData.get(feedId);
-        return feedData?.items || [];
+        return this.contentService.getRecentItems(feedId, Number.MAX_SAFE_INTEGER);
     }
 
     /**
      * 获取所有启用订阅源的文章列表
      */
     public getAllItems(): RSSItem[] {
-        const allItems: RSSItem[] = [];
-        for (const feed of this.feeds) {
-            if (feed.enabled) {
-                const feedData = this.feedData.get(feed.id);
-                const items = feedData?.items || [];
-                allItems.push(...items);
-            }
-        }
-        return allItems.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+        return this.contentService.getAllRecentItems(Number.MAX_SAFE_INTEGER);
     }
 
     /**
      * 手动更新所有订阅源
      */
     public async updateAllFeeds(): Promise<void> {
-        const promises = this.feeds
-            .filter(feed => feed.enabled)
-            .map(feed => this.updateFeed(feed));
-
-        await Promise.allSettled(promises);
+        return await this.contentService.updateFeeds(this.configService.getFeeds());
     }
 
     /**
@@ -215,7 +204,7 @@ export class RSSService {
             return null;
         }
 
-        const feed = this.feeds.find(f => f.id === item.feedId);
+        const feed = this.configService.findFeedById(item.feedId);
 
         const filename = generateFileName();
         const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), filename);
@@ -237,7 +226,7 @@ export class RSSService {
      * 创建RSS文章的虚拟文件URI
      */
     public createVirtualFile(item: RSSItem): vscode.Uri {
-        const feed = this.feeds.find(f => f.id === item.feedId);
+        const feed = this.configService.findFeedById(item.feedId);
         const feedName = feed?.name || 'RSS';
 
         // 生成虚拟文件名
@@ -258,7 +247,7 @@ export class RSSService {
         for (const [feedId, feedData] of this.feedData) {
             const item = feedData.items.find((i: RSSItem) => i.id === itemId);
             if (item) {
-                const feed = this.feeds.find(f => f.id === feedId);
+                const feed = this.configService.findFeedById(feedId);
                 return RSSMarkdownConverter.generatePreviewMarkdown(item, feed);
             }
         }
@@ -280,63 +269,6 @@ export class RSSService {
     }
 
     /**
-     * 加载RSS配置从YAML文件
-     */
-    private async loadConfig(): Promise<void> {
-        this.config = await RSSStorageService.loadConfig();
-        this.updateFeedsFromConfig();
-    }
-
-    /**
-     * 从配置更新feeds数组
-     */
-    private updateFeedsFromConfig(): void {
-        // 从VS Code配置获取默认更新间隔（分钟）
-        const vsConfig = vscode.workspace.getConfiguration('issueManager');
-        const defaultUpdateInterval = vsConfig.get<number>('rss.defaultUpdateInterval', 60);
-
-        this.feeds = this.config.feeds.map(feedConfig => ({
-            id: feedConfig.id,
-            name: feedConfig.name,
-            url: feedConfig.url,
-            enabled: feedConfig.enabled,
-            updateInterval: feedConfig.updateInterval || defaultUpdateInterval
-        }));
-
-        // 更新调度器中的订阅源列表
-        this.scheduler.updateFeeds(this.feeds);
-    }
-
-    /**
-     * 保存RSS配置到YAML文件
-     */
-    private async saveConfig(): Promise<void> {
-        await RSSStorageService.saveConfig(this.config);
-    }
-
-    /**
-     * 保存订阅源配置到YAML文件
-     */
-    private async saveFeeds(): Promise<void> {
-        // 更新配置中的feeds数组
-        this.config.feeds = this.feeds.map(feed => {
-            const existingConfig = this.config.feeds.find(f => f.id === feed.id);
-            return {
-                id: feed.id,
-                name: feed.name,
-                url: feed.url,
-                enabled: feed.enabled,
-                updateInterval: feed.updateInterval,
-                tags: existingConfig?.tags || [],
-                description: existingConfig?.description || ""
-            };
-        });
-
-        // 保存整个配置
-        await this.saveConfig();
-    }
-
-    /**
      * 从本地文件加载RSS文章历史记录和状态
      * 使用Git友好的分离存储：每个订阅源一个文件 + 独立的状态文件
      */
@@ -345,10 +277,11 @@ export class RSSService {
         const feedStates = await RSSStorageService.loadFeedStates();
         
         // 加载所有订阅源的文章
-        const feedItemsMap = await RSSStorageService.loadAllFeedItems(this.feeds);
+        const feeds = this.configService.getFeeds();
+        const feedItemsMap = await RSSStorageService.loadAllFeedItems(feeds);
         
         // 合并状态和文章数据
-        for (const feed of this.feeds) {
+        for (const feed of feeds) {
             const state = feedStates.get(feed.id) || {};
             const items = feedItemsMap.get(feed.id) || [];
             
@@ -441,7 +374,7 @@ export class RSSService {
      */
     public async rebuildHistory(daysToFetch: number = 7): Promise<{ rebuiltFeeds: number; totalItems: number }> {
         const result = await RSSHistoryManager.rebuildHistory(
-            this.feeds, 
+            this.configService.getFeeds(), 
             this.feedData, 
             (feed: RSSFeed) => this.contentService.fetchFeed(feed),
             daysToFetch
