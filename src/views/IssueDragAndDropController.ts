@@ -171,9 +171,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
 
         } else if (fromRSS) {
             // 处理从RSS视图拖拽过来的文章
-            const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === RSS_MIME_TYPE && transferItem.value).pop() || [];
-            
-            transferItem && await this.handleRSSDropItems(transferItem, targetNodeInTree || undefined, treeData);
+            await this.handleRSSDropItems(fromRSS, targetNodeInTree || undefined, treeData);
         }
 
         await writeTree(treeData);

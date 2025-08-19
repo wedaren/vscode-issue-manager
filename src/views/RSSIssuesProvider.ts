@@ -316,10 +316,8 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
         }, async () => {
             const success = await this.rssService.addFeed(name.trim(), url.trim());
             if (success) {
-                vscode.window.showInformationMessage(`RSS订阅源 "${name}" 添加成功`);
+                vscode.window.showInformationMessage(`RSS订阅源 \"${name}\" 添加成功`);
                 this.refresh();
-            } else {
-                vscode.window.showErrorMessage(`添加RSS订阅源失败，请检查URL是否正确`);
             }
         });
 
