@@ -534,6 +534,16 @@
           "default": 60,
           "description": "RSS订阅源的默认更新间隔（单位：分钟）。"
         },
+        "issueManager.rss.maxItemsPerFeed": {
+          "type": "number",
+          "default": 500,
+          "description": "每个RSS订阅源最多保存的文章数量。"
+        },
+        "issueManager.rss.enableNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用新文章通知功能。"
+        },
         "issueManager.rss.feeds": {
           "type": "array",
           "default": [],

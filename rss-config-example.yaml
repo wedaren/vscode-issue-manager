@@ -1,0 +1,28 @@
+# RSS 订阅源配置文件
+# 这个文件定义了RSS订阅源列表，全局设置请在VS Code插件设置中配置
+
+version: "1.0"
+
+# RSS订阅源列表
+feeds:
+  - id: "example-tech"
+    name: "技术博客示例"
+    url: "https://example.com/rss.xml"
+    enabled: false
+    updateInterval: 3600000  # 1小时 (毫秒)，可选，不设置则使用插件设置中的默认值
+    tags: ["技术", "示例"]
+    description: "这是一个示例RSS订阅源，请替换为您的实际订阅"
+
+  - id: "github-releases"
+    name: "GitHub发布"
+    url: "https://github.com/microsoft/vscode/releases.atom"
+    enabled: false
+    # updateInterval: 如果不设置，将使用插件设置中的默认值
+    tags: ["开发工具", "更新"]
+    description: "VS Code版本发布通知"
+
+# 全局设置请在VS Code插件设置中配置：
+# - issueManager.rss.autoUpdate: 是否自动更新
+# - issueManager.rss.defaultUpdateInterval: 默认更新间隔
+# - issueManager.rss.maxItemsPerFeed: 每个订阅源最大文章数
+# - issueManager.rss.enableNotifications: 是否启用通知

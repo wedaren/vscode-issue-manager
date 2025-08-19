@@ -6,7 +6,6 @@ export interface RSSFeed {
     name: string;
     url: string;
     enabled: boolean;
-    lastUpdated?: Date;
     updateInterval?: number; // 更新间隔（分钟）
 }
 

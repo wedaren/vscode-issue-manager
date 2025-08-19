@@ -44,6 +44,31 @@ export function generateFileName(): string {
 }
 
 /**
+ * 读取文本文件内容
+ */
+export async function readTextFile(filePath: vscode.Uri): Promise<string | null> {
+    try {
+        const data = await vscode.workspace.fs.readFile(filePath);
+        return new TextDecoder().decode(data);
+    } catch (error) {
+        console.error('读取文本文件失败:', error);
+        return null;
+    }
+}
+
+/**
+ * 检查文件是否存在
+ */
+export async function checkFileExists(filePath: vscode.Uri): Promise<boolean> {
+    try {
+        await vscode.workspace.fs.stat(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * 将字符串路径转换为 vscode.Uri 对象。
  * @param fsPath 文件系统路径
  * @returns vscode.Uri 对象
@@ -127,7 +152,46 @@ export function getRSSHistoryFilePath(): vscode.Uri | null {
   if (!issueManagerDir) {
     return null;
   }
-  return vscode.Uri.joinPath(issueManagerDir, 'rss-history.yaml');
+  return vscode.Uri.joinPath(issueManagerDir, 'rss-history.jsonl');
+}
+
+/**
+ * 获取指定订阅源的历史记录文件路径（Git友好的分离存储）
+ * @param feedId 订阅源ID
+ * @returns 订阅源历史记录文件的 Uri，如果目录不存在则返回 null
+ */
+export function getFeedHistoryFilePath(feedId: string): vscode.Uri | null {
+  const issueManagerDir = getIssueManagerDir();
+  if (!issueManagerDir) {
+    return null;
+  }
+  // 使用安全的文件名，避免特殊字符
+  const safeFeedId = feedId.replace(/[^a-zA-Z0-9-_]/g, '_');
+  return vscode.Uri.joinPath(issueManagerDir, `rss-feed-${safeFeedId}.jsonl`);
+}
+
+/**
+ * 获取RSS配置文件路径
+ * @returns RSS配置文件的 Uri，如果目录不存在则返回 null
+ */
+export function getRSSConfigFilePath(): vscode.Uri | null {
+  const issueManagerDir = getIssueManagerDir();
+  if (!issueManagerDir) {
+    return null;
+  }
+  return vscode.Uri.joinPath(issueManagerDir, 'rss-config.yaml');
+}
+
+/**
+ * 获取RSS订阅源状态文件路径（分离状态和内容）
+ * @returns RSS状态文件的 Uri，如果目录不存在则返回 null
+ */
+export function getRSSStatesFilePath(): vscode.Uri | null {
+  const issueManagerDir = getIssueManagerDir();
+  if (!issueManagerDir) {
+    return null;
+  }
+  return vscode.Uri.joinPath(issueManagerDir, 'rss-feed-states.json');
 }
 
 /**
@@ -200,5 +264,128 @@ export async function writeYAMLFile(fileUri: vscode.Uri, data: any): Promise<boo
   } catch (error) {
     console.error(`写入 YAML 文件失败 ${fileUri.fsPath}:`, error);
     return false;
+  }
+}
+
+/**
+ * 读取 JSONL 文件内容（JSON Lines格式）
+ * @param fileUri 文件路径
+ * @returns 解析后的对象数组，失败返回 null
+ */
+export async function readJSONLFile<T = any>(fileUri: vscode.Uri): Promise<T[] | null> {
+  try {
+    const fileData = await vscode.workspace.fs.readFile(fileUri);
+    const content = Buffer.from(fileData).toString('utf8');
+    
+    if (!content.trim()) {
+      return []; // 空文件返回空数组
+    }
+    
+    const lines = content.trim().split('\n');
+    const results: T[] = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line) {
+        try {
+          results.push(JSON.parse(line) as T);
+        } catch (parseError) {
+          console.warn(`JSONL文件第${i + 1}行解析失败:`, parseError);
+          // 继续处理其他行，不因为一行错误而放弃整个文件
+        }
+      }
+    }
+    
+    return results;
+  } catch (error) {
+    console.error(`读取 JSONL 文件失败 ${fileUri.fsPath}:`, error);
+    return null;
+  }
+}
+
+/**
+ * 写入 JSONL 文件（JSON Lines格式）
+ * @param fileUri 文件路径
+ * @param data 要写入的数据数组
+ * @returns 写入成功返回 true，失败返回 false
+ */
+export async function writeJSONLFile<T = any>(fileUri: vscode.Uri, data: T[]): Promise<boolean> {
+  try {
+    const lines = data.map(item => JSON.stringify(item));
+    const content = lines.join('\n') + (lines.length > 0 ? '\n' : '');
+    const uint8Array = Buffer.from(content, 'utf8');
+    await vscode.workspace.fs.writeFile(fileUri, uint8Array);
+    return true;
+  } catch (error) {
+    console.error(`写入 JSONL 文件失败 ${fileUri.fsPath}:`, error);
+    return false;
+  }
+}
+
+/**
+ * 追加单条记录到 JSONL 文件
+ * @param fileUri 文件路径
+ * @param data 要追加的数据
+ * @returns 追加成功返回 true，失败返回 false
+ */
+export async function appendToJSONLFile<T = any>(fileUri: vscode.Uri, data: T): Promise<boolean> {
+  try {
+    const line = JSON.stringify(data) + '\n';
+    const uint8Array = Buffer.from(line, 'utf8');
+    
+    // 检查文件是否存在
+    try {
+      await vscode.workspace.fs.stat(fileUri);
+      // 文件存在，追加内容
+      const existingData = await vscode.workspace.fs.readFile(fileUri);
+      const combinedData = Buffer.concat([existingData, uint8Array]);
+      await vscode.workspace.fs.writeFile(fileUri, combinedData);
+    } catch (statError) {
+      // 文件不存在，创建新文件
+      await vscode.workspace.fs.writeFile(fileUri, uint8Array);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error(`追加到 JSONL 文件失败 ${fileUri.fsPath}:`, error);
+    return false;
+  }
+}
+
+/**
+ * 流式读取 JSONL 文件的最后N条记录（内存友好）
+ * @param fileUri 文件路径
+ * @param maxRecords 最多读取的记录数
+ * @returns 解析后的对象数组，失败返回 null
+ */
+export async function readLastJSONLRecords<T = any>(fileUri: vscode.Uri, maxRecords: number): Promise<T[] | null> {
+  try {
+    const fileData = await vscode.workspace.fs.readFile(fileUri);
+    const content = Buffer.from(fileData).toString('utf8');
+    
+    if (!content.trim()) {
+      return []; // 空文件返回空数组
+    }
+    
+    const lines = content.trim().split('\n');
+    const startIndex = Math.max(0, lines.length - maxRecords);
+    const targetLines = lines.slice(startIndex);
+    
+    const results: T[] = [];
+    for (let i = 0; i < targetLines.length; i++) {
+      const line = targetLines[i].trim();
+      if (line) {
+        try {
+          results.push(JSON.parse(line) as T);
+        } catch (parseError) {
+          console.warn(`JSONL文件解析失败:`, parseError);
+        }
+      }
+    }
+    
+    return results;
+  } catch (error) {
+    console.error(`读取 JSONL 文件最后记录失败 ${fileUri.fsPath}:`, error);
+    return null;
   }
 }

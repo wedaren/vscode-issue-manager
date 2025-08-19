@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { RSSService, RSSFeed, RSSItem } from '../services/RSSService';
+import { RSSService } from '../services/RSSService';
+import { RSSFeed, RSSItem } from '../services/types/RSSTypes';
 
 /**
  * RSS订阅源节点
@@ -7,14 +8,15 @@ import { RSSService, RSSFeed, RSSItem } from '../services/RSSService';
 class RSSFeedTreeItem extends vscode.TreeItem {
     constructor(
         public readonly feed: RSSFeed,
-        public readonly itemCount: number
+        public readonly itemCount: number,
+        public readonly lastUpdated?: Date
     ) {
         super(feed.name, vscode.TreeItemCollapsibleState.Collapsed);
         this.id = `feed_${feed.id}`;
         this.contextValue = 'rssFeed';
         this.description = `(${itemCount})`;
         this.tooltip = new vscode.MarkdownString(
-            `**名称**: ${feed.name}\n\n**URL**: ${feed.url}\n\n**状态**: ${feed.enabled ? '启用' : '禁用'}\n\n**最后更新**: ${feed.lastUpdated ? feed.lastUpdated.toLocaleString('zh-CN') : '从未更新'}`
+            `**名称**: ${feed.name}\n\n**URL**: ${feed.url}\n\n**状态**: ${feed.enabled ? '启用' : '禁用'}\n\n**最后更新**: ${lastUpdated ? lastUpdated.toLocaleString('zh-CN') : '从未更新'}`
         );
         
         // 根据启用状态设置图标
@@ -250,7 +252,8 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const feeds = this.rssService.getFeeds();
         return feeds.map(feed => {
             const itemCount = this.rssService.getFeedItems(feed.id).length;
-            return new RSSFeedTreeItem(feed, itemCount);
+            const lastUpdated = this.rssService.getFeedLastUpdated(feed.id);
+            return new RSSFeedTreeItem(feed, itemCount, lastUpdated);
         });
     }
 
