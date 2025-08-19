@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -622,7 +622,11 @@
         },
         "issueManager.rss.contentProcessing.removeTags": {
           "type": "array",
-          "default": ["script", "style", "iframe"],
+          "default": [
+            "script",
+            "style",
+            "iframe"
+          ],
           "description": "要移除的HTML标签列表。",
           "items": {
             "type": "string"
@@ -640,7 +644,12 @@
         },
         "issueManager.rss.contentProcessing.summaryMode.preferredSections": {
           "type": "array",
-          "default": ["摘要", "总结", "Summary", "Abstract"],
+          "default": [
+            "摘要",
+            "总结",
+            "Summary",
+            "Abstract"
+          ],
           "description": "摘要模式下优先提取的章节标题。",
           "items": {
             "type": "string"
