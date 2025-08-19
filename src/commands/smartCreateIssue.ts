@@ -16,7 +16,7 @@ const createDefaultOption = (value: string): HistoryQuickPickItem => ({
     alwaysShow: true,
     action: 'create',
     payload: value
-})
+});
 // 初始化持久化数据
 let quickPickLoaded = false;
 async function ensureQuickPickLoaded() {

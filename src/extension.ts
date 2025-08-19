@@ -19,6 +19,9 @@ import { addIssueToTree } from './commands/issueFileUtils';
 import { registerRelatedIssuesView } from './views/relatedIssuesViewRegistration';
 import { getTitle } from './utils/markdown';
 import { GitSyncService } from './services/GitSyncService';
+import { RSSIssuesProvider } from './views/RSSIssuesProvider';
+import { registerRSSVirtualFileProvider } from './views/RSSVirtualFileProvider';
+import { RSSIssueDragAndDropController } from './views/RSSIssueDragAndDropController';
 
 
 // 当您的扩展被激活时，将调用此方法
@@ -296,6 +299,12 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(createIssueFromFocusedCommand);
 
+	// 注册addIssueToTree命令，供RSS视图使用
+	const addIssueToTreeCommand = vscode.commands.registerCommand('issueManager.addIssueToTree', async (issueUris: vscode.Uri[], parentId: string | null, isAddToFocused: boolean) => {
+		await addIssueToTree(issueUris, parentId, isAddToFocused);
+	});
+	context.subscriptions.push(addIssueToTreeCommand);
+
 	const openFocusedViewCommand = vscode.commands.registerCommand('issueManager.openFocusedView', async () => {
 		try {
 			// 激活问题管理扩展的活动栏  
@@ -421,6 +430,20 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	registerRelatedIssuesView(context);
+
+	// 注册RSS问题视图
+	const rssIssuesProvider = new RSSIssuesProvider(context);
+	const rssIssuesView = vscode.window.createTreeView('issueManager.views.rss', {
+		treeDataProvider: rssIssuesProvider,
+		dragAndDropController: new RSSIssueDragAndDropController(),
+		canSelectMany: true // 启用多选以支持批量拖拽
+	});
+	context.subscriptions.push(rssIssuesView);
+	context.subscriptions.push(rssIssuesProvider);
+
+	// 注册RSS虚拟文件提供器
+	const rssVirtualFileProvider = registerRSSVirtualFileProvider(context);
+	context.subscriptions.push(rssVirtualFileProvider);
 }
 
 // 当您的扩展被停用时，将调用此方法
