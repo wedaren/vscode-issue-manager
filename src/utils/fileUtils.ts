@@ -1,6 +1,7 @@
 import path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
+import { getIssueDir } from '../config';
 
 
 /**
@@ -82,11 +83,11 @@ export async function getMtimeOrNow(fileUri: vscode.Uri): Promise<Date> {
  * @returns .issueManager 目录的 Uri，如果没有工作区则返回 null
  */
 export function getIssueManagerDir(): vscode.Uri | null {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-  if (!workspaceFolder) {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
     return null;
   }
-  return vscode.Uri.joinPath(workspaceFolder.uri, '.issueManager');
+  return vscode.Uri.joinPath(vscode.Uri.file(issueDir), '.issueManager');
 }
 
 /**
