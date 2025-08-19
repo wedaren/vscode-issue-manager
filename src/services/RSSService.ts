@@ -23,6 +23,9 @@ export class RSSService {
     private configService: RSSConfigService;
     private scheduler: RSSScheduler;
     private contentService: RSSContentService;
+    
+    // 初始化状态
+    private initializationPromise: Promise<void>;
 
     private constructor() {
         // 初始化配置服务
@@ -41,7 +44,7 @@ export class RSSService {
             (feedId) => this.getLastUpdatedTime(feedId)
         );
         
-        this.initializeAsync();
+        this.initializationPromise = this.initializeAsync();
     }
 
     /**
@@ -61,6 +64,13 @@ export class RSSService {
             RSSService.instance = new RSSService();
         }
         return RSSService.instance;
+    }
+
+    /**
+     * 等待初始化完成
+     */
+    public async waitForInitialization(): Promise<void> {
+        await this.initializationPromise;
     }
 
     /**

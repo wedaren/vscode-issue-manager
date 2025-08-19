@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { RSSItem } from '../services/RSSService';
+import { RSSItem } from '../services/types/RSSTypes';
+import { RSSItemTreeItem } from './rss/RSSTreeItems';
 
 // RSS拖拽数据类型
 const RSS_MIME_TYPE = 'application/vnd.code.tree.rss-issue-manager';
@@ -35,7 +36,8 @@ export class RSSIssueDragAndDropController implements vscode.TreeDragAndDropCont
 
         // 准备拖拽数据
         const transferData = rssItems.map(treeItem => {
-            const item = (treeItem as any).item as RSSItem;
+            const rssTreeItem = treeItem as RSSItemTreeItem;
+            const item = rssTreeItem.item;
             return {
                 id: item.id,
                 feedId: item.feedId,
