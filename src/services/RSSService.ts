@@ -8,6 +8,8 @@ import { RSSMarkdownConverter } from './converters/RSSMarkdownConverter';
 import { RSSStorageService } from './storage/RSSStorageService';
 import { RSSHistoryManager, RSSFeedRecord } from './history/RSSHistoryManager';
 import { RSSStatsService } from './stats/RSSStatsService';
+import { RSSScheduler } from './scheduler/RSSScheduler';
+import { RSSContentService } from './content/RSSContentService';
 import { getIssueDir, getRSSDefaultUpdateInterval } from '../config';
 import { generateFileName,  writeJSONLFile, readJSONLFile } from '../utils/fileUtils';
 
@@ -20,11 +22,28 @@ export class RSSService {
     private feeds: RSSFeed[] = [];
     private config: RSSConfig = DEFAULT_RSS_CONFIG;
     private feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }> = new Map();
-    private updateTimer?: NodeJS.Timeout;
+    
+    // 核心服务实例
+    private scheduler: RSSScheduler;
+    private contentService: RSSContentService;
+    
     // 每30分钟检查一次是否需要更新
     static readonly AUTO_UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
 
     private constructor() {
+        // 初始化内容服务
+        this.contentService = new RSSContentService(
+            this.feedData,
+            () => this.saveRSSItemsHistory()
+        );
+        
+        // 初始化调度器
+        this.scheduler = new RSSScheduler(
+            this.feeds,
+            (feed) => this.contentService.updateFeed(feed),
+            (feedId) => this.getLastUpdatedTime(feedId)
+        );
+        
         this.initializeAsync();
     }
 
@@ -34,7 +53,7 @@ export class RSSService {
     private async initializeAsync(): Promise<void> {
         await this.loadConfig();
         await this.loadRSSItemsHistory();
-        this.startAutoUpdate();
+        this.scheduler.startAutoUpdate();
     }
 
     public static getInstance(): RSSService {
@@ -52,6 +71,14 @@ export class RSSService {
     }
 
     /**
+     * 获取订阅源的最后更新时间
+     */
+    private async getLastUpdatedTime(feedId: string): Promise<Date | undefined> {
+        const feedData = this.feedData.get(feedId);
+        return feedData?.lastUpdated;
+    }
+
+    /**
      * 添加RSS订阅源（支持JSON Feed和XML RSS格式）
      */
     public async addFeed(name: string, url: string): Promise<boolean> {
@@ -66,7 +93,7 @@ export class RSSService {
 
         try {
             // 验证RSS URL是否有效
-            await this.fetchFeed(feed);
+            await this.contentService.fetchFeed(feed);
             this.feeds.push(feed);
             await this.saveFeeds();
             vscode.window.showInformationMessage(`成功添加RSS订阅源: ${name}`);
@@ -175,36 +202,7 @@ export class RSSService {
      * 更新单个订阅源
      */
     public async updateFeed(feed: RSSFeed): Promise<void> {
-        try {
-            const newItems = await this.fetchFeed(feed);
-            const feedData = this.feedData.get(feed.id);
-            const existingItems = feedData?.items || [];
-            
-            // 合并新文章和现有文章，保留历史记录
-            const mergedItems = RSSHistoryManager.mergeRSSItems(existingItems, newItems);
-            
-            // 更新数据和状态
-            this.feedData.set(feed.id, {
-                lastUpdated: new Date(),
-                items: mergedItems
-            });
-            
-            await this.saveRSSItemsHistory(); // 保存文章历史记录和状态
-        } catch (error) {
-            console.error(`更新RSS订阅源失败 [${feed.name}]:`, error);
-            
-            // 根据错误类型提供不同的提示
-            const errorMessage = error instanceof Error ? error.message : '未知错误';
-            
-            if (errorMessage.includes('网络') || errorMessage.includes('超时') || errorMessage.includes('连接')) {
-                // 网络错误不显示弹窗，只记录日志
-                console.warn(`订阅源 "${feed.name}" 网络更新失败，将在下次检查时重试`);
-            } else {
-                vscode.window.showWarningMessage(`订阅源 "${feed.name}" 更新失败: ${errorMessage}`);
-            }
-            
-            throw error;
-        }
+        return await this.contentService.updateFeed(feed);
     }
 
     /**
@@ -271,61 +269,14 @@ export class RSSService {
      * 启动自动更新
      */
     public startAutoUpdate(): void {
-        if (this.updateTimer) {
-            clearInterval(this.updateTimer);
-        }
-
-        this.updateTimer = setInterval(async () => {
-            await this.checkAndUpdateFeeds();
-        }, RSSService.AUTO_UPDATE_CHECK_INTERVAL);
+        this.scheduler.startAutoUpdate();
     }
 
     /**
      * 停止自动更新
      */
     public stopAutoUpdate(): void {
-        if (this.updateTimer) {
-            clearInterval(this.updateTimer);
-            this.updateTimer = undefined;
-        }
-    }
-
-    /**
-     * 检查并更新需要更新的订阅源
-     */
-    private async checkAndUpdateFeeds(): Promise<void> {
-        const now = new Date();
-        for (const feed of this.feeds) {
-            if (!feed.enabled) {
-                continue;
-            }
-
-            const updateInterval = this.minutesToMs(feed.updateInterval || 60); // 转换为毫秒
-            const feedData = this.feedData.get(feed.id);
-            const lastUpdated = feedData?.lastUpdated;
-            const needUpdate = !lastUpdated ||
-                (now.getTime() - lastUpdated.getTime()) >= updateInterval;
-
-            if (needUpdate) {
-                try {
-                    await this.updateFeed(feed);
-                } catch (error) {
-                    console.error(`自动更新RSS订阅源失败 [${feed.name}]:`, error);
-                }
-            }
-        }
-    }
-
-    /**
-     * 从RSS URL获取文章列表
-     */
-    private async fetchFeed(feed: RSSFeed): Promise<RSSItem[]> {
-        try {
-            const responseText = await RSSFetcher.fetchContent(feed.url);
-            return RSSParser.parseContent(responseText, feed.id);
-        } catch (error) {
-            throw new Error(`获取RSS内容失败: ${error instanceof Error ? error.message : '未知错误'}`);
-        }
+        this.scheduler.stopAutoUpdate();
     }
 
     /**
@@ -351,6 +302,9 @@ export class RSSService {
             enabled: feedConfig.enabled,
             updateInterval: feedConfig.updateInterval || defaultUpdateInterval
         }));
+
+        // 更新调度器中的订阅源列表
+        this.scheduler.updateFeeds(this.feeds);
     }
 
     /**
@@ -431,13 +385,6 @@ export class RSSService {
     }
 
     /**
-     * 清理资源
-     */
-    public dispose(): void {
-        this.stopAutoUpdate();
-    }
-
-    /**
      * 清理旧的RSS文章历史记录
      * @param daysToKeep 保留天数，默认30天
      */
@@ -496,7 +443,7 @@ export class RSSService {
         const result = await RSSHistoryManager.rebuildHistory(
             this.feeds, 
             this.feedData, 
-            (feed: RSSFeed) => this.fetchFeed(feed),
+            (feed: RSSFeed) => this.contentService.fetchFeed(feed),
             daysToFetch
         );
         
@@ -505,6 +452,15 @@ export class RSSService {
         }
         
         return result;
+    }
+
+    /**
+     * 销毁服务，清理所有资源
+     */
+    public dispose(): void {
+        this.scheduler.dispose();
+        this.contentService.dispose();
+        console.log('RSS服务已销毁');
     }
 
     // 静态方法，保持向后兼容
