@@ -5,7 +5,7 @@ import { RSSConfig, RSSFeedConfig, DEFAULT_RSS_CONFIG } from './types/RSSConfig'
 import { RSSFetcher } from './fetcher/RSSFetcher';
 import { RSSParser } from './parser/RSSParser';
 import { RSSHelper } from './utils/RSSHelper';
-import { getIssueDir } from '../config';
+import { getIssueDir, getRSSDefaultUpdateInterval } from '../config';
 import { generateFileName, ensureIssueManagerDir, getRSSConfigFilePath, getRSSStatesFilePath, getFeedHistoryFilePath, writeJSONLFile, readJSONLFile, readLastJSONLRecords, readJSONFile, writeJSONFile, checkFileExists, readYAMLFile, writeYAMLFile, readTextFile } from '../utils/fileUtils';
 
 /**
@@ -75,7 +75,7 @@ export class RSSService {
             name,
             url,
             enabled: true,
-            updateInterval: 60 // 默认60分钟更新一次
+            updateInterval: getRSSDefaultUpdateInterval() // 默认60分钟更新一次
         };
 
         try {
@@ -315,7 +315,7 @@ export class RSSService {
                 continue;
             }
 
-            const updateInterval = (feed.updateInterval || 60) * 60 * 1000; // 转换为毫秒
+            const updateInterval = this.minutesToMs(feed.updateInterval || 60); // 转换为毫秒
             const feedData = this.feedData.get(feed.id);
             const lastUpdated = feedData?.lastUpdated;
             const needUpdate = !lastUpdated ||
@@ -427,9 +427,9 @@ export class RSSService {
      * 从配置更新feeds数组
      */
     private updateFeedsFromConfig(): void {
-        // 从VS Code配置获取默认更新间隔
+        // 从VS Code配置获取默认更新间隔（分钟）
         const vsConfig = vscode.workspace.getConfiguration('issueManager');
-        const defaultUpdateInterval = vsConfig.get<number>('rss.defaultUpdateInterval', 3600000);
+        const defaultUpdateInterval = vsConfig.get<number>('rss.defaultUpdateInterval', 60);
 
         this.feeds = this.config.feeds.map(feedConfig => ({
             id: feedConfig.id,
@@ -438,9 +438,7 @@ export class RSSService {
             enabled: feedConfig.enabled,
             updateInterval: feedConfig.updateInterval || defaultUpdateInterval
         }));
-    }
-
-    /**
+    }    /**
      * 从VS Code设置迁移配置
      */
     private async migrateFromVSCodeSettings(): Promise<boolean> {
@@ -687,7 +685,15 @@ export class RSSService {
         mergedItems.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
 
         // 限制每个订阅源最多保存500篇文章，避免数据过多
-        return mergedItems.slice(0, 500);
+        const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);  
+        return mergedItems.slice(0, maxItems);  
+    }
+
+    /**
+     * 将分钟转换为毫秒
+     */
+    private minutesToMs(minutes: number): number {
+        return minutes * 60 * 1000;
     }
 
     /**

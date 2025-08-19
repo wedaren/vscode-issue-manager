@@ -12,7 +12,7 @@ export interface RSSFeedConfig {
     name: string;
     url: string;
     enabled: boolean;
-    updateInterval?: number; // 毫秒，可选，使用全局默认值
+    updateInterval?: number; // 分钟，可选，使用全局默认值
     tags?: string[];
     description?: string;
 }
@@ -25,7 +25,7 @@ export const DEFAULT_RSS_CONFIG: RSSConfig = {
             name: "技术博客示例",
             url: "https://example.com/rss.xml",
             enabled: false,
-            updateInterval: 3600000, // 1小时
+            updateInterval: 60, // 1小时（分钟）
             tags: ["技术", "示例"],
             description: "这是一个示例RSS订阅源，请替换为您的实际订阅"
         }
