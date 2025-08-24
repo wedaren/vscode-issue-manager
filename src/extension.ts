@@ -45,7 +45,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(gitSyncService);
 
 	// 注册“移动到...”命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode, selectedNodes?: IssueTreeNode[]) => {
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode | IssueItem, selectedNodes?: (IssueTreeNode | IssueItem)[]) => {
 		// 支持多选，selectedNodes 优先，否则单节点
 		const nodes = selectedNodes && selectedNodes.length > 0 ? selectedNodes : node ? [node] : [];
 		await moveToCommand(nodes);

@@ -1,20 +1,73 @@
 import * as vscode from 'vscode';
 import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
+import { IssueItem } from '../views/IsolatedIssuesProvider';
+import * as path from 'path';
+import { getIssueDir } from '../config';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
- * “移动到...”命令实现：支持多选节点移动到指定父节点，防止循环引用。
+ * 判断节点是否为 IssueItem 类型
  */
-export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
+function isIssueItem(node: unknown): node is IssueItem {
+    return node !== null && typeof node === 'object' && 'resourceUri' in node && 'label' in node && !('id' in node);
+}
+
+/**
+ * 将 IssueItem 转换为 IssueTreeNode
+ */
+function convertIssueItemToTreeNode(item: IssueItem): IssueTreeNode {
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        throw new Error('问题目录未配置，无法转换孤立问题节点');
+    }
+    const relativePath = path.relative(issueDir, item.resourceUri.fsPath);
+    return {
+        id: uuidv4(),
+        filePath: relativePath,
+        children: [],
+        resourceUri: item.resourceUri
+    };
+}
+
+/**
+ * "移动到..."命令实现：支持多选节点移动到指定父节点，防止循环引用。
+ * 支持 IssueTreeNode 和 IssueItem 两种类型的输入。
+ */
+export async function moveToCommand(selectedNodes: (IssueTreeNode | IssueItem)[]) {
     if (!selectedNodes || selectedNodes.length === 0) {
         vscode.window.showWarningMessage('请先选择要移动的节点。');
         return;
     }
-    //  支持关注问题视图节点移动
-    selectedNodes.forEach(i => i.id = stripFocusedId(i.id));
 
     const tree = await readTree();
-    // 收集所有要排除的 id（自身及所有后代）
+    
+    // 分离孤立问题节点和树节点
+    const isolatedItems: IssueItem[] = [];
+    const treeNodes: IssueTreeNode[] = [];
+    
+    selectedNodes.forEach(node => {
+        if (isIssueItem(node)) {
+            isolatedItems.push(node);
+        } else {
+            treeNodes.push(node);
+        }
+    });
+
+    // 将孤立问题转换为树节点并添加到处理列表
+    let convertedNodes: IssueTreeNode[];
+    try {
+        convertedNodes = isolatedItems.map(item => convertIssueItemToTreeNode(item));
+    } catch (error: any) {
+        vscode.window.showErrorMessage(`移动孤立问题失败: ${error.message}`);
+        return;
+    }
+    const allNodesToMove = [...treeNodes, ...convertedNodes];
+
+    // 支持关注问题视图节点移动
+    allNodesToMove.forEach(i => i.id = stripFocusedId(i.id));
+
+    // 收集所有要排除的 id（自身及所有后代），只对已在树中的节点进行排除
     const excludeIds = new Set<string>();
     function collectIds(node: IssueTreeNode) {
         excludeIds.add(node.id);
@@ -22,7 +75,8 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
             node.children.forEach(collectIds);
         }
     }
-    selectedNodes.forEach(collectIds);
+    treeNodes.forEach(collectIds); // 只对已在树中的节点进行排除
+
     // 优化：flatten 阶段直接生成带 parentPath 的节点
     interface FlatNode extends IssueTreeNode {
         parentPath: IssueTreeNode[];
@@ -42,7 +96,8 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
         return result;
     }
     const flatNodes = flatten(tree.rootNodes);
-    // 添加“根目录”选项
+    
+    // 添加"根目录"选项
     const rootItem = {
         iconPath: new vscode.ThemeIcon('root-folder'),
         label: '根目录',
@@ -63,16 +118,19 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
             node
         };
     }))];
+    
     const pick = await vscode.window.showQuickPick(items, {
         placeHolder: '搜索并选择目标父节点...',
         matchOnDescription: true
     });
+    
     if (!pick) {
         return;
     }
+
     // 执行移动
-    // 只处理“顶层”选中节点，避免父子节点重复操作
-    const selectedIds = new Set(selectedNodes.map(n => n.id));
+    // 只处理"顶层"选中节点，避免父子节点重复操作
+    const selectedIds = new Set(treeNodes.map(n => n.id));
 
     // 构建每个节点的父节点映射
     const parentMap = new Map<string, string | null>();
@@ -86,24 +144,31 @@ export async function moveToCommand(selectedNodes: IssueTreeNode[]) {
     }
     buildParentMap(tree.rootNodes, null);
 
-    // 只保留顶层选中节点（其父节点未被选中）
-    const topLevelSelectedNodes = selectedNodes.filter(node => {
+    // 只保留顶层选中节点（其父节点未被选中），对于孤立问题节点，全部保留
+    const topLevelTreeNodes = treeNodes.filter(node => {
         const parentId = parentMap.get(node.id);
         return !parentId || !selectedIds.has(parentId);
     });
 
-    // 1. 只从原父节点中移除顶层节点
-    topLevelSelectedNodes.forEach(node => removeNode(tree, node.id));
+    // 1. 只从原父节点中移除顶层树节点（孤立问题节点本来就不在树中）
+    topLevelTreeNodes.forEach(node => removeNode(tree, node.id));
 
-    // 2. 将顶层节点添加到目标位置
+    // 2. 将所有顶层节点和孤立问题节点添加到目标位置
+    const allTopLevelNodesToMove = [...topLevelTreeNodes, ...convertedNodes];
     if (!pick.node) {
         // 选择根目录，插入到 rootNodes
-        tree.rootNodes.unshift(...topLevelSelectedNodes);
+        tree.rootNodes.unshift(...allTopLevelNodesToMove);
     } else {
         pick.node.children = pick.node.children || [];
-        pick.node.children.unshift(...topLevelSelectedNodes);
+        pick.node.children.unshift(...allTopLevelNodesToMove);
     }
+    
     await writeTree(tree);
     vscode.commands.executeCommand('issueManager.refreshAllViews');
-    vscode.window.showInformationMessage('节点已成功移动。');
+    
+    if (isolatedItems.length > 0) {
+        vscode.window.showInformationMessage(`已成功移动 ${isolatedItems.length} 个孤立问题和 ${treeNodes.length} 个树节点。`);
+    } else {
+        vscode.window.showInformationMessage('节点已成功移动。');
+    }
 }
