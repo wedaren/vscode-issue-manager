@@ -9,8 +9,8 @@ import { v4 as uuidv4 } from 'uuid';
 /**
  * 判断节点是否为 IssueItem 类型
  */
-function isIssueItem(node: any): node is IssueItem {
-    return node && 'resourceUri' in node && 'label' in node && !('id' in node);
+function isIssueItem(node: unknown): node is IssueItem {
+    return node !== null && typeof node === 'object' && 'resourceUri' in node && 'label' in node && !('id' in node);
 }
 
 /**
@@ -147,13 +147,14 @@ export async function moveToCommand(selectedNodes: (IssueTreeNode | IssueItem)[]
     // 1. 只从原父节点中移除顶层树节点（孤立问题节点本来就不在树中）
     topLevelTreeNodes.forEach(node => removeNode(tree, node.id));
 
-    // 2. 将所有要移动的节点添加到目标位置
+    // 2. 将所有顶层节点和孤立问题节点添加到目标位置
+    const allTopLevelNodesToMove = [...topLevelTreeNodes, ...convertedNodes];
     if (!pick.node) {
         // 选择根目录，插入到 rootNodes
-        tree.rootNodes.unshift(...allNodesToMove);
+        tree.rootNodes.unshift(...allTopLevelNodesToMove);
     } else {
         pick.node.children = pick.node.children || [];
-        pick.node.children.unshift(...allNodesToMove);
+        pick.node.children.unshift(...allTopLevelNodesToMove);
     }
     
     await writeTree(tree);
