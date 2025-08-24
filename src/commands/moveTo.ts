@@ -19,7 +19,7 @@ function isIssueItem(node: unknown): node is IssueItem {
 function convertIssueItemToTreeNode(item: IssueItem): IssueTreeNode {
     const issueDir = getIssueDir();
     if (!issueDir) {
-        throw new Error('Issue directory is not configured');
+        throw new Error('问题目录未配置，无法转换孤立问题节点');
     }
     const relativePath = path.relative(issueDir, item.resourceUri.fsPath);
     return {
@@ -55,7 +55,13 @@ export async function moveToCommand(selectedNodes: (IssueTreeNode | IssueItem)[]
     });
 
     // 将孤立问题转换为树节点并添加到处理列表
-    const convertedNodes: IssueTreeNode[] = isolatedItems.map(item => convertIssueItemToTreeNode(item));
+    let convertedNodes: IssueTreeNode[];
+    try {
+        convertedNodes = isolatedItems.map(item => convertIssueItemToTreeNode(item));
+    } catch (error: any) {
+        vscode.window.showErrorMessage(`移动孤立问题失败: ${error.message}`);
+        return;
+    }
     const allNodesToMove = [...treeNodes, ...convertedNodes];
 
     // 支持关注问题视图节点移动
