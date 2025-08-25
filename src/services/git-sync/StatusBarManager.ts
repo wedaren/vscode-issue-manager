@@ -92,7 +92,7 @@ export class StatusBarManager {
      * @param date 要计算间隔的日期
      * @returns 格式化的时间间隔字符串
      */
-    public getTimeAgo(date: Date): string {
+    private getTimeAgo(date: Date): string {
         const now = new Date();
         const diffMs = now.getTime() - date.getTime();
         const diffMins = Math.floor(diffMs / (1000 * 60));
