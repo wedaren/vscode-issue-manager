@@ -116,19 +116,12 @@ export class FileWatcherManager {
             clearTimeout(this.debounceTimer);
             this.debounceTimer = undefined;
         }
-        
-        if (this.fileWatcher) {
-            this.fileWatcher.dispose();
-            this.fileWatcher = undefined;
-        }
-
-        if (this.configWatcher) {
-            this.configWatcher.dispose();
-            this.configWatcher = undefined;
-        }
 
         this.disposables.forEach(d => d.dispose());
         this.disposables = [];
+
+        this.fileWatcher = undefined;
+        this.configWatcher = undefined;
     }
 
     /**
