@@ -42,21 +42,11 @@ export class GitSyncService implements vscode.Disposable {
     private currentStatus: SyncStatusInfo;
     private disposables: vscode.Disposable[] = [];
 
-    // 模块化组件
-    private fileWatcherManager: FileWatcherManager;
-    private statusBarManager: StatusBarManager;
-
-    /**
-     * 获取状态栏管理器（测试用）
-     * @internal 仅用于测试
-     */
-    public getStatusBarManager(): StatusBarManager {
-        return this.statusBarManager;
-    }
-
-    private constructor() {
-        this.fileWatcherManager = new FileWatcherManager();
-        this.statusBarManager = new StatusBarManager();
+    // 依赖注入组件
+    private constructor(
+        private readonly fileWatcherManager: FileWatcherManager,
+        private readonly statusBarManager: StatusBarManager
+    ) {
         this.currentStatus = { status: SyncStatus.Disabled, message: '自动同步已禁用' };
         this.updateStatusBar();
     }
@@ -73,7 +63,10 @@ export class GitSyncService implements vscode.Disposable {
      */
     public static getInstance(): GitSyncService {
         if (!GitSyncService.instance) {
-            GitSyncService.instance = new GitSyncService();
+            GitSyncService.instance = new GitSyncService(
+                new FileWatcherManager(),
+                new StatusBarManager()
+            );
         }
         return GitSyncService.instance;
     }
