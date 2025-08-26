@@ -1,3 +1,9 @@
+import path from 'path';
+import * as vscode from 'vscode';
+import * as yaml from 'js-yaml';
+import { getIssueDir } from '../config';
+
+
 /**
  * 自动合并 .gitignore，确保 .issueManager/rss-feed-states.json 被忽略
  * 如无规则则自动添加，有则不重复添加，并弹窗通知用户
@@ -33,11 +39,6 @@ export async function ensureGitignoreForRSSState(context?: vscode.ExtensionConte
     console.error('自动配置 .gitignore 失败:', error);
   }
 }
-
-import path from 'path';
-import * as vscode from 'vscode';
-import * as yaml from 'js-yaml';
-import { getIssueDir } from '../config';
 
 
 /**
