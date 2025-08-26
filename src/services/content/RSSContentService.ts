@@ -179,37 +179,6 @@ export class RSSContentService {
     }
 
     /**
-     * 获取订阅源的文章统计信息
-     * @param feedId 订阅源ID
-     * @returns 统计信息
-     */
-    public getFeedStats(feedId: string): { totalItems: number; lastUpdated?: Date; oldestItem?: Date; newestItem?: Date } {
-        const feedData = this.feedData.get(feedId);
-        if (!feedData) {
-            return { totalItems: 0 };
-        }
-
-        const items = feedData.items;
-        const totalItems = items.length;
-        const lastUpdated = feedData.lastUpdated;
-
-        if (totalItems === 0) {
-            return { totalItems, lastUpdated };
-        }
-
-        const sortedItems = items.sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
-        const oldestItem = sortedItems[0]?.pubDate;
-        const newestItem = sortedItems[sortedItems.length - 1]?.pubDate;
-
-        return {
-            totalItems,
-            lastUpdated,
-            oldestItem,
-            newestItem
-        };
-    }
-
-    /**
      * 清空指定订阅源的文章数据
      * @param feedId 订阅源ID
      */

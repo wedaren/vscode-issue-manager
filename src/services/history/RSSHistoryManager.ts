@@ -24,7 +24,7 @@ export class RSSHistoryManager {
      * @param daysToKeep 保留天数，默认30天
      */
     public static async cleanupOldItems(
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>, 
+        feedData: Map<string, { items: RSSItem[] }>, 
         daysToKeep: number = 30
     ): Promise<{ removedCount: number }> {
         const cutoffDate = new Date();
@@ -60,7 +60,7 @@ export class RSSHistoryManager {
      * @param maxItemsPerFeed 每个订阅源最多保留的文章数，默认500
      */
     public static async compactHistory(
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>,
+        feedData: Map<string, { items: RSSItem[] }>,
         maxItemsPerFeed: number = 500
     ): Promise<{ removedItems: number; compactedFeeds: number }> {
         let removedItems = 0;
@@ -149,7 +149,7 @@ export class RSSHistoryManager {
      * @param mergeStrategy 合并策略：'replace' | 'merge'
      */
     public static async importHistory(
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>,
+        feedData: Map<string, { items: RSSItem[] }>,
         importPath: string,
         mergeStrategy: 'replace' | 'merge' = 'merge'
     ): Promise<boolean> {
@@ -212,7 +212,7 @@ export class RSSHistoryManager {
      */
     public static async rebuildHistory(
         feeds: RSSFeed[],
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>,
+        feedData: Map<string, { items: RSSItem[] }>,
         fetchFeedFunction: (feed: RSSFeed) => Promise<RSSItem[]>,
         daysToFetch: number = 7
     ): Promise<{ rebuiltFeeds: number; totalItems: number }> {
@@ -231,7 +231,6 @@ export class RSSHistoryManager {
                 const recentItems = items.filter(item => item.pubDate >= cutoffDate);
                 
                 feedData.set(feed.id, {
-                    lastUpdated: new Date(),
                     items: recentItems
                 });
                 
@@ -284,20 +283,13 @@ export class RSSHistoryManager {
     /**
      * 保存订阅源数据
      */
-    private static async saveFeedData(feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>): Promise<void> {
+    private static async saveFeedData(feedData: Map<string, { items: RSSItem[] }>): Promise<void> {
         // 准备状态数据
-        const feedStates = new Map<string, RSSFeedState>();
         const feedItemsMap = new Map<string, RSSItem[]>();
         
         for (const [feedId, data] of feedData) {
-            if (data.lastUpdated) {
-                feedStates.set(feedId, { lastUpdated: data.lastUpdated.toISOString(), id: feedId });
-            } else {
-                feedStates.set(feedId, { id: feedId });
-            }
             feedItemsMap.set(feedId, data.items);
         }
-        await RSSFeedStateService.saveStates(feedStates);
         await RSSStorageService.saveAllFeedItems(feedItemsMap);
     }
 }

@@ -10,7 +10,7 @@ export class RSSStatsService {
      * @param feedData 订阅源数据Map
      */
     public static getHistoryStats(
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>
+        feedData: Map<string, { items: RSSItem[] }>
     ): { totalItems: number; oldestDate?: Date; newestDate?: Date; itemsByFeed: Record<string, number> } {
         let totalItems = 0;
         let oldestDate: Date | undefined;
@@ -41,11 +41,10 @@ export class RSSStatsService {
      * @param feedId 订阅源ID
      */
     public static getFeedStats(
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>,
+        feedData: Map<string, { items: RSSItem[] }>,
         feedId: string
     ): {
         itemCount: number;
-        lastUpdated?: Date;
         oldestItem?: Date;
         newestItem?: Date;
         averageItemsPerDay?: number;
@@ -61,7 +60,6 @@ export class RSSStatsService {
         if (itemCount === 0) {
             return {
                 itemCount: 0,
-                lastUpdated: data.lastUpdated
             };
         }
 
@@ -84,7 +82,6 @@ export class RSSStatsService {
 
         return {
             itemCount,
-            lastUpdated: data.lastUpdated,
             oldestItem,
             newestItem,
             averageItemsPerDay
@@ -224,7 +221,7 @@ export class RSSStatsService {
      * @param feedNames 订阅源名称映射
      */
     public static generateSummaryText(
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>,
+        feedData: Map<string, { items: RSSItem[] }>,
         feedNames: Map<string, string>
     ): string {
         const historyStats = this.getHistoryStats(feedData);
