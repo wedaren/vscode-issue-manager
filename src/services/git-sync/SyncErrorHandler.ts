@@ -231,15 +231,14 @@ export class SyncErrorHandler {
      * 
      * 当检测到合并冲突时，向用户显示处理选项。
      */
-    public static showConflictDialog(): void {
-        vscode.window.showErrorMessage(
+    public static  async showConflictDialog(): Promise<void> {
+        const selection = await vscode.window.showErrorMessage(
             '自动同步失败，因为存在合并冲突。自动化功能已暂停，请手动解决冲突。',
             '打开文件以解决冲突'
-        ).then(selection => {
-            if (selection === '打开文件以解决冲突') {
-                vscode.commands.executeCommand('git.openMergeEditor');
-            }
-        });
+        );
+        if (selection === '打开文件以解决冲突') {
+            await vscode.commands.executeCommand('issueManager.openIssueDir');
+        }
     }
 
     // 私有方法：错误类型检查
