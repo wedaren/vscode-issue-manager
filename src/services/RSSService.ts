@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { RSSFeed, RSSItem } from './types/RSSTypes';
+import { RSSFeedStateService } from './storage/RSSFeedStateService';
 import { RSSHelper } from './utils/RSSHelper';
 import { RSSMarkdownConverter } from './converters/RSSMarkdownConverter';
 import { RSSStorageService } from './storage/RSSStorageService';
-import { RSSHistoryManager, RSSFeedRecord } from './history/RSSHistoryManager';
+import { RSSHistoryManager } from './history/RSSHistoryManager';
 import { RSSStatsService } from './stats/RSSStatsService';
 import { RSSScheduler } from './scheduler/RSSScheduler';
 import { RSSContentService } from './content/RSSContentService';
@@ -17,7 +18,7 @@ import { generateFileName } from '../utils/fileUtils';
  */
 export class RSSService {
     private static instance: RSSService;
-    private feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }> = new Map();
+    private feedData: Map<string, { items: RSSItem[] }> = new Map();
     
     // 文章ID到文章对象的快速查找索引，用于提高预览功能的响应速度
     private itemMap: Map<string, RSSItem> = new Map();
@@ -87,8 +88,8 @@ export class RSSService {
      * 获取订阅源的最后更新时间
      */
     private async getLastUpdatedTime(feedId: string): Promise<Date | undefined> {
-        const feedData = this.feedData.get(feedId);
-        return feedData?.lastUpdated;
+        const lastUpdatedStr = await RSSFeedStateService.getLastUpdated(feedId);
+        return lastUpdatedStr ? new Date(lastUpdatedStr) : undefined;
     }
 
     /**
@@ -217,9 +218,9 @@ export class RSSService {
     /**
      * 获取指定订阅源的最后更新时间
      */
-    public getFeedLastUpdated(feedId: string): Date | undefined {
-        const feedData = this.feedData.get(feedId);
-        return feedData?.lastUpdated;
+    public async getFeedLastUpdated(feedId: string): Promise<Date | undefined> {
+        const lastUpdatedStr = await RSSFeedStateService.getLastUpdated(feedId);
+        return lastUpdatedStr ? new Date(lastUpdatedStr) : undefined;
     }
 
     /**
@@ -328,25 +329,18 @@ export class RSSService {
      * 使用Git友好的分离存储：每个订阅源一个文件 + 独立的状态文件
      */
     private async loadRSSItemsHistory(): Promise<void> {
-        // 加载订阅源状态
-        const feedStates = await RSSStorageService.loadFeedStates();
-
         // 加载所有订阅源的文章
         const feeds = this.configService.getFeeds();
         const feedItemsMap = await RSSStorageService.loadAllFeedItems(feeds);
 
-        // 合并状态和文章数据
         for (const feed of feeds) {
-            const state = feedStates.get(feed.id) || {};
             const items = feedItemsMap.get(feed.id) || [];
 
             this.feedData.set(feed.id, {
-                lastUpdated: state.lastUpdated,
                 items: items
             });
         }
 
-        // 重建文章索引以提高查找性能
         this.rebuildItemMap();
     }
 
@@ -354,20 +348,12 @@ export class RSSService {
      * 保存RSS文章历史记录和状态到分离的文件中（Git友好）
      */
     private async saveRSSItemsHistory(): Promise<void> {
-        // 准备状态数据
-        const feedStates = new Map<string, { lastUpdated?: Date }>();
+        // 只保存文章数据，lastUpdated 由 RSSFeedStateService 独立管理
         const feedItemsMap = new Map<string, RSSItem[]>();
-
         for (const [feedId, feedData] of this.feedData) {
-            feedStates.set(feedId, { lastUpdated: feedData.lastUpdated });
             feedItemsMap.set(feedId, feedData.items);
         }
-
-        // 使用存储服务保存
-        await RSSStorageService.saveFeedStates(feedStates);
         await RSSStorageService.saveAllFeedItems(feedItemsMap);
-
-        // 重建文章索引，确保索引与最新数据同步
         this.rebuildItemMap();
     }
 

@@ -87,55 +87,6 @@ export class RSSStorageService {
         }
     }
 
-    /**
-     * 加载订阅源状态（从配置文件中的lastUpdated字段）
-     */
-    public static async loadFeedStates(): Promise<Map<string, { lastUpdated?: Date }>> {
-        const feedStates = new Map<string, { lastUpdated?: Date }>();
-
-        try {
-            const config = await this.loadConfig();
-            for (const feed of config.feeds) {
-                if (feed.lastUpdated) {
-                    feedStates.set(feed.id, {
-                        lastUpdated: new Date(feed.lastUpdated)
-                    });
-                }
-            }
-            console.log(`加载RSS状态: ${feedStates.size}个订阅源`);
-        } catch (error) {
-            console.log('RSS状态加载失败:', error);
-        }
-
-        return feedStates;
-    }
-
-    /**
-     * 保存订阅源状态（更新配置文件中的lastUpdated字段）
-     */
-    public static async saveFeedStates(feedStates: Map<string, { lastUpdated?: Date }>): Promise<boolean> {
-        try {
-            const config = await this.loadConfig();
-            
-            // 更新配置中每个feed的lastUpdated字段
-            for (const feed of config.feeds) {
-                const feedState = feedStates.get(feed.id);
-                if (feedState && feedState.lastUpdated) {
-                    feed.lastUpdated = feedState.lastUpdated.toISOString();
-                }
-            }
-            
-            const success = await this.saveConfig(config);
-            if (success) {
-                console.log(`RSS状态已保存: ${feedStates.size}个订阅源`);
-                return true;
-            }
-            return false;
-        } catch (error) {
-            console.error('保存RSS状态失败:', error);
-            return false;
-        }
-    }
 
     /**
      * 加载指定订阅源的文章历史

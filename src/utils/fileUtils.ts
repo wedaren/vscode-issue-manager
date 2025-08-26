@@ -1,3 +1,4 @@
+
 import path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
@@ -371,4 +372,10 @@ export async function readLastJSONLRecords<T = any>(fileUri: vscode.Uri, maxReco
     console.error(`读取 JSONL 文件最后记录失败 ${fileUri.fsPath}:`, error);
     return null;
   }
+}
+/**
+ * 获取 RSS 订阅源状态文件路径（如 lastUpdated）
+ */
+export function getRSSFeedStatesFilePath(): vscode.Uri | null {
+  return getIssueManagerFilePath('rss-feed-states.json');
 }

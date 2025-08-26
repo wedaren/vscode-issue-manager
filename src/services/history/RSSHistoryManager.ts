@@ -3,13 +3,13 @@ import { RSSItem, RSSFeed } from '../types/RSSTypes';
 import { RSSStorageService } from '../storage/RSSStorageService';
 import { writeJSONLFile, readJSONLFile } from '../../utils/fileUtils';
 import { getIssueDir } from '../../config';
+import { RSSFeedState, RSSFeedStateService } from '../storage/RSSFeedStateService';
 
 /**
  * JSONL格式的RSS记录结构
  */
 export interface RSSFeedRecord {
     feedId: string;
-    lastUpdated?: string;
     items: RSSItem[];
 }
 
@@ -110,7 +110,7 @@ export class RSSHistoryManager {
      * @param exportPath 导出文件路径（可选）
      */
     public static async exportHistory(
-        feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>,
+        feedData: Map<string, { items: RSSItem[] }>,
         exportPath?: string
     ): Promise<string | null> {
         try {
@@ -119,7 +119,6 @@ export class RSSHistoryManager {
             for (const [feedId, data] of feedData) {
                 records.push({
                     feedId,
-                    lastUpdated: data.lastUpdated?.toISOString(),
                     items: data.items
                 });
             }
@@ -176,7 +175,6 @@ export class RSSHistoryManager {
                 if (mergeStrategy === 'replace' || !existingData) {
                     // 替换或新增
                     feedData.set(record.feedId, {
-                        lastUpdated: record.lastUpdated ? new Date(record.lastUpdated) : undefined,
                         items: convertedItems
                     });
                     importedFeeds++;
@@ -185,12 +183,7 @@ export class RSSHistoryManager {
                     // 合并策略：合并文章并去重
                     const maxItems = vscode.workspace.getConfiguration('issueManager').get<number>('rss.maxItemsPerFeed', 500);
                     const mergedItems = this.mergeRSSItems(existingData.items, convertedItems, maxItems);
-                    const newLastUpdated = record.lastUpdated && 
-                        (!existingData.lastUpdated || new Date(record.lastUpdated) > existingData.lastUpdated)
-                        ? new Date(record.lastUpdated) : existingData.lastUpdated;
-                    
                     feedData.set(record.feedId, {
-                        lastUpdated: newLastUpdated,
                         items: mergedItems
                     });
                     importedFeeds++;
@@ -293,16 +286,18 @@ export class RSSHistoryManager {
      */
     private static async saveFeedData(feedData: Map<string, { lastUpdated?: Date; items: RSSItem[] }>): Promise<void> {
         // 准备状态数据
-        const feedStates = new Map<string, { lastUpdated?: Date }>();
+        const feedStates = new Map<string, RSSFeedState>();
         const feedItemsMap = new Map<string, RSSItem[]>();
         
         for (const [feedId, data] of feedData) {
-            feedStates.set(feedId, { lastUpdated: data.lastUpdated });
+            if (data.lastUpdated) {
+                feedStates.set(feedId, { lastUpdated: data.lastUpdated.toISOString(), id: feedId });
+            } else {
+                feedStates.set(feedId, { id: feedId });
+            }
             feedItemsMap.set(feedId, data.items);
         }
-        
-        // 使用存储服务保存
-        await RSSStorageService.saveFeedStates(feedStates);
+        await RSSFeedStateService.saveStates(feedStates);
         await RSSStorageService.saveAllFeedItems(feedItemsMap);
     }
 }

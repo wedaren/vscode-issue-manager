@@ -577,10 +577,6 @@
                 "type": "boolean",
                 "description": "是否启用此订阅源"
               },
-              "lastUpdated": {
-                "type": "string",
-                "description": "最后更新时间"
-              },
               "updateInterval": {
                 "type": "number",
                 "description": "更新间隔（分钟）"
