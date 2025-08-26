@@ -12,13 +12,13 @@ feeds:
     updateInterval: 60
     tags: []
     description: ''
-  - id: feed_megk9qch_alogkrh4
-    name: github
-    url: https://github.com/wedaren.private.atom?token=AB6V4KIBLJBNHXKRY2KNH3WGVZ4WE
-    enabled: true
-    updateInterval: 60
-    tags: []
-    description: ''
+  - id: "github-releases-example"
+    name: "GitHub 发布示例"
+    url: "https://github.com/microsoft/vscode/releases.atom"
+    enabled: false
+    updateInterval: 180
+    tags: ["开发工具", "更新"]
+    description: "一个 GitHub 发布通知的示例"
 
 # 全局设置请在VS Code插件设置中配置：
 # - issueManager.rss.autoUpdate: 是否自动更新
