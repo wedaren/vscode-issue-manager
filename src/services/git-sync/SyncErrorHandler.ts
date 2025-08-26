@@ -237,7 +237,7 @@ export class SyncErrorHandler {
             '打开文件以解决冲突'
         ).then(selection => {
             if (selection === '打开文件以解决冲突') {
-                vscode.commands.executeCommand('git.openMergeEditor');
+                vscode.commands.executeCommand('issueManager.openIssueDir');
             }
         });
     }

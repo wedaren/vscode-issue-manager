@@ -17,7 +17,7 @@ export function registerOpenIssueDirCommand(context: vscode.ExtensionContext) {
             // 使用 vscode.Uri.file 创建文件 URI
             const issueDirUri = vscode.Uri.file(issueDir);
             // 在 VS Code 中打开文件夹
-            await vscode.commands.executeCommand('vscode.openFolder', issueDirUri, { forceNewWindow: false });
+            await vscode.commands.executeCommand('vscode.openFolder', issueDirUri, { forceNewWindow: true });
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`打开问题目录失败: ${message}`);
