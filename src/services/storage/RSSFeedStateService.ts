@@ -16,7 +16,9 @@ export class RSSFeedStateService {
     public static async loadStates(): Promise<Map<string, RSSFeedState>> {
         const statesFile = getRSSFeedStatesFilePath();
         const statesMap = new Map<string, RSSFeedState>();
-    if (!statesFile) { return statesMap; }
+        if (!statesFile) {  
+            return statesMap;  
+        }  
         if (await checkFileExists(statesFile)) {
             const arr = await readJSONFile<RSSFeedState[]>(statesFile);
             if (Array.isArray(arr)) {
