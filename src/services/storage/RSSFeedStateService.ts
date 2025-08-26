@@ -2,7 +2,7 @@
  * RSSFeedStateService
  * 专门管理订阅源的动态状态（如 lastUpdated），与静态配置分离。
  */
-import { ensureIssueManagerDir, getRSSFeedStatesFilePath, checkFileExists, readJSONFile, writeJSONFile } from '../../utils/fileUtils';
+import { ensureIssueManagerDir, getRSSFeedStatesFilePath, checkFileExists, readJSONFile, writeRSSStateJSONFile } from '../../utils/fileUtils';
 
 export interface RSSFeedState {
     id: string;
@@ -35,7 +35,7 @@ export class RSSFeedStateService {
         const issueManagerDir = await ensureIssueManagerDir();
     if (!issueManagerDir) { return false; }
         const arr = Array.from(states.values());
-        return await writeJSONFile(statesFile, arr);
+        return await writeRSSStateJSONFile(statesFile, arr);
     }
 
     /**
