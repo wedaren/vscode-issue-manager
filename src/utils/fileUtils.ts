@@ -5,6 +5,43 @@ import { getIssueDir } from '../config';
 
 
 /**
+ * 自动合并 .gitignore，确保 .issueManager/rss-feed-states.json 被忽略
+ * 如无规则则自动添加，有则不重复添加，并弹窗通知用户
+ */
+export async function ensureGitignoreForRSSState(): Promise<void> {
+  const issueDir = getIssueDir();
+  if (!issueDir) { return; }
+  const gitignoreUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), '.gitignore');
+  const ignoreRule = '.issueManager/rss-feed-states.json';
+  let updated = false;
+  let content = '';
+  try {
+    const exists = await checkFileExists(gitignoreUri);
+    if (exists) {
+      content = (await readTextFile(gitignoreUri)) || '';
+      if (!content.split(/\r?\n/).some(line => line.trim() === ignoreRule)) {
+        content = content.trim() + (content.trim() ? '\n' : '') + ignoreRule + '\n';
+        await vscode.workspace.fs.writeFile(gitignoreUri, Buffer.from(content, 'utf8'));
+        updated = true;
+      }
+    } else {
+      content = ignoreRule + '\n';
+      await vscode.workspace.fs.writeFile(gitignoreUri, Buffer.from(content, 'utf8'));
+      updated = true;
+    }
+    if (updated) {
+      vscode.window.showInformationMessage('已自动为你添加 .issueManager/rss-feed-states.json 到 .gitignore');
+    } else {
+      vscode.window.showInformationMessage('已检测到你的 .gitignore 配置，无需修改');
+    }
+  } catch (error) {
+    vscode.window.showWarningMessage('自动配置 .gitignore 时发生错误，请手动检查。');
+    console.error('自动配置 .gitignore 失败:', error);
+  }
+}
+
+
+/**
  * 解析文件名中的时间戳，兼容 YYYYMMDD-HHmmss 和 YYYYMMDD-HHmmss-SSS
  * @param fileName 文件名字符串
  * @returns {Date|null} 解析成功返回 Date，否则返回 null
@@ -371,4 +408,10 @@ export async function readLastJSONLRecords<T = any>(fileUri: vscode.Uri, maxReco
     console.error(`读取 JSONL 文件最后记录失败 ${fileUri.fsPath}:`, error);
     return null;
   }
+}
+/**
+ * 获取 RSS 订阅源状态文件路径（如 lastUpdated）
+ */
+export function getRSSFeedStatesFilePath(): vscode.Uri | null {
+  return getIssueManagerFilePath('rss-feed-states.json');
 }

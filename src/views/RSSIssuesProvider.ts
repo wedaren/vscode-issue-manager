@@ -202,13 +202,13 @@ export class RSSIssuesProvider implements vscode.TreeDataProvider<vscode.TreeIte
     /**
      * 获取订阅源节点列表
      */
-    private getFeedNodes(): RSSFeedTreeItem[] {
+    private async getFeedNodes(): Promise<RSSFeedTreeItem[]> {
         const feeds = this.rssService.getFeeds();
-        return feeds.map(feed => {
+        return Promise.all(feeds.map(async feed => {
             const itemCount = this.rssService.getFeedItems(feed.id).length;
-            const lastUpdated = this.rssService.getFeedLastUpdated(feed.id);
+            const lastUpdated = await this.rssService.getFeedLastUpdated(feed.id);
             return new RSSFeedTreeItem(feed, itemCount, lastUpdated);
-        });
+        }));
     }
 
     /**
