@@ -33,7 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.executeCommand('setContext', 'issueManager.isDirConfigured', !!issueDir);
 	// 自动合并 .gitignore 忽略规则
 	if (issueDir) {
-		ensureGitignoreForRSSState(context);
+		ensureGitignoreForRSSState();
 	}
 
 	// 监听配置变化，以便在用户更改设置后再次更新上下文

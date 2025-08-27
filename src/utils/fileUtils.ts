@@ -8,7 +8,7 @@ import { getIssueDir } from '../config';
  * 自动合并 .gitignore，确保 .issueManager/rss-feed-states.json 被忽略
  * 如无规则则自动添加，有则不重复添加，并弹窗通知用户
  */
-export async function ensureGitignoreForRSSState(context?: vscode.ExtensionContext): Promise<void> {
+export async function ensureGitignoreForRSSState(): Promise<void> {
   const issueDir = getIssueDir();
   if (!issueDir) { return; }
   const gitignoreUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), '.gitignore');
@@ -235,24 +235,11 @@ export async function readJSONFile<T = any>(fileUri: vscode.Uri): Promise<T | nu
  * @param data 要写入的数据
  * @returns 写入成功返回 true，失败返回 false
  */
-export async function writeRSSStateJSONFile(fileUri: vscode.Uri, data: any): Promise<boolean> {
+export async function writeJSONFile(fileUri: vscode.Uri, data: any): Promise<boolean> {
   try {
-    // 检查是否首次生成 rss-feed-states.json
-    const isRSSStateFile = fileUri.fsPath.endsWith('rss-feed-states.json');
-    let firstCreate = false;
-    if (isRSSStateFile) {
-      try {
-        await vscode.workspace.fs.stat(fileUri);
-      } catch {
-        firstCreate = true;
-      }
-    }
     const content = JSON.stringify(data, null, 2);
     const uint8Array = Buffer.from(content, 'utf8');
     await vscode.workspace.fs.writeFile(fileUri, uint8Array);
-    if (isRSSStateFile && firstCreate) {
-      await ensureGitignoreForRSSState();
-    }
     return true;
   } catch (error) {
     console.error(`写入 JSON 文件失败 ${fileUri.fsPath}:`, error);
