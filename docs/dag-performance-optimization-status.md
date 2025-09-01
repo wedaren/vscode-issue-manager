@@ -27,7 +27,6 @@ private async buildNodeRecursively(
         console.log(`会话缓存命中: ${fileName}`);
         return {
             ...cachedNode,
-            isCurrentFile: fileName === this.currentActiveFile
         };
     }
     // ... 其余逻辑

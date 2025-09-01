@@ -22,7 +22,7 @@ const childNode = await this.buildNodeRecursively(childFileName, visited, nodeCa
 if (sessionCache.has(fileName)) {
     const cachedNode = sessionCache.get(fileName)!;
     console.log(`会话缓存命中: ${fileName}`);
-    return { ...cachedNode, isCurrentFile: fileName === this.currentActiveFile };
+    return { ...cachedNode };
 }
 ```
 

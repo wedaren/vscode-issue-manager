@@ -63,17 +63,14 @@ suite('IssueStructureProvider Cache Tests', () => {
             filePath: 'test.md',
             title: 'Test Node',
             children: [],
-            isCurrentFile: false,
             hasError: false
         };
 
         // 模拟缓存命中的情况
         const updatedNode = {
             ...testNode,
-            isCurrentFile: true // 应该根据当前文件状态更新
         };
 
-        assert.strictEqual(updatedNode.isCurrentFile, true, 'isCurrentFile should be updated even with cached node');
         assert.strictEqual(updatedNode.id, testNode.id, 'Other properties should remain the same');
         assert.strictEqual(updatedNode.title, testNode.title, 'Title should remain the same');
     });

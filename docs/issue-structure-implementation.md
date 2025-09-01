@@ -84,7 +84,7 @@ if (nodeCache.has(fileName)) {
     const cachedInfo = nodeCache.get(fileName)!;
     if (cachedInfo.lastModified === currentModTime) {
         // 缓存未过期，返回缓存节点
-        return { ...cachedInfo.node, isCurrentFile: fileName === this.currentActiveFile };
+        return { ...cachedInfo.node };
     } else {
         // 缓存已过期，删除缓存并重新构建
         nodeCache.delete(fileName);
@@ -117,12 +117,6 @@ if (nodeCache.has(fileName)) {
 
 当前激活的文件在树中会有特殊的图标标识：
 
-```typescript
-// 高亮当前激活的文件
-if (element.isCurrentFile) {
-    item.iconPath = new vscode.ThemeIcon('arrow-right', new vscode.ThemeColor('list.highlightForeground'));
-}
-```
 
 ### 配置更新
 

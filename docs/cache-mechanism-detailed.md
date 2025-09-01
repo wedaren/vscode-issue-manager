@@ -80,7 +80,6 @@ private isFileRelatedToCurrent(fileName: string): boolean {
 4. **缓存清理**：手动刷新或相关文件变化时清理
 
 #### 状态正确性保证
-- **当前文件状态**：即使使用缓存，也会动态更新 `isCurrentFile` 属性
 - **错误状态缓存**：错误节点也会被缓存，避免重复错误检查
 - **循环引用处理**：循环引用检测在缓存检查之后进行
 

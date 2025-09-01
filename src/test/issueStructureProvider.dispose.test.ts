@@ -40,7 +40,6 @@ suite('IssueStructureProvider Dispose Tests', () => {
                 filePath: 'test.md',
                 title: 'Test',
                 children: [],
-                isCurrentFile: false,
                 hasError: false
             },
             lastModified: Date.now()
