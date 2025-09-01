@@ -457,13 +457,6 @@ export function activate(context: vscode.ExtensionContext) {
 		treeDataProvider: issueStructureProvider
 	});
 	
-	// 监听标题更新事件
-	context.subscriptions.push(
-		issueStructureProvider.onDidUpdateTitle(title => {
-			structureView.title = title;
-		})
-	);
-	
 	context.subscriptions.push(structureView);
 	context.subscriptions.push(issueStructureProvider);
 
