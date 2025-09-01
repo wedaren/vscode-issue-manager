@@ -138,15 +138,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
-     * 清空视图
-     */
-    private clearView(): void {
-        this.currentActiveFile = null;
-        this.rootNodes = [];
-        this._onDidChangeTreeData.fire();  
-    }
-
-    /**
      * 显示引导信息
      */
     private showGuidanceMessage(): void {

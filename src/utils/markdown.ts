@@ -58,10 +58,6 @@ export function parseFrontmatter(content: string): FrontmatterData | null {
     // 提取 YAML 内容
     const yamlContent = lines.slice(1, endIndex).join('\n');
     
-    // 如果 YAML 内容为空或只包含空白字符，返回 null
-    if (!yamlContent.trim()) {
-        return null;
-    }
     
     try {
         const parsed = yaml.load(yamlContent);
