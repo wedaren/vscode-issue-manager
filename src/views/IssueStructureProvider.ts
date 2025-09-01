@@ -31,9 +31,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private _onDidChangeTreeData: vscode.EventEmitter<IssueStructureNode | undefined | null | void> = new vscode.EventEmitter<IssueStructureNode | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<IssueStructureNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
-    private _onDidUpdateTitle: vscode.EventEmitter<string> = new vscode.EventEmitter<string>();
-    readonly onDidUpdateTitle: vscode.Event<string> = this._onDidUpdateTitle.event;
-
     private currentActiveFile: string | null = null;
     private rootNodes: IssueStructureNode[] = [];
     private nodeCache: Map<string, CachedNodeInfo> = new Map(); // 持久化缓存
@@ -83,8 +80,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private invalidateFileCache(fileName: string): void {
         if (this.nodeCache.has(fileName)) {
             this.nodeCache.delete(fileName);
-            // this.logger.debug(`缓存失效: ${fileName}`);
-            
             // 如果当前视图涉及到这个文件，则刷新视图
             if (this.currentActiveFile && this.isFileRelatedToCurrent(fileName)) {
                 this.refresh();
@@ -154,6 +149,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private clearView(): void {
         this.currentActiveFile = null;
         this.rootNodes = [];
+        this._onDidChangeTreeData.fire();  
     }
 
     /**
@@ -168,6 +164,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             children: [],
             hasError: false
         }];
+        this._onDidChangeTreeData.fire();  
     }
 
     /**
@@ -254,7 +251,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             } else {
                 // 缓存已过期，删除缓存
                 nodeCache.delete(fileName);
-                console.log(`缓存过期，重新构建: ${fileName}`);
             }
         }
 
@@ -360,7 +356,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      */
     public refresh(): void {
         // 软刷新：保留缓存，依赖基于 mtime 的失效机制与 invalidateFileCache 的精准清理
-        console.log('正在刷新视图...');
         this.onActiveEditorChanged(vscode.window.activeTextEditor);
     }
 
@@ -482,7 +477,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 清理资源
      * 
      * 释放：
-     * - 事件发射器（_onDidChangeTreeData、_onDidUpdateTitle）。
+     * - 事件发射器（_onDidChangeTreeData）。
      * - 清空持久化缓存（nodeCache）以释放内存。
      * 
      * 注意：文件系统监听器已注册到扩展上下文（context.subscriptions），
@@ -491,7 +486,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     dispose(): void {
         // 释放事件发射器
         this._onDidChangeTreeData.dispose();
-        this._onDidUpdateTitle.dispose();
         
         // 清空缓存以释放内存
         this.nodeCache.clear();
