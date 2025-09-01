@@ -23,6 +23,7 @@ import { RSSIssuesProvider } from './views/RSSIssuesProvider';
 import { registerRSSVirtualFileProvider } from './views/RSSVirtualFileProvider';
 import { ensureGitignoreForRSSState } from './utils/fileUtils';
 import { RSSIssueDragAndDropController } from './views/RSSIssueDragAndDropController';
+import { IssueStructureProvider } from './views/IssueStructureProvider';
 
 
 // 当您的扩展被激活时，将调用此方法
@@ -449,6 +450,20 @@ export function activate(context: vscode.ExtensionContext) {
 	// 注册RSS虚拟文件提供器
 	const rssVirtualFileProvider = registerRSSVirtualFileProvider(context);
 	context.subscriptions.push(rssVirtualFileProvider);
+
+	// 注册问题结构视图
+	const issueStructureProvider = new IssueStructureProvider(context);
+	const structureView = vscode.window.createTreeView('issueManager.views.structure', {
+		treeDataProvider: issueStructureProvider
+	});
+	
+	context.subscriptions.push(structureView);
+	context.subscriptions.push(issueStructureProvider);
+
+	// 注册问题结构视图刷新命令
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.structure.refresh', () => {
+		issueStructureProvider.refresh();
+	}));
 }
 
 // 当您的扩展被停用时，将调用此方法
