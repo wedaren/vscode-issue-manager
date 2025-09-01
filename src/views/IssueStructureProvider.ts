@@ -85,7 +85,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private invalidateFileCache(fileName: string): void {
         if (this.nodeCache.has(fileName)) {
             this.nodeCache.delete(fileName);
-            console.log(`缓存失效: ${fileName}`);
+            // this.logger.debug(`缓存失效: ${fileName}`);
             
             // 如果当前视图涉及到这个文件，则刷新视图
             if (this.currentActiveFile && this.isFileRelatedToCurrent(fileName)) {
@@ -377,12 +377,11 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
-     * 手动刷新视图，清空缓存
+     * 刷新视图（软刷新，保留缓存）
      */
     public refresh(): void {
-        // 清空缓存以确保获取最新数据
-        this.nodeCache.clear();
-        console.log('手动刷新，清空所有缓存');
+        // 软刷新：保留缓存，依赖基于 mtime 的失效机制与 invalidateFileCache 的精准清理
+        console.log('正在刷新视图...');
         this.onActiveEditorChanged(vscode.window.activeTextEditor);
     }
 
