@@ -112,16 +112,6 @@ if (nodeCache.has(fileName)) {
 - **循环引用**：显示错误图标并中断该分支渲染
 - **无效 frontmatter**：显示引导信息
 
-#### 4. 动态标题更新
-
-视图标题会根据当前查看的根文档动态更新：
-
-```typescript
-// 获取根文件标题并更新视图标题
-const rootTitle = await getTitle(rootUri);
-this.viewTitle = `问题结构: ${rootTitle}`;
-this.updateViewTitle();
-```
 
 #### 5. 当前文件高亮
 

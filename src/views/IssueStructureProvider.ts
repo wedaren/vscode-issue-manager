@@ -11,7 +11,6 @@ export interface IssueStructureNode {
     filePath: string;
     title: string;
     children: IssueStructureNode[];
-    isCurrentFile: boolean;
     hasError: boolean;
     errorMessage?: string;
 }
@@ -37,7 +36,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
     private currentActiveFile: string | null = null;
     private rootNodes: IssueStructureNode[] = [];
-    private viewTitle: string = '问题结构';
     private nodeCache: Map<string, CachedNodeInfo> = new Map(); // 持久化缓存
 
     constructor(private context: vscode.ExtensionContext) {
@@ -146,6 +144,8 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
         this.currentActiveFile = path.basename(editor.document.uri.fsPath);
         await this.buildStructureFromActiveFile(frontmatter);
+        this._onDidChangeTreeData.fire();
+
     }
 
     /**
@@ -154,9 +154,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private clearView(): void {
         this.currentActiveFile = null;
         this.rootNodes = [];
-        this.viewTitle = '问题结构';
-        this.updateViewTitle();
-        this._onDidChangeTreeData.fire();
     }
 
     /**
@@ -169,12 +166,8 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             filePath: '',
             title: '请打开一篇已结构化的文档以查看其问题结构',
             children: [],
-            isCurrentFile: false,
             hasError: false
         }];
-        this.viewTitle = '问题结构';
-        this.updateViewTitle();
-        this._onDidChangeTreeData.fire();
     }
 
     /**
@@ -194,10 +187,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             await vscode.workspace.fs.stat(rootUri);
             
             // 获取根文件标题并更新视图标题
-            const rootTitle = await getTitle(rootUri);
-            this.viewTitle = `问题结构: ${rootTitle}`;
-            this.updateViewTitle();
-
             // 构建树结构，使用持久化缓存和会话缓存
             const visited = new Set<string>();
             const sessionCache = new Map<string, IssueStructureNode>(); // 会话级缓存，避免同次构建中的重复计算
@@ -212,12 +201,9 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 filePath: '',
                 title: `根文件不存在: ${frontmatter.root_file}`,
                 children: [],
-                isCurrentFile: false,
                 hasError: true,
                 errorMessage: `根文件不存在: ${frontmatter.root_file}`
             }];
-            this.viewTitle = '问题结构: 错误';
-            this.updateViewTitle();
             this._onDidChangeTreeData.fire();
         }
     }
@@ -237,12 +223,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     ): Promise<IssueStructureNode | null> {
         // 首先检查会话缓存，避免同次构建中的重复计算
         if (sessionCache.has(fileName)) {
-            const cachedNode = sessionCache.get(fileName)!;
-            // console.log(`会话缓存命中: ${fileName}`);
-            return {
-                ...cachedNode,
-                isCurrentFile: fileName === this.currentActiveFile
-            };
+            return sessionCache.get(fileName)!;
         }
 
         const issueDir = getIssueDir();
@@ -269,7 +250,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 // 缓存未过期，返回缓存节点（更新当前文件状态）
                 return {
                     ...cachedInfo.node,
-                    isCurrentFile: fileName === this.currentActiveFile
                 };
             } else {
                 // 缓存已过期，删除缓存
@@ -285,7 +265,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 filePath: fileName,
                 title: `循环引用: ${fileName}`,
                 children: [],
-                isCurrentFile: fileName === this.currentActiveFile,
                 hasError: true,
                 errorMessage: '检测到循环引用'
             };
@@ -330,7 +309,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 filePath: fileName,
                 title,
                 children,
-                isCurrentFile: fileName === this.currentActiveFile,
                 hasError: false
             };
 
@@ -352,7 +330,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 filePath: fileName,
                 title: `文件未找到: ${fileName}`,
                 children: [],
-                isCurrentFile: fileName === this.currentActiveFile,
                 hasError: true,
                 errorMessage: '文件不存在'
             };
@@ -369,12 +346,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         }
     }
 
-    /**
-     * 更新视图标题
-     */
-    private updateViewTitle(): void {
-        this._onDidUpdateTitle.fire(this.viewTitle);
-    }
+    
 
     /**
      * 刷新视图（软刷新，保留缓存）
@@ -440,8 +412,8 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         }
 
         // 高亮当前激活的文件
-        if (element.isCurrentFile) {
-            item.iconPath = new vscode.ThemeIcon('arrow-right', new vscode.ThemeColor('list.highlightForeground'));
+        if (this.currentActiveFile === element.filePath) {
+            item.iconPath = new vscode.ThemeIcon('eye', new vscode.ThemeColor('list.highlightForeground'));
         }
 
         // 设置点击命令

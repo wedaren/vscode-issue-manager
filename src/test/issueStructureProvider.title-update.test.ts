@@ -40,9 +40,9 @@ suite('IssueStructureProvider Title Update Tests', () => {
             done();
         });
 
-        // 设置标题并触发更新
-        (provider as any).viewTitle = '测试标题';
-        (provider as any).updateViewTitle();
+    // 设置标题并触发更新
+    (provider as any).viewTitle = '测试标题';
+    (provider as any)._onDidUpdateTitle.fire((provider as any).viewTitle);
 
         // 如果事件在短时间内没有触发，测试失败
         setTimeout(() => {
@@ -58,9 +58,9 @@ suite('IssueStructureProvider Title Update Tests', () => {
         const subscription1 = provider.onDidUpdateTitle(title => titles.push(`sub1:${title}`));
         const subscription2 = provider.onDidUpdateTitle(title => titles.push(`sub2:${title}`));
 
-        // 触发标题更新
-        (provider as any).viewTitle = '多订阅者测试';
-        (provider as any).updateViewTitle();
+    // 触发标题更新
+    (provider as any).viewTitle = '多订阅者测试';
+    (provider as any)._onDidUpdateTitle.fire((provider as any).viewTitle);
 
         // 验证两个订阅者都收到了事件
         assert.strictEqual(titles.length, 2, '应该有两个事件被触发');
@@ -77,15 +77,15 @@ suite('IssueStructureProvider Title Update Tests', () => {
             eventCount++;
         });
 
-        // 正常触发一次
-        (provider as any).viewTitle = '销毁前';
-        (provider as any).updateViewTitle();
+    // 正常触发一次
+    (provider as any).viewTitle = '销毁前';
+    (provider as any)._onDidUpdateTitle.fire((provider as any).viewTitle);
 
         // 销毁后不应该触发事件
         provider.dispose();
         
-        (provider as any).viewTitle = '销毁后';
-        (provider as any).updateViewTitle();
+    (provider as any).viewTitle = '销毁后';
+    (provider as any)._onDidUpdateTitle.fire((provider as any).viewTitle);
 
         // 验证只触发了一次
         assert.strictEqual(eventCount, 1, '销毁后不应该再触发事件');
@@ -108,15 +108,15 @@ suite('IssueStructureProvider Title Update Tests', () => {
         const titles: string[] = [];
         const subscription = provider.onDidUpdateTitle(title => titles.push(title));
 
-        // 模拟不同的视图状态变化
-        (provider as any).viewTitle = '问题结构';
-        (provider as any).updateViewTitle();
+    // 模拟不同的视图状态变化
+    (provider as any).viewTitle = '问题结构';
+    (provider as any)._onDidUpdateTitle.fire((provider as any).viewTitle);
 
-        (provider as any).viewTitle = '问题结构: 测试文档';
-        (provider as any).updateViewTitle();
+    (provider as any).viewTitle = '问题结构: 测试文档';
+    (provider as any)._onDidUpdateTitle.fire((provider as any).viewTitle);
 
-        (provider as any).viewTitle = '问题结构: 错误';
-        (provider as any).updateViewTitle();
+    (provider as any).viewTitle = '问题结构: 错误';
+    (provider as any)._onDidUpdateTitle.fire((provider as any).viewTitle);
 
         // 验证所有状态变化都触发了事件
         assert.deepStrictEqual(titles, [
