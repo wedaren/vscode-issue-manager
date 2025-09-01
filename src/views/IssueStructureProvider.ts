@@ -238,7 +238,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         // 首先检查会话缓存，避免同次构建中的重复计算
         if (sessionCache.has(fileName)) {
             const cachedNode = sessionCache.get(fileName)!;
-            console.log(`会话缓存命中: ${fileName}`);
+            // console.log(`会话缓存命中: ${fileName}`);
             return {
                 ...cachedNode,
                 isCurrentFile: fileName === this.currentActiveFile
@@ -378,6 +378,13 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
     /**
      * 刷新视图（软刷新，保留缓存）
+     * 
+     * 说明：
+     * - 不清空持久化缓存（nodeCache），依赖文件修改时间（mtime）的失效策略与
+     *   invalidateFileCache 的精准清理来确保数据新鲜度。
+     * - 适用于自动触发的刷新场景，避免对大型工作区造成不必要的重建开销。
+     * 
+     * 注意：如需“硬刷新”（强制重建所有节点），可在未来考虑提供单独命令。
      */
     public refresh(): void {
         // 软刷新：保留缓存，依赖基于 mtime 的失效机制与 invalidateFileCache 的精准清理
@@ -385,6 +392,18 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         this.onActiveEditorChanged(vscode.window.activeTextEditor);
     }
 
+    /**
+     * 获取指定结构节点对应的 TreeItem 展示项
+     * 
+     * 规则：
+     * - 引导节点（guidance）展示为不可折叠的说明项。
+     * - 错误节点展示错误图标与提示信息。
+     * - 普通节点根据是否存在子节点决定折叠状态；当前活动文件高亮展示。
+     * - 为每个节点设置 resourceUri 以支持点击打开文件。
+     * 
+     * @param element 要渲染的结构节点
+     * @returns 用于视图展示的 vscode.TreeItem
+     */
     getTreeItem(element: IssueStructureNode): vscode.TreeItem {
         // 处理引导信息节点
         if (element.id === 'guidance') {
@@ -436,6 +455,16 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         return item;
     }
 
+    /**
+     * 获取给定节点的子节点集合
+     * 
+     * 行为：
+     * - 当传入 element 时，返回该节点的 children。
+     * - 当未传入 element 时，返回根节点集合（rootNodes）。
+     * 
+     * @param element 可选；要展开的父节点
+     * @returns 子节点数组；根级请求时返回根节点数组
+     */
     getChildren(element?: IssueStructureNode): vscode.ProviderResult<IssueStructureNode[]> {
         if (element) {
             return element.children;
@@ -445,6 +474,13 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
     /**
      * 获取父节点（支持 reveal 操作）
+     * 
+     * 说明：
+     * - 在当前内存中的树结构内进行搜索，返回与传入节点匹配的父节点。
+     * - 若为根节点或未找到匹配父节点，返回 null。
+     * 
+     * @param element 目标子节点
+     * @returns 父节点；若不存在则返回 null
      */
     getParent(element: IssueStructureNode): IssueStructureNode | null {
         // 在树中查找父节点
@@ -472,6 +508,13 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
     /**
      * 清理资源
+     * 
+     * 释放：
+     * - 事件发射器（_onDidChangeTreeData、_onDidUpdateTitle）。
+     * - 清空持久化缓存（nodeCache）以释放内存。
+     * 
+     * 注意：文件系统监听器已注册到扩展上下文（context.subscriptions），
+     * 将在扩展停用时由 VS Code 自动释放。
      */
     dispose(): void {
         // 释放事件发射器

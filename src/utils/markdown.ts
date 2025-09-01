@@ -20,7 +20,7 @@ export interface FrontmatterData {
     root_file?: string;
     parent_file?: string | null;
     children_files?: string[];
-    [key: string]: any; // 支持其他字段
+    [key: string]: unknown; // 支持其他字段
 }
 
 /**
