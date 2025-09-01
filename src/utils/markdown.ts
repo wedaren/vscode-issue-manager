@@ -42,7 +42,7 @@ export function parseFrontmatter(content: string): FrontmatterData | null {
     }
 
     // 找到结束的 ---
-    const lines = content.split('\n');
+    const lines = content.split(/\r?\n/);
     let endIndex = -1;
     for (let i = 1; i < lines.length; i++) {
         if (lines[i].trim() === '---') {
