@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.9] - 2025-08-31
+
+### ♻️ 重构优化
+- **feat: RSS 配置状态管理重构**
+  - lastUpdated 状态与静态配置彻底分离，统一由 RSSFeedStateService 管理
+  - 拆分 writeJSONFile，新增 writeRSSStateJSONFile，自动化 .gitignore 逻辑仅限 RSS 状态文件首次写入
+  - 移除 RSS 历史记录和统计信息中的 lastUpdated 字段，简化数据结构
+  - 重构 ensureGitignoreForRSSState 函数，优化代码结构
+
+- **feat: GitSyncService 架构重构**
+  - 将原本单一的 GitSyncService.ts 文件（755行）拆分为多个职责清晰的模块
+  - 新增 GitOperations、SyncErrorHandler、FileWatcherManager、StatusBarManager 等独立模块
+  - 提高代码可维护性和可测试性，保持向后兼容性
+  - 更新相关单元测试，支持依赖注入
+
+### 🔧 功能改进
+- **feat: 改进 Git 同步冲突处理逻辑**
+  - 冲突时通过打开问题目录而不是单个合并编辑器，为用户提供更完整的上下文来解决冲突
+  - 使 showConflictDialog 异步处理用户选择
+
+
 ## [0.1.8] - 2025-08-20
 
 ### ✨ 新增
