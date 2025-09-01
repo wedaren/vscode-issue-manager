@@ -119,14 +119,8 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 当激活编辑器改变时调用
      */
     private async onActiveEditorChanged(editor: vscode.TextEditor | undefined): Promise<void> {
-        if (!editor || editor.document.languageId !== 'markdown') {
-            this.clearView();
-            return;
-        }
-
         const issueDir = getIssueDir();
-        if (!issueDir || !editor.document.uri.fsPath.startsWith(issueDir)) {
-            this.clearView();
+        if (!editor || editor.document.languageId !== 'markdown' || !issueDir || !editor.document.uri.fsPath.startsWith(issueDir)) {
             return;
         }
 
