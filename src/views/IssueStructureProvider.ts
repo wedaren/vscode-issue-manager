@@ -195,9 +195,10 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             this.viewTitle = `问题结构: ${rootTitle}`;
             this.updateViewTitle();
 
-            // 构建树结构，使用持久化缓存
+            // 构建树结构，使用持久化缓存和会话缓存
             const visited = new Set<string>();
-            const rootNode = await this.buildNodeRecursively(frontmatter.root_file, visited, this.nodeCache);
+            const sessionCache = new Map<string, IssueStructureNode>(); // 会话级缓存，避免同次构建中的重复计算
+            const rootNode = await this.buildNodeRecursively(frontmatter.root_file, visited, this.nodeCache, sessionCache);
             this.rootNodes = rootNode ? [rootNode] : [];
             
             this._onDidChangeTreeData.fire();
@@ -222,13 +223,25 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 递归构建节点，使用缓存避免重复计算，并检查文件修改时间
      * @param fileName 文件名
      * @param visited 访问标记集合，用于循环引用检测
-     * @param nodeCache 节点缓存，包含修改时间信息
+     * @param nodeCache 持久化节点缓存，包含修改时间信息
+     * @param sessionCache 会话级缓存，避免同一次构建中的重复计算
      */
     private async buildNodeRecursively(
         fileName: string, 
         visited: Set<string>, 
-        nodeCache: Map<string, CachedNodeInfo>
+        nodeCache: Map<string, CachedNodeInfo>,
+        sessionCache: Map<string, IssueStructureNode>
     ): Promise<IssueStructureNode | null> {
+        // 首先检查会话缓存，避免同次构建中的重复计算
+        if (sessionCache.has(fileName)) {
+            const cachedNode = sessionCache.get(fileName)!;
+            console.log(`会话缓存命中: ${fileName}`);
+            return {
+                ...cachedNode,
+                isCurrentFile: fileName === this.currentActiveFile
+            };
+        }
+
         const issueDir = getIssueDir();
         if (!issueDir) {
             return null;
@@ -273,11 +286,15 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 hasError: true,
                 errorMessage: '检测到循环引用'
             };
-            // 缓存错误节点
+            // 缓存错误节点到持久化缓存
             nodeCache.set(fileName, {
                 node: errorNode,
                 lastModified: currentModTime
             });
+            
+            // 添加到会话缓存
+            sessionCache.set(fileName, errorNode);
+            
             return errorNode;
         }
 
@@ -297,7 +314,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             // 递归构建子节点
             const children: IssueStructureNode[] = [];
             for (const childFileName of childrenFiles) {
-                const childNode = await this.buildNodeRecursively(childFileName, new Set(visited), nodeCache);
+                const childNode = await this.buildNodeRecursively(childFileName, visited, nodeCache, sessionCache);
                 if (childNode) {
                     children.push(childNode);
                 }
@@ -314,11 +331,15 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 hasError: false
             };
 
-            // 缓存节点
+            // 缓存节点到持久化缓存
             nodeCache.set(fileName, {
                 node,
                 lastModified: currentModTime
             });
+            
+            // 添加到会话缓存
+            sessionCache.set(fileName, node);
+            
             return node;
 
         } catch (error) {
@@ -332,11 +353,15 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 hasError: true,
                 errorMessage: '文件不存在'
             };
-            // 缓存错误节点
+            // 缓存错误节点到持久化缓存
             nodeCache.set(fileName, {
                 node: errorNode,
                 lastModified: currentModTime
             });
+            
+            // 添加到会话缓存
+            sessionCache.set(fileName, errorNode);
+            
             return errorNode;
         }
     }
