@@ -456,6 +456,14 @@ export function activate(context: vscode.ExtensionContext) {
 	const structureView = vscode.window.createTreeView('issueManager.views.structure', {
 		treeDataProvider: issueStructureProvider
 	});
+	
+	// 监听标题更新事件
+	context.subscriptions.push(
+		issueStructureProvider.onDidUpdateTitle(title => {
+			structureView.title = title;
+		})
+	);
+	
 	context.subscriptions.push(structureView);
 	context.subscriptions.push(issueStructureProvider);
 

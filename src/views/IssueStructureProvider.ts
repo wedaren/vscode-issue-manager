@@ -32,6 +32,9 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private _onDidChangeTreeData: vscode.EventEmitter<IssueStructureNode | undefined | null | void> = new vscode.EventEmitter<IssueStructureNode | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<IssueStructureNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
+    private _onDidUpdateTitle: vscode.EventEmitter<string> = new vscode.EventEmitter<string>();
+    readonly onDidUpdateTitle: vscode.Event<string> = this._onDidUpdateTitle.event;
+
     private currentActiveFile: string | null = null;
     private rootNodes: IssueStructureNode[] = [];
     private viewTitle: string = '问题结构';
@@ -370,7 +373,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 更新视图标题
      */
     private updateViewTitle(): void {
-        vscode.commands.executeCommand('setContext', 'issueManager.structureViewTitle', this.viewTitle);
+        this._onDidUpdateTitle.fire(this.viewTitle);
     }
 
     /**
@@ -474,6 +477,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     dispose(): void {
         // 释放事件发射器
         this._onDidChangeTreeData.dispose();
+        this._onDidUpdateTitle.dispose();
         
         // 清空缓存以释放内存
         this.nodeCache.clear();
