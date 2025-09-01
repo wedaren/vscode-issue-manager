@@ -472,7 +472,10 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 清理资源
      */
     dispose(): void {
-        // TreeDataProvider 接口实现通常不需要特殊清理
-        // 但为了符合 VS Code 的 Disposable 接口要求，提供此方法
+        // 释放事件发射器
+        this._onDidChangeTreeData.dispose();
+        
+        // 清空缓存以释放内存
+        this.nodeCache.clear();
     }
 }
