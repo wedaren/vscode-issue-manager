@@ -17,16 +17,25 @@ export interface IssueStructureNode {
 }
 
 /**
+ * 缓存节点信息，包含修改时间用于失效检查
+ */
+interface CachedNodeInfo {
+    node: IssueStructureNode;
+    lastModified: number; // 文件最后修改时间戳
+}
+
+/**
  * 问题结构视图提供者
  * 基于 frontmatter 中的 root_file、parent_file、children_files 字段构建树状结构
  */
-export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStructureNode> {
+export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStructureNode>, vscode.Disposable {
     private _onDidChangeTreeData: vscode.EventEmitter<IssueStructureNode | undefined | null | void> = new vscode.EventEmitter<IssueStructureNode | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<IssueStructureNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private currentActiveFile: string | null = null;
     private rootNodes: IssueStructureNode[] = [];
     private viewTitle: string = '问题结构';
+    private nodeCache: Map<string, CachedNodeInfo> = new Map(); // 持久化缓存
 
     constructor(private context: vscode.ExtensionContext) {
         // 监听编辑器激活文件变化
@@ -36,8 +45,78 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             })
         );
 
+        // 监听文件系统变化，用于缓存失效
+        this.setupFileWatcher();
+
         // 初始化时检查当前激活的编辑器
         this.onActiveEditorChanged(vscode.window.activeTextEditor);
+    }
+
+    /**
+     * 设置文件监听器，当 Markdown 文件变化时清除相关缓存
+     */
+    private setupFileWatcher(): void {
+        const issueDir = getIssueDir();
+        if (issueDir) {
+            const watcher = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(issueDir, '**/*.md')
+            );
+
+            // 文件内容变化时清除对应缓存
+            watcher.onDidChange(uri => {
+                this.invalidateFileCache(path.basename(uri.fsPath));
+            });
+
+            // 文件删除时清除对应缓存
+            watcher.onDidDelete(uri => {
+                this.invalidateFileCache(path.basename(uri.fsPath));
+            });
+
+            this.context.subscriptions.push(watcher);
+        }
+    }
+
+    /**
+     * 使指定文件的缓存失效
+     */
+    private invalidateFileCache(fileName: string): void {
+        if (this.nodeCache.has(fileName)) {
+            this.nodeCache.delete(fileName);
+            console.log(`缓存失效: ${fileName}`);
+            
+            // 如果当前视图涉及到这个文件，则刷新视图
+            if (this.currentActiveFile && this.isFileRelatedToCurrent(fileName)) {
+                this.refresh();
+            }
+        }
+    }
+
+    /**
+     * 检查指定文件是否与当前视图相关
+     */
+    private isFileRelatedToCurrent(fileName: string): boolean {
+        // 简单检查：如果是当前激活文件或在当前结构中，则相关
+        return fileName === this.currentActiveFile || this.findNodeInCurrent(fileName) !== null;
+    }
+
+    /**
+     * 在当前结构中查找指定文件的节点
+     */
+    private findNodeInCurrent(fileName: string): IssueStructureNode | null {
+        const findInNodes = (nodes: IssueStructureNode[]): IssueStructureNode | null => {
+            for (const node of nodes) {
+                if (node.filePath === fileName) {
+                    return node;
+                }
+                const found = findInNodes(node.children);
+                if (found) {
+                    return found;
+                }
+            }
+            return null;
+        };
+        
+        return findInNodes(this.rootNodes);
     }
 
     /**
@@ -116,9 +195,9 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             this.viewTitle = `问题结构: ${rootTitle}`;
             this.updateViewTitle();
 
-            // 构建树结构
+            // 构建树结构，使用持久化缓存
             const visited = new Set<string>();
-            const rootNode = await this.buildNodeRecursively(frontmatter.root_file, visited);
+            const rootNode = await this.buildNodeRecursively(frontmatter.root_file, visited, this.nodeCache);
             this.rootNodes = rootNode ? [rootNode] : [];
             
             this._onDidChangeTreeData.fire();
@@ -140,17 +219,52 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
-     * 递归构建节点
+     * 递归构建节点，使用缓存避免重复计算，并检查文件修改时间
+     * @param fileName 文件名
+     * @param visited 访问标记集合，用于循环引用检测
+     * @param nodeCache 节点缓存，包含修改时间信息
      */
-    private async buildNodeRecursively(fileName: string, visited: Set<string>): Promise<IssueStructureNode | null> {
+    private async buildNodeRecursively(
+        fileName: string, 
+        visited: Set<string>, 
+        nodeCache: Map<string, CachedNodeInfo>
+    ): Promise<IssueStructureNode | null> {
         const issueDir = getIssueDir();
         if (!issueDir) {
             return null;
         }
 
+        const filePath = path.join(issueDir, fileName);
+        const fileUri = vscode.Uri.file(filePath);
+
+        // 获取文件修改时间
+        let currentModTime = 0;
+        try {
+            const stat = await vscode.workspace.fs.stat(fileUri);
+            currentModTime = stat.mtime;
+        } catch {
+            // 文件不存在，继续处理
+        }
+
+        // 检查缓存中是否已存在该节点且未过期
+        if (nodeCache.has(fileName)) {
+            const cachedInfo = nodeCache.get(fileName)!;
+            if (cachedInfo.lastModified === currentModTime) {
+                // 缓存未过期，返回缓存节点（更新当前文件状态）
+                return {
+                    ...cachedInfo.node,
+                    isCurrentFile: fileName === this.currentActiveFile
+                };
+            } else {
+                // 缓存已过期，删除缓存
+                nodeCache.delete(fileName);
+                console.log(`缓存过期，重新构建: ${fileName}`);
+            }
+        }
+
         // 检测循环引用
         if (visited.has(fileName)) {
-            return {
+            const errorNode: IssueStructureNode = {
                 id: fileName,
                 filePath: fileName,
                 title: `循环引用: ${fileName}`,
@@ -159,12 +273,15 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 hasError: true,
                 errorMessage: '检测到循环引用'
             };
+            // 缓存错误节点
+            nodeCache.set(fileName, {
+                node: errorNode,
+                lastModified: currentModTime
+            });
+            return errorNode;
         }
 
         visited.add(fileName);
-
-        const filePath = path.join(issueDir, fileName);
-        const fileUri = vscode.Uri.file(filePath);
 
         try {
             // 检查文件是否存在
@@ -180,7 +297,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             // 递归构建子节点
             const children: IssueStructureNode[] = [];
             for (const childFileName of childrenFiles) {
-                const childNode = await this.buildNodeRecursively(childFileName, new Set(visited));
+                const childNode = await this.buildNodeRecursively(childFileName, new Set(visited), nodeCache);
                 if (childNode) {
                     children.push(childNode);
                 }
@@ -188,7 +305,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
             visited.delete(fileName);
 
-            return {
+            const node: IssueStructureNode = {
                 id: fileName,
                 filePath: fileName,
                 title,
@@ -197,9 +314,16 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 hasError: false
             };
 
+            // 缓存节点
+            nodeCache.set(fileName, {
+                node,
+                lastModified: currentModTime
+            });
+            return node;
+
         } catch (error) {
             visited.delete(fileName);
-            return {
+            const errorNode: IssueStructureNode = {
                 id: fileName,
                 filePath: fileName,
                 title: `文件未找到: ${fileName}`,
@@ -208,6 +332,12 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 hasError: true,
                 errorMessage: '文件不存在'
             };
+            // 缓存错误节点
+            nodeCache.set(fileName, {
+                node: errorNode,
+                lastModified: currentModTime
+            });
+            return errorNode;
         }
     }
 
@@ -219,9 +349,12 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
-     * 手动刷新视图
+     * 手动刷新视图，清空缓存
      */
     public refresh(): void {
+        // 清空缓存以确保获取最新数据
+        this.nodeCache.clear();
+        console.log('手动刷新，清空所有缓存');
         this.onActiveEditorChanged(vscode.window.activeTextEditor);
     }
 

@@ -65,13 +65,54 @@ if (visited.has(fileName)) {
 }
 ```
 
-#### 2. 错误处理
+#### 2. 性能优化：节点缓存机制
+
+为了优化具有共享子节点（DAG 结构）的问题结构性能，实现了智能节点缓存机制：
+
+```typescript
+// 缓存节点信息，包含修改时间用于失效检查
+interface CachedNodeInfo {
+    node: IssueStructureNode;
+    lastModified: number; // 文件最后修改时间戳
+}
+
+// 在构建结构时使用持久化缓存
+const rootNode = await this.buildNodeRecursively(frontmatter.root_file, visited, this.nodeCache);
+
+// 缓存失效检查
+if (nodeCache.has(fileName)) {
+    const cachedInfo = nodeCache.get(fileName)!;
+    if (cachedInfo.lastModified === currentModTime) {
+        // 缓存未过期，返回缓存节点
+        return { ...cachedInfo.node, isCurrentFile: fileName === this.currentActiveFile };
+    } else {
+        // 缓存已过期，删除缓存并重新构建
+        nodeCache.delete(fileName);
+    }
+}
+```
+
+**缓存优化的特性：**
+- **智能失效**：基于文件修改时间自动检测缓存是否过期
+- **文件监听**：监听文件系统变化，主动清除相关缓存
+- **避免重复计算**：对于未修改的文件，避免重复解析和构建
+- **支持 DAG 结构**：处理文档间的复杂关系
+- **减少 I/O 操作**：减少文件系统访问次数
+- **状态正确性**：确保当前文件状态的正确更新
+
+**缓存失效策略：**
+1. **自动失效**：文件修改时间变化时自动失效
+2. **文件监听失效**：通过 FileSystemWatcher 监听文件变化
+3. **手动刷新失效**：用户手动刷新时清空所有缓存
+4. **相关性失效**：文件变化时检查是否影响当前视图
+
+#### 3. 错误处理
 
 - **文件不存在**：显示"幽灵"节点并带警告图标
 - **循环引用**：显示错误图标并中断该分支渲染
 - **无效 frontmatter**：显示引导信息
 
-#### 3. 动态标题更新
+#### 4. 动态标题更新
 
 视图标题会根据当前查看的根文档动态更新：
 
@@ -82,7 +123,7 @@ this.viewTitle = `问题结构: ${rootTitle}`;
 this.updateViewTitle();
 ```
 
-#### 4. 当前文件高亮
+#### 5. 当前文件高亮
 
 当前激活的文件在树中会有特殊的图标标识：
 
