@@ -226,6 +226,11 @@
         "command": "issueManager.rss.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.structure.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
       }
     ],
     "submenus": [
@@ -356,6 +361,11 @@
           "command": "issueManager.rss.showHistoryStats",
           "when": "view == issueManager.views.rss",
           "group": "navigation@6"
+        },
+        {
+          "command": "issueManager.structure.refresh",
+          "when": "view == issueManager.views.structure",
+          "group": "navigation@1"
         }
       ],
       "issueManager.recentSortSubmenu": [
@@ -720,6 +730,11 @@
         {
           "id": "issueManager.views.rss",
           "name": "RSS问题",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.structure",
+          "name": "问题结构",
           "icon": "resources/icon.svg"
         }
       ]

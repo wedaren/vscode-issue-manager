@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { getIssueDir } from '../config';
 
 /**
@@ -10,6 +11,69 @@ import { getIssueDir } from '../config';
 function extractTitleFromContent(content: string): string | undefined {
     const match = content.match(/^#\s+(.*)/m);
     return match ? match[1].trim() : undefined;
+}
+
+/**
+ * Frontmatter 数据结构
+ */
+export interface FrontmatterData {
+    root_file?: string;
+    parent_file?: string | null;
+    children_files?: string[];
+    [key: string]: any; // 支持其他字段
+}
+
+/**
+ * 从 Markdown 文件内容中解析 frontmatter
+ * @param content 文件内容
+ * @returns 解析出的 frontmatter 数据，如果没有则返回 null
+ */
+export function parseFrontmatter(content: string): FrontmatterData | null {
+    // 检查是否以 frontmatter 开始
+    if (!content.startsWith('---')) {
+        return null;
+    }
+
+    // 找到结束的 ---
+    const lines = content.split('\n');
+    let endIndex = -1;
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
+            endIndex = i;
+            break;
+        }
+    }
+
+    if (endIndex === -1) {
+        return null;
+    }
+
+    // 提取 YAML 内容
+    const yamlContent = lines.slice(1, endIndex).join('\n');
+    
+    try {
+        const parsed = yaml.load(yamlContent) as any;
+        return parsed as FrontmatterData;
+    } catch (error) {
+        console.error('解析 frontmatter 失败:', error);
+        return null;
+    }
+}
+
+/**
+ * 从 Markdown 文件中解析 frontmatter
+ * @param fileUri 文件的 URI
+ * @returns 解析出的 frontmatter 数据，如果没有则返回 null
+ */
+export async function getFrontmatter(fileUri: vscode.Uri): Promise<FrontmatterData | null> {
+    try {
+        const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+        const content = Buffer.from(contentBytes).toString('utf-8');
+        return parseFrontmatter(content);
+    } catch (error) {
+        console.error(`读取文件时出错 ${fileUri.fsPath}:`, error);
+        return null;
+    }
 }
 
 /**
