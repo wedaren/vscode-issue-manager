@@ -68,4 +68,48 @@ date: 2024-01-01
         // YAML parser may convert date string to Date object, so we check both possibilities
         assert.ok(result?.date === '2024-01-01' || result?.date instanceof Date);
     });
+
+    test('should return null for empty content', () => {
+        const result = parseFrontmatter('');
+        assert.strictEqual(result, null);
+    });
+
+    test('should return null for whitespace-only content', () => {
+        const result = parseFrontmatter('   \n\t  ');
+        assert.strictEqual(result, null);
+    });
+
+    test('should return null for non-object YAML result', () => {
+        const content = `---
+just a string
+---
+
+# Test Document`;
+
+        const result = parseFrontmatter(content);
+        assert.strictEqual(result, null);
+    });
+
+    test('should return null for YAML array result', () => {
+        const content = `---
+- item1
+- item2
+---
+
+# Test Document`;
+
+        const result = parseFrontmatter(content);
+        assert.strictEqual(result, null);
+    });
+
+    test('should return null for YAML null result', () => {
+        const content = `---
+null
+---
+
+# Test Document`;
+
+        const result = parseFrontmatter(content);
+        assert.strictEqual(result, null);
+    });
 });

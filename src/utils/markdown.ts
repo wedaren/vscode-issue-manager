@@ -24,6 +24,13 @@ export interface FrontmatterData {
 }
 
 /**
+ * 检查一个值是否为有效的对象（非 null 且为 object 类型）
+ */
+function isValidObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
  * 从 Markdown 文件内容中解析 frontmatter
  * @param content 文件内容
  * @returns 解析出的 frontmatter 数据，如果没有则返回 null
@@ -51,9 +58,21 @@ export function parseFrontmatter(content: string): FrontmatterData | null {
     // 提取 YAML 内容
     const yamlContent = lines.slice(1, endIndex).join('\n');
     
+    // 如果 YAML 内容为空或只包含空白字符，返回 null
+    if (!yamlContent.trim()) {
+        return null;
+    }
+    
     try {
-        const parsed = yaml.load(yamlContent) as any;
-        return parsed as FrontmatterData;
+        const parsed = yaml.load(yamlContent);
+        
+        // 类型安全检查：确保解析结果是一个有效对象
+        if (isValidObject(parsed)) {
+            return parsed as FrontmatterData;
+        }
+        
+        // 如果解析结果不是对象，返回 null
+        return null;
     } catch (error) {
         console.error('解析 frontmatter 失败:', error);
         return null;
