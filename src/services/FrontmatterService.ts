@@ -56,16 +56,15 @@ export class FrontmatterService {
                 console.log(`已自动将 ${childFileName} 添加到 ${parentFileName} 的 children_files`);
                 
                 // 显示用户通知
-                vscode.window.showInformationMessage(
-                    `已自动将 "${childFileName}" 添加到 "${parentFileName}" 的子文件列表`,
-                    '了解更多'
-                ).then(selection => {
-                    if (selection === '了解更多') {
-                        vscode.window.showInformationMessage(
-                            '当创建新文件时，系统会自动将其添加到当前活动文件的子文件列表中，保持结构完整性。'
-                        );
-                    }
-                });
+                const selection = await vscode.window.showInformationMessage(  
+                    `已自动将 "${childFileName}" 添加到 "${parentFileName}" 的子文件列表`,  
+                    '了解更多'  
+                );  
+                if (selection === '了解更多') {  
+                    await vscode.window.showInformationMessage(  
+                        '当创建新文件时，系统会自动将其添加到当前活动文件的子文件列表中，保持结构完整性。'  
+                    );  
+                }  
             }
 
             return success;
@@ -204,16 +203,15 @@ export class FrontmatterService {
                 console.log(`已自动同步 ${childFileName} 的 parent_file 为 ${newParentFileName}`);
                 
                 // 显示通知给用户
-                vscode.window.showInformationMessage(
-                    `已自动同步 "${childFileName}" 的 parent_file 为 "${newParentFileName}"`,
-                    '了解更多'
-                ).then(selection => {
-                    if (selection === '了解更多') {
-                        vscode.window.showInformationMessage(
-                            '当手动修改文件的结构关系时，系统会自动同步相关文件的 frontmatter，保持结构一致性。'
-                        );
-                    }
-                });
+                const selection = await vscode.window.showInformationMessage(  
+                    `已自动同步 "${childFileName}" 的 parent_file 为 "${newParentFileName}"`,  
+                    '了解更多'  
+                );  
+                if (selection === '了解更多') {  
+                    await vscode.window.showInformationMessage(  
+                        '当手动修改文件的结构关系时，系统会自动同步相关文件的 frontmatter，保持结构一致性。'  
+                    );  
+                }  
             }
 
             return success;
@@ -448,9 +446,9 @@ export class FrontmatterService {
             const frontmatterContent = frontmatterLines.join('\n');
 
             // 解析 YAML
-            let frontmatterData: any;
+            let frontmatterData: FrontmatterData;
             try {
-                frontmatterData = yaml.load(frontmatterContent) || {};
+                frontmatterData = (yaml.load(frontmatterContent) || {}) as FrontmatterData;
             } catch {
                 return null;
             }
@@ -534,7 +532,7 @@ export class FrontmatterService {
             }
 
             // 创建基础 frontmatter
-            const frontmatterData: any = {
+            const frontmatterData: FrontmatterData = {
                 title,
                 date: new Date().toISOString().split('T')[0],
                 root_file: rootFile,

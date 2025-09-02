@@ -158,20 +158,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             }  
             
             // 回退逻辑：对于已删除或无 frontmatter 的文件，检查它是否存在于当前视图的树结构中  
-            const findInNodes = (nodes: IssueStructureNode[]): IssueStructureNode | null => {  
-                for (const node of nodes) {  
-                    if (node.filePath === fileName) {  
-                        return node;  
-                    }  
-                    const found = findInNodes(node.children);  
-                    if (found) {  
-                        return found;  
-                    }  
-                }  
-                return null;  
-            };  
-            
-            return findInNodes(this.rootNodes) !== null;  
+            return this.findNodeInCurrentTree(fileName) !== null;
 
         } catch (error) {
             console.error(`检查文件关联性时出错 (${fileName}):`, error);  
