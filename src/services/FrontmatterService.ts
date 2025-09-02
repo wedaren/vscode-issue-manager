@@ -396,12 +396,13 @@ export class FrontmatterService {
                 );
                 edit.replace(fileUri, fullRange, updatedContent);
 
-                // 应用编辑
-                const success = await vscode.workspace.applyEdit(edit);
-                if (success) {
-                    console.log(`已更新 ${fileName} 的 ${fieldName} 字段`);
-                    return true;
-                }
+                // 应用编辑并保存
+                return await this.applyEditAndSave(
+                    edit, 
+                    fileUri, 
+                    fileName, 
+                    `已更新并保存 ${fileName} 的 ${fieldName} 字段`
+                );
             }
 
             return false;
@@ -561,15 +562,50 @@ export class FrontmatterService {
             );
             edit.replace(fileUri, fullRange, fileContent);
 
-            const success = await vscode.workspace.applyEdit(edit);
-            if (success) {
-                console.log(`已为 ${fileName} 创建基础 frontmatter`);
-            }
-
-            return success;
+            // 应用编辑并保存
+            return await this.applyEditAndSave(
+                edit,
+                fileUri,
+                fileName,
+                `已为 ${fileName} 创建基础 frontmatter 并保存`
+            );
 
         } catch (error) {
             console.error(`创建基础 frontmatter 时出错:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * 应用编辑操作并确保文件保存到磁盘
+     */
+    private static async applyEditAndSave(
+        edit: vscode.WorkspaceEdit,
+        fileUri: vscode.Uri,
+        fileName: string,
+        operation: string
+    ): Promise<boolean> {
+        try {
+            // 应用编辑
+            const success = await vscode.workspace.applyEdit(edit);
+            if (success) {
+                // 确保文件被保存到磁盘
+                try {
+                    const document = await vscode.workspace.openTextDocument(fileUri);
+                    if (document.isDirty) {
+                        await document.save();
+                    }
+                } catch (saveError) {
+                    console.warn(`保存文件时出现警告 (${fileName}):`, saveError);
+                    // 即使保存有警告，编辑操作已经成功，返回 true
+                }
+                
+                console.log(`${operation}: ${fileName}`);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error(`应用编辑操作时出错 (${fileName}):`, error);
             return false;
         }
     }

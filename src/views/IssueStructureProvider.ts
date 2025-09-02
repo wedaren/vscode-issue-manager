@@ -90,30 +90,12 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             this.nodeCache.delete(fileName);
         }
         
-        // 2. 检查是否需要处理（如果没有当前激活文件，跳过）
-        if (!this.currentActiveFile || !this.currentActiveFrontmatter) {
-            return;
-        }
-        
         // 3. 根据变化类型处理frontmatter同步和判断是否需要刷新
-        const shouldRefresh = await this.processFrontmatterChanges(fileName, changeType);
+        const shouldRefresh = await this.handleFileOperation(fileName, changeType);
         
         // 4. 如果需要刷新，执行刷新
         if (shouldRefresh) {
             this.refresh();
-        }
-    }
-
-    /**
-     * 处理frontmatter变化和同步关系
-     * 统一管理创建、修改、删除时的frontmatter同步逻辑
-     */
-    private async processFrontmatterChanges(fileName: string, changeType: 'change' | 'create' | 'delete'): Promise<boolean> {
-        try {
-            return await this.handleFileOperation(fileName, changeType);
-        } catch (error) {
-            console.debug(`处理文件 ${fileName} 的 ${changeType} 变化时出错:`, error);
-            return changeType !== 'create'; // 对于创建失败采用保守策略不刷新，其他情况刷新
         }
     }
 
@@ -153,7 +135,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             // 检查是否与当前结构相关（同一个 root_file）
             if (frontmatter.root_file === this.currentActiveFrontmatter!.root_file) {
                 // 统一的 frontmatter 关系同步处理
-                await this.syncFrontmatterRelations(fileName, frontmatter, changeType);
+                await this.syncFrontmatterRelations(fileName, frontmatter);
                 return true;
             }
 
@@ -175,32 +157,23 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 统一的 frontmatter 关系同步处理
      * 自动维护 parent_file 和 children_files 的双向关系
      */
-    private async syncFrontmatterRelations(fileName: string, frontmatter: FrontmatterData, changeType: 'change' | 'create'): Promise<void> {
+    private async syncFrontmatterRelations(fileName: string, frontmatter: FrontmatterData): Promise<void> {
         try {
-            if (changeType === 'create') {
-                // 创建文件时的关系建立逻辑
-                if (frontmatter.parent_file) {
-                    // 如果新文件声明了 parent_file，自动更新父文件的 children_files
-                    const success = await FrontmatterService.addChildToParent(fileName, frontmatter.parent_file);
-                    if (success && this.nodeCache.has(frontmatter.parent_file)) {
-                        this.nodeCache.delete(frontmatter.parent_file);
-                    }
-                } else {
-                    // 如果新文件没有 parent_file，将其添加到当前活动文件的 children_files
-                    const currentActiveFileName = path.basename(this.currentActiveFile!);
-                    const addChildSuccess = await FrontmatterService.addChildToParent(fileName, currentActiveFileName);
-                    const setParentSuccess = await FrontmatterService.setParentFile(fileName, currentActiveFileName);
-                    
-                    if ((addChildSuccess || setParentSuccess) && this.nodeCache.has(currentActiveFileName)) {
-                        this.nodeCache.delete(currentActiveFileName);
-                    }
+            // 创建文件时的关系建立逻辑
+            if (frontmatter.parent_file) {
+                // 如果新文件声明了 parent_file，自动更新父文件的 children_files
+                const success = await FrontmatterService.addChildToParent(fileName, frontmatter.parent_file);
+                if (success && this.nodeCache.has(frontmatter.parent_file)) {
+                    this.nodeCache.delete(frontmatter.parent_file);
                 }
-            } else if (changeType === 'change') {
-                // 修改文件时的结构性变化处理
-                const oldCachedInfo = this.nodeCache.get(fileName);
-                if (oldCachedInfo) {
-                    // 使用 FrontmatterService 批量同步文件结构关系
-                    await FrontmatterService.syncFileStructureRelations(fileName, frontmatter);
+            } else {
+                // 如果新文件没有 parent_file，将其添加到当前活动文件的 children_files
+                const currentActiveFileName = path.basename(this.currentActiveFile!);
+                const addChildSuccess = await FrontmatterService.addChildToParent(fileName, currentActiveFileName);
+                const setParentSuccess = await FrontmatterService.setParentFile(fileName, currentActiveFileName);
+                
+                if ((addChildSuccess || setParentSuccess) && this.nodeCache.has(currentActiveFileName)) {
+                    this.nodeCache.delete(currentActiveFileName);
                 }
             }
         } catch (error) {
@@ -572,7 +545,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 
      * 说明：
      * - 不清空持久化缓存（nodeCache），依赖文件修改时间（mtime）的失效策略与
-     *   invalidateFileCache 的精准清理来确保数据新鲜度。
      * - 适用于自动触发的刷新场景，避免对大型工作区造成不必要的重建开销。
      * 
      * 注意：如需“硬刷新”（强制重建所有节点），可在未来考虑提供单独命令。
