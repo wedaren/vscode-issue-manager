@@ -65,6 +65,11 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 this.invalidateFileCache(path.basename(uri.fsPath));
             });
 
+            // 文件创建时清除相关缓存并刷新视图
+            watcher.onDidCreate(uri => {
+                this.invalidateFileCache(path.basename(uri.fsPath));
+            });
+
             // 文件删除时清除对应缓存
             watcher.onDidDelete(uri => {
                 this.invalidateFileCache(path.basename(uri.fsPath));
@@ -77,43 +82,51 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     /**
      * 使指定文件的缓存失效
      */
-    private invalidateFileCache(fileName: string): void {
+    private async invalidateFileCache(fileName: string): Promise<void> {
+        // 删除指定文件的缓存
         if (this.nodeCache.has(fileName)) {
             this.nodeCache.delete(fileName);
-            // 如果当前视图涉及到这个文件，则刷新视图
-            if (this.currentActiveFile && this.isFileRelatedToCurrent(fileName)) {
-                this.refresh();
-            }
+        }
+        
+        // 对于新文件或修改的文件，检查是否影响当前视图并刷新
+        if (this.currentActiveFile && await this.isFileRelatedToCurrent(fileName)) {
+            this.refresh();
         }
     }
 
     /**
      * 检查指定文件是否与当前视图相关
+     * 基于相同的 root_file 来判断关联性
      */
-    private isFileRelatedToCurrent(fileName: string): boolean {
-        // 简单检查：如果是当前激活文件或在当前结构中，则相关
-        return fileName === this.currentActiveFile || this.findNodeInCurrent(fileName) !== null;
+    private async isFileRelatedToCurrent(fileName: string): Promise<boolean> {
+        // 如果没有当前激活文件，无法判断关联性
+        if (!this.currentActiveFile) {
+            return false;
+        }
+
+        try {
+            const issueDir = getIssueDir();
+            if (!issueDir) {
+                return false;
+            }
+
+            const filePath = path.join(issueDir, fileName);
+            const activeFilePath = path.join(issueDir, this.currentActiveFile);
+            const fileUri = vscode.Uri.file(filePath);
+            const activeFileUri = vscode.Uri.file(activeFilePath);
+
+            // 获取文件的 frontmatter
+            const frontmatter = await getFrontmatter(fileUri);
+            const activeFrontmatter = await getFrontmatter(activeFileUri);
+
+            // 简单判断：两个文件的 root_file 是否相同
+            return frontmatter?.root_file === activeFrontmatter?.root_file;
+
+        } catch {
+            return false;
+        }
     }
 
-    /**
-     * 在当前结构中查找指定文件的节点
-     */
-    private findNodeInCurrent(fileName: string): IssueStructureNode | null {
-        const findInNodes = (nodes: IssueStructureNode[]): IssueStructureNode | null => {
-            for (const node of nodes) {
-                if (node.filePath === fileName) {
-                    return node;
-                }
-                const found = findInNodes(node.children);
-                if (found) {
-                    return found;
-                }
-            }
-            return null;
-        };
-        
-        return findInNodes(this.rootNodes);
-    }
 
     /**
      * 当激活编辑器改变时调用
