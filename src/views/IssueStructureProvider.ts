@@ -63,55 +63,148 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 new vscode.RelativePattern(issueDir, '**/*.md')
             );
 
-            // 文件内容变化时的特殊处理
+            // 统一的文件系统变化处理
             watcher.onDidChange(async uri => {
-                const fileName = path.basename(uri.fsPath);
-                
-                // 清除缓存
-                if (this.nodeCache.has(fileName)) {
-                    this.nodeCache.delete(fileName);
-                }
-                
-                // 对于文件内容变化，需要特殊处理
-                // 检查是否是 frontmatter 结构性变化
-                if (await this.shouldRefreshForChangedFile(fileName)) {
-                    this.refresh();
-                }
+                await this.handleFileSystemChange(path.basename(uri.fsPath), 'change');
             });
 
-            // 文件创建时的特殊处理
             watcher.onDidCreate(async uri => {
-                const fileName = path.basename(uri.fsPath);
-                
-                // 清除缓存
-                if (this.nodeCache.has(fileName)) {
-                    this.nodeCache.delete(fileName);
-                }
-                
-                // 对于新文件创建，需要特殊处理
-                // 检查新文件是否可能影响当前结构
-                if (await this.shouldRefreshForNewFile(fileName)) {
-                    this.refresh();
-                }
+                await this.handleFileSystemChange(path.basename(uri.fsPath), 'create');
             });
 
-            // 文件删除时的特殊处理
             watcher.onDidDelete(async uri => {
-                const fileName = path.basename(uri.fsPath);
-                
-                // 清除缓存
-                if (this.nodeCache.has(fileName)) {
-                    this.nodeCache.delete(fileName);
-                }
-                
-                // 对于文件删除，需要特殊处理
-                // 检查删除的文件是否影响当前结构，并自动清理引用
-                if (await this.shouldRefreshForDeletedFile(fileName)) {
-                    this.refresh();
-                }
+                await this.handleFileSystemChange(path.basename(uri.fsPath), 'delete');
             });
 
             this.context.subscriptions.push(watcher);
+        }
+    }
+
+    /**
+     * 统一处理文件系统变化事件
+     * 自动同步frontmatter关系并决定是否刷新视图
+     */
+    private async handleFileSystemChange(fileName: string, changeType: 'change' | 'create' | 'delete'): Promise<void> {
+        // 1. 清除指定文件的缓存
+        if (this.nodeCache.has(fileName)) {
+            this.nodeCache.delete(fileName);
+        }
+        
+        // 2. 检查是否需要处理（如果没有当前激活文件，跳过）
+        if (!this.currentActiveFile || !this.currentActiveFrontmatter) {
+            return;
+        }
+        
+        // 3. 根据变化类型处理frontmatter同步和判断是否需要刷新
+        const shouldRefresh = await this.processFrontmatterChanges(fileName, changeType);
+        
+        // 4. 如果需要刷新，执行刷新
+        if (shouldRefresh) {
+            this.refresh();
+        }
+    }
+
+    /**
+     * 处理frontmatter变化和同步关系
+     * 统一管理创建、修改、删除时的frontmatter同步逻辑
+     */
+    private async processFrontmatterChanges(fileName: string, changeType: 'change' | 'create' | 'delete'): Promise<boolean> {
+        try {
+            return await this.handleFileOperation(fileName, changeType);
+        } catch (error) {
+            console.debug(`处理文件 ${fileName} 的 ${changeType} 变化时出错:`, error);
+            return changeType !== 'create'; // 对于创建失败采用保守策略不刷新，其他情况刷新
+        }
+    }
+
+    /**
+     * 统一处理文件变化事件（创建、删除、修改）
+     * 基于 frontmatter 的 parent_file 和 children_files 关系自动同步
+     */
+    private async handleFileOperation(fileName: string, changeType: 'change' | 'create' | 'delete'): Promise<boolean> {
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            return false;
+        }
+
+        try {
+            // 对于删除操作，先处理清理逻辑
+            if (changeType === 'delete') {
+                const cleanupSuccess = await this.autoRemoveFromParentChildren(fileName);
+                const wasInCurrentView = this.findNodeInCurrentTree(fileName) !== null;
+                return cleanupSuccess || wasInCurrentView;
+            }
+
+            // 对于创建和修改操作，获取文件的 frontmatter
+            const filePath = path.join(issueDir, fileName);
+            const fileUri = vscode.Uri.file(filePath);
+            const frontmatter = await getFrontmatter(fileUri);
+
+            // 如果文件没有 frontmatter，检查是否与当前视图相关
+            if (!frontmatter || !frontmatter.root_file) {
+                return changeType === 'create' ? false : await this.isFileRelatedToCurrent(fileName);
+            }
+
+            // 检查是否是当前的根文件
+            if (fileName === this.currentActiveFrontmatter!.root_file) {
+                return true;
+            }
+
+            // 检查是否与当前结构相关（同一个 root_file）
+            if (frontmatter.root_file === this.currentActiveFrontmatter!.root_file) {
+                // 统一的 frontmatter 关系同步处理
+                await this.syncFrontmatterRelations(fileName, frontmatter, changeType);
+                return true;
+            }
+
+            // 对于修改操作，还需要检查文件是否在当前树结构中
+            if (changeType === 'change') {
+                return this.findNodeInCurrentTree(fileName) !== null;
+            }
+
+            return false;
+
+        } catch (error) {
+            console.debug(`处理文件${changeType}操作时出错 (${fileName}):`, error);
+            // 错误处理策略：创建操作失败不刷新，其他操作失败则刷新
+            return changeType !== 'create';
+        }
+    }
+
+    /**
+     * 统一的 frontmatter 关系同步处理
+     * 自动维护 parent_file 和 children_files 的双向关系
+     */
+    private async syncFrontmatterRelations(fileName: string, frontmatter: FrontmatterData, changeType: 'change' | 'create'): Promise<void> {
+        try {
+            if (changeType === 'create') {
+                // 创建文件时的关系建立逻辑
+                if (frontmatter.parent_file) {
+                    // 如果新文件声明了 parent_file，自动更新父文件的 children_files
+                    const success = await FrontmatterService.addChildToParent(fileName, frontmatter.parent_file);
+                    if (success && this.nodeCache.has(frontmatter.parent_file)) {
+                        this.nodeCache.delete(frontmatter.parent_file);
+                    }
+                } else {
+                    // 如果新文件没有 parent_file，将其添加到当前活动文件的 children_files
+                    const currentActiveFileName = path.basename(this.currentActiveFile!);
+                    const addChildSuccess = await FrontmatterService.addChildToParent(fileName, currentActiveFileName);
+                    const setParentSuccess = await FrontmatterService.setParentFile(fileName, currentActiveFileName);
+                    
+                    if ((addChildSuccess || setParentSuccess) && this.nodeCache.has(currentActiveFileName)) {
+                        this.nodeCache.delete(currentActiveFileName);
+                    }
+                }
+            } else if (changeType === 'change') {
+                // 修改文件时的结构性变化处理
+                const oldCachedInfo = this.nodeCache.get(fileName);
+                if (oldCachedInfo) {
+                    // 使用 FrontmatterService 批量同步文件结构关系
+                    await FrontmatterService.syncFileStructureRelations(fileName, frontmatter);
+                }
+            }
+        } catch (error) {
+            console.error(`同步 frontmatter 关系时出错 (${fileName}):`, error);
         }
     }
 
@@ -167,82 +260,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
-     * 检查新文件创建是否应该刷新视图，并自动更新 frontmatter 关系
-     * 对于新文件，尝试自动建立父子关系
-     */
-    private async shouldRefreshForNewFile(fileName: string): Promise<boolean> {
-        // 如果没有当前激活文件或 frontmatter，无需刷新
-        if (!this.currentActiveFile || !this.currentActiveFrontmatter) {
-            return false;
-        }
-
-        try {
-            const issueDir = getIssueDir();
-            if (!issueDir) {
-                return false;
-            }
-
-            const filePath = path.join(issueDir, fileName);
-            const fileUri = vscode.Uri.file(filePath);
-            
-            // 获取新文件的 frontmatter
-            const frontmatter = await getFrontmatter(fileUri);
-            
-            // 如果新文件没有 frontmatter，不需要刷新
-            if (!frontmatter || !frontmatter.root_file) {
-                return false;
-            }
-            
-            // 情况1：新文件本身就是当前的根文件（替换了根文件）
-            if (fileName === this.currentActiveFrontmatter.root_file) {
-                return true;
-            }
-            
-            // 情况2：新文件的 root_file 与当前相同
-            if (frontmatter.root_file === this.currentActiveFrontmatter.root_file) {
-                // 策略1：自动修改 frontmatter
-                if (frontmatter.parent_file) {
-                    // 如果新文件声明了 parent_file，使用 FrontmatterService 自动更新父文件的 children_files
-                    const success = await FrontmatterService.addChildToParent(fileName, frontmatter.parent_file);
-                    if (success) {
-                        // 清除父文件的缓存，确保下次读取时获取最新数据
-                        if (this.nodeCache.has(frontmatter.parent_file)) {
-                            this.nodeCache.delete(frontmatter.parent_file);
-                        }
-                        return true; // 成功更新，需要刷新视图
-                    }
-                } else {
-                    // 如果新文件没有 parent_file，将其添加到当前活动文件的 children_files
-                    const currentActiveFileName = path.basename(this.currentActiveFile);
-                    const addChildSuccess = await FrontmatterService.addChildToParent(fileName, currentActiveFileName);
-                    const setParentSuccess = await FrontmatterService.setParentFile(fileName, currentActiveFileName);
-                    
-                    if (addChildSuccess || setParentSuccess) {
-                        // 清除当前活动文件的缓存
-                        if (this.nodeCache.has(currentActiveFileName)) {
-                            this.nodeCache.delete(currentActiveFileName);
-                        }
-                        return true;
-                    }
-                }
-                
-                // 备选策略：即使没有 parent_file 或更新失败，也刷新视图
-                // 这样用户至少能看到新文件的存在
-                return true;
-            }
-            
-            return false;
-            
-        } catch (error) {
-            console.debug(`检查新文件 ${fileName} 是否需要刷新时出错:`, error);
-            // 对于无法确定的情况，采用保守策略不刷新
-            return false;
-        }
-    }
-
-
-
-    /**
      * 获取当前树结构中的所有文件名
      */
     private getAllFilesInCurrentTree(): string[] {
@@ -259,37 +276,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         
         collectFiles(this.rootNodes);
         return files;
-    }
-
-    /**
-     * 检查删除文件是否应该刷新视图，并自动清理 frontmatter 引用
-     * 对于删除的文件，自动从父文件的 children_files 中移除
-     */
-    private async shouldRefreshForDeletedFile(fileName: string): Promise<boolean> {
-        // 如果没有当前激活文件或 frontmatter，无需刷新
-        if (!this.currentActiveFile || !this.currentActiveFrontmatter) {
-            return false;
-        }
-
-        try {
-            // 策略1：自动清理 frontmatter 引用
-            // 扫描当前树结构中的所有文件，查找引用了被删除文件的父文件
-            const success = await this.autoRemoveFromParentChildren(fileName);
-            
-            // 检查删除的文件是否在当前视图中
-            const wasInCurrentView = this.findNodeInCurrentTree(fileName) !== null;
-            
-            if (success || wasInCurrentView) {
-                return true; // 成功清理或文件在当前视图中，需要刷新
-            }
-            
-            return false;
-            
-        } catch (error) {
-            console.debug(`检查删除文件 ${fileName} 是否需要刷新时出错:`, error);
-            // 对于无法确定的情况，采用保守策略刷新
-            return true;
-        }
     }
 
     /**
@@ -360,78 +346,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         
         return findInNodes(this.rootNodes);
     }
-
-    /**
-     * 检查文件变化是否应该刷新视图，并处理 frontmatter 结构性变化
-     * 对于手动编辑的文件，检测 frontmatter 变化并自动同步关系
-     */
-    private async shouldRefreshForChangedFile(fileName: string): Promise<boolean> {
-        // 如果没有当前激活文件或 frontmatter，无需刷新
-        if (!this.currentActiveFile || !this.currentActiveFrontmatter) {
-            return false;
-        }
-
-        try {
-            const issueDir = getIssueDir();
-            if (!issueDir) {
-                return false;
-            }
-
-            const filePath = path.join(issueDir, fileName);
-            const fileUri = vscode.Uri.file(filePath);
-            
-            // 获取文件的新 frontmatter
-            const newFrontmatter = await getFrontmatter(fileUri);
-            
-            // 如果文件没有 frontmatter，只检查是否需要刷新视图
-            if (!newFrontmatter) {
-                return await this.isFileRelatedToCurrent(fileName);
-            }
-            
-            // 情况1：文件与当前结构相关，需要刷新
-            if (newFrontmatter.root_file === this.currentActiveFrontmatter.root_file) {
-                // 检查是否有结构性的 frontmatter 变化
-                await this.handleFrontmatterStructuralChanges(fileName, newFrontmatter);
-                return true;
-            }
-            
-            // 情况2：检查文件是否在当前树结构中
-            return this.findNodeInCurrentTree(fileName) !== null;
-            
-        } catch (error) {
-            console.debug(`检查文件变化 ${fileName} 是否需要刷新时出错:`, error);
-            // 对于无法确定的情况，采用保守策略刷新
-            return true;
-        }
-    }
-
-    /**
-     * 处理 frontmatter 的结构性变化
-     * 检测 children_files 和 parent_file 的变化，并自动同步关系
-     */
-    private async handleFrontmatterStructuralChanges(fileName: string, newFrontmatter: FrontmatterData): Promise<void> {
-        try {
-            const issueDir = getIssueDir();
-            if (!issueDir) {
-                return;
-            }
-
-            // 获取缓存中的旧 frontmatter（如果存在）
-            const oldCachedInfo = this.nodeCache.get(fileName);
-            if (!oldCachedInfo) {
-                // 没有缓存信息，跳过比较
-                return;
-            }
-
-            // 使用 FrontmatterService 批量同步文件结构关系
-            await FrontmatterService.syncFileStructureRelations(fileName, newFrontmatter);
-
-        } catch (error) {
-            console.error(`处理 frontmatter 结构性变化时出错:`, error);
-        }
-    }
-
-
 
     /**
      * 当激活编辑器改变时调用
