@@ -32,6 +32,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     readonly onDidChangeTreeData: vscode.Event<IssueStructureNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private currentActiveFile: string | null = null;
+    private currentActiveFrontmatter: FrontmatterData | null = null; // 缓存当前活动文件的 frontmatter
     private rootNodes: IssueStructureNode[] = [];
     private nodeCache: Map<string, CachedNodeInfo> = new Map(); // 持久化缓存
 
@@ -96,11 +97,11 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
     /**
      * 检查指定文件是否与当前视图相关
-     * 基于相同的 root_file 来判断关联性
+     * 基于相同的 root_file 来判断关联性，使用缓存的活动文件 frontmatter 提升性能
      */
     private async isFileRelatedToCurrent(fileName: string): Promise<boolean> {
-        // 如果没有当前激活文件，无法判断关联性
-        if (!this.currentActiveFile) {
+        // 如果没有当前激活文件或缓存的 frontmatter，无法判断关联性
+        if (!this.currentActiveFile || !this.currentActiveFrontmatter) {
             return false;
         }
 
@@ -111,19 +112,18 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             }
 
             const filePath = path.join(issueDir, fileName);
-            const activeFilePath = path.join(issueDir, this.currentActiveFile);
             const fileUri = vscode.Uri.file(filePath);
-            const activeFileUri = vscode.Uri.file(activeFilePath);
 
-            // 获取文件的 frontmatter
+            // 获取目标文件的 frontmatter
             const frontmatter = await getFrontmatter(fileUri);
-            const activeFrontmatter = await getFrontmatter(activeFileUri);
 
             // 简单判断：两个文件的 root_file 是否相同
-            return frontmatter?.root_file === activeFrontmatter?.root_file;
+            // 使用缓存的活动文件 frontmatter，避免重复磁盘 I/O
+            return frontmatter?.root_file === this.currentActiveFrontmatter.root_file;
 
-        } catch {
-            return false;
+        } catch (error) {
+            console.error(`检查文件关联性时出错 (${fileName}):`, error);  
+            return false;  
         }
     }
 
@@ -145,6 +145,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         }
 
         this.currentActiveFile = path.basename(editor.document.uri.fsPath);
+        this.currentActiveFrontmatter = frontmatter; // 缓存当前活动文件的 frontmatter
         await this.buildStructureFromActiveFile(frontmatter);
         this._onDidChangeTreeData.fire();
 
@@ -155,6 +156,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      */
     private showGuidanceMessage(): void {
         this.currentActiveFile = null;
+        this.currentActiveFrontmatter = null; // 清空 frontmatter 缓存
         this.rootNodes = [{
             id: 'guidance',
             filePath: '',
