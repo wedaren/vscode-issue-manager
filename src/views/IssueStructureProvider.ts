@@ -117,10 +117,27 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             // 获取目标文件的 frontmatter
             const frontmatter = await getFrontmatter(fileUri);
 
-            // 简单判断：两个文件的 root_file 是否相同
-            // 使用缓存的活动文件 frontmatter，避免重复磁盘 I/O
-            return frontmatter?.root_file === this.currentActiveFrontmatter.root_file;
-
+            if (frontmatter) {  
+                // 对于存在 frontmatter 的文件，通过 root_file 判断关联性  
+                return frontmatter.root_file === this.currentActiveFrontmatter.root_file;  
+            }  
+            
+            // 回退逻辑：对于已删除或无 frontmatter 的文件，检查它是否存在于当前视图的树结构中  
+            const findInNodes = (nodes: IssueStructureNode[]): IssueStructureNode | null => {  
+                for (const node of nodes) {  
+                    if (node.filePath === fileName) {  
+                        return node;  
+                    }  
+                    const found = findInNodes(node.children);  
+                    if (found) {  
+                        return found;  
+                    }  
+                }  
+                return null;  
+            };  
+            
+            return findInNodes(this.rootNodes) !== null;  
+            
         } catch (error) {
             console.error(`检查文件关联性时出错 (${fileName}):`, error);  
             return false;  
