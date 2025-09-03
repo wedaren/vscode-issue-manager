@@ -391,7 +391,7 @@ export class FrontmatterService {
         fieldValue: any
     ): Promise<string | null> {
         try {
-            const lines = content.split('\n');
+            const lines = content.split(/\r?\n/);
             
             // 检查是否有 frontmatter
             if (lines.length < 2 || lines[0] !== '---') {
@@ -418,9 +418,10 @@ export class FrontmatterService {
                     return null;  
                 }  
                 frontmatterData = parsed as FrontmatterData;  
-            } catch {  
+            } catch (error) {  
+                console.error(`解析 frontmatter YAML 时出错:`, error);
                 return null;  
-            }  
+            }
 
             // 更新字段
             frontmatterData[fieldName] = fieldValue;

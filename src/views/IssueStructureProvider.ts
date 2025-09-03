@@ -132,12 +132,12 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             }
 
             // 检查是否是当前的根文件
-            if (fileName === this.currentActiveFrontmatter!.root_file) {
+            if (fileName === this.currentActiveFrontmatter?.root_file) {
                 return true;
             }
 
             // 检查是否与当前结构相关（同一个 root_file）
-            if (frontmatter.root_file === this.currentActiveFrontmatter!.root_file) {
+            if (frontmatter.root_file === this.currentActiveFrontmatter?.root_file) {
                 // 统一的 frontmatter 关系同步处理
                 await this.syncFrontmatterRelations(fileName, frontmatter);
 
@@ -171,8 +171,9 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 if (success && this.nodeCache.has(frontmatter.parent_file)) {
                     this.nodeCache.delete(frontmatter.parent_file);
                 }
-            } else {
-                // 如果新文件没有 parent_file，将其添加到当前活动文件的 children_files
+            } else if (this.currentActiveFile && fileName !== frontmatter.root_file) {
+                // 如果新文件没有 parent_file，并且它本身不是根文件，  
+                // 则将其添加到当前活动文件的 children_files  
                 const currentActiveFileName = path.basename(this.currentActiveFile!);
                 const addChildSuccess = await FrontmatterService.addChildToParent(fileName, currentActiveFileName);
                 const setParentSuccess = await FrontmatterService.setParentFile(fileName, currentActiveFileName);
