@@ -334,7 +334,7 @@ export class FrontmatterService {
     private static async updateFrontmatterField(
         fileName: string,
         fieldName: string,
-        fieldValue: any
+        fieldValue: unknown
     ): Promise<boolean> {
         try {
             const issueDir = getIssueDir();
@@ -388,7 +388,7 @@ export class FrontmatterService {
     private static async updateFrontmatterInContent(
         content: string,
         fieldName: string,
-        fieldValue: any
+        fieldValue: unknown
     ): Promise<string | null> {
         try {
             const lines = content.split(/\r?\n/);
@@ -411,16 +411,16 @@ export class FrontmatterService {
 
             // 解析 YAML
             let frontmatterData: FrontmatterData;
-            try {  
-                const parsed = yaml.load(frontmatterContent) || {};  
-                if (typeof parsed !== 'object' || Array.isArray(parsed)) {  
-                    console.warn('Frontmatter is not a key-value object, cannot update.');  
-                    return null;  
-                }  
-                frontmatterData = parsed as FrontmatterData;  
-            } catch (error) {  
+            try {
+                const parsed = yaml.load(frontmatterContent) || {};
+                if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+                    console.warn('Frontmatter is not a key-value object, cannot update.');
+                    return null;
+                }
+                frontmatterData = parsed as FrontmatterData;
+            } catch (error) {
                 console.error(`解析 frontmatter YAML 时出错:`, error);
-                return null;  
+                return null;
             }
 
             // 更新字段

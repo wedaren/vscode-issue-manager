@@ -89,7 +89,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         if (this.nodeCache.has(fileName)) {
             this.nodeCache.delete(fileName);
             const root_file = this.currentActiveFrontmatter?.root_file;
-            if(root_file && this.nodeCache.has(root_file)) {
+            if (root_file && this.nodeCache.has(root_file)) {
                 this.nodeCache.delete(root_file);
             }
         }
