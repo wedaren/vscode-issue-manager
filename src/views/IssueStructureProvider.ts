@@ -37,6 +37,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private currentActiveFrontmatter: FrontmatterData | null = null; // 缓存当前活动文件的 frontmatter
     private rootNodes: IssueStructureNode[] = [];
     private nodeCache: Map<string, CachedNodeInfo> = new Map(); // 持久化缓存
+    private refreshDebouncer: NodeJS.Timeout | null = null; // 防抖计时器
 
     constructor(private context: vscode.ExtensionContext) {
         // 监听编辑器激活文件变化
@@ -93,9 +94,9 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         // 3. 根据变化类型处理frontmatter同步和判断是否需要刷新
         const shouldRefresh = await this.handleFileOperation(fileName, changeType);
         
-        // 4. 如果需要刷新，执行刷新
+        // 4. 如果需要刷新，执行防抖刷新
         if (shouldRefresh) {
-            this.refresh();
+            this.debouncedRefresh();
         }
     }
 
@@ -541,6 +542,20 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
+     * 防抖刷新视图
+     * 避免短时间内多次刷新导致的性能问题
+     */
+    private debouncedRefresh(): void {
+        if (this.refreshDebouncer) {
+            clearTimeout(this.refreshDebouncer);
+        }
+        this.refreshDebouncer = setTimeout(() => {
+            this.refresh();
+            this.refreshDebouncer = null;
+        }, 150); // 150ms 防抖延迟
+    }
+
+    /**
      * 获取指定结构节点对应的 TreeItem 展示项
      * 
      * 规则：
@@ -665,6 +680,12 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 将在扩展停用时由 VS Code 自动释放。
      */
     dispose(): void {
+        // 清理防抖计时器
+        if (this.refreshDebouncer) {
+            clearTimeout(this.refreshDebouncer);
+            this.refreshDebouncer = null;
+        }
+        
         // 释放事件发射器
         this._onDidChangeTreeData.dispose();
         
