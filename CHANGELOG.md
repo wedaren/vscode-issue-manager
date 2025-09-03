@@ -5,6 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.11]
+
+### 🐞 修复
+- **fix: 修复问题结构视图无法展示新增markdown文档的问题** (#63)
+  - 修复问题结构视图无法正确展示新创建的markdown文档的bug
+  - 改进文件系统监听和刷新机制，确保新增文件能及时在结构视图中显示
+
+
 ## [0.1.10]
 
 ### ✨ 新功能
