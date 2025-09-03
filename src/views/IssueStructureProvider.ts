@@ -86,15 +86,18 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 自动同步frontmatter关系并决定是否刷新视图
      */
     private async handleFileSystemChange(fileName: string, changeType: 'change' | 'create' | 'delete'): Promise<void> {
-        // 1. 清除指定文件的缓存
+        //  清除指定文件的缓存
         if (this.nodeCache.has(fileName)) {
             this.nodeCache.delete(fileName);
+            const root_file = this.currentActiveFrontmatter?.root_file;
+            if(root_file && this.nodeCache.has(root_file)) {
+                this.nodeCache.delete(root_file);
+            }
         }
-        
-        // 3. 根据变化类型处理frontmatter同步和判断是否需要刷新
+        //  根据变化类型处理frontmatter同步和判断是否需要刷新
         const shouldRefresh = await this.handleFileOperation(fileName, changeType);
         
-        // 4. 如果需要刷新，执行防抖刷新
+        //  如果需要刷新，执行防抖刷新
         if (shouldRefresh) {
             this.debouncedRefresh();
         }
@@ -137,6 +140,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             if (frontmatter.root_file === this.currentActiveFrontmatter!.root_file) {
                 // 统一的 frontmatter 关系同步处理
                 await this.syncFrontmatterRelations(fileName, frontmatter);
+
                 return true;
             }
 
