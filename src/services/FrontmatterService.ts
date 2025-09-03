@@ -227,37 +227,6 @@ export class FrontmatterService {
      */
     public static async ensureChildInParent(childFileName: string, parentFileName: string): Promise<boolean> {
         try {
-            const issueDir = getIssueDir();
-            if (!issueDir) {
-                return false;
-            }
-
-            const parentFilePath = path.join(issueDir, parentFileName);
-            const parentFileUri = vscode.Uri.file(parentFilePath);
-
-            // 检查父文件是否存在
-            try {
-                await vscode.workspace.fs.stat(parentFileUri);
-            } catch {
-                console.warn(`父文件不存在: ${parentFileName}`);
-                return false;
-            }
-
-            // 获取父文件的 frontmatter
-            const parentFrontmatter = await getFrontmatter(parentFileUri);
-            if (!parentFrontmatter) {
-                console.warn(`父文件 ${parentFileName} 没有有效的 frontmatter`);
-                return false;
-            }
-
-            const currentChildren = parentFrontmatter.children_files || [];
-            
-            // 如果已经包含，无需操作
-            if (currentChildren.includes(childFileName)) {
-                return true;
-            }
-
-            // 添加子文件到 children_files
             return await this.addChildToParent(childFileName, parentFileName);
 
         } catch (error) {
@@ -430,13 +399,7 @@ export class FrontmatterService {
             }
 
             // 找到 frontmatter 结束位置
-            let frontmatterEndIndex = -1;
-            for (let i = 1; i < lines.length; i++) {
-                if (lines[i] === '---') {
-                    frontmatterEndIndex = i;
-                    break;
-                }
-            }
+            const frontmatterEndIndex = lines.indexOf('---', 1);  
 
             if (frontmatterEndIndex === -1) {
                 return null;
@@ -448,11 +411,16 @@ export class FrontmatterService {
 
             // 解析 YAML
             let frontmatterData: FrontmatterData;
-            try {
-                frontmatterData = (yaml.load(frontmatterContent) || {}) as FrontmatterData;
-            } catch {
-                return null;
-            }
+            try {  
+                const parsed = yaml.load(frontmatterContent) || {};  
+                if (typeof parsed !== 'object' || Array.isArray(parsed)) {  
+                    console.warn('Frontmatter is not a key-value object, cannot update.');  
+                    return null;  
+                }  
+                frontmatterData = parsed as FrontmatterData;  
+            } catch {  
+                return null;  
+            }  
 
             // 更新字段
             frontmatterData[fieldName] = fieldValue;

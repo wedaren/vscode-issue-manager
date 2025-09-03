@@ -181,20 +181,6 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         }
     }
 
-    /**
-     * 使指定文件的缓存失效
-     */
-    private async invalidateFileCache(fileName: string): Promise<void> {
-        // 删除指定文件的缓存
-        if (this.nodeCache.has(fileName)) {
-            this.nodeCache.delete(fileName);
-        }
-        
-        // 对于新文件或修改的文件，检查是否影响当前视图并刷新
-        if (this.currentActiveFile && await this.isFileRelatedToCurrent(fileName)) {
-            this.refresh();
-        }
-    }
 
     /**
      * 检查指定文件是否与当前视图相关
