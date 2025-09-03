@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as yaml from 'js-yaml';
 import { getIssueDir } from '../config';
 import { getTitle, getFrontmatter, FrontmatterData } from '../utils/markdown';
 import { FrontmatterService } from '../services/FrontmatterService';
@@ -244,8 +243,13 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
-     * 自动从所有父文件的 children_files 中移除被删除的文件
+     * 自动从当前视图树中的父文件的 children_files 中移除被删除的文件
+     * 
+     * 注意：此方法仅扫描当前显示的结构树中的文件，不会处理树外的文件。
+     * 如果被删除文件的父文件不在当前视图中，其 frontmatter 不会被更新。
+     * 
      * @param deletedFileName 被删除的文件名
+     * @returns 是否成功更新了任何父文件的 children_files
      */
     private async autoRemoveFromParentChildren(deletedFileName: string): Promise<boolean> {
         try {
