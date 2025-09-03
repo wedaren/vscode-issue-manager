@@ -520,24 +520,20 @@ export class FrontmatterService {
 
             const fileContent = `---\n${frontmatterContent.trim()}\n---\n\n# ${title}\n\n`;
 
-            // 创建或更新文件
+            // 直接创建文件并写入内容
             const edit = new vscode.WorkspaceEdit();
-            edit.createFile(fileUri, { ignoreIfExists: true });
-            
-            const document = await vscode.workspace.openTextDocument(fileUri);
-            const fullRange = new vscode.Range(
-                0, 0, 
-                document.lineCount, 0
-            );
-            edit.replace(fileUri, fullRange, fileContent);
+            edit.createFile(fileUri, { 
+                ignoreIfExists: true,
+                contents: Buffer.from(fileContent, 'utf8')
+            });
 
-            // 应用编辑并保存
-            return await this.applyEditAndSave(
-                edit,
-                fileUri,
-                fileName,
-                `已为 ${fileName} 创建基础 frontmatter 并保存`
-            );
+            // 应用编辑操作
+            const success = await vscode.workspace.applyEdit(edit);
+            if (success) {
+                console.log(`已为 ${fileName} 创建基础 frontmatter`);
+            }
+
+            return success;
 
         } catch (error) {
             console.error(`创建基础 frontmatter 时出错:`, error);
