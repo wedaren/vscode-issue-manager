@@ -231,6 +231,11 @@
         "command": "issueManager.structure.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.views.collapseAll",
+        "title": "问题管理：折叠当前活动视图",
+        "icon": "$(collapse-all)"
       }
     ],
     "submenus": [
@@ -272,6 +277,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "issueManager.views.collapseAll",
+          "when": "view == issueManager.views.overview",
+          "group": "navigation@2"
+        },
+        {
           "command": "issueManager.openIssueDir",
           "when": "view == issueManager.views.focused",
           "group": "navigation@1"
@@ -287,9 +297,19 @@
           "group": "navigation@3"
         },
         {
+          "command": "issueManager.views.collapseAll",
+          "when": "view == issueManager.views.focused",
+          "group": "navigation@4"
+        },
+        {
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.isolated",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.views.collapseAll",
+          "when": "view == issueManager.views.isolated",
+          "group": "navigation@2"
         },
         {
           "command": "issueManager.createIssueFromOverview",
