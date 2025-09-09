@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [Unreleased]
+
+### 🔧 改进
+- **improve: 使用VS Code内置折叠功能重构视图折叠实现**
+  - 为所有主要树视图启用 `showCollapseAll: true` 选项
+  - 移除自定义折叠命令实现，完全依赖VS Code标准折叠功能
+  - 修复折叠按钮无效的问题，现在所有视图都能正常折叠
+  - 提供与VS Code原生体验完全一致的折叠功能
+
 ## [0.1.11]
 
 ### 🐞 修复
@@ -49,10 +58,17 @@
   - 提高代码可维护性和可测试性，保持向后兼容性
   - 更新相关单元测试，支持依赖注入
 
-### 🔧 功能改进
-- **feat: 改进 Git 同步冲突处理逻辑**
-  - 冲突时通过打开问题目录而不是单个合并编辑器，为用户提供更完整的上下文来解决冲突
-  - 使 showConflictDialog 异步处理用户选择
+## [Unreleased]
+
+### 🔧 改进
+- **improve: 重构折叠所有视图功能架构**
+  - 移除通用的 `issueManager.views.collapseAll` 命令
+  - 为各视图实现独立的折叠命令：
+    - `issueManager.views.overview.collapseAll` - 问题总览视图
+    - `issueManager.views.focused.collapseAll` - 关注问题视图  
+    - `issueManager.views.isolated.collapseAll` - 孤立问题视图
+  - 使用 VS Code 内置的 `workbench.actions.treeView.collapseAll` 命令替代自定义实现
+  - 提高命令语义化程度和可维护性，为未来扩展新视图提供清晰模式
 
 
 ## [0.1.8] - 2025-08-20

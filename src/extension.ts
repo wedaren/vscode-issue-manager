@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from './config';
 import { registerOpenIssueDirCommand } from './commands/openIssueDir';
-import { registerCollapseAllCommand } from './commands/collapseAll';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { registerSearchIssuesCommand } from './commands/searchIssues';
 import { registerDeleteIssueFile } from './commands/deleteIssueFile';
@@ -63,7 +62,6 @@ export function activate(context: vscode.ExtensionContext) {
 	// 注册“问题总览视图搜索”命令
 	registerSearchIssuesCommand(context);
 	registerOpenIssueDirCommand(context);
-	registerCollapseAllCommand(context);
 	// 注册“孤立问题”视图
 	const isolatedIssuesProvider = new IsolatedIssuesProvider(context);
 	// vscode.window.registerTreeDataProvider('issueManager.views.isolated', isolatedIssuesProvider);
@@ -78,7 +76,8 @@ export function activate(context: vscode.ExtensionContext) {
 	const overviewView = vscode.window.createTreeView('issueManager.views.overview', {
 		treeDataProvider: issueOverviewProvider,
 		dragAndDropController: new IssueDragAndDropController(issueOverviewProvider, 'overview'),
-		canSelectMany: true // 允许多选
+		canSelectMany: true, // 允许多选
+		showCollapseAll: true // 启用折叠所有功能
 	});
 	context.subscriptions.push(overviewView);
 
@@ -114,7 +113,8 @@ export function activate(context: vscode.ExtensionContext) {
 	const focusedView = vscode.window.createTreeView('issueManager.views.focused', {
 		treeDataProvider: focusedIssuesProvider,
 		dragAndDropController: new IssueDragAndDropController(focusedIssuesProvider, 'focused'),
-		canSelectMany: true
+		canSelectMany: true,
+		showCollapseAll: true // 启用折叠所有功能
 	});
 	context.subscriptions.push(focusedView);
 	// 注册“关注问题”视图定位命令
