@@ -5,7 +5,7 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
-## [Unreleased]
+## [0.1.12]
 
 ### 🔧 改进
 - **improve: 关注问题视图与问题总览支持折叠功能**
