@@ -155,6 +155,24 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(recentIssuesView);
 
+	// 全局监听文档激活，自动记录查看时间
+	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor((editor) => {
+		if (editor && editor.document) {
+			const document = editor.document;
+			const issueDir = getIssueDir();
+			
+			// 只对问题目录下的markdown文件记录查看时间
+			if (issueDir && 
+				document.uri.scheme === 'file' && 
+				document.fileName.endsWith('.md') && 
+				document.fileName.startsWith(issueDir)) {
+				
+				// 记录查看时间
+				recentIssuesProvider.recordViewTime(document.fileName);
+			}
+		}
+	}));
+
 	// 激活时加载一次数据
 	focusedIssuesProvider.loadData();
 

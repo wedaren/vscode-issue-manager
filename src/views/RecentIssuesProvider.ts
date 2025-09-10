@@ -90,18 +90,6 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       }
     }));
 
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndViewRelatedIssuesWithTracking', async (uri: vscode.Uri) => {
-      try {
-        // 记录查看时间
-        this.recordViewTime(uri.fsPath);
-        await vscode.window.showTextDocument(uri);
-        await vscode.commands.executeCommand('issueManager.viewRelatedIssues', uri);
-      } catch (error) {
-        console.error(`打开并查看相关联问题失败: ${uri.fsPath}`, error);
-        vscode.window.showErrorMessage('打开并查看相关联问题失败。');
-      }
-    }));
-
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('issueManager.issueDir')) {
         this.refresh();
@@ -149,7 +137,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 记录文件的查看时间
    * @param filePath 文件路径
    */
-  recordViewTime(filePath: string): void {
+  public recordViewTime(filePath: string): void {
     const now = Date.now();
     this.viewTimeCache[filePath] = now;
     // 持久化到工作区状态
@@ -393,7 +381,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
     item.resourceUri = uri;
     item.command = {
-      command: 'issueManager.openAndViewRelatedIssuesWithTracking',
+      command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',
       arguments: [uri],
     };
