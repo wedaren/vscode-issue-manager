@@ -135,14 +135,6 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   }
 
   /**
-   * 记录文件的查看时间
-   * @param filePath 文件路径
-   */
-  public recordViewTime(filePath: string): void {
-    this.fileAccessTracker.recordFileAccess(filePath);
-  }
-
-  /**
    * 获取文件的查看时间
    * @param filePath 文件路径
    * @returns 查看时间，如果没有记录则返回undefined
