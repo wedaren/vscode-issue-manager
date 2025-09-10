@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
 import { getTitle } from '../utils/markdown';
 import { getCtimeOrNow, getMtimeOrNow } from '../utils/fileUtils';
+import { FileAccessTracker } from '../services/FileAccessTracker';
 
 
 /**
@@ -48,14 +49,14 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   private viewMode: ViewMode; // 默认值由配置项决定
   private sortOrder: 'mtime' | 'ctime' | 'viewTime' = 'ctime'; // 默认为创建时间
   private fileStatsCache: FileStat[] | null = null;
-  private viewTimeCache: { [filePath: string]: number } = {}; // 缓存查看时间戳
+  private fileAccessTracker: FileAccessTracker;
 
   constructor(private context: vscode.ExtensionContext) {
     // 初始化时根据配置项设置默认模式
     this.viewMode = getRecentIssuesDefaultMode();
 
-    // 从扩展状态中恢复查看时间缓存
-    this.viewTimeCache = this.context.workspaceState.get('issueManager.viewTimeCache', {});
+    // 获取文件访问跟踪服务实例
+    this.fileAccessTracker = FileAccessTracker.getInstance();
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
       this.setViewMode('grouped');
@@ -138,10 +139,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * @param filePath 文件路径
    */
   public recordViewTime(filePath: string): void {
-    const now = Date.now();
-    this.viewTimeCache[filePath] = now;
-    // 持久化到工作区状态
-    this.context.workspaceState.update('issueManager.viewTimeCache', this.viewTimeCache);
+    this.fileAccessTracker.recordFileAccess(filePath);
   }
 
   /**
@@ -150,8 +148,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * @returns 查看时间，如果没有记录则返回undefined
    */
   getViewTime(filePath: string): Date | undefined {
-    const timestamp = this.viewTimeCache[filePath];
-    return timestamp ? new Date(timestamp) : undefined;
+    return this.fileAccessTracker.getLastViewTime(filePath);
   }
 
   /**
@@ -387,11 +384,18 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     };
     item.contextValue = 'recentIssue'; // 用于右键菜单
     
-    // 构建工具提示，包含查看时间信息
+    // 构建工具提示，包含访问统计信息
     let tooltipText = `路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`;
-    if (fileStat.viewTime) {
-      tooltipText += `\n\n最近查看: ${fileStat.viewTime.toLocaleString()}`;
+    
+    const accessStats = this.fileAccessTracker.getFileAccessStats(fileStat.filePath);
+    if (accessStats) {
+      tooltipText += `\n\n最近查看: ${new Date(accessStats.lastViewTime).toLocaleString()}`;
+      tooltipText += `\n\n查看次数: ${accessStats.viewCount}`;
+      if (accessStats.firstViewTime !== accessStats.lastViewTime) {
+        tooltipText += `\n\n首次查看: ${new Date(accessStats.firstViewTime).toLocaleString()}`;
+      }
     }
+    
     item.tooltip = new vscode.MarkdownString(tooltipText);
     
     return item;
