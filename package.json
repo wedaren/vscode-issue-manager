@@ -317,7 +317,7 @@
         },
         {
           "submenu": "issueManager.recentSortSubmenu",
-          "when": "view == issueManager.views.recent && issueManager.recentIssuesViewMode == 'list'",
+          "when": "view == issueManager.views.recent",
           "group": "navigation@3",
           "title": "排序方式"
         },
