@@ -233,34 +233,61 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     );
 
     fileStats.sort((a, b) => {
-      let timeA: number;
-      let timeB: number;
-
-      if (this.sortOrder === 'mtime') {
-        timeA = a.mtime.getTime();
-        timeB = b.mtime.getTime();
-      } else if (this.sortOrder === 'ctime') {
-        timeA = a.ctime.getTime();
-        timeB = b.ctime.getTime();
-      } else { // viewTime
-        // 对于没有查看时间的文件，使用创建时间作为后备
-        timeA = a.viewTime ? a.viewTime.getTime() : a.ctime.getTime();
-        timeB = b.viewTime ? b.viewTime.getTime() : b.ctime.getTime();
-        
-        // 没有查看时间的文件排在后面
-        if (!a.viewTime && b.viewTime) {
-          return 1;
-        }
-        if (a.viewTime && !b.viewTime) {
-          return -1;
+      if (this.sortOrder === 'viewTime') {
+        const aHasView = !!a.viewTime;
+        const bHasView = !!b.viewTime;
+        if (aHasView !== bHasView) {
+          // 有查看记录的排在前面 (降序)
+          return aHasView ? -1 : 1;
         }
       }
+
+      const timeA = this.getSortTimestamp(a);
+      const timeB = this.getSortTimestamp(b);
 
       return timeB - timeA; // 降序排序
     });
 
     this.fileStatsCache = fileStats;
     return this.fileStatsCache;
+  }
+
+  /**
+   * 获取用于排序的时间戳
+   * @param file 文件统计信息
+   * @returns 时间戳（毫秒）
+   */
+  private getSortTimestamp(file: FileStat): number {
+    switch (this.sortOrder) {
+      case 'mtime':
+        return file.mtime.getTime();
+      case 'ctime':
+        return file.ctime.getTime();
+      case 'viewTime':
+        // 对于 viewTime 排序，无记录时使用 mtime 作为后备
+        return (file.viewTime || file.mtime).getTime();
+      default:
+        return file.ctime.getTime();
+    }
+  }
+
+  /**
+   * 根据当前排序方式获取文件的日期
+   * @param file 文件统计信息
+   * @returns 用于分组的日期
+   */
+  private getFileDateForGrouping(file: FileStat): Date {
+    switch (this.sortOrder) {
+      case 'mtime':
+        return file.mtime;
+      case 'ctime':
+        return file.ctime;
+      case 'viewTime':
+        // 对于 viewTime 分组，无记录时使用 mtime 作为后备
+        return file.viewTime || file.mtime;
+      default:
+        return file.ctime;
+    }
   }
 
   /**
@@ -281,15 +308,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const otherWeeks: { [week: string]: FileStat[] } = {};
 
     for (const file of files) {
-      let fileDate: Date;
-      
-      if (this.sortOrder === 'mtime') {
-        fileDate = file.mtime;
-      } else if (this.sortOrder === 'ctime') {
-        fileDate = file.ctime;
-      } else { // viewTime
-        fileDate = file.viewTime || file.ctime;
-      }
+      const fileDate = this.getFileDateForGrouping(file);
       
       let matched = false;
       for (const group of weekGroupDefinitions) {
@@ -337,15 +356,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   private createDaySubgroups(files: FileStat[]): GroupTreeItem[] {
     const filesByDay = new Map<string, FileStat[]>();
     for (const file of files) {
-      let fileDate: Date;
-      
-      if (this.sortOrder === 'mtime') {
-        fileDate = file.mtime;
-      } else if (this.sortOrder === 'ctime') {
-        fileDate = file.ctime;
-      } else { // viewTime
-        fileDate = file.viewTime || file.ctime;
-      }
+      const fileDate = this.getFileDateForGrouping(file);
       
       const dayKey = this.formatDateWithWeekday(fileDate);
       if (!filesByDay.has(dayKey)) {
@@ -445,16 +456,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     ];
 
     for (const file of files) {
-      let fileDateSource: Date;
-      
-      if (this.sortOrder === 'mtime') {
-        fileDateSource = file.mtime;
-      } else if (this.sortOrder === 'ctime') {
-        fileDateSource = file.ctime;
-      } else { // viewTime
-        // 对于按查看时间排序，如果没有查看时间，使用创建时间
-        fileDateSource = file.viewTime || file.ctime;
-      }
+      const fileDateSource = this.getFileDateForGrouping(file);
 
       for (const group of groupDefinitions) {
         if (group.test(fileDateSource)) {
