@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
+import { debounce } from '../utils/debounce';
 
 /**
  * 文件访问统计数据接口
@@ -24,6 +25,9 @@ export class FileAccessTracker {
   private accessStats: { [filePath: string]: FileAccessStats } = {};
   private context: vscode.ExtensionContext;
   private disposables: vscode.Disposable[] = [];
+
+  /** 防抖保存函数，2秒延迟避免频繁I/O操作 */
+  private debouncedSaveStats = debounce(() => this.saveStats(), 2000);
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -123,7 +127,8 @@ export class FileAccessTracker {
       };
     }
 
-    this.saveStats();
+    // 使用防抖保存避免频繁I/O操作
+    this.debouncedSaveStats();
   }
 
   /**
@@ -204,6 +209,9 @@ export class FileAccessTracker {
    * 销毁服务，清理资源
    */
   public dispose(): void {
+    // 在销毁前立即保存未保存的数据
+    this.saveStats();
+    
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];
     FileAccessTracker.instance = null;
