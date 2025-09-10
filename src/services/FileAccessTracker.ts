@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { debounce } from '../utils/debounce';
-
+import * as path from 'path';
 /**
  * 文件访问统计数据接口
  */
@@ -20,7 +20,7 @@ export interface FileAccessStats {
  * 文件访问跟踪服务
  * 负责跟踪和统计用户对问题目录下 Markdown 文件的访问行为
  */
-export class FileAccessTracker {
+export class FileAccessTracker implements vscode.Disposable {
   private static instance: FileAccessTracker | null = null;
   private accessStats: { [filePath: string]: FileAccessStats } = {};
   private context: vscode.ExtensionContext;
@@ -175,7 +175,7 @@ export class FileAccessTracker {
       const dirUri = vscode.Uri.file(issueDir);
       for (const [name, type] of await vscode.workspace.fs.readDirectory(dirUri)) {
         if (type === vscode.FileType.File && name.endsWith('.md')) {
-          validFiles.add(`${issueDir}/${name}`);
+          validFiles.add(path.join(issueDir, name));
         }
       }
     } catch (error) {
