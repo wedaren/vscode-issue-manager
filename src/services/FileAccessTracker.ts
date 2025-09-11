@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { debounce } from '../utils/debounce';
+import { getUri } from '../utils/fileUtils';
 import * as path from 'path';
 /**
  * 文件访问统计数据接口
@@ -17,6 +18,45 @@ export interface FileAccessStats {
 }
 
 /**
+ * 文件访问统计数据文件结构
+ */
+interface FileAccessData {
+  version: string;
+  accessStats: { [filePath: string]: FileAccessStats };
+}
+
+const ACCESS_STATS_VERSION = '1.0.0';
+const ACCESS_STATS_FILE = 'file-access-stats.json';
+
+/**
+ * 获取文件访问统计数据文件的绝对路径
+ */
+async function getAccessStatsPath(): Promise<string | null> {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return null;
+  }
+  
+  // 确保 .issueManager 目录存在
+  const dataDir = path.join(issueDir, '.issueManager');
+  const dataDirUri = getUri(dataDir);
+  
+  try {
+    await vscode.workspace.fs.stat(dataDirUri);
+  } catch {
+    // 如果 stat 失败，假定目录不存在并尝试创建它
+    try {
+      await vscode.workspace.fs.createDirectory(dataDirUri);
+    } catch (e) {
+      console.error('创建 .issueManager 目录失败:', e);
+      return null;
+    }
+  }
+  
+  return path.join(dataDir, ACCESS_STATS_FILE);
+}
+
+/**
  * 文件访问跟踪服务
  * 负责跟踪和统计用户对问题目录下 Markdown 文件的访问行为
  */
@@ -27,12 +67,43 @@ export class FileAccessTracker implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
   /** 防抖保存函数，2秒延迟避免频繁I/O操作 */
-  private debouncedSaveStats = debounce(() => this.saveStats(), 2000);
+  private debouncedSaveStats = debounce(() => {
+    this.saveStats().catch(error => {
+      console.error('防抖保存文件访问统计数据失败:', error);
+    });
+  }, 2000);
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
-    this.loadStats();
+    this.migrateFromWorkspaceState(); // 迁移旧数据
+    this.loadStats(); // 异步加载，但不阻塞构造
     this.setupEventListeners();
+  }
+
+  /**
+   * 从旧的 workspaceState 迁移数据到新的文件存储
+   */
+  private async migrateFromWorkspaceState(): Promise<void> {
+    try {
+      const oldData = this.context.workspaceState.get<{ [filePath: string]: FileAccessStats }>('issueManager.fileAccessStats');
+      
+      if (oldData && Object.keys(oldData).length > 0) {
+        console.log('检测到旧的文件访问统计数据，开始迁移...');
+        
+        // 将旧数据复制到新结构
+        this.accessStats = { ...oldData };
+        
+        // 保存到新的文件存储
+        await this.saveStats();
+        
+        // 清理旧的 workspaceState 数据
+        await this.context.workspaceState.update('issueManager.fileAccessStats', undefined);
+        
+        console.log('文件访问统计数据迁移完成');
+      }
+    } catch (error) {
+      console.error('迁移文件访问统计数据失败:', error);
+    }
   }
 
   /**
@@ -42,7 +113,7 @@ export class FileAccessTracker implements vscode.Disposable {
     if (!FileAccessTracker.instance && context) {
       FileAccessTracker.instance = new FileAccessTracker(context);
     } else if (!FileAccessTracker.instance) {
-      throw new Error('FileAccessTracker must be initialized with context first');
+      throw new Error('FileAccessTracker 必须首先使用 context 进行初始化');
     }
     return FileAccessTracker.instance;
   }
@@ -57,17 +128,55 @@ export class FileAccessTracker implements vscode.Disposable {
   }
 
   /**
-   * 从扩展状态加载访问统计数据
+   * 从 .issueManager/file-access-stats.json 文件加载访问统计数据
    */
-  private loadStats(): void {
-    this.accessStats = this.context.workspaceState.get('issueManager.fileAccessStats', {});
+  private async loadStats(): Promise<void> {
+    try {
+      const filePath = await getAccessStatsPath();
+      if (!filePath) {
+        console.warn('无法获取文件访问统计数据路径，问题目录未配置');
+        return;
+      }
+      
+      const fileUri = getUri(filePath);
+      const raw = await vscode.workspace.fs.readFile(fileUri);
+      const data: FileAccessData = JSON.parse(raw.toString());
+      
+      // 基本校验
+      if (data && data.accessStats && typeof data.version === 'string') {
+        this.accessStats = data.accessStats;
+      } else {
+        console.warn('文件访问统计数据结构不合法，使用默认数据');
+        this.accessStats = {};
+      }
+    } catch (e) {
+      // 文件不存在或解析失败，使用空数据
+      console.log('文件访问统计数据文件不存在或解析失败，使用默认数据');
+      this.accessStats = {};
+    }
   }
 
   /**
-   * 保存访问统计数据到扩展状态
+   * 保存访问统计数据到 .issueManager/file-access-stats.json 文件
    */
-  private saveStats(): void {
-    this.context.workspaceState.update('issueManager.fileAccessStats', this.accessStats);
+  private async saveStats(): Promise<void> {
+    try {
+      const filePath = await getAccessStatsPath();
+      if (!filePath) {
+        console.error('无法保存文件访问统计数据，问题目录未配置');
+        return;
+      }
+      
+      const data: FileAccessData = {
+        version: ACCESS_STATS_VERSION,
+        accessStats: this.accessStats
+      };
+      
+      const content = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
+      await vscode.workspace.fs.writeFile(getUri(filePath), content);
+    } catch (error) {
+      console.error('保存文件访问统计数据失败:', error);
+    }
   }
 
   /**
@@ -179,7 +288,7 @@ export class FileAccessTracker implements vscode.Disposable {
         }
       }
     } catch (error) {
-      console.warn('Failed to cleanup file access stats:', error);
+      console.warn('清理文件访问统计信息失败:', error);
       return;
     }
 
@@ -193,16 +302,16 @@ export class FileAccessTracker implements vscode.Disposable {
     }
 
     if (hasChanges) {
-      this.saveStats();
+      await this.saveStats();
     }
   }
 
   /**
    * 重置所有统计数据（用于测试或重新开始）
    */
-  public resetStats(): void {
+  public async resetStats(): Promise<void> {
     this.accessStats = {};
-    this.saveStats();
+    await this.saveStats();
   }
 
   /**
@@ -210,7 +319,9 @@ export class FileAccessTracker implements vscode.Disposable {
    */
   public dispose(): void {
     // 在销毁前立即保存未保存的数据
-    this.saveStats();
+    this.saveStats().catch(error => {
+      console.error('销毁时保存文件访问统计数据失败:', error);
+    });
     
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];
