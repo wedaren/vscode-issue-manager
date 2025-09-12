@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { debounce } from '../utils/debounce';
-import { getUri } from '../utils/fileUtils';
+import { getUri, isIssueMarkdownFile } from '../utils/fileUtils';
 import * as path from 'path';
 /**
  * 文件访问统计数据接口
@@ -49,6 +49,7 @@ async function getAccessStatsPath(): Promise<string | null> {
       await vscode.workspace.fs.createDirectory(dataDirUri);
     } catch (e) {
       console.error('创建 .issueManager 目录失败:', e);
+      vscode.window.showErrorMessage('无法初始化文件跟踪服务，请检查问题目录的写入权限。');
       return null;
     }
   }
@@ -75,8 +76,17 @@ export class FileAccessTracker implements vscode.Disposable {
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
-    this.migrateFromWorkspaceState(); // 迁移旧数据
-    this.loadStats(); // 异步加载，但不阻塞构造
+    // 使用IIFE处理异步初始化，避免阻塞构造函数，同时保证执行顺序和错误捕获
+    (async () => {
+      try {
+        await this.migrateFromWorkspaceState(); // 迁移旧数据
+        await this.loadStats(); // 加载统计数据
+      } catch (error) {
+        console.error('FileAccessTracker 初始化失败:', error);
+        // 考虑向用户显示一个错误消息
+        vscode.window.showErrorMessage('文件访问跟踪服务初始化失败。');
+      }
+    })();
     this.setupEventListeners();
   }
 
@@ -201,19 +211,11 @@ export class FileAccessTracker implements vscode.Disposable {
    * 检查编辑器是否为问题目录下的 Markdown 文件
    */
   private isIssueMarkdownFile(editor: vscode.TextEditor | undefined): boolean {
-    if (!editor || !editor.document) {
+    if (!editor?.document) {
       return false;
     }
 
-    const document = editor.document;
-    const issueDir = getIssueDir();
-
-    return !!(
-      issueDir &&
-      document.uri.scheme === 'file' &&
-      document.fileName.endsWith('.md') &&
-      document.fileName.startsWith(issueDir)
-    );
+    return isIssueMarkdownFile(editor.document.uri);
   }
 
   /**

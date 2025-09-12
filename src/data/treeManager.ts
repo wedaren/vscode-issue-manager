@@ -2,20 +2,16 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
+import { getRelativePathToIssueDir } from '../utils/fileUtils';
 
 /**
  * 获取文件相对于 issueDir 的路径。
  * @param filePath 文件的绝对路径。
  * @returns 相对于 issueDir 的路径，如果文件不在 issueDir 内则返回 null。
+ * @deprecated 请使用 getRelativePathToIssueDir 函数替代
  */
 export function getRelativePath(filePath: string): string | null {
-  const issueDir = getIssueDir();
-  if (!issueDir) {
-    return null;
-  }
-  const relativePath = path.relative(issueDir, filePath);
-  // 如果文件不在目录下，relativePath 会以 '..' 开头
-  return relativePath.startsWith('..') ? null : relativePath;
+  return getRelativePathToIssueDir(filePath);
 }
 
 // 定义树节点和树数据的结构

@@ -415,3 +415,32 @@ export async function readLastJSONLRecords<T = any>(fileUri: vscode.Uri, maxReco
 export function getRSSFeedStatesFilePath(): vscode.Uri | null {
   return getIssueManagerFilePath('rss-feed-states.json');
 }
+
+/**
+ * 获取文件相对于问题目录的路径
+ * @param filePath 文件的绝对路径
+ * @returns 相对于问题目录的路径，如果文件不在问题目录内则返回 null
+ */
+export function getRelativePathToIssueDir(filePath: string): string | null {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return null;
+  }
+  
+  const relativePath = path.relative(issueDir, filePath);
+  // 如果 relativePath 不以 '..' 开头，并且不是绝对路径，则说明文件在 issueDir 目录内
+  return !relativePath.startsWith('..') && !path.isAbsolute(relativePath) ? relativePath : null;
+}
+
+/**
+ * 检查文件是否为问题目录下的 Markdown 文件
+ * @param fileUri 文件的 URI
+ * @returns 如果是问题目录下的 Markdown 文件返回 true，否则返回 false
+ */
+export function isIssueMarkdownFile(fileUri: vscode.Uri): boolean {
+  if (fileUri.scheme !== 'file' || !fileUri.fsPath.endsWith('.md')) {
+    return false;
+  }
+
+  return getRelativePathToIssueDir(fileUri.fsPath) !== null;
+}
