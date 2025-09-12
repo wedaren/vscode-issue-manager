@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
-import { debounce } from '../utils/debounce';
+import { debounce, DebouncedFunction } from '../utils/debounce';
 import { getUri, isIssueMarkdownFile } from '../utils/fileUtils';
 import * as path from 'path';
 /**
@@ -68,7 +68,7 @@ export class FileAccessTracker implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
   /** 防抖保存函数，2秒延迟避免频繁I/O操作 */
-  private debouncedSaveStats = debounce(() => {
+  private debouncedSaveStats: DebouncedFunction<() => Promise<void>> = debounce(() => {
     this.saveStats().catch(error => {
       console.error('防抖保存文件访问统计数据失败:', error);
     });
@@ -320,6 +320,9 @@ export class FileAccessTracker implements vscode.Disposable {
    * 销毁服务，清理资源
    */
   public dispose(): void {
+    // 取消任何待处理的防抖保存操作
+    this.debouncedSaveStats.cancel();
+    
     // 在销毁前立即保存未保存的数据
     this.saveStats().catch(error => {
       console.error('销毁时保存文件访问统计数据失败:', error);
