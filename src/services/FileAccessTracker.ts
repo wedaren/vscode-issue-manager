@@ -79,7 +79,6 @@ export class FileAccessTracker implements vscode.Disposable {
     // 使用IIFE处理异步初始化，避免阻塞构造函数，同时保证执行顺序和错误捕获
     (async () => {
       try {
-        await this.migrateFromWorkspaceState(); // 迁移旧数据
         await this.loadStats(); // 加载统计数据
       } catch (error) {
         console.error('FileAccessTracker 初始化失败:', error);
@@ -90,31 +89,6 @@ export class FileAccessTracker implements vscode.Disposable {
     this.setupEventListeners();
   }
 
-  /**
-   * 从旧的 workspaceState 迁移数据到新的文件存储
-   */
-  private async migrateFromWorkspaceState(): Promise<void> {
-    try {
-      const oldData = this.context.workspaceState.get<{ [filePath: string]: FileAccessStats }>('issueManager.fileAccessStats');
-      
-      if (oldData && Object.keys(oldData).length > 0) {
-        console.log('检测到旧的文件访问统计数据，开始迁移...');
-        
-        // 将旧数据复制到新结构
-        this.accessStats = { ...oldData };
-        
-        // 保存到新的文件存储
-        await this.saveStats();
-        
-        // 清理旧的 workspaceState 数据
-        await this.context.workspaceState.update('issueManager.fileAccessStats', undefined);
-        
-        console.log('文件访问统计数据迁移完成');
-      }
-    } catch (error) {
-      console.error('迁移文件访问统计数据失败:', error);
-    }
-  }
 
   /**
    * 获取单例实例
