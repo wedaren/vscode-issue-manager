@@ -169,9 +169,9 @@ export class FileAccessTracker implements vscode.Disposable {
   private setupEventListeners(): void {
     // 监听文档激活事件
     const activeEditorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (this.isIssueMarkdownFile(editor)) {
-        this.recordFileAccess(editor!.document.fileName);
-      }
+      if (editor && isIssueMarkdownFile(editor.document.uri)) {  
+        this.recordFileAccess(editor.document.fileName);  
+      }  
     });
     this.disposables.push(activeEditorListener);
 
@@ -179,17 +179,6 @@ export class FileAccessTracker implements vscode.Disposable {
     // - 监听文档关闭事件计算阅读时间
     // - 监听文档滚动事件跟踪阅读进度
     // - 监听键盘活动检测活跃阅读
-  }
-
-  /**
-   * 检查编辑器是否为问题目录下的 Markdown 文件
-   */
-  private isIssueMarkdownFile(editor: vscode.TextEditor | undefined): boolean {
-    if (!editor?.document) {
-      return false;
-    }
-
-    return isIssueMarkdownFile(editor.document.uri);
   }
 
   /**
