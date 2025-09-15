@@ -5,6 +5,9 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+<!-- TODO: 结合 git log 记录 & npm version patch 修改 changelog 并发布 -->
+
+
 ## [0.1.12]
 
 ### 🔧 改进
