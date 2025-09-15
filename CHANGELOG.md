@@ -5,7 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
-<!-- TODO: 结合 git log 记录 & npm version patch 修改 changelog 并发布 -->
+**注意**: 从v0.1.13开始，changelog由自动化发布工具维护。使用 `npm run release` 可自动基于git log更新changelog。
+
+## [0.1.13] - 2025-09-15
+
+### 📝 其他
+- **Initial plan**
+- **Checkpoint from VS Code for coding agent session**
+
 
 
 ## [0.1.12]
