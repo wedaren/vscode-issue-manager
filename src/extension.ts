@@ -24,6 +24,7 @@ import { registerRSSVirtualFileProvider } from './views/RSSVirtualFileProvider';
 import { ensureGitignoreForRSSState } from './utils/fileUtils';
 import { RSSIssueDragAndDropController } from './views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from './views/IssueStructureProvider';
+import { FileAccessTracker } from './services/FileAccessTracker';
 
 
 // 当您的扩展被激活时，将调用此方法
@@ -49,6 +50,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const gitSyncService = GitSyncService.getInstance();
 	gitSyncService.initialize();
 	context.subscriptions.push(gitSyncService);
+
+	// 初始化文件访问跟踪服务
+	const fileAccessTracker = FileAccessTracker.initialize(context);
 
 	// 注册“移动到...”命令
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode | IssueItem, selectedNodes?: (IssueTreeNode | IssueItem)[]) => {

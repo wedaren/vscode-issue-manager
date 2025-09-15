@@ -21,7 +21,6 @@
 - **类名**: 使用 PascalCase（如 `IssueOverviewProvider`）
 - **方法和变量**: 使用 camelCase（如 `createIssue`, `focusedManager`）
 - **常量**: 使用 UPPER_SNAKE_CASE（如 `DEFAULT_CONFIG`）
-- **接口**: 以 `I` 开头（如 `ITreeNode`）
 
 ### 代码组织
 

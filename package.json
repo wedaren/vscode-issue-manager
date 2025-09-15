@@ -104,6 +104,10 @@
         "icon": "$(clock)"
       },
       {
+        "command": "issueManager.setRecentSort.viewTime",
+        "title": "按最近查看排序"
+      },
+      {
         "command": "issueManager.copyFilename",
         "title": "复制文件名",
         "icon": "$(file-symlink-file)",
@@ -382,6 +386,12 @@
           "toggled": true
         },
         {
+          "command": "issueManager.setRecentSort.viewTime",
+          "when": "issueManager.recentIssuesSortOrder == 'viewTime'",
+          "group": "1_sort@3",
+          "toggled": true
+        },
+        {
           "command": "issueManager.setRecentSort.ctime",
           "when": "issueManager.recentIssuesSortOrder != 'ctime'",
           "group": "1_sort@1"
@@ -390,6 +400,11 @@
           "command": "issueManager.setRecentSort.mtime",
           "when": "issueManager.recentIssuesSortOrder != 'mtime'",
           "group": "1_sort@2"
+        },
+        {
+          "command": "issueManager.setRecentSort.viewTime",
+          "when": "issueManager.recentIssuesSortOrder != 'viewTime'",
+          "group": "1_sort@3"
         }
       ],
       "view/item/context": [

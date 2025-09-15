@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
 import { getTitle } from '../utils/markdown';
 import { getCtimeOrNow, getMtimeOrNow } from '../utils/fileUtils';
+import { FileAccessTracker } from '../services/FileAccessTracker';
 
 
 /**
@@ -20,6 +21,7 @@ interface FileStat {
   filePath: string;
   mtime: Date;
   ctime: Date;
+  viewTime?: Date;
 }
 
 class GroupTreeItem extends vscode.TreeItem {
@@ -45,12 +47,16 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private viewMode: ViewMode; // 默认值由配置项决定
-  private sortOrder: 'mtime' | 'ctime' = 'ctime'; // 默认为创建时间
+  private sortOrder: 'mtime' | 'ctime' | 'viewTime' = 'ctime'; // 默认为创建时间
   private fileStatsCache: FileStat[] | null = null;
+  private fileAccessTracker: FileAccessTracker;
 
   constructor(private context: vscode.ExtensionContext) {
     // 初始化时根据配置项设置默认模式
     this.viewMode = getRecentIssuesDefaultMode();
+
+    // 获取文件访问跟踪服务实例
+    this.fileAccessTracker = FileAccessTracker.getInstance();
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
       this.setViewMode('grouped');
@@ -66,6 +72,10 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.mtime', () => {
       this.setSortOrder('mtime');
+    }));
+
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.viewTime', () => {
+      this.setSortOrder('viewTime');
     }));
 
     this.setSortContext();
@@ -102,7 +112,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 设置排序顺序并刷新视图
    * @param order 排序方式
    */
-  setSortOrder(order: 'mtime' | 'ctime'): void {
+  setSortOrder(order: 'mtime' | 'ctime' | 'viewTime'): void {
     this.sortOrder = order;
     this.setSortContext();
     this.refresh();
@@ -122,6 +132,15 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   refresh(): void {
     this.fileStatsCache = null; // 清空缓存
     this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * 获取文件的查看时间
+   * @param filePath 文件路径
+   * @returns 查看时间，如果没有记录则返回undefined
+   */
+  getViewTime(filePath: string): Date | undefined {
+    return this.fileAccessTracker.getLastViewTime(filePath);
   }
 
   /**
@@ -208,18 +227,67 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         const filePath = path.join(issueDir, file);
         const ctime = await getCtimeOrNow(vscode.Uri.file(filePath));
         const mtime = await getMtimeOrNow(vscode.Uri.file(filePath));
-        return { file, filePath, mtime, ctime };
+        const viewTime = this.getViewTime(filePath);
+        return { file, filePath, mtime, ctime, viewTime };
       })
     );
 
     fileStats.sort((a, b) => {
-      const timeA = this.sortOrder === 'mtime' ? a.mtime.getTime() : a.ctime.getTime();
-      const timeB = this.sortOrder === 'mtime' ? b.mtime.getTime() : b.ctime.getTime();
-      return timeB - timeA;
+      if (this.sortOrder === 'viewTime') {
+        const aHasView = !!a.viewTime;
+        const bHasView = !!b.viewTime;
+        if (aHasView !== bHasView) {
+          // 有查看记录的排在前面 (降序)
+          return aHasView ? -1 : 1;
+        }
+      }
+
+      const timeA = this.getSortTimestamp(a);
+      const timeB = this.getSortTimestamp(b);
+
+      return timeB - timeA; // 降序排序
     });
 
     this.fileStatsCache = fileStats;
     return this.fileStatsCache;
+  }
+
+  /**
+   * 获取用于排序的时间戳
+   * @param file 文件统计信息
+   * @returns 时间戳（毫秒）
+   */
+  private getSortTimestamp(file: FileStat): number {
+    switch (this.sortOrder) {
+      case 'mtime':
+        return file.mtime.getTime();
+      case 'ctime':
+        return file.ctime.getTime();
+      case 'viewTime':
+        // 对于 viewTime 排序，无记录时使用 mtime 作为后备
+        return (file.viewTime || file.mtime).getTime();
+      default:
+        return file.ctime.getTime();
+    }
+  }
+
+  /**
+   * 根据当前排序方式获取文件的日期
+   * @param file 文件统计信息
+   * @returns 用于分组的日期
+   */
+  private getFileDateForGrouping(file: FileStat): Date {
+    switch (this.sortOrder) {
+      case 'mtime':
+        return file.mtime;
+      case 'ctime':
+        return file.ctime;
+      case 'viewTime':
+        // 对于 viewTime 分组，无记录时使用 mtime 作为后备
+        return file.viewTime || file.mtime;
+      default:
+        return file.ctime;
+    }
   }
 
   /**
@@ -240,7 +308,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const otherWeeks: { [week: string]: FileStat[] } = {};
 
     for (const file of files) {
-      const fileDate = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
+      const fileDate = this.getFileDateForGrouping(file);
+      
       let matched = false;
       for (const group of weekGroupDefinitions) {
         if (group.test(fileDate)) {
@@ -287,7 +356,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   private createDaySubgroups(files: FileStat[]): GroupTreeItem[] {
     const filesByDay = new Map<string, FileStat[]>();
     for (const file of files) {
-      const fileDate = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
+      const fileDate = this.getFileDateForGrouping(file);
+      
       const dayKey = this.formatDateWithWeekday(fileDate);
       if (!filesByDay.has(dayKey)) {
         filesByDay.set(dayKey, []);
@@ -316,7 +386,21 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       arguments: [uri],
     };
     item.contextValue = 'recentIssue'; // 用于右键菜单
-    item.tooltip = new vscode.MarkdownString(`路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`);
+    
+    // 构建工具提示，包含访问统计信息
+    let tooltipText = `路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`;
+    
+    const accessStats = this.fileAccessTracker.getFileAccessStats(fileStat.filePath);
+    if (accessStats) {
+      tooltipText += `\n\n最近查看: ${new Date(accessStats.lastViewTime).toLocaleString()}`;
+      tooltipText += `\n\n查看次数: ${accessStats.viewCount}`;
+      if (accessStats.firstViewTime !== accessStats.lastViewTime) {
+        tooltipText += `\n\n首次查看: ${new Date(accessStats.firstViewTime).toLocaleString()}`;
+      }
+    }
+    
+    item.tooltip = new vscode.MarkdownString(tooltipText);
+    
     return item;
   }
 
@@ -362,17 +446,17 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     // 使用声明式的方式定义分组规则
     const groupDefinitions: { label: string, type: GroupType, test: (fileDateSource: Date) => boolean, files: FileStat[] }[] = [
-      // “是不是今天？”—— 这是“相等”比较，必须用净化后的日期
+      // "是不是今天？"—— 这是"相等"比较，必须用净化后的日期
       { label: '今天', type: 'direct', test: (fileDateSource) => this.normalizeDate(fileDateSource).getTime() === today.getTime(), files: [] },
       { label: '昨天', type: 'direct', test: (fileDateSource) => this.normalizeDate(fileDateSource).getTime() === yesterday.getTime(), files: [] },
-      // “是不是在某个范围？”—— 为了逻辑统一和健壮性，所有比较都应基于净化后的日期
+      // "是不是在某个范围？"—— 为了逻辑统一和健壮性，所有比较都应基于净化后的日期
       { label: '最近一周', type: 'by-day', test: (fileDateSource) => this.normalizeDate(fileDateSource) >= oneWeekAgo, files: [] },
       { label: '最近一月', type: 'by-week', test: (fileDateSource) => this.normalizeDate(fileDateSource) >= oneMonthAgo, files: [] },
       { label: '更早', type: 'by-week', test: () => true, files: [] }, // 默认捕获所有剩余文件
     ];
 
     for (const file of files) {
-      const fileDateSource = this.sortOrder === 'mtime' ? file.mtime : file.ctime;
+      const fileDateSource = this.getFileDateForGrouping(file);
 
       for (const group of groupDefinitions) {
         if (group.test(fileDateSource)) {
