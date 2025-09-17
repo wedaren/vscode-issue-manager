@@ -22,6 +22,7 @@ import { ensureGitignoreForRSSState } from './utils/fileUtils';
 import { RSSIssueDragAndDropController } from './views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from './views/IssueStructureProvider';
 import { FileAccessTracker } from './services/FileAccessTracker';
+import { registerFocusCommands } from './commands/focusCommands';
 import { registerDeleteIsolatedIssueCommand } from './commands/deleteIsolatedIssue';
 
 
@@ -72,6 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
 	registerSearchIssuesCommand(context);
 	registerOpenIssueDirCommand(context);
     registerDeleteIsolatedIssueCommand(context);
+	registerFocusCommands(context);
 
 	// 注册“问题总览”视图
 	const issueOverviewProvider = new IssueOverviewProvider(context);
@@ -307,54 +309,6 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(openFocusedViewCommand);
-
-	// 注册“添加到关注”命令
-	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueTreeNode) => {
-		const issueDir = getIssueDir();
-		if (!issueDir) { return; }
-		if (!node || !node.id) {
-			vscode.window.showErrorMessage('未找到要关注的问题节点。');
-			return;
-		}
-		const realId = stripFocusedId(node.id);
-		await addFocus([realId]);
-		vscode.commands.executeCommand('issueManager.refreshAllViews');
-		vscode.window.showInformationMessage('已添加到关注问题。');
-	});
-	context.subscriptions.push(focusIssueCommand);
-
-	const focusIssueFromIssueFileCommand = vscode.commands.registerCommand('issueManager.focusIssueFromIssueFile', async (node: vscode.TreeItem) => {
-		if (!node || !node.resourceUri) {
-			vscode.window.showErrorMessage('未找到要关注的问题文件。');
-			return;
-		}
-		await addIssueToTree([node.resourceUri], null, true);
-		vscode.window.showInformationMessage('已添加到关注问题。');
-	});
-	context.subscriptions.push(focusIssueFromIssueFileCommand);
-
-
-	// 注册“移除关注”命令
-	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueTreeNode) => {
-		if (!node?.id) {
-			vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
-			return;
-		}
-		const realId = stripFocusedId(node.id);
-		await removeFocus(realId);
-		vscode.commands.executeCommand('issueManager.refreshAllViews');
-		vscode.window.showInformationMessage('已移除关注。');
-	});
-	context.subscriptions.push(removeFocusCommand);
-
-	// 注册“置顶关注”命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', async (node: IssueTreeNode) => {
-		if (node?.id) {
-			const realId = stripFocusedId(node.id);
-			await pinFocus(realId);
-			vscode.commands.executeCommand('issueManager.focusedIssues.refresh');
-		}
-	}));
 
 	// ========== TreeView 展开/折叠状态同步与持久化 ==========
 	function registerExpandCollapseSync(treeView: vscode.TreeView<IssueTreeNode>, viewName: string) {
