@@ -102,6 +102,10 @@
         "title": "按查看时间排序"
       },
       {
+        "command": "issueManager.setRecentSort.viewCount",
+        "title": "按查看次数排序"
+      },
+      {
         "command": "issueManager.copyFilename",
         "title": "复制文件名",
         "icon": "$(file-symlink-file)",
@@ -382,6 +386,10 @@
         {
           "command": "issueManager.setRecentSort.viewTime",
           "group": "1_sort@3"
+        },
+        {
+          "command": "issueManager.setRecentSort.viewCount",
+          "group": "1_sort@4"
         }
       ],
       "view/item/context": [

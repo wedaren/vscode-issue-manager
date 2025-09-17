@@ -23,6 +23,7 @@ interface FileStat {
   mtime: Date;
   ctime: Date;
   viewTime?: Date;
+  viewCount: number;
   isIsolated: boolean;
 }
 
@@ -49,7 +50,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private viewMode: ViewMode; // 默认值由配置项决定
-  private sortOrder: 'mtime' | 'ctime' | 'viewTime' = 'ctime'; // 默认为创建时间
+  private sortOrder: 'mtime' | 'ctime' | 'viewTime' | 'viewCount' = 'ctime'; // 默认为创建时间
   private fileStatsCache: FileStat[] | null = null;
   private fileAccessTracker: FileAccessTracker;
 
@@ -78,6 +79,10 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.viewTime', () => {
       this.setSortOrder('viewTime');
+    }));
+
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.viewCount', () => {
+      this.setSortOrder('viewCount');
     }));
 
     this.setSortContext();
@@ -114,7 +119,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 设置排序顺序并刷新视图
    * @param order 排序方式
    */
-  setSortOrder(order: 'mtime' | 'ctime' | 'viewTime'): void {
+  setSortOrder(order: 'mtime' | 'ctime' | 'viewTime' | 'viewCount'): void {
     this.sortOrder = order;
     this.setSortContext();
     this.refresh();
@@ -232,12 +237,18 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         const ctime = await getCtimeOrNow(vscode.Uri.file(filePath));
         const mtime = await getMtimeOrNow(vscode.Uri.file(filePath));
         const viewTime = this.getViewTime(filePath);
+        const accessStats = this.fileAccessTracker.getFileAccessStats(filePath);
+        const viewCount = accessStats ? accessStats.viewCount : 0;
         const isIsolated = !associatedFiles.has(path.normalize(file));
-        return { file, filePath, mtime, ctime, viewTime, isIsolated };
+        return { file, filePath, mtime, ctime, viewTime, viewCount, isIsolated };
       })
     );
 
     fileStats.sort((a, b) => {
+      if (this.sortOrder === 'viewCount') {
+        return b.viewCount - a.viewCount;
+      }
+      
       if (this.sortOrder === 'viewTime') {
         const aHasView = !!a.viewTime;
         const bHasView = !!b.viewTime;
@@ -290,6 +301,9 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       case 'viewTime':
         // 对于 viewTime 分组，无记录时使用 mtime 作为后备
         return file.viewTime || file.mtime;
+      case 'viewCount':
+        // 对于 viewCount 分组，使用 mtime 作为后备
+        return file.mtime;
       default:
         return file.ctime;
     }
