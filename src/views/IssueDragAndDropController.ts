@@ -94,7 +94,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 }
                 // Case 2: Dragged from recent (isolated item) or another source
                 else if (dragged.resourceUri) { // It's a TreeItem (like an isolated issue)
-                    const resourceUri = vscode.Uri.parse(dragged.resourceUri as unknown as string);
+                    const resourceUri = vscode.Uri.parse(String(dragged.resourceUri));
                     const relativePath = path.relative(issueDir, resourceUri.fsPath);
                     const nodeToMove: IssueTreeNode = {
                         id: uuidv4(),
