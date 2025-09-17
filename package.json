@@ -63,7 +63,7 @@
         "title": "添加关注"
       },
       {
-        "command": "issueManager.focusIssueFromIsolated",
+        "command": "issueManager.focusIssueFromIssueFile",
         "title": "添加关注"
       },
       {
@@ -433,7 +433,7 @@
           "group": "modification@3"
         },
         {
-          "command": "issueManager.focusIssueFromIsolated",
+          "command": "issueManager.focusIssueFromIssueFile",
           "when": "(view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
           "group": "modification@3"
         },

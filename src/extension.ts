@@ -323,6 +323,16 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(focusIssueCommand);
 
+	const focusIssueFromIssueFileCommand = vscode.commands.registerCommand('issueManager.focusIssueFromIssueFile', async (node: vscode.TreeItem) => {
+		if (!node || !node.resourceUri) {
+			vscode.window.showErrorMessage('未找到要关注的问题文件。');
+			return;
+		}
+		await addIssueToTree([node.resourceUri], null, true);
+		vscode.window.showInformationMessage('已添加到关注问题。');
+	});
+	context.subscriptions.push(focusIssueFromIssueFileCommand);
+
 
 	// 注册“移除关注”命令
 	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueTreeNode) => {
