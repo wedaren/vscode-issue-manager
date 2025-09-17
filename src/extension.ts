@@ -15,7 +15,6 @@ import { RecordContentTool } from './llm/RecordContentTool';
 import { smartCreateIssue } from './commands/smartCreateIssue';
 import { addIssueToTree } from './commands/issueFileUtils';
 import { registerRelatedIssuesView } from './views/relatedIssuesViewRegistration';
-import { getTitle } from './utils/markdown';
 import { GitSyncService } from './services/GitSyncService';
 import { RSSIssuesProvider } from './views/RSSIssuesProvider';
 import { registerRSSVirtualFileProvider } from './views/RSSVirtualFileProvider';
