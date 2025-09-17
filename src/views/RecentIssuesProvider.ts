@@ -4,6 +4,7 @@ import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../confi
 import { getTitle } from '../utils/markdown';
 import { getCtimeOrNow, getMtimeOrNow } from '../utils/fileUtils';
 import { FileAccessTracker } from '../services/FileAccessTracker';
+import { getAssociatedFiles } from '../data/treeManager';
 
 
 /**
@@ -22,6 +23,7 @@ interface FileStat {
   mtime: Date;
   ctime: Date;
   viewTime?: Date;
+  isIsolated: boolean;
 }
 
 class GroupTreeItem extends vscode.TreeItem {
@@ -206,6 +208,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       return null;
     }
 
+    const associatedFiles = await getAssociatedFiles();
+
     // 使用 VS Code 的文件系统 API 获取 .md 文件列表，兼容多平台和虚拟文件系统
     const files: string[] = [];
     const dirUri = vscode.Uri.file(issueDir);
@@ -228,7 +232,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         const ctime = await getCtimeOrNow(vscode.Uri.file(filePath));
         const mtime = await getMtimeOrNow(vscode.Uri.file(filePath));
         const viewTime = this.getViewTime(filePath);
-        return { file, filePath, mtime, ctime, viewTime };
+        const isIsolated = !associatedFiles.has(path.normalize(file));
+        return { file, filePath, mtime, ctime, viewTime, isIsolated };
       })
     );
 
@@ -385,8 +390,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       title: '打开并查看相关联问题',
       arguments: [uri],
     };
-    item.contextValue = 'recentIssue'; // 用于右键菜单
-    
+    item.contextValue = fileStat.isIsolated ? 'isolatedIssue' : 'recentIssue'; // 用于右键菜单
+    item.iconPath = fileStat.isIsolated ? new vscode.ThemeIcon('debug-disconnect') : new vscode.ThemeIcon('archive');
     // 构建工具提示，包含访问统计信息
     let tooltipText = `路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`;
     

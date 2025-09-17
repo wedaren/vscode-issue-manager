@@ -3,7 +3,6 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { TreeData, IssueTreeNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/treeManager';
-import { IssueItem, IsolatedIssuesProvider } from './IsolatedIssuesProvider';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
 import { RecentIssuesProvider } from './RecentIssuesProvider';
@@ -14,21 +13,15 @@ import { RSSItem, RSSService } from '../services/RSSService';
 const ISSUE_MIME_TYPE = 'application/vnd.code.tree.issue-manager';
 const RSS_MIME_TYPE = 'application/vnd.code.tree.rss-issue-manager';
 
-type DraggedItem = IssueTreeNode | IssueItem
+type DraggedItem = IssueTreeNode | vscode.TreeItem;
 
-export class IssueDragAndDropController implements vscode.TreeDragAndDropController<IssueTreeNode | IssueItem> {
+export class IssueDragAndDropController implements vscode.TreeDragAndDropController<IssueTreeNode | vscode.TreeItem> {
     public dropMimeTypes: string[] = [];
     public dragMimeTypes: string[] = [];
 
-    constructor(private viewProvider: IssueOverviewProvider | IsolatedIssuesProvider | FocusedIssuesProvider | RecentIssuesProvider, private viewMode: 'isolated' | 'overview' | 'focused' | 'recent') {
-        if (viewMode === 'isolated') {
-            this.dragMimeTypes = [ISSUE_MIME_TYPE];
-            this.dropMimeTypes = []; // 孤立问题视图只出不进
-        } else if (viewMode === 'overview') {
-            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list', RSS_MIME_TYPE];
-            this.dragMimeTypes = [ISSUE_MIME_TYPE];
-        } else if (viewMode === 'focused') {
-            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'application/vnd.code.tree.issuemanager.views.isolated', 'text/uri-list', RSS_MIME_TYPE];
+    constructor(private viewProvider: IssueOverviewProvider | FocusedIssuesProvider | RecentIssuesProvider, private viewMode: 'overview' | 'focused' | 'recent') {
+        if (viewMode === 'overview' || viewMode === 'focused') {
+            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'text/uri-list', RSS_MIME_TYPE];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else if (viewMode === 'recent') {
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
@@ -37,14 +30,14 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
     }
 
     public async handleDrag(
-        source: readonly (IssueTreeNode | IssueItem)[],
+        source: readonly (IssueTreeNode | vscode.TreeItem)[],
         treeDataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
         const transferData = source.map(item => {
-            if (item instanceof IssueItem) {
+            if (item instanceof vscode.TreeItem) {
                 // 显式转换 Uri 为字符串以保证序列化安全  
-                return { ...item, resourceUri: item.resourceUri.toString() };
+                return { ...item, resourceUri: item.resourceUri!.toString() };
             }
             return item;
         });
@@ -75,76 +68,42 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
 
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, stripFocusedId(target.id)) : undefined;
         const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === ISSUE_MIME_TYPE && transferItem.value).pop() || [];
-        const fromOverview = dataTransfer.get('application/vnd.code.tree.issuemanager.views.overview');
-        const fromIsolated = dataTransfer.get('application/vnd.code.tree.issuemanager.views.isolated');
-        const fromFocused = dataTransfer.get('application/vnd.code.tree.issuemanager.views.focused');
-        const fromRecent = dataTransfer.get('application/vnd.code.tree.issuemanager.views.recent');
         const fromEditor = dataTransfer.get('text/uri-list');
         const fromRSS = dataTransfer.get(RSS_MIME_TYPE);
 
-        if (fromOverview && transferItem) {
-            const draggedItems = transferItem.value as IssueTreeNode[];
+        if (transferItem) {
+            const draggedItemsRaw = transferItem.value;
+            const draggedItems = (typeof draggedItemsRaw === 'string' ? JSON.parse(draggedItemsRaw) : draggedItemsRaw) as DraggedItem[];
 
             for (const dragged of draggedItems) {
-                let nodeToMove: IssueTreeNode | null = null;
-
-                if (dragged.id) {
-                    const sourceNode = this.findNode(treeData.rootNodes, dragged.id);
-                    if (sourceNode && this.isAncestor(sourceNode, targetNodeInTree)) {
-                        vscode.window.showWarningMessage('无法将一个节点移动到它自己的子节点下。');
-                        continue; // 跳过无效操作
-                    }
-                    nodeToMove = this.findAndRemoveNode(treeData.rootNodes, dragged.id);
-                    nodeToMove && this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
-
-                }
-            }
-        } else if (fromFocused && transferItem) {
-            const draggedItems = transferItem.value as IssueTreeNode[];
-
-            for (const dragged of draggedItems) {
-                let nodeToMove: IssueTreeNode | null = null;
-                if (dragged.id) {
+                // Case 1: Dragged from a tree view (overview, focused, recent)
+                if (dragged.id) { // It's an IssueTreeNode
                     const sourceNode = this.findNode(treeData.rootNodes, stripFocusedId(dragged.id));
                     if (sourceNode && this.isAncestor(sourceNode, targetNodeInTree)) {
                         vscode.window.showWarningMessage('无法将一个节点移动到它自己的子节点下。');
-                        continue; // 跳过无效操作
+                        continue;
                     }
                     if (isFocusedRootId(dragged.id)) {
                         vscode.window.showWarningMessage('无法将焦点根节点移动到其他位置。');
-                        continue; // 跳过无效操作
-
+                        continue;
                     }
-                    nodeToMove = this.findAndRemoveNode(treeData.rootNodes, stripFocusedId(dragged.id));
-                    nodeToMove && this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
-
-                }
-            }
-
-
-        } else if ((fromIsolated || fromRecent) && transferItem) {
-            const draggedItems = (JSON.parse(transferItem.value) as { resourceUri: string }[]).filter(i => i.resourceUri).map(i => ({
-                ...i,
-                resourceUri: vscode.Uri.parse(i.resourceUri) // 确保 resourceUri 是 Uri 对象
-            }));
-            for (const dragged of draggedItems) {
-                let nodeToMove: IssueTreeNode | null = null;
-                const relativePath = path.relative(issueDir, dragged.resourceUri.fsPath);
-                nodeToMove = {
-                    id: uuidv4(),
-                    filePath: relativePath,
-                    children: [],
-                };
-
-                if (nodeToMove) {
-                    if (this.viewMode === 'focused') {
-                        targetNodeInTree && this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
-                    } else {
+                    const nodeToMove = this.findAndRemoveNode(treeData.rootNodes, stripFocusedId(dragged.id));
+                    if (nodeToMove) {
                         this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
                     }
                 }
+                // Case 2: Dragged from recent (isolated item) or another source
+                else if (dragged.resourceUri) { // It's a TreeItem (like an isolated issue)
+                    const resourceUri = vscode.Uri.parse(dragged.resourceUri);
+                    const relativePath = path.relative(issueDir, resourceUri.fsPath);
+                    const nodeToMove: IssueTreeNode = {
+                        id: uuidv4(),
+                        filePath: relativePath,
+                        children: [],
+                    };
+                    this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
+                }
             }
-
         } else if (fromEditor) {
             const transferItemValue = fromEditor.value;
             const uriList = (typeof transferItemValue === 'string') ? transferItemValue.split(/\r?\n/) : [];

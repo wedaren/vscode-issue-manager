@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
-import { IssueTreeNode } from '../data/treeManager';
 
 /**
  * 注册“相关联问题视图”及相关命令
@@ -42,7 +41,5 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
     if (!isPinned) {
       relatedIssuesProvider.updateContext(resourceUri);
     }
-    vscode.commands.executeCommand('issueManager.views.isolated.reveal', resourceUri);
   }));
-
 }
