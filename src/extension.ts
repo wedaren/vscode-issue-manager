@@ -60,6 +60,13 @@ export function activate(context: vscode.ExtensionContext) {
 		await moveToCommand(nodes);
 	}));
 
+	// 为“最近问题”视图注册“添加到...”命令
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.addTo', async (node: vscode.TreeItem, selectedNodes?: vscode.TreeItem[]) => {
+		// 支持多选，selectedNodes 优先，否则单节点
+		const nodes = selectedNodes && selectedNodes.length > 0 ? selectedNodes : node ? [node] : [];
+		await moveToCommand(nodes);
+	}));
+
 
 
 	// 注册“问题总览视图搜索”命令

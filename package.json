@@ -135,6 +135,10 @@
         "title": "移动到..."
       },
       {
+        "command": "issueManager.addTo",
+        "title": "添加到..."
+      },
+      {
         "command": "issueManager.openIssueDir",
         "title": "在 VS Code 中打开问题目录",
         "icon": "$(home)"
@@ -451,6 +455,11 @@
         {
           "command": "issueManager.moveTo",
           "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.addTo",
+          "when": "view == 'issueManager.views.recent'",
           "group": "navigation@4"
         },
         {
