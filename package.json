@@ -410,6 +410,11 @@
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.recent' && viewItem == 'isolatedIssue'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.deleteIssue",
+          "when": "view == 'issueManager.views.recent' && viewItem == 'isolatedIssue'",
           "group": "inline"
         },
         {
