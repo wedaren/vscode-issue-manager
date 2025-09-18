@@ -37,7 +37,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         const transferData = source.map(item => {
             if (item instanceof vscode.TreeItem) {
                 // 显式转换 Uri 为字符串以保证序列化安全  
-                return { ...item, resourceUri: item.resourceUri!.toString() };
+                return { ...item, resourceUri: item.resourceUri?.toString() };
             }
             return item;
         });

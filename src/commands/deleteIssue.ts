@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-export function registerDeleteIsolatedIssueCommand(context: vscode.ExtensionContext) {
+export function registerDeleteIssueCommand(context: vscode.ExtensionContext) {
     const command = vscode.commands.registerCommand('issueManager.deleteIssue', async (item: vscode.TreeItem, selectedItems?: vscode.TreeItem[]) => {
         const itemsToDelete = selectedItems?.length ? selectedItems : (item ? [item] : []);
         if (itemsToDelete.length === 0) {

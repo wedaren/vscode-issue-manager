@@ -23,7 +23,7 @@ import { RSSIssueDragAndDropController } from './views/RSSIssueDragAndDropContro
 import { IssueStructureProvider } from './views/IssueStructureProvider';
 import { FileAccessTracker } from './services/FileAccessTracker';
 import { registerFocusCommands } from './commands/focusCommands';
-import { registerDeleteIsolatedIssueCommand } from './commands/deleteIsolatedIssue';
+import { registerDeleteIssueCommand } from './commands/deleteIssue';
 
 
 // 当您的扩展被激活时，将调用此方法
@@ -72,7 +72,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// 注册“问题总览视图搜索”命令
 	registerSearchIssuesCommand(context);
 	registerOpenIssueDirCommand(context);
-    registerDeleteIsolatedIssueCommand(context);
+    registerDeleteIssueCommand(context);
 	registerFocusCommands(context);
 
 	// 注册“问题总览”视图
