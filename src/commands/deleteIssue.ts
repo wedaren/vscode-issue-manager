@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
+/**
+ * 注册“删除问题”命令，支持单个或批量删除问题文件。
+ * @param context 扩展上下文
+ */
 export function registerDeleteIssueCommand(context: vscode.ExtensionContext) {
     const command = vscode.commands.registerCommand('issueManager.deleteIssue', async (item: vscode.TreeItem, selectedItems?: vscode.TreeItem[]) => {
         const itemsToDelete = selectedItems?.length ? selectedItems : (item ? [item] : []);

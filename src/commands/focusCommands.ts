@@ -4,6 +4,10 @@ import { IssueTreeNode, stripFocusedId } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { addIssueToTree } from './issueFileUtils';
 
+/**
+ * 注册与“关注问题”相关的命令，包括添加、移除、置顶关注等。
+ * @param context 扩展上下文
+ */
 export function registerFocusCommands(context: vscode.ExtensionContext) {
     // 注册“添加到关注”命令
     const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueTreeNode) => {

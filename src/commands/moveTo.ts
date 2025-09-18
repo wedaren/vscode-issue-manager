@@ -20,7 +20,10 @@ function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueTreeNode {
     if (!issueDir) {
         throw new Error('问题目录未配置，无法转换孤立问题节点');
     }
-    const relativePath = path.relative(issueDir, item.resourceUri!.fsPath);
+    if (!item.resourceUri) {
+        throw new Error('问题节点缺少 resourceUri，无法转换');
+    }
+    const relativePath = path.relative(issueDir, item.resourceUri.fsPath);
     return {
         id: uuidv4(),
         filePath: relativePath,
