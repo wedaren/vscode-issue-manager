@@ -45,11 +45,6 @@
         "title": "删除"
       },
       {
-        "command": "issueManager.batchDeleteIssues",
-        "icon": "$(trash)",
-        "title": "批量删除"
-      },
-      {
         "command": "issueManager.disassociateIssue",
         "title": "解除关联"
       },
@@ -68,7 +63,7 @@
         "title": "添加关注"
       },
       {
-        "command": "issueManager.focusIssueFromIsolated",
+        "command": "issueManager.focusIssueFromIssueFile",
         "title": "添加关注"
       },
       {
@@ -100,12 +95,15 @@
       },
       {
         "command": "issueManager.setRecentSort.mtime",
-        "title": "按修改时间排序",
-        "icon": "$(clock)"
+        "title": "按修改时间排序"
       },
       {
         "command": "issueManager.setRecentSort.viewTime",
-        "title": "按最近查看排序"
+        "title": "按查看时间排序"
+      },
+      {
+        "command": "issueManager.setRecentSort.viewCount",
+        "title": "按查看次数排序"
       },
       {
         "command": "issueManager.copyFilename",
@@ -138,6 +136,10 @@
       {
         "command": "issueManager.moveTo",
         "title": "移动到..."
+      },
+      {
+        "command": "issueManager.addTo",
+        "title": "添加到..."
       },
       {
         "command": "issueManager.openIssueDir",
@@ -292,7 +294,7 @@
         },
         {
           "command": "issueManager.createIssue",
-          "when": "view == issueManager.views.isolated",
+          "when": "view == issueManager.views.recent",
           "group": "navigation@1"
         },
         {
@@ -375,42 +377,30 @@
       "issueManager.recentSortSubmenu": [
         {
           "command": "issueManager.setRecentSort.ctime",
-          "when": "issueManager.recentIssuesSortOrder == 'ctime'",
-          "group": "1_sort@1",
-          "toggled": true
-        },
-        {
-          "command": "issueManager.setRecentSort.mtime",
-          "when": "issueManager.recentIssuesSortOrder == 'mtime'",
-          "group": "1_sort@2",
-          "toggled": true
-        },
-        {
-          "command": "issueManager.setRecentSort.viewTime",
-          "when": "issueManager.recentIssuesSortOrder == 'viewTime'",
-          "group": "1_sort@3",
-          "toggled": true
-        },
-        {
-          "command": "issueManager.setRecentSort.ctime",
-          "when": "issueManager.recentIssuesSortOrder != 'ctime'",
           "group": "1_sort@1"
         },
         {
           "command": "issueManager.setRecentSort.mtime",
-          "when": "issueManager.recentIssuesSortOrder != 'mtime'",
           "group": "1_sort@2"
         },
         {
           "command": "issueManager.setRecentSort.viewTime",
-          "when": "issueManager.recentIssuesSortOrder != 'viewTime'",
           "group": "1_sort@3"
+        },
+        {
+          "command": "issueManager.setRecentSort.viewCount",
+          "group": "1_sort@4"
         }
       ],
       "view/item/context": [
         {
           "command": "issueManager.deleteIssue",
-          "when": "view == 'issueManager.views.isolated'",
+          "when": "view == 'issueManager.views.recent' && viewItem == 'isolatedIssue'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.deleteIssue",
+          "when": "view == 'issueManager.views.recent' && viewItem == 'isolatedIssue'",
           "group": "inline"
         },
         {
@@ -434,13 +424,8 @@
           "group": "modification@3"
         },
         {
-          "command": "issueManager.focusIssueFromIsolated",
-          "when": "(view == 'issueManager.views.isolated')",
-          "group": "modification@3"
-        },
-        {
-          "command": "issueManager.batchDeleteIssues",
-          "when": "(view == 'issueManager.views.isolated')",
+          "command": "issueManager.focusIssueFromIssueFile",
+          "when": "(view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
           "group": "modification@3"
         },
         {
@@ -460,7 +445,12 @@
         },
         {
           "command": "issueManager.moveTo",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.isolated'",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.addTo",
+          "when": "view == 'issueManager.views.recent'",
           "group": "navigation@4"
         },
         {
@@ -727,12 +717,6 @@
           "icon": "resources/icon.svg"
         },
         {
-          "id": "issueManager.views.isolated",
-          "name": "孤立问题",
-          "icon": "resources/icon.svg",
-          "canSelectMany": true
-        },
-        {
           "id": "issueManager.views.recent",
           "name": "最近问题",
           "icon": "resources/icon.svg"
@@ -755,11 +739,6 @@
       ]
     },
     "viewsWelcome": [
-      {
-        "view": "issueManager.views.isolated",
-        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
-        "when": "!issueManager.isDirConfigured"
-      },
       {
         "view": "issueManager.views.overview",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",

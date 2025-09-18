@@ -4,10 +4,8 @@ import { getIssueDir } from './config';
 import { registerOpenIssueDirCommand } from './commands/openIssueDir';
 import { IssueOverviewProvider } from './views/IssueOverviewProvider';
 import { registerSearchIssuesCommand } from './commands/searchIssues';
-import { registerDeleteIssueFile } from './commands/deleteIssueFile';
 import { moveToCommand } from './commands/moveTo';
 import { FocusedIssuesProvider } from './views/FocusedIssuesProvider';
-import { IsolatedIssuesProvider, IssueItem } from './views/IsolatedIssuesProvider';
 import { RecentIssuesProvider } from './views/RecentIssuesProvider';
 import { IssueDragAndDropController } from './views/IssueDragAndDropController';
 import { IssueTreeNode, readTree, writeTree, removeNode, stripFocusedId, updateNodeExpanded, getAssociatedFiles } from './data/treeManager';
@@ -17,7 +15,6 @@ import { RecordContentTool } from './llm/RecordContentTool';
 import { smartCreateIssue } from './commands/smartCreateIssue';
 import { addIssueToTree } from './commands/issueFileUtils';
 import { registerRelatedIssuesView } from './views/relatedIssuesViewRegistration';
-import { getTitle } from './utils/markdown';
 import { GitSyncService } from './services/GitSyncService';
 import { RSSIssuesProvider } from './views/RSSIssuesProvider';
 import { registerRSSVirtualFileProvider } from './views/RSSVirtualFileProvider';
@@ -25,6 +22,8 @@ import { ensureGitignoreForRSSState } from './utils/fileUtils';
 import { RSSIssueDragAndDropController } from './views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from './views/IssueStructureProvider';
 import { FileAccessTracker } from './services/FileAccessTracker';
+import { registerFocusCommands } from './commands/focusCommands';
+import { registerDeleteIssueCommand } from './commands/deleteIssue';
 
 
 // 当您的扩展被激活时，将调用此方法
@@ -55,7 +54,14 @@ export function activate(context: vscode.ExtensionContext) {
 	const fileAccessTracker = FileAccessTracker.initialize(context);
 
 	// 注册“移动到...”命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode | IssueItem, selectedNodes?: (IssueTreeNode | IssueItem)[]) => {
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode, selectedNodes?: IssueTreeNode[]) => {
+		// 支持多选，selectedNodes 优先，否则单节点
+		const nodes = selectedNodes && selectedNodes.length > 0 ? selectedNodes : node ? [node] : [];
+		await moveToCommand(nodes);
+	}));
+
+	// 为“最近问题”视图注册“添加到...”命令
+	context.subscriptions.push(vscode.commands.registerCommand('issueManager.addTo', async (node: vscode.TreeItem, selectedNodes?: vscode.TreeItem[]) => {
 		// 支持多选，selectedNodes 优先，否则单节点
 		const nodes = selectedNodes && selectedNodes.length > 0 ? selectedNodes : node ? [node] : [];
 		await moveToCommand(nodes);
@@ -66,9 +72,8 @@ export function activate(context: vscode.ExtensionContext) {
 	// 注册“问题总览视图搜索”命令
 	registerSearchIssuesCommand(context);
 	registerOpenIssueDirCommand(context);
-	// 注册“孤立问题”视图
-	const isolatedIssuesProvider = new IsolatedIssuesProvider(context);
-	// vscode.window.registerTreeDataProvider('issueManager.views.isolated', isolatedIssuesProvider);
+    registerDeleteIssueCommand(context);
+	registerFocusCommands(context);
 
 	// 注册“问题总览”视图
 	const issueOverviewProvider = new IssueOverviewProvider(context);
@@ -92,25 +97,6 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
-
-	const isolatedView = vscode.window.createTreeView('issueManager.views.isolated', {
-		treeDataProvider: isolatedIssuesProvider,
-		dragAndDropController: new IssueDragAndDropController(isolatedIssuesProvider, 'isolated'),
-		canSelectMany: true // 允许多选
-	});
-	context.subscriptions.push(isolatedView);
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.views.isolated.reveal', async (uri?: vscode.Uri) => {
-		if (uri) {
-			const associatedFiles = await getAssociatedFiles();
-			const filename = path.basename(uri.fsPath);
-			if (!associatedFiles.has(filename)) {
-				const label = await getTitle(uri);
-				const issueItem = new IssueItem(label, uri);
-				await isolatedView.reveal(issueItem, { select: true, focus: true, expand: true });
-			}
-		}
-	}));
-	registerDeleteIssueFile(context, isolatedView as vscode.TreeView<IssueItem>);
 
 	// 注册“关注问题”视图
 	const focusedIssuesProvider = new FocusedIssuesProvider(context);
@@ -167,17 +153,11 @@ export function activate(context: vscode.ExtensionContext) {
 		focusedIssuesProvider.loadData();
 	}));
 
-	// 注册一个命令，用于手动刷新“孤立问题”视图
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.isolatedIssues.refresh', () => {
-		isolatedIssuesProvider.refresh();
-	}));
-
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.recentIssues.refresh', () => {
 		recentIssuesProvider.refresh();
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.refreshAllViews', () => {
-		isolatedIssuesProvider.refresh();
 		focusedIssuesProvider.refresh();
 		issueOverviewProvider.refresh();
 		recentIssuesProvider.refresh();
@@ -185,7 +165,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册统一的刷新视图命令，用于Language Model Tool等功能
 	context.subscriptions.push(vscode.commands.registerCommand('issueManager.refreshViews', () => {
-		isolatedIssuesProvider.refresh();
 		focusedIssuesProvider.refresh();
 		issueOverviewProvider.refresh();
 		recentIssuesProvider.refresh();
@@ -330,54 +309,6 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(openFocusedViewCommand);
-
-	// 注册“添加到关注”命令
-	const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueTreeNode) => {
-		const issueDir = getIssueDir();
-		if (!issueDir) { return; }
-		if (!node || !node.id) {
-			vscode.window.showErrorMessage('未找到要关注的问题节点。');
-			return;
-		}
-		const realId = stripFocusedId(node.id);
-		await addFocus([realId]);
-		vscode.commands.executeCommand('issueManager.refreshAllViews');
-		vscode.window.showInformationMessage('已添加到关注问题。');
-	});
-	context.subscriptions.push(focusIssueCommand);
-
-	const focusIssueFromIsolatedCommand = vscode.commands.registerCommand('issueManager.focusIssueFromIsolated', async (node: IssueItem) => {
-		if (!node || !node.resourceUri) {
-			vscode.window.showErrorMessage('未找到要关注的问题节点。');
-			return;
-		}
-		await addIssueToTree([node.resourceUri], null, true);
-		vscode.window.showInformationMessage('已添加到关注问题。');
-	});
-	context.subscriptions.push(focusIssueFromIsolatedCommand);
-
-
-	// 注册“移除关注”命令
-	const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueTreeNode) => {
-		if (!node?.id) {
-			vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
-			return;
-		}
-		const realId = stripFocusedId(node.id);
-		await removeFocus(realId);
-		vscode.commands.executeCommand('issueManager.refreshAllViews');
-		vscode.window.showInformationMessage('已移除关注。');
-	});
-	context.subscriptions.push(removeFocusCommand);
-
-	// 注册“置顶关注”命令
-	context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', async (node: IssueTreeNode) => {
-		if (node?.id) {
-			const realId = stripFocusedId(node.id);
-			await pinFocus(realId);
-			vscode.commands.executeCommand('issueManager.focusedIssues.refresh');
-		}
-	}));
 
 	// ========== TreeView 展开/折叠状态同步与持久化 ==========
 	function registerExpandCollapseSync(treeView: vscode.TreeView<IssueTreeNode>, viewName: string) {

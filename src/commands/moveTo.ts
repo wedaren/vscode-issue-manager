@@ -1,25 +1,27 @@
 import * as vscode from 'vscode';
 import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
-import { IssueItem } from '../views/IsolatedIssuesProvider';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * 判断节点是否为 IssueItem 类型
+ * 判断节点是否为 vscode.TreeItem 类型
  */
-function isIssueItem(node: unknown): node is IssueItem {
+function isTreeItem(node: unknown): node is vscode.TreeItem {
     return node !== null && typeof node === 'object' && 'resourceUri' in node && 'label' in node && !('id' in node);
 }
 
 /**
- * 将 IssueItem 转换为 IssueTreeNode
+ * 将 vscode.TreeItem 转换为 IssueTreeNode
  */
-function convertIssueItemToTreeNode(item: IssueItem): IssueTreeNode {
+function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueTreeNode {
     const issueDir = getIssueDir();
     if (!issueDir) {
         throw new Error('问题目录未配置，无法转换孤立问题节点');
+    }
+    if (!item.resourceUri) {
+        throw new Error('问题节点缺少 resourceUri，无法转换');
     }
     const relativePath = path.relative(issueDir, item.resourceUri.fsPath);
     return {
@@ -31,10 +33,10 @@ function convertIssueItemToTreeNode(item: IssueItem): IssueTreeNode {
 }
 
 /**
- * "移动到..."命令实现：支持多选节点移动到指定父节点，防止循环引用。
- * 支持 IssueTreeNode 和 IssueItem 两种类型的输入。
+ * "移动到..." 与 "添加到..." 命令实现：支持多选节点移动到指定父节点，防止循环引用。
+ * 支持 IssueTreeNode 和 vscode.TreeItem 两种类型的输入。
  */
-export async function moveToCommand(selectedNodes: (IssueTreeNode | IssueItem)[]) {
+export async function moveToCommand(selectedNodes: (IssueTreeNode | vscode.TreeItem)[]) {
     if (!selectedNodes || selectedNodes.length === 0) {
         vscode.window.showWarningMessage('请先选择要移动的节点。');
         return;
@@ -42,24 +44,23 @@ export async function moveToCommand(selectedNodes: (IssueTreeNode | IssueItem)[]
 
     const tree = await readTree();
     
-    // 分离孤立问题节点和树节点
-    const isolatedItems: IssueItem[] = [];
+    const issueFileNodes: vscode.TreeItem[] = [];
     const treeNodes: IssueTreeNode[] = [];
     
     selectedNodes.forEach(node => {
-        if (isIssueItem(node)) {
-            isolatedItems.push(node);
+        if (isTreeItem(node)) {
+            issueFileNodes.push(node);
         } else {
-            treeNodes.push(node);
+            treeNodes.push(node as IssueTreeNode);
         }
     });
 
-    // 将孤立问题转换为树节点并添加到处理列表
+    // 将问题转换为树节点并添加到处理列表
     let convertedNodes: IssueTreeNode[];
     try {
-        convertedNodes = isolatedItems.map(item => convertIssueItemToTreeNode(item));
+        convertedNodes = issueFileNodes.map(item => convertTreeItemToTreeNode(item));
     } catch (error: any) {
-        vscode.window.showErrorMessage(`移动孤立问题失败: ${error.message}`);
+        vscode.window.showErrorMessage(`移动问题失败: ${error.message}`);
         return;
     }
     const allNodesToMove = [...treeNodes, ...convertedNodes];
@@ -144,16 +145,16 @@ export async function moveToCommand(selectedNodes: (IssueTreeNode | IssueItem)[]
     }
     buildParentMap(tree.rootNodes, null);
 
-    // 只保留顶层选中节点（其父节点未被选中），对于孤立问题节点，全部保留
+    // 只保留顶层选中节点（其父节点未被选中），对于问题文件节点，全部保留
     const topLevelTreeNodes = treeNodes.filter(node => {
         const parentId = parentMap.get(node.id);
         return !parentId || !selectedIds.has(parentId);
     });
 
-    // 1. 只从原父节点中移除顶层树节点（孤立问题节点本来就不在树中）
+    // 1. 只从原父节点中移除顶层树节点（问题文件节点本来就不在树中）
     topLevelTreeNodes.forEach(node => removeNode(tree, node.id));
 
-    // 2. 将所有顶层节点和孤立问题节点添加到目标位置
+    // 2. 将所有顶层节点和问题文件节点添加到目标位置
     const allTopLevelNodesToMove = [...topLevelTreeNodes, ...convertedNodes];
     if (!pick.node) {
         // 选择根目录，插入到 rootNodes
@@ -166,8 +167,8 @@ export async function moveToCommand(selectedNodes: (IssueTreeNode | IssueItem)[]
     await writeTree(tree);
     vscode.commands.executeCommand('issueManager.refreshAllViews');
     
-    if (isolatedItems.length > 0) {
-        vscode.window.showInformationMessage(`已成功移动 ${isolatedItems.length} 个孤立问题和 ${treeNodes.length} 个树节点。`);
+    if (issueFileNodes.length > 0) {
+        vscode.window.showInformationMessage(`已成功移动 ${issueFileNodes.length} 个问题文件和 ${treeNodes.length} 个问题节点。`);
     } else {
         vscode.window.showInformationMessage('节点已成功移动。');
     }

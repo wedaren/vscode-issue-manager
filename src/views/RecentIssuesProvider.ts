@@ -4,6 +4,7 @@ import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../confi
 import { getTitle } from '../utils/markdown';
 import { getCtimeOrNow, getMtimeOrNow } from '../utils/fileUtils';
 import { FileAccessTracker } from '../services/FileAccessTracker';
+import { getAssociatedFiles } from '../data/treeManager';
 
 
 /**
@@ -22,6 +23,8 @@ interface FileStat {
   mtime: Date;
   ctime: Date;
   viewTime?: Date;
+  viewCount: number;
+  isIsolated: boolean;
 }
 
 class GroupTreeItem extends vscode.TreeItem {
@@ -47,7 +50,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private viewMode: ViewMode; // 默认值由配置项决定
-  private sortOrder: 'mtime' | 'ctime' | 'viewTime' = 'ctime'; // 默认为创建时间
+  private sortOrder: 'mtime' | 'ctime' | 'viewTime' | 'viewCount' = 'ctime'; // 默认为创建时间
   private fileStatsCache: FileStat[] | null = null;
   private fileAccessTracker: FileAccessTracker;
 
@@ -76,6 +79,10 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.viewTime', () => {
       this.setSortOrder('viewTime');
+    }));
+
+    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.viewCount', () => {
+      this.setSortOrder('viewCount');
     }));
 
     this.setSortContext();
@@ -112,7 +119,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 设置排序顺序并刷新视图
    * @param order 排序方式
    */
-  setSortOrder(order: 'mtime' | 'ctime' | 'viewTime'): void {
+  setSortOrder(order: 'mtime' | 'ctime' | 'viewTime' | 'viewCount'): void {
     this.sortOrder = order;
     this.setSortContext();
     this.refresh();
@@ -206,6 +213,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       return null;
     }
 
+    const associatedFiles = await getAssociatedFiles();
+
     // 使用 VS Code 的文件系统 API 获取 .md 文件列表，兼容多平台和虚拟文件系统
     const files: string[] = [];
     const dirUri = vscode.Uri.file(issueDir);
@@ -228,11 +237,18 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         const ctime = await getCtimeOrNow(vscode.Uri.file(filePath));
         const mtime = await getMtimeOrNow(vscode.Uri.file(filePath));
         const viewTime = this.getViewTime(filePath);
-        return { file, filePath, mtime, ctime, viewTime };
+        const accessStats = this.fileAccessTracker.getFileAccessStats(filePath);
+        const viewCount = accessStats ? accessStats.viewCount : 0;
+        const isIsolated = !associatedFiles.has(path.normalize(file));
+        return { file, filePath, mtime, ctime, viewTime, viewCount, isIsolated };
       })
     );
 
     fileStats.sort((a, b) => {
+      if (this.sortOrder === 'viewCount') {
+        return b.viewCount - a.viewCount;
+      }
+      
       if (this.sortOrder === 'viewTime') {
         const aHasView = !!a.viewTime;
         const bHasView = !!b.viewTime;
@@ -285,6 +301,9 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       case 'viewTime':
         // 对于 viewTime 分组，无记录时使用 mtime 作为后备
         return file.viewTime || file.mtime;
+      case 'viewCount':
+        // 对于 viewCount 分组，使用 mtime 作为后备
+        return file.mtime;
       default:
         return file.ctime;
     }
@@ -385,8 +404,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       title: '打开并查看相关联问题',
       arguments: [uri],
     };
-    item.contextValue = 'recentIssue'; // 用于右键菜单
-    
+    item.contextValue = fileStat.isIsolated ? 'isolatedIssue' : 'recentIssue'; // 用于右键菜单
+    item.iconPath = fileStat.isIsolated ? new vscode.ThemeIcon('debug-disconnect') : new vscode.ThemeIcon('archive');
     // 构建工具提示，包含访问统计信息
     let tooltipText = `路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`;
     
