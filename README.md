@@ -201,6 +201,27 @@ npm run compile
 npm run test
 ```
 
+### 自动化发布
+
+项目包含完整的自动化发布工具，支持：
+- 基于git log自动生成changelog
+- 使用npm version管理版本号  
+- 自动创建git tag并推送
+- 触发GitHub Actions发布到VS Code Marketplace
+
+```bash
+# 创建patch版本并更新changelog
+npm run release
+
+# 创建并推送tag（触发自动发布）
+npm run release:patch:tag
+
+# 查看详细使用说明
+node scripts/release.js --help
+```
+
+详见：[发布工具使用指南](docs/RELEASE_GUIDE.md)
+
 ### 项目结构
 
 ```text
@@ -223,6 +244,11 @@ src/
     ├── fileUtils.ts
     ├── markdown.ts
     └── debounce.ts
+scripts/                  # 发布和构建脚本
+├── release.js           # 自动化发布工具
+└── test-release.js      # 发布工具测试
+docs/                    # 文档
+└── RELEASE_GUIDE.md     # 发布工具使用指南
 ```
 
 ## 📄 许可证
