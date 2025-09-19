@@ -510,6 +510,18 @@
         "key": "ctrl+shift+i",
         "mac": "cmd+shift+i",
         "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.createIssueFromFocused",
+        "key": "ctrl+j ctrl+n",
+        "mac": "cmd+j cmd+n",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.searchIssuesInFocused",
+        "key": "ctrl+j ctrl+f",
+        "mac": "cmd+j cmd+f",
+        "when": "issueManager.isDirConfigured"
       }
     ],
     "configuration": {
