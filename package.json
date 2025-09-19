@@ -522,6 +522,12 @@
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "workbench.action.togglePanel",
+        "key": "ctrl+j ctrl+j",
+        "mac": "cmd+j cmd+j",
+        "when": "issueManager.isDirConfigured"
       }
     ],
     "configuration": {
