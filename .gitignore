@@ -6,3 +6,7 @@ node_modules
 
 # Gemini Code Assist 缓存文件（如果有的话）
 .gemini/cache/
+
+# 备份文件
+*.bak
+*_old.ts
