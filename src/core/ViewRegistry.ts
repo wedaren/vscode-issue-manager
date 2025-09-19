@@ -9,6 +9,7 @@ import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueTreeNode } from '../data/treeManager';
+import { IViewRegistryResult } from './interfaces';
 
 /**
  * 视图注册管理器
@@ -24,18 +25,7 @@ export class ViewRegistry {
     /**
      * 注册所有视图并返回视图实例
      */
-    public registerAllViews(): {
-        issueOverviewProvider: IssueOverviewProvider;
-        focusedIssuesProvider: FocusedIssuesProvider;
-        recentIssuesProvider: RecentIssuesProvider;
-        overviewView: vscode.TreeView<IssueTreeNode>;
-        focusedView: vscode.TreeView<IssueTreeNode>;
-        recentIssuesView: vscode.TreeView<any>;
-        rssIssuesProvider: RSSIssuesProvider;
-        rssIssuesView: vscode.TreeView<any>;
-        issueStructureProvider: IssueStructureProvider;
-        structureView: vscode.TreeView<any>;
-    } {
+    public registerAllViews(): IViewRegistryResult {
         // 注册问题总览视图
         const { issueOverviewProvider, overviewView } = this.registerOverviewView();
         

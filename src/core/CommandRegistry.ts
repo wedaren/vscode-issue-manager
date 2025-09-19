@@ -8,6 +8,7 @@ import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
 import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { getIssueDir } from '../config';
+import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
 import * as path from 'path';
 
 /**
@@ -25,9 +26,9 @@ export class CommandRegistry {
      * 注册所有命令
      */
     public registerAllCommands(
-        focusedIssuesProvider: any,
-        issueOverviewProvider: any,
-        recentIssuesProvider: any,
+        focusedIssuesProvider: IFocusedIssuesProvider,
+        issueOverviewProvider: IIssueOverviewProvider,
+        recentIssuesProvider: IIssueViewProvider,
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>
     ): void {
@@ -122,9 +123,9 @@ export class CommandRegistry {
      * 注册视图刷新命令
      */
     private registerViewRefreshCommands(
-        focusedIssuesProvider: any,
-        issueOverviewProvider: any,
-        recentIssuesProvider: any
+        focusedIssuesProvider: IFocusedIssuesProvider,
+        issueOverviewProvider: IIssueOverviewProvider,
+        recentIssuesProvider: IIssueViewProvider
     ): void {
         // 关注问题刷新
         const focusedRefreshCommand = vscode.commands.registerCommand('issueManager.focusedIssues.refresh', () => {
@@ -159,7 +160,7 @@ export class CommandRegistry {
      * 注册视图相关命令
      */
     private registerViewCommands(
-        focusedIssuesProvider: any,
+        focusedIssuesProvider: IFocusedIssuesProvider,
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>
     ): void {
@@ -195,9 +196,9 @@ export class CommandRegistry {
             if (type === 'overview') {
                 await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
             } else if (type === 'focused') {
-                const { node: target } = focusedIssuesProvider.findFirstFocusedNodeById(node.id) || {};
-                if (target) {
-                    await vscode.commands.executeCommand('issueManager.views.focused.reveal', target, { select: true, focus: true, expand: true });
+                const result = focusedIssuesProvider.findFirstFocusedNodeById(node.id);
+                if (result?.node) {
+                    await vscode.commands.executeCommand('issueManager.views.focused.reveal', result.node, { select: true, focus: true, expand: true });
                 } else {
                     await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
                 }
