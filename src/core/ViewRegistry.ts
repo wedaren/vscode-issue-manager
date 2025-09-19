@@ -13,17 +13,45 @@ import { IViewRegistryResult } from './interfaces';
 
 /**
  * 视图注册管理器
- * 负责注册所有树视图和相关的拖拽控制器
+ * 
+ * 负责创建和注册所有树视图组件、拖拽控制器和虚拟文件提供器。
+ * 管理视图的生命周期，确保正确的初始化顺序和资源清理。
+ * 
+ * 支持的视图类型：
+ * - 问题总览视图：显示完整的问题层次结构
+ * - 关注问题视图：显示用户标记的重点问题
+ * - 最近问题视图：显示最近访问或修改的问题
+ * - RSS问题视图：显示从RSS源获取的外部问题
+ * - 问题结构视图：显示问题的内部结构关系
+ * - 相关问题视图：显示问题间的关联关系
+ * 
+ * @example
+ * ```typescript
+ * const registry = new ViewRegistry(context);
+ * const views = registry.registerAllViews();
+ * // 使用 views.overviewView, views.focusedView 等
+ * ```
  */
 export class ViewRegistry {
-    private context: vscode.ExtensionContext;
+    private readonly context: vscode.ExtensionContext;
 
+    /**
+     * 创建视图注册管理器实例
+     * 
+     * @param context VS Code 扩展上下文，用于视图生命周期管理
+     */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
     }
 
     /**
      * 注册所有视图并返回视图实例
+     * 
+     * 按照依赖关系顺序创建和注册所有视图组件，
+     * 确保每个视图都正确配置了拖拽功能和多选支持。
+     * 
+     * @returns {IViewRegistryResult} 包含所有视图实例的对象
+     * @throws {Error} 当视图注册失败时抛出错误
      */
     public registerAllViews(): IViewRegistryResult {
         // 注册问题总览视图

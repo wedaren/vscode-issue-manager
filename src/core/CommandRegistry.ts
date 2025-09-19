@@ -13,17 +13,55 @@ import * as path from 'path';
 
 /**
  * 命令注册管理器
- * 负责注册所有扩展命令
+ * 
+ * 负责注册和管理 VS Code 扩展的所有命令，采用模块化设计，
+ * 将不同类型的命令分组管理，提高代码的可维护性和可扩展性。
+ * 
+ * 支持的命令类型：
+ * - 基础命令：问题创建、视图打开等核心功能
+ * - 移动和添加命令：问题的移动和树结构操作
+ * - 视图刷新命令：各种视图的数据刷新
+ * - 视图相关命令：定位、搜索、导航等视图操作
+ * - 问题操作命令：解除关联、状态管理等
+ * - 创建问题命令：各种上下文的问题创建
+ * - 工具命令：复制、导出等辅助功能
+ * - 展开/折叠状态同步：树视图状态持久化
+ * 
+ * @example
+ * ```typescript
+ * const registry = new CommandRegistry(context);
+ * registry.registerAllCommands(
+ *   focusedProvider, 
+ *   overviewProvider, 
+ *   recentProvider,
+ *   overviewView,
+ *   focusedView
+ * );
+ * ```
  */
 export class CommandRegistry {
-    private context: vscode.ExtensionContext;
+    private readonly context: vscode.ExtensionContext;
 
+    /**
+     * 创建命令注册管理器实例
+     * 
+     * @param context VS Code 扩展上下文，用于命令生命周期管理
+     */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
     }
 
     /**
      * 注册所有命令
+     * 
+     * 按照功能模块分组注册所有VS Code命令，确保命令的
+     * 注册顺序和依赖关系正确处理。
+     * 
+     * @param focusedIssuesProvider 关注问题视图提供者
+     * @param issueOverviewProvider 问题总览视图提供者
+     * @param recentIssuesProvider 最近问题视图提供者
+     * @param overviewView 总览树视图实例
+     * @param focusedView 关注问题树视图实例
      */
     public registerAllCommands(
         focusedIssuesProvider: IFocusedIssuesProvider,
@@ -32,32 +70,34 @@ export class CommandRegistry {
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>
     ): void {
-        // 注册基础命令
+        console.log('  🔧 注册基础命令...');
         this.registerBasicCommands();
         
-        // 注册移动和添加命令
+        console.log('  🚚 注册移动和添加命令...');
         this.registerMoveAndAddCommands();
         
-        // 注册外部定义的命令
+        console.log('  📦 注册外部定义的命令...');
         this.registerExternalCommands();
         
-        // 注册视图刷新命令
+        console.log('  🔄 注册视图刷新命令...');
         this.registerViewRefreshCommands(focusedIssuesProvider, issueOverviewProvider, recentIssuesProvider);
         
-        // 注册视图相关命令
+        console.log('  👁️ 注册视图相关命令...');
         this.registerViewCommands(focusedIssuesProvider, overviewView, focusedView);
         
-        // 注册问题操作命令
+        console.log('  ⚡ 注册问题操作命令...');
         this.registerIssueOperationCommands();
         
-        // 注册创建问题命令
+        console.log('  ➕ 注册创建问题命令...');
         this.registerCreateIssueCommands();
         
-        // 注册工具命令
+        console.log('  🛠️ 注册工具命令...');
         this.registerUtilityCommands();
         
-        // 注册展开/折叠状态同步
+        console.log('  🌳 注册展开/折叠状态同步...');
         this.registerExpandCollapseSync(overviewView, focusedView);
+        
+        console.log('  ✅ 所有命令注册完成');
     }
 
     /**
