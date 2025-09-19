@@ -6,8 +6,10 @@ import { IssueTreeNode } from '../data/treeManager';
  * 
  * 定义所有树视图提供者必须实现的基本契约，
  * 确保视图能够正确响应数据变化和用户操作。
+ * 
+ * @template T 树节点的类型
  */
-export interface IIssueViewProvider extends vscode.TreeDataProvider<any> {
+export interface IIssueViewProvider<T = vscode.TreeItem> extends vscode.TreeDataProvider<T> {
     /**
      * 刷新视图数据
      * 
@@ -22,7 +24,7 @@ export interface IIssueViewProvider extends vscode.TreeDataProvider<any> {
  * 扩展基础视图提供者，添加关注问题特有的功能，
  * 包括数据加载和节点查找功能。
  */
-export interface IFocusedIssuesProvider extends IIssueViewProvider {
+export interface IFocusedIssuesProvider extends IIssueViewProvider<IssueTreeNode> {
     /**
      * 加载关注问题数据
      * 
@@ -51,7 +53,7 @@ export interface IFocusedIssuesProvider extends IIssueViewProvider {
  * 专门用于问题总览视图的接口定义，目前继承基础功能，
  * 为将来可能的扩展预留接口空间。
  */
-export interface IIssueOverviewProvider extends IIssueViewProvider {
+export interface IIssueOverviewProvider extends IIssueViewProvider<IssueTreeNode> {
     // 问题总览视图的特有方法可以在这里定义
     // 目前使用基础接口功能即可
 }
@@ -70,7 +72,7 @@ export interface IViewRegistryResult {
     focusedIssuesProvider: IFocusedIssuesProvider;
     
     /** 最近问题视图提供者实例 */
-    recentIssuesProvider: IIssueViewProvider;
+    recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
     
     /** 问题总览树视图实例 */
     overviewView: vscode.TreeView<IssueTreeNode>;
@@ -79,19 +81,19 @@ export interface IViewRegistryResult {
     focusedView: vscode.TreeView<IssueTreeNode>;
     
     /** 最近问题树视图实例 */
-    recentIssuesView: vscode.TreeView<any>;
+    recentIssuesView: vscode.TreeView<vscode.TreeItem>;
     
     /** RSS问题视图提供者实例 */
-    rssIssuesProvider: IIssueViewProvider;
+    rssIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
     
     /** RSS问题树视图实例 */
-    rssIssuesView: vscode.TreeView<any>;
+    rssIssuesView: vscode.TreeView<vscode.TreeItem>;
     
     /** 问题结构视图提供者实例 */
-    issueStructureProvider: IIssueViewProvider;
+    issueStructureProvider: IIssueViewProvider<vscode.TreeItem>;
     
     /** 问题结构树视图实例 */
-    structureView: vscode.TreeView<any>;
+    structureView: vscode.TreeView<vscode.TreeItem>;
 }
 
 /**

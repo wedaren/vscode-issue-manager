@@ -139,7 +139,7 @@ export class ViewRegistry {
      */
     private registerRecentView(): {
         recentIssuesProvider: RecentIssuesProvider;
-        recentIssuesView: vscode.TreeView<any>;
+        recentIssuesView: vscode.TreeView<vscode.TreeItem>;
     } {
         const recentIssuesProvider = new RecentIssuesProvider(this.context);
         
@@ -159,7 +159,7 @@ export class ViewRegistry {
      */
     private registerRSSView(): {
         rssIssuesProvider: RSSIssuesProvider;
-        rssIssuesView: vscode.TreeView<any>;
+        rssIssuesView: vscode.TreeView<vscode.TreeItem>;
     } {
         const rssIssuesProvider = new RSSIssuesProvider(this.context);
         
@@ -180,7 +180,7 @@ export class ViewRegistry {
      */
     private registerStructureView(): {
         issueStructureProvider: IssueStructureProvider;
-        structureView: vscode.TreeView<any>;
+        structureView: vscode.TreeView<vscode.TreeItem>;
     } {
         const issueStructureProvider = new IssueStructureProvider(this.context);
         

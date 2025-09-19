@@ -69,7 +69,7 @@ export class CommandRegistry {
     public registerAllCommands(
         focusedIssuesProvider: IFocusedIssuesProvider,
         issueOverviewProvider: IIssueOverviewProvider,
-        recentIssuesProvider: IIssueViewProvider,
+        recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>
     ): void {
@@ -168,7 +168,7 @@ export class CommandRegistry {
     private registerViewRefreshCommands(
         focusedIssuesProvider: IFocusedIssuesProvider,
         issueOverviewProvider: IIssueOverviewProvider,
-        recentIssuesProvider: IIssueViewProvider
+        recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>
     ): void {
         // 关注问题刷新
         const focusedRefreshCommand = vscode.commands.registerCommand('issueManager.focusedIssues.refresh', () => {
