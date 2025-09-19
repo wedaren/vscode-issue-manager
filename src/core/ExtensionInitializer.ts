@@ -59,6 +59,10 @@ export class ExtensionInitializer {
         const startTime = Date.now();
         console.log('🚀 开始初始化问题管理器扩展...');
 
+        // 监控内存使用情况
+        const initialMemory = this.getMemoryUsage();
+        console.log(`  📊 初始内存使用: ${initialMemory.heapUsed.toFixed(2)}MB`);
+
         try {
             // 1. 初始化配置监听
             console.log('📋 步骤 1/4: 初始化配置监听...');
@@ -77,16 +81,27 @@ export class ExtensionInitializer {
             await this.registerCommandsSafely(views);
 
             const duration = Date.now() - startTime;
-            console.log(`✅ 扩展初始化完成 (耗时: ${duration}ms)`);
+            const finalMemory = this.getMemoryUsage();
+            const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed;
             
-            // 发送激活完成的通知
-            vscode.window.showInformationMessage('问题管理器扩展已成功激活！');
+            console.log(`✅ 扩展初始化完成`);
+            console.log(`  ⏱️ 耗时: ${duration}ms`);
+            console.log(`  📊 内存增加: ${memoryIncrease.toFixed(2)}MB`);
+            console.log(`  🔧 当前内存使用: ${finalMemory.heapUsed.toFixed(2)}MB`);
+            
+            // 发送激活完成的通知（延迟发送，避免阻塞初始化）
+            setTimeout(() => {
+                vscode.window.showInformationMessage('问题管理器扩展已成功激活！');
+            }, 500);
             
         } catch (error) {
             const duration = Date.now() - startTime;
             const errorMessage = this.formatErrorMessage(error);
             
             console.error(`❌ 扩展初始化失败 (耗时: ${duration}ms):`, error);
+            
+            // 清理可能的部分初始化状态
+            this.cleanupPartialInitialization();
             
             // 显示用户友好的错误消息
             const userMessage = `问题管理器扩展初始化失败: ${errorMessage}`;
@@ -221,6 +236,37 @@ export class ExtensionInitializer {
             return error;
         } else {
             return '未知错误类型';
+        }
+    }
+
+    /**
+     * 获取当前内存使用情况
+     * 
+     * @returns 内存使用统计信息
+     */
+    private getMemoryUsage(): { heapUsed: number; heapTotal: number } {
+        if (typeof process !== 'undefined' && process.memoryUsage) {
+            const usage = process.memoryUsage();
+            return {
+                heapUsed: usage.heapUsed / 1024 / 1024, // 转换为MB
+                heapTotal: usage.heapTotal / 1024 / 1024
+            };
+        }
+        return { heapUsed: 0, heapTotal: 0 };
+    }
+
+    /**
+     * 清理部分初始化状态
+     * 
+     * 在初始化失败时清理可能的部分状态，防止内存泄漏
+     */
+    private cleanupPartialInitialization(): void {
+        try {
+            // 这里可以添加清理逻辑，如果将来需要的话
+            // 目前所有的清理都由VS Code的dispose机制处理
+            console.log('🧹 清理部分初始化状态...');
+        } catch (error) {
+            console.error('清理部分初始化状态时出错:', error);
         }
     }
 }

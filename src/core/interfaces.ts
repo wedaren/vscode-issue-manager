@@ -131,3 +131,24 @@ export enum InitializationPhase {
     /** 命令注册 */
     COMMANDS = 'COMMANDS'
 }
+
+/**
+ * 生命周期管理接口
+ * 
+ * 定义组件的生命周期方法，确保资源能够正确清理
+ */
+export interface ILifecycleManager extends vscode.Disposable {
+    /**
+     * 初始化组件
+     * 
+     * @returns Promise<void> 初始化完成的Promise
+     */
+    initialize?(): Promise<void>;
+    
+    /**
+     * 获取组件的健康状态
+     * 
+     * @returns boolean 组件是否健康运行
+     */
+    isHealthy?(): boolean;
+}

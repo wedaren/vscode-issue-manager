@@ -9,6 +9,7 @@ import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { getIssueDir } from '../config';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
+import { debounce, DebouncedFunction } from '../utils/debounce';
 import * as path from 'path';
 
 /**
@@ -41,6 +42,7 @@ import * as path from 'path';
  */
 export class CommandRegistry {
     private readonly context: vscode.ExtensionContext;
+    private readonly expandCollapseHandler: ExpandCollapseHandler;
 
     /**
      * 创建命令注册管理器实例
@@ -49,6 +51,7 @@ export class CommandRegistry {
      */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.expandCollapseHandler = new ExpandCollapseHandler();
     }
 
     /**
@@ -369,29 +372,133 @@ export class CommandRegistry {
 
     /**
      * 注册展开/折叠状态同步
+     * 
+     * 为树视图注册展开和折叠事件监听器，实现状态持久化。
+     * 使用防抖机制避免频繁的I/O操作，提高性能。
+     * 
+     * @param overviewView 总览树视图
+     * @param focusedView 关注问题树视图
      */
     private registerExpandCollapseSync(
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>
     ): void {
-        const registerExpandCollapseSync = (treeView: vscode.TreeView<IssueTreeNode>, viewName: string) => {
-            treeView.onDidExpandElement(async (e) => {
-                const treeData = await readTree();
-                if (updateNodeExpanded(treeData.rootNodes, stripFocusedId(e.element.id), true)) {
-                    await writeTree(treeData);
-                    vscode.commands.executeCommand('issueManager.refreshAllViews');
-                }
-            });
-            treeView.onDidCollapseElement(async (e) => {
-                const treeData = await readTree();
-                if (updateNodeExpanded(treeData.rootNodes, stripFocusedId(e.element.id), false)) {
-                    await writeTree(treeData);
-                    vscode.commands.executeCommand('issueManager.refreshAllViews');
-                }
-            });
-        };
+        try {
+            this.expandCollapseHandler.registerTreeView(overviewView, 'overview');
+            this.expandCollapseHandler.registerTreeView(focusedView, 'focused');
+            console.log('    ✓ 展开/折叠状态同步已注册');
+        } catch (error) {
+            console.error('    ✗ 展开/折叠状态同步注册失败:', error);
+            // 展开/折叠同步失败不应该阻止扩展启动
+        }
+    }
+}
 
-        registerExpandCollapseSync(overviewView, 'overview');
-        registerExpandCollapseSync(focusedView, 'focused');
+/**
+ * 展开/折叠状态处理器
+ * 
+ * 专门处理树视图的展开和折叠事件，实现状态持久化。
+ * 使用防抖机制和错误恢复，确保性能和稳定性。
+ */
+class ExpandCollapseHandler {
+    private readonly debouncedSaveState: DebouncedFunction<() => void>;
+    private pendingUpdates = new Map<string, boolean>();
+
+    constructor() {
+        // 使用防抖机制，避免频繁的I/O操作
+        this.debouncedSaveState = debounce(() => {
+            this.saveExpandedStates();
+        }, 300);
+    }
+
+    /**
+     * 为树视图注册展开/折叠事件监听器
+     * 
+     * @param treeView 要注册的树视图
+     * @param viewName 视图名称，用于日志记录
+     */
+    public registerTreeView(treeView: vscode.TreeView<IssueTreeNode>, viewName: string): void {
+        // 展开事件监听
+        treeView.onDidExpandElement((e) => {
+            this.handleExpandCollapse(e.element.id, true, viewName);
+        });
+
+        // 折叠事件监听
+        treeView.onDidCollapseElement((e) => {
+            this.handleExpandCollapse(e.element.id, false, viewName);
+        });
+    }
+
+    /**
+     * 处理展开/折叠事件
+     * 
+     * @param nodeId 节点ID
+     * @param expanded 是否展开
+     * @param viewName 视图名称
+     */
+    private handleExpandCollapse(nodeId: string, expanded: boolean, viewName: string): void {
+        try {
+            const cleanId = stripFocusedId(nodeId);
+            this.pendingUpdates.set(cleanId, expanded);
+            
+            // 触发防抖保存
+            this.debouncedSaveState();
+            
+        } catch (error) {
+            console.error(`展开/折叠处理失败 (${viewName}):`, error);
+        }
+    }
+
+    /**
+     * 保存展开状态到存储
+     * 
+     * 批量处理所有待保存的状态更新，减少I/O操作次数
+     */
+    private saveExpandedStates(): void {
+        if (this.pendingUpdates.size === 0) {
+            return;
+        }
+
+        // 异步处理保存操作，不阻塞用户界面
+        this.performSave().catch(error => {
+            console.error('保存展开状态失败:', error);
+            // 清空待处理的更新，避免重复尝试
+            this.pendingUpdates.clear();
+            
+            // 显示用户友好的错误消息
+            vscode.window.showWarningMessage('无法保存视图状态，下次启动时展开状态可能丢失。');
+        });
+    }
+
+    /**
+     * 执行实际的保存操作
+     */
+    private async performSave(): Promise<void> {
+        try {
+            const treeData = await readTree();
+            let hasChanges = false;
+
+            // 批量应用所有状态更新
+            for (const [nodeId, expanded] of this.pendingUpdates) {
+                if (updateNodeExpanded(treeData.rootNodes, nodeId, expanded)) {
+                    hasChanges = true;
+                }
+            }
+
+            // 清空待处理的更新
+            this.pendingUpdates.clear();
+
+            // 只有在有实际变化时才保存和刷新
+            if (hasChanges) {
+                await writeTree(treeData);
+                // 延迟刷新，避免阻塞用户操作
+                setTimeout(() => {
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                }, 100);
+            }
+
+        } catch (error) {
+            throw error; // 重新抛出错误，让上层处理
+        }
     }
 }
