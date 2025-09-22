@@ -6,6 +6,9 @@ import { ConfigurationManager } from './ConfigurationManager';
 import { IViewRegistryResult, InitializationPhase } from './interfaces';
 import { Logger } from './utils/Logger';
 
+const ACTIVATION_SUCCESS_MESSAGE_DELAY_MS = 500;
+const INITIALIZATION_RETRY_DELAY_MS = 2000;
+
 /**
  * 扩展初始化器
  * 
@@ -100,7 +103,7 @@ export class ExtensionInitializer {
             // 发送激活完成的通知（延迟发送，避免阻塞初始化）
             setTimeout(() => {
                 vscode.window.showInformationMessage('问题管理器扩展已成功激活！');
-            }, 500);
+            }, ACTIVATION_SUCCESS_MESSAGE_DELAY_MS);
             
         } catch (error) {
             const duration = Date.now() - startTime;
@@ -122,7 +125,7 @@ export class ExtensionInitializer {
                         break;
                     case '重试':
                         // 延迟重试，避免立即失败
-                        setTimeout(() => this.initialize(), 2000);
+                        setTimeout(() => this.initialize(), INITIALIZATION_RETRY_DELAY_MS);
                         break;
                     case '报告问题':
                         vscode.env.openExternal(vscode.Uri.parse('https://github.com/wedaren/vscode-issue-manager/issues/new'));
@@ -146,9 +149,9 @@ export class ExtensionInitializer {
     private async initializeConfigurationSafely(): Promise<void> {
         try {
             this.configurationManager.initializeConfiguration();
-            console.log('  ✓ 配置监听器初始化成功');
+            this.logger.info('  ✓ 配置监听器初始化成功');
         } catch (error) {
-            console.error('  ✗ 配置管理器初始化失败:', error);
+            this.logger.error('  ✗ 配置管理器初始化失败:', error);
             const phase = InitializationPhase.CONFIGURATION;
             throw new Error(`${phase}阶段失败: ${this.formatErrorMessage(error)}`);
         }
@@ -167,9 +170,9 @@ export class ExtensionInitializer {
     private async initializeServicesSafely(): Promise<void> {
         try {
             this.serviceRegistry.initializeServices();
-            console.log('  ✓ 核心服务初始化成功');
+            this.logger.info('  ✓ 核心服务初始化成功');
         } catch (error) {
-            console.error('  ✗ 服务注册失败:', error);
+            this.logger.error('  ✗ 服务注册失败:', error);
             const phase = InitializationPhase.SERVICES;
             throw new Error(`${phase}阶段失败: ${this.formatErrorMessage(error)}`);
         }
@@ -191,10 +194,10 @@ export class ExtensionInitializer {
     private async registerViewsSafely(): Promise<IViewRegistryResult> {
         try {
             const views = this.viewRegistry.registerAllViews();
-            console.log('  ✓ 视图组件注册成功');
+            this.logger.info('  ✓ 视图组件注册成功');
             return views;
         } catch (error) {
-            console.error('  ✗ 视图注册失败:', error);
+            this.logger.error('  ✗ 视图注册失败:', error);
             const phase = InitializationPhase.VIEWS;
             throw new Error(`${phase}阶段失败: ${this.formatErrorMessage(error)}`);
         }
@@ -221,9 +224,9 @@ export class ExtensionInitializer {
                 views.overviewView,
                 views.focusedView
             );
-            console.log('  ✓ 命令处理器注册成功');
+            this.logger.info('  ✓ 命令处理器注册成功');
         } catch (error) {
-            console.error('  ✗ 命令注册失败:', error);
+            this.logger.error('  ✗ 命令注册失败:', error);
             const phase = InitializationPhase.COMMANDS;
             throw new Error(`${phase}阶段失败: ${this.formatErrorMessage(error)}`);
         }
@@ -272,9 +275,9 @@ export class ExtensionInitializer {
         try {
             // 这里可以添加清理逻辑，如果将来需要的话
             // 目前所有的清理都由VS Code的dispose机制处理
-            console.log('🧹 清理部分初始化状态...');
+            this.logger.info('🧹 清理部分初始化状态...');
         } catch (error) {
-            console.error('清理部分初始化状态时出错:', error);
+            this.logger.error('清理部分初始化状态时出错:', error);
         }
     }
 }
