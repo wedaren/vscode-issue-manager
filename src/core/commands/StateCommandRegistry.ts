@@ -62,11 +62,11 @@ export class StateCommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.copyFilename',
             async (...args: unknown[]) => {
-                const item = args[0] as vscode.TreeItem;
+                const arg = args[0];
                 let resourceUri: vscode.Uri | undefined;
 
-                if (item?.resourceUri) {
-                    resourceUri = item.resourceUri;
+                if (arg instanceof vscode.TreeItem && arg.resourceUri) {
+                    resourceUri = arg.resourceUri;
                 } else {
                     const activeEditor = vscode.window.activeTextEditor;
                     resourceUri = activeEditor?.document.uri;
