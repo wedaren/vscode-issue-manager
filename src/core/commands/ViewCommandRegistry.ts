@@ -38,7 +38,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
      * 注册所有视图相关命令
      */
     public registerCommands(): void {
-        console.log('  🔄 注册视图操作命令...');
+        this.logger.info('  🔄 注册视图操作命令...');
         
         this.registerViewRefreshCommands();
         this.registerViewNavigationCommands();
@@ -114,7 +114,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
                     });
                     vscode.window.showInformationMessage('已定位到关注问题中的节点');
                 } catch (error) {
-                    console.error('定位节点失败:', error);
+                    this.logger.error('定位节点失败:', error);
                     vscode.window.showErrorMessage('定位节点失败');
                 }
             },
