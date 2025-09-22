@@ -2,6 +2,9 @@ import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { debounce } from '../utils/debounce';
+import { Logger } from './utils/Logger';
+
+const DEBOUNCE_REFRESH_DELAY_MS = 500;
 
 /**
  * 配置监听管理器
@@ -25,6 +28,7 @@ import { debounce } from '../utils/debounce';
 export class ConfigurationManager {
     private readonly context: vscode.ExtensionContext;
     private watcher?: vscode.FileSystemWatcher;
+    private readonly logger: Logger;
 
     /**
      * 创建配置监听管理器实例
@@ -33,6 +37,7 @@ export class ConfigurationManager {
      */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.logger = Logger.getInstance();
     }
 
     /**
@@ -54,9 +59,9 @@ export class ConfigurationManager {
             // 3. 设置文件监听器
             this.setupFileWatcher();
             
-            console.log('    ✓ 配置监听器设置完成');
+            this.logger.info('✓ 配置监听器设置完成');
         } catch (error) {
-            console.error('    ✗ 配置监听器设置失败:', error);
+            this.logger.error('✗ 配置监听器设置失败:', error);
             throw new Error(`配置监听器初始化失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
     }
@@ -111,9 +116,9 @@ export class ConfigurationManager {
             );
 
             const debouncedRefresh = debounce(() => {
-                console.log('Markdown file changed, refreshing views...');
+                this.logger.info('Markdown file changed, refreshing views...');
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
-            }, 500);
+            }, DEBOUNCE_REFRESH_DELAY_MS);
 
             this.watcher.onDidChange(debouncedRefresh);
             this.watcher.onDidCreate(debouncedRefresh);
