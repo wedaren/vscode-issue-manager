@@ -4,6 +4,7 @@ import { ViewRegistry } from './ViewRegistry';
 import { ServiceRegistry } from './ServiceRegistry';
 import { ConfigurationManager } from './ConfigurationManager';
 import { IViewRegistryResult, InitializationPhase } from './interfaces';
+import { Logger } from './utils/Logger';
 
 /**
  * 扩展初始化器
@@ -29,6 +30,7 @@ export class ExtensionInitializer {
     private readonly viewRegistry: ViewRegistry;
     private readonly serviceRegistry: ServiceRegistry;
     private readonly configurationManager: ConfigurationManager;
+    private readonly logger: Logger;
 
     /**
      * 创建扩展初始化器实例
@@ -37,10 +39,16 @@ export class ExtensionInitializer {
      */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.logger = Logger.getInstance();
         this.commandRegistry = new CommandRegistry(context);
         this.viewRegistry = new ViewRegistry(context);
         this.serviceRegistry = new ServiceRegistry(context);
         this.configurationManager = new ConfigurationManager(context);
+        
+        // 注册logger到context订阅中，确保扩展停用时清理资源
+        context.subscriptions.push({
+            dispose: () => this.logger.dispose()
+        });
     }
 
     /**
@@ -57,37 +65,39 @@ export class ExtensionInitializer {
      */
     public async initialize(): Promise<void> {
         const startTime = Date.now();
-        console.log('🚀 开始初始化问题管理器扩展...');
+        this.logger.info('🚀 开始初始化问题管理器扩展...');
 
         // 监控内存使用情况
         const initialMemory = this.getMemoryUsage();
-        console.log(`  📊 初始内存使用: ${initialMemory.heapUsed.toFixed(2)}MB`);
+        this.logger.debug('初始内存使用情况', { heapUsed: `${initialMemory.heapUsed.toFixed(2)}MB` });
 
         try {
             // 1. 初始化配置监听
-            console.log('📋 步骤 1/4: 初始化配置监听...');
+            this.logger.info('📋 步骤 1/4: 初始化配置监听...');
             await this.initializeConfigurationSafely();
 
             // 2. 初始化服务
-            console.log('⚙️ 步骤 2/4: 初始化核心服务...');
+            this.logger.info('⚙️ 步骤 2/4: 初始化核心服务...');
             await this.initializeServicesSafely();
 
             // 3. 注册所有视图
-            console.log('📊 步骤 3/4: 注册视图组件...');
+            this.logger.info('📊 步骤 3/4: 注册视图组件...');
             const views = await this.registerViewsSafely();
 
             // 4. 注册所有命令
-            console.log('⌨️ 步骤 4/4: 注册命令处理器...');
+            this.logger.info('⌨️ 步骤 4/4: 注册命令处理器...');
             await this.registerCommandsSafely(views);
 
             const duration = Date.now() - startTime;
             const finalMemory = this.getMemoryUsage();
             const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed;
             
-            console.log(`✅ 扩展初始化完成`);
-            console.log(`  ⏱️ 耗时: ${duration}ms`);
-            console.log(`  📊 内存增加: ${memoryIncrease.toFixed(2)}MB`);
-            console.log(`  🔧 当前内存使用: ${finalMemory.heapUsed.toFixed(2)}MB`);
+            this.logger.info('✅ 扩展初始化完成', {
+                duration: `${duration}ms`,
+                memoryIncrease: `${memoryIncrease.toFixed(2)}MB`,
+                finalMemoryUsage: `${finalMemory.heapUsed.toFixed(2)}MB`
+            });
+            // 移除重复的console.log调用，已在logger中记录
             
             // 发送激活完成的通知（延迟发送，避免阻塞初始化）
             setTimeout(() => {
@@ -98,7 +108,7 @@ export class ExtensionInitializer {
             const duration = Date.now() - startTime;
             const errorMessage = this.formatErrorMessage(error);
             
-            console.error(`❌ 扩展初始化失败 (耗时: ${duration}ms):`, error);
+            this.logger.error(`❌ 扩展初始化失败 (耗时: ${duration}ms)`, { error, errorMessage });
             
             // 清理可能的部分初始化状态
             this.cleanupPartialInitialization();
@@ -110,7 +120,7 @@ export class ExtensionInitializer {
             vscode.window.showErrorMessage(userMessage, ...actions).then(selection => {
                 switch (selection) {
                     case '查看日志':
-                        vscode.commands.executeCommand('workbench.action.toggleDevTools');
+                        this.logger.show();
                         break;
                     case '重试':
                         // 延迟重试，避免立即失败

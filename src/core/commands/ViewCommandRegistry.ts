@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseCommandRegistry } from './BaseCommandRegistry';
-import { IFocusedIssuesProvider, IIssueOverviewProvider } from '../interfaces';
+import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from '../interfaces';
 import { IssueTreeNode } from '../../data/treeManager';
 
 /**
@@ -12,7 +12,7 @@ import { IssueTreeNode } from '../../data/treeManager';
 export class ViewCommandRegistry extends BaseCommandRegistry {
     private focusedIssuesProvider?: IFocusedIssuesProvider;
     private issueOverviewProvider?: IIssueOverviewProvider;
-    private recentIssuesProvider?: any;
+    private recentIssuesProvider?: IIssueViewProvider;
     private overviewView?: vscode.TreeView<IssueTreeNode>;
     private focusedView?: vscode.TreeView<IssueTreeNode>;
 
@@ -24,7 +24,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     public setProviders(providers: {
         focusedIssuesProvider: IFocusedIssuesProvider;
         issueOverviewProvider: IIssueOverviewProvider;
-        recentIssuesProvider: any;
+        recentIssuesProvider: IIssueViewProvider;
         overviewView: vscode.TreeView<IssueTreeNode>;
         focusedView: vscode.TreeView<IssueTreeNode>;
     }): void {
@@ -94,7 +94,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         // 定位到关注问题中的节点
         this.registerCommand(
             'issueManager.locateNodeInFocused',
-            async (nodeId: string) => {
+            async (...args: unknown[]) => {
+                const nodeId = args[0] as string;
                 if (!this.focusedIssuesProvider || !this.focusedView) {
                     vscode.window.showWarningMessage('关注问题视图未初始化');
                     return;

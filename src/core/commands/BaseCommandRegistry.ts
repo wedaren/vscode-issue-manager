@@ -26,11 +26,11 @@ export abstract class BaseCommandRegistry {
      */
     protected registerCommand(
         commandId: string, 
-        callback: (...args: any[]) => any, 
+        callback: (...args: unknown[]) => Promise<unknown> | unknown, 
         errorContext: string = commandId
     ): void {
         try {
-            const disposable = vscode.commands.registerCommand(commandId, async (...args) => {
+            const disposable = vscode.commands.registerCommand(commandId, async (...args: unknown[]) => {
                 try {
                     await callback(...args);
                 } catch (error) {

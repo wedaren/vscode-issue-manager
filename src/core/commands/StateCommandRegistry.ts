@@ -60,7 +60,8 @@ export class StateCommandRegistry extends BaseCommandRegistry {
         // 复制文件名命令
         this.registerCommand(
             'issueManager.copyFilename',
-            async (item: vscode.TreeItem) => {
+            async (...args: unknown[]) => {
+                const item = args[0] as vscode.TreeItem;
                 let resourceUri: vscode.Uri | undefined;
 
                 if (item?.resourceUri) {
