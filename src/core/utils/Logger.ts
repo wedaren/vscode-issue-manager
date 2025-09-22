@@ -28,10 +28,23 @@ export class Logger {
     private static instance: Logger;
     private outputChannel: vscode.OutputChannel;
     private logLevel: LogLevel;
+    private isDevelopment = false;
 
     private constructor() {
         this.outputChannel = vscode.window.createOutputChannel('Issue Manager');
         this.logLevel = LogLevel.INFO;
+    }
+
+    /**
+     * 初始化 Logger
+     * @param mode VS Code 扩展的运行模式
+     */
+    public initialize(mode: vscode.ExtensionMode): void {
+        this.isDevelopment = mode === vscode.ExtensionMode.Development;
+        if (this.isDevelopment) {
+            this.setLogLevel(LogLevel.DEBUG);
+            this.info('开发模式已激活，日志级别设置为 DEBUG。');
+        }
     }
 
     /**
@@ -124,7 +137,7 @@ export class Logger {
         }
 
         // 在开发模式下也输出到控制台
-        if (vscode.env.machineId === 'someValue') { // 开发环境检测
+        if (this.isDevelopment) {
             switch (level) {
                 case LogLevel.DEBUG:
                     console.debug(logMessage, data);

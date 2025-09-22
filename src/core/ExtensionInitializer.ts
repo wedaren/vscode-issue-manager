@@ -41,6 +41,8 @@ export class ExtensionInitializer {
      */
     constructor(context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
+        this.logger.initialize(context.extensionMode); // 初始化Logger
+
         this.commandRegistry = new CommandRegistry(context);
         this.viewRegistry = new ViewRegistry(context);
         this.serviceRegistry = new ServiceRegistry(context);
