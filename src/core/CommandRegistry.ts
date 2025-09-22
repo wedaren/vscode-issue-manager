@@ -173,8 +173,8 @@ export class CommandRegistry extends BaseCommandRegistry {
                     return;
                 }
                 
-                // 使用智能创建问题功能，指定父节点
-                await smartCreateIssue();
+                // 使用智能创建问题功能，并指定父节点ID和添加到树
+                await smartCreateIssue(node.id, true);
                 vscode.window.showInformationMessage('子问题创建成功');
             },
             '创建子问题'
