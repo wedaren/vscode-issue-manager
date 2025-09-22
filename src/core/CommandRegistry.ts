@@ -40,7 +40,6 @@ import { IssueStructureProvider } from '../views/IssueStructureProvider';
  * ```
  */
 export class CommandRegistry extends BaseCommandRegistry {
-    private readonly logger: Logger;
     private readonly viewCommandRegistry: ViewCommandRegistry;
     private readonly stateCommandRegistry: StateCommandRegistry;
 
@@ -51,7 +50,6 @@ export class CommandRegistry extends BaseCommandRegistry {
      */
     constructor(context: vscode.ExtensionContext) {
         super(context);
-        this.logger = Logger.getInstance();
         this.viewCommandRegistry = new ViewCommandRegistry(context);
         this.stateCommandRegistry = new StateCommandRegistry(context);
     }
