@@ -3,6 +3,7 @@ import * as path from 'path';
 import { BaseCommandRegistry } from './BaseCommandRegistry';
 import { IssueTreeNode, readTree, writeTree, updateNodeExpanded, stripFocusedId } from '../../data/treeManager';
 import { debounce, DebouncedFunction } from '../../utils/debounce';
+import { Logger } from '../utils/Logger';
 
 /**
  * 状态管理命令注册器
@@ -17,7 +18,7 @@ export class StateCommandRegistry extends BaseCommandRegistry {
      * 注册所有状态管理命令
      */
     public registerCommands(): void {
-        console.log('  🌳 注册状态管理命令...');
+        this.logger.info('  🌳 注册状态管理命令...');
         
         this.registerUtilityCommands();
         this.initializeExpandCollapseHandler();
@@ -40,9 +41,9 @@ export class StateCommandRegistry extends BaseCommandRegistry {
         try {
             this.expandCollapseHandler.registerTreeView(overviewView, 'overview');
             this.expandCollapseHandler.registerTreeView(focusedView, 'focused');
-            console.log('    ✓ 展开/折叠状态同步已注册');
+            this.logger.info('    ✓ 展开/折叠状态同步已注册');
         } catch (error) {
-            console.error('    ✗ 展开/折叠状态同步注册失败:', error);
+            this.logger.error('    ✗ 展开/折叠状态同步注册失败:', error);
         }
     }
 
@@ -152,8 +153,10 @@ export class StateCommandRegistry extends BaseCommandRegistry {
 class ExpandCollapseHandler {
     private readonly debouncedSaveState: DebouncedFunction<() => void>;
     private pendingUpdates = new Map<string, boolean>();
+    private readonly logger: Logger;
 
     constructor() {
+        this.logger = Logger.getInstance();
         // 使用防抖机制，避免频繁的I/O操作
         this.debouncedSaveState = debounce(() => {
             this.saveExpandedStates();
@@ -194,7 +197,7 @@ class ExpandCollapseHandler {
             this.debouncedSaveState();
             
         } catch (error) {
-            console.error(`展开/折叠处理失败 (${viewName}):`, error);
+            this.logger.error(`展开/折叠处理失败 (${viewName}):`, error);
         }
     }
 
@@ -210,7 +213,7 @@ class ExpandCollapseHandler {
 
         // 异步处理保存操作，不阻塞用户界面
         this.performSave().catch(error => {
-            console.error('保存展开状态失败:', error);
+            this.logger.error('保存展开状态失败:', error);
             // 清空待处理的更新，避免重复尝试
             this.pendingUpdates.clear();
             
