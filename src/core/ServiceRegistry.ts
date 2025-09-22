@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { GitSyncService } from '../services/GitSyncService';
 import { FileAccessTracker } from '../services/FileAccessTracker';
 import { RecordContentTool } from '../llm/RecordContentTool';
+import { Logger } from './utils/Logger';
 
 /**
  * 服务注册管理器
@@ -22,6 +23,7 @@ import { RecordContentTool } from '../llm/RecordContentTool';
  */
 export class ServiceRegistry {
     private readonly context: vscode.ExtensionContext;
+    private readonly logger: Logger;
 
     /**
      * 创建服务注册管理器实例
@@ -30,6 +32,7 @@ export class ServiceRegistry {
      */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.logger = Logger.getInstance();
     }
 
     /**
@@ -51,9 +54,9 @@ export class ServiceRegistry {
             // 3. 注册Language Model Tool（增强功能）
             this.registerLanguageModelTool();
             
-            console.log('    ✓ 所有服务初始化完成');
+            this.logger.info('    ✓ 所有服务初始化完成');
         } catch (error) {
-            console.error('    ✗ 服务初始化过程中出现错误:', error);
+            this.logger.error('    ✗ 服务初始化过程中出现错误:', error);
             throw error;
         }
     }
@@ -71,11 +74,11 @@ export class ServiceRegistry {
             const gitSyncService = GitSyncService.getInstance();
             gitSyncService.initialize();
             this.context.subscriptions.push(gitSyncService);
-            console.log('      ✓ Git同步服务已启动');
+            this.logger.info('      ✓ Git同步服务已启动');
         } catch (error) {
-            console.error('      ✗ Git同步服务启动失败:', error);
+            this.logger.error('      ✗ Git同步服务启动失败:', error);
             // Git服务失败不应该阻止整个扩展启动
-            console.warn('      ⚠️ 继续启动扩展，但Git自动同步功能将不可用');
+            this.logger.warn('      ⚠️ 继续启动扩展，但Git自动同步功能将不可用');
         }
     }
 
@@ -88,10 +91,10 @@ export class ServiceRegistry {
     private initializeFileAccessTracker(): void {
         try {
             FileAccessTracker.initialize(this.context);
-            console.log('      ✓ 文件访问跟踪服务已启动');
+            this.logger.info('      ✓ 文件访问跟踪服务已启动');
             // FileAccessTracker会自动处理其生命周期管理
         } catch (error) {
-            console.error('      ✗ 文件访问跟踪服务启动失败:', error);
+            this.logger.error('      ✗ 文件访问跟踪服务启动失败:', error);
             // 非关键服务，失败不影响主要功能
         }
     }
@@ -108,12 +111,12 @@ export class ServiceRegistry {
                 this.context.subscriptions.push(
                     vscode.lm.registerTool('issueManager_recordContent', new RecordContentTool())
                 );
-                console.log('      ✓ Language Model工具已注册');
+                this.logger.info('      ✓ Language Model工具已注册');
             } else {
-                console.log('      ℹ️ Language Model API不可用，跳过AI工具注册');
+                this.logger.info('      ℹ️ Language Model API不可用，跳过AI工具注册');
             }
         } catch (error) {
-            console.error('      ✗ Language Model工具注册失败:', error);
+            this.logger.error('      ✗ Language Model工具注册失败:', error);
             // AI功能是可选的，失败不影响核心功能
         }
     }
