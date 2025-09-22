@@ -3,6 +3,7 @@ import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } fr
 import { IssueTreeNode } from '../data/treeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
+import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -36,8 +37,7 @@ import { moveToCommand as moveToFunction } from '../commands/moveTo';
  * );
  * ```
  */
-export class CommandRegistry {
-    private readonly context: vscode.ExtensionContext;
+export class CommandRegistry extends BaseCommandRegistry {
     private readonly viewCommandRegistry: ViewCommandRegistry;
     private readonly stateCommandRegistry: StateCommandRegistry;
 
@@ -47,7 +47,7 @@ export class CommandRegistry {
      * @param context VS Code 扩展上下文，用于命令生命周期管理
      */
     constructor(context: vscode.ExtensionContext) {
-        this.context = context;
+        super(context);
         this.viewCommandRegistry = new ViewCommandRegistry(context);
         this.stateCommandRegistry = new StateCommandRegistry(context);
     }
@@ -112,25 +112,33 @@ export class CommandRegistry {
         console.log('    📝 注册基础问题管理命令...');
 
         // 创建问题命令
-        const createIssueCommand = vscode.commands.registerCommand('issueManager.createIssue', async () => {
-            await smartCreateIssue();
-        });
-        this.context.subscriptions.push(createIssueCommand);
+        this.registerCommand(
+            'issueManager.createIssue',
+            async () => {
+                await smartCreateIssue();
+            },
+            '创建问题'
+        );
 
         // 问题移动命令 
-        const moveCommand = vscode.commands.registerCommand('issueManager.moveTo', async (node: IssueTreeNode) => {
-            await moveToFunction([node]);
-        });
-        this.context.subscriptions.push(moveCommand);
+        this.registerCommand(
+            'issueManager.moveTo',
+            async (...args: any[]) => {
+                const node = args[0] as IssueTreeNode;
+                await moveToFunction([node]);
+            },
+            '移动问题'
+        );
 
         // 添加问题到树命令
-        const addIssueToTreeCommand = vscode.commands.registerCommand(
-            'issueManager.addIssueToTree', 
-            async (issueUris: vscode.Uri[], parentId: string | null, isAddToFocused: boolean) => {
+        this.registerCommand(
+            'issueManager.addIssueToTree',
+            async (...args: any[]) => {
+                const [issueUris, parentId, isAddToFocused] = args as [vscode.Uri[], string | null, boolean];
                 await addIssueToTree(issueUris, parentId, isAddToFocused);
-            }
+            },
+            '添加问题到树'
         );
-        this.context.subscriptions.push(addIssueToTreeCommand);
     }
 
     /**
@@ -153,38 +161,34 @@ export class CommandRegistry {
         console.log('    ⚡ 注册问题操作命令...');
 
         // 创建从当前关注问题的子问题
-        const createSubIssueCommand = vscode.commands.registerCommand(
-            'issueManager.createSubIssue', 
-            async (node: IssueTreeNode) => {
+        this.registerCommand(
+            'issueManager.createSubIssue',
+            async (...args: any[]) => {
+                const node = args[0] as IssueTreeNode;
                 if (!node?.resourceUri) {
                     vscode.window.showErrorMessage('请选择一个有效的问题节点');
                     return;
                 }
                 
-                try {
-                    // 使用智能创建问题功能，指定父节点
-                    await smartCreateIssue();
-                    vscode.window.showInformationMessage('子问题创建成功');
-                } catch (error) {
-                    console.error('创建子问题失败:', error);
-                    vscode.window.showErrorMessage('创建子问题失败');
-                }
-            }
+                // 使用智能创建问题功能，指定父节点
+                await smartCreateIssue();
+                vscode.window.showInformationMessage('子问题创建成功');
+            },
+            '创建子问题'
         );
-        this.context.subscriptions.push(createSubIssueCommand);
 
         // 从关注问题创建新问题
-        const createIssueFromFocusedCommand = vscode.commands.registerCommand(
+        this.registerCommand(
             'issueManager.createIssueFromFocused',
             async () => {
                 await smartCreateIssue();
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
-            }
+            },
+            '从关注问题创建新问题'
         );
-        this.context.subscriptions.push(createIssueFromFocusedCommand);
 
         // 在关注问题中搜索
-        const searchIssuesInFocusedCommand = vscode.commands.registerCommand(
+        this.registerCommand(
             'issueManager.searchIssuesInFocused',
             async () => {
                 const searchTerm = await vscode.window.showInputBox({
@@ -195,8 +199,13 @@ export class CommandRegistry {
                 if (searchTerm) {
                     await vscode.commands.executeCommand('issueManager.searchIssues', searchTerm);
                 }
-            }
+            },
+            '在关注问题中搜索'
         );
-        this.context.subscriptions.push(searchIssuesInFocusedCommand);
+    }
+
+    // @ts-ignore
+    registerCommands(): void {
+        throw new Error('Method not implemented.');
     }
 }
