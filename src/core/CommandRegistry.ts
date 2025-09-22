@@ -14,6 +14,7 @@ import { registerFocusCommands } from '../commands/focusCommands';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveToCommand as moveToFunction } from '../commands/moveTo';
+import { IssueStructureProvider } from '../views/IssueStructureProvider';
 
 /**
  * 命令注册管理器
@@ -72,7 +73,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         issueOverviewProvider: IIssueOverviewProvider,
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
         overviewView: vscode.TreeView<IssueTreeNode>,
-        focusedView: vscode.TreeView<IssueTreeNode>
+        focusedView: vscode.TreeView<IssueTreeNode>,
+        issueStructureProvider: IssueStructureProvider
     ): void {
         this.logger.info('🔧 开始注册命令...');
 
@@ -99,6 +101,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             
             // 5. 注册问题操作和创建命令
             this.registerIssueOperationCommands();
+
+            // 6. 注册结构视图命令
+            this.registerStructureViewCommands(issueStructureProvider);
             
             this.logger.info('✅ 所有命令注册完成');
             
@@ -204,6 +209,22 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             },
             '在关注问题中搜索'
+        );
+    }
+
+    /**
+     * 注册结构视图命令
+     * @param issueStructureProvider 问题结构视图提供者
+     */
+    private registerStructureViewCommands(issueStructureProvider: IssueStructureProvider): void {
+        this.logger.info('🏗️ 注册结构视图命令...');
+
+        this.registerCommand(
+            'issueManager.structure.refresh',
+            () => {
+                issueStructureProvider.refresh();
+            },
+            '刷新结构视图'
         );
     }
 

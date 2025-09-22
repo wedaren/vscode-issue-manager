@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { IssueTreeNode } from '../data/treeManager';
+import { IssueStructureProvider } from '../views/IssueStructureProvider';
 
 /**
  * 视图提供者基础接口
@@ -90,7 +91,7 @@ export interface IViewRegistryResult {
     rssIssuesView: vscode.TreeView<vscode.TreeItem>;
     
     /** 问题结构视图提供者实例 */
-    issueStructureProvider: IIssueViewProvider<vscode.TreeItem>;
+    issueStructureProvider: IssueStructureProvider;
     
     /** 问题结构树视图实例 */
     structureView: vscode.TreeView<vscode.TreeItem>;

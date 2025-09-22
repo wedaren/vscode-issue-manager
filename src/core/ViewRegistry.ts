@@ -191,12 +191,6 @@ export class ViewRegistry {
         this.context.subscriptions.push(structureView);
         this.context.subscriptions.push(issueStructureProvider);
         
-        // 注册结构视图刷新命令
-        const structureRefreshCommand = vscode.commands.registerCommand('issueManager.structure.refresh', () => {
-            issueStructureProvider.refresh();
-        });
-        this.context.subscriptions.push(structureRefreshCommand);
-        
         return { issueStructureProvider, structureView };
     }
 
