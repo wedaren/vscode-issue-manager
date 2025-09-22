@@ -94,7 +94,13 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.locateNodeInFocused',
             async (...args: unknown[]) => {
-                const nodeId = args[0] as string;
+                const nodeId = args[0];
+                if (typeof nodeId !== 'string') {
+                    vscode.window.showWarningMessage('无效的节点ID');
+                    this.logger.warn('locateNodeInFocused: 无效的节点ID，参数不是字符串。');
+                    return;
+                }
+
                 if (!this.focusedIssuesProvider || !this.focusedView) {
                     vscode.window.showWarningMessage('关注问题视图未初始化');
                     return;
