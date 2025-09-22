@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Logger } from '../utils/Logger';
 
 /**
  * 基础命令注册器
@@ -10,9 +11,11 @@ import * as vscode from 'vscode';
  */
 export abstract class BaseCommandRegistry {
     protected readonly context: vscode.ExtensionContext;
+    protected readonly logger: Logger;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.logger = Logger.getInstance();
     }
 
     /**
@@ -34,16 +37,16 @@ export abstract class BaseCommandRegistry {
                 try {
                     await callback(...args);
                 } catch (error) {
-                    console.error(`命令 ${commandId} 执行失败:`, error);
+                    this.logger.error(`命令 ${commandId} 执行失败:`, error);
                     vscode.window.showErrorMessage(`${errorContext} 操作失败: ${error instanceof Error ? error.message : '未知错误'}`);
                 }
             });
             
             this.context.subscriptions.push(disposable);
-            console.log(`  ✓ 注册命令: ${commandId}`);
+            this.logger.info(`  ✓ 注册命令: ${commandId}`);
             
         } catch (error) {
-            console.error(`注册命令 ${commandId} 失败:`, error);
+            this.logger.error(`注册命令 ${commandId} 失败:`, error);
             throw new Error(`命令注册失败: ${commandId}`);
         }
     }
