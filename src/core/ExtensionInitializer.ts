@@ -25,7 +25,6 @@ import { Logger } from './utils/Logger';
  * ```
  */
 export class ExtensionInitializer {
-    private readonly context: vscode.ExtensionContext;
     private readonly commandRegistry: CommandRegistry;
     private readonly viewRegistry: ViewRegistry;
     private readonly serviceRegistry: ServiceRegistry;
@@ -38,7 +37,6 @@ export class ExtensionInitializer {
      * @param context VS Code 扩展上下文，用于管理扩展生命周期
      */
     constructor(context: vscode.ExtensionContext) {
-        this.context = context;
         this.logger = Logger.getInstance();
         this.commandRegistry = new CommandRegistry(context);
         this.viewRegistry = new ViewRegistry(context);

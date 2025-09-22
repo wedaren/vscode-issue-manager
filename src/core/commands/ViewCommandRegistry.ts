@@ -13,7 +13,6 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private focusedIssuesProvider?: IFocusedIssuesProvider;
     private issueOverviewProvider?: IIssueOverviewProvider;
     private recentIssuesProvider?: IIssueViewProvider;
-    private overviewView?: vscode.TreeView<IssueTreeNode>;
     private focusedView?: vscode.TreeView<IssueTreeNode>;
 
     /**
@@ -31,7 +30,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.focusedIssuesProvider = providers.focusedIssuesProvider;
         this.issueOverviewProvider = providers.issueOverviewProvider;
         this.recentIssuesProvider = providers.recentIssuesProvider;
-        this.overviewView = providers.overviewView;
+        // overviewView is passed in but not stored as it's not needed for command registration
         this.focusedView = providers.focusedView;
     }
 

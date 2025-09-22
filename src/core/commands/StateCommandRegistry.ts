@@ -228,7 +228,7 @@ class ExpandCollapseHandler {
             let hasChanges = false;
 
             // 批量应用所有状态更新
-            for (const [nodeId, expanded] of this.pendingUpdates) {
+            for (const [nodeId, expanded] of Array.from(this.pendingUpdates.entries())) {
                 if (updateNodeExpanded(treeData.rootNodes, nodeId, expanded)) {
                     hasChanges = true;
                 }
