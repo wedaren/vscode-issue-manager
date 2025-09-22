@@ -4,6 +4,7 @@ import { IssueTreeNode } from '../data/treeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
+import { Logger } from './utils/Logger';
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -38,6 +39,7 @@ import { moveToCommand as moveToFunction } from '../commands/moveTo';
  * ```
  */
 export class CommandRegistry extends BaseCommandRegistry {
+    private readonly logger: Logger;
     private readonly viewCommandRegistry: ViewCommandRegistry;
     private readonly stateCommandRegistry: StateCommandRegistry;
 
@@ -48,6 +50,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      */
     constructor(context: vscode.ExtensionContext) {
         super(context);
+        this.logger = Logger.getInstance();
         this.viewCommandRegistry = new ViewCommandRegistry(context);
         this.stateCommandRegistry = new StateCommandRegistry(context);
     }
@@ -71,7 +74,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>
     ): void {
-        console.log('  🔧 开始注册命令...');
+        this.logger.info('🔧 开始注册命令...');
 
         try {
             // 1. 注册基础问题管理命令
@@ -97,10 +100,10 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 5. 注册问题操作和创建命令
             this.registerIssueOperationCommands();
             
-            console.log('  ✅ 所有命令注册完成');
+            this.logger.info('✅ 所有命令注册完成');
             
         } catch (error) {
-            console.error('  ✗ 命令注册过程中出现错误:', error);
+            this.logger.error('✗ 命令注册过程中出现错误:', error);
             throw new Error(`命令注册失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
     }
@@ -109,7 +112,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      * 注册基础问题管理命令
      */
     private registerBasicIssueCommands(): void {
-        console.log('    📝 注册基础问题管理命令...');
+        this.logger.info('📝 注册基础问题管理命令...');
 
         // 创建问题命令
         this.registerCommand(
@@ -145,7 +148,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      * 注册外部定义的命令
      */
     private registerExternalCommands(): void {
-        console.log('    📦 注册外部定义的命令...');
+        this.logger.info('📦 注册外部定义的命令...');
 
         // 这些命令在其他模块中定义，直接调用注册函数
         registerOpenIssueDirCommand(this.context);
@@ -158,7 +161,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      * 注册问题操作命令
      */
     private registerIssueOperationCommands(): void {
-        console.log('    ⚡ 注册问题操作命令...');
+        this.logger.info('⚡ 注册问题操作命令...');
 
         // 创建从当前关注问题的子问题
         this.registerCommand(
