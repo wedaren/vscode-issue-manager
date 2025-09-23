@@ -129,9 +129,15 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 问题移动命令 
         this.registerCommand(
             'issueManager.moveTo',
-            async (...args: any[]) => {
-                const node = args[0] as IssueTreeNode;
-                await moveToFunction([node]);
+            async (...args: unknown[]) => {
+                const node = args[0];
+                // 使用结构化类型守卫来检查节点是否符合 IssueTreeNode 的特征
+                if (node && typeof node === 'object' && 'id' in node && 'resourceUri' in node) {
+                    await moveToFunction([node as IssueTreeNode]);
+                } else {
+                    this.logger.warn('moveTo 命令需要一个有效的树节点参数。');
+                    vscode.window.showWarningMessage('请从视图中选择一个问题以执行移动操作。');
+                }
             },
             '移动问题'
         );
@@ -139,9 +145,21 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 添加问题到树命令
         this.registerCommand(
             'issueManager.addIssueToTree',
-            async (...args: any[]) => {
-                const [issueUris, parentId, isAddToFocused] = args as [vscode.Uri[], string | null, boolean];
-                await addIssueToTree(issueUris, parentId, isAddToFocused);
+            async (...args: unknown[]) => {
+                const [issueUris, parentId, isAddToFocused] = args;
+
+                // 添加类型守卫以确保参数类型正确
+                if (
+                    Array.isArray(issueUris) &&
+                    issueUris.every(uri => uri instanceof vscode.Uri) &&
+                    (parentId === null || typeof parentId === 'string') &&
+                    typeof isAddToFocused === 'boolean'
+                ) {
+                    await addIssueToTree(issueUris, parentId, isAddToFocused);
+                } else {
+                    this.logger.error('addIssueToTree 命令接收到无效的参数', { args });
+                    vscode.window.showErrorMessage('添加问题到树时发生内部错误，参数类型不匹配。');
+                }
             },
             '添加问题到树'
         );
@@ -169,16 +187,17 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 创建从当前关注问题的子问题
         this.registerCommand(
             'issueManager.createSubIssue',
-            async (...args: any[]) => {
-                const node = args[0] as IssueTreeNode;
-                if (!node?.resourceUri) {
-                    vscode.window.showErrorMessage('请选择一个有效的问题节点');
-                    return;
+            async (...args: unknown[]) => {
+                const node = args[0];
+                // 类型守卫，确保 node 是一个有效的 IssueTreeNode
+                if (node && typeof node === 'object' && 'resourceUri' in node && 'id' in node) {
+                    // 使用智能创建问题功能，并指定父节点ID和添加到树
+                    await smartCreateIssue((node as IssueTreeNode).id, true);
+                    vscode.window.showInformationMessage('子问题创建成功');
+                } else {
+                    this.logger.warn('createSubIssue 命令需要一个有效的树节点参数。');
+                    vscode.window.showErrorMessage('请从视图中选择一个有效的问题节点来创建子问题。');
                 }
-                
-                // 使用智能创建问题功能，并指定父节点ID和添加到树
-                await smartCreateIssue(node.id, true);
-                vscode.window.showInformationMessage('子问题创建成功');
             },
             '创建子问题'
         );
