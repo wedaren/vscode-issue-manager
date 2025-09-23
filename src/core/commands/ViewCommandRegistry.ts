@@ -129,18 +129,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
 
         // 在总览视图中搜索问题
         this.registerCommand(
-            'issueManager.searchInOverview',
-            async () => {
-                const searchTerm = await vscode.window.showInputBox({
-                    prompt: '输入搜索关键词',
-                    placeHolder: '搜索问题标题或内容...'
-                });
-
-                if (searchTerm) {
-                    // 触发搜索逻辑
-                    await vscode.commands.executeCommand('issueManager.searchIssues', searchTerm);
-                }
-            },
+            'issueManager.searchIssuesInOverview',
+            async () => vscode.commands.executeCommand('issueManager.searchIssues', 'overview'),
             '在总览视图中搜索'
         );
     }

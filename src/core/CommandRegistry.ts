@@ -215,16 +215,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 在关注问题中搜索
         this.registerCommand(
             'issueManager.searchIssuesInFocused',
-            async () => {
-                const searchTerm = await vscode.window.showInputBox({
-                    prompt: '在关注问题中搜索',
-                    placeHolder: '输入搜索关键词...'
-                });
-                
-                if (searchTerm) {
-                    await vscode.commands.executeCommand('issueManager.searchIssues', searchTerm);
-                }
-            },
+            async () => vscode.commands.executeCommand('issueManager.searchIssues', 'focused'),
             '在关注问题中搜索'
         );
     }
