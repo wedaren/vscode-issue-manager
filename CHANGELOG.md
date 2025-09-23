@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.15]
+
+### 🔧 修复
+- 修复搜索问题（issueManager.searchIssuesInOverview）无法正常使用
+- 删除搜索问题（issueManager.searchIssuesInFocused）多余的搜索输入框
+
 ## [0.1.14]
 
 ### 🔧 改进
