@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.14]
+
+### 🔧 改进
+- 重构 extension.ts：拆分模块与职责，提升可维护性与可测试性。
+- 新增键盘快捷键绑定：为 createIssueFromFocused（从焦点创建问题）和 searchIssuesInFocused（在焦点中搜索问题）添加默认快捷键，便于快速操作。
+
 ## [0.1.13]
 
 ### 🔧 改进
