@@ -245,7 +245,6 @@ export class CommandRegistry extends BaseCommandRegistry {
         );
     }
 
-    // @ts-ignore
     registerCommands(): void {
         throw new Error('Method not implemented.');
     }
