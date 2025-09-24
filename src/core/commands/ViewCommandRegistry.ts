@@ -13,6 +13,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private focusedIssuesProvider?: IFocusedIssuesProvider;
     private issueOverviewProvider?: IIssueOverviewProvider;
     private recentIssuesProvider?: IIssueViewProvider;
+    private overviewView?: vscode.TreeView<IssueTreeNode>;
     private focusedView?: vscode.TreeView<IssueTreeNode>;
 
     /**
@@ -30,7 +31,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.focusedIssuesProvider = providers.focusedIssuesProvider;
         this.issueOverviewProvider = providers.issueOverviewProvider;
         this.recentIssuesProvider = providers.recentIssuesProvider;
-        // overviewView is passed in but not stored as it's not needed for command registration
+        this.overviewView = providers.overviewView;
         this.focusedView = providers.focusedView;
     }
 
@@ -43,6 +44,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.registerViewRefreshCommands();
         this.registerViewNavigationCommands();
         this.registerViewToggleCommands();
+        this.registerViewRevealCommands();
     }
 
     /**
@@ -159,5 +161,24 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
             },
             '切换视图焦点'
         );
+    }
+
+    /**
+     * 注册视图定位相关命令
+     */
+    private registerViewRevealCommands(): void {
+        this.registerCommand('issueManager.views.overview.reveal', async (...args: unknown[]) => {
+            const [node, options] = args as [IssueTreeNode, { select: boolean, focus: boolean, expand: boolean } | undefined];
+            if (this.overviewView && node) {
+                await this.overviewView.reveal(node, options);
+            }
+        }, '在总览视图中定位');
+
+        this.registerCommand('issueManager.views.focused.reveal', async (...args: unknown[]) => {
+            const [node, options] = args as [IssueTreeNode, { select: boolean, focus: boolean, expand: boolean } | undefined];
+            if (this.focusedView && node) {
+                await this.focusedView.reveal(node, options);
+            }
+        }, '在关注视图中定位');
     }
 }
