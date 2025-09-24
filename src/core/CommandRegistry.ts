@@ -106,14 +106,16 @@ export class CommandRegistry extends BaseCommandRegistry {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
                     await vscode.window.showTextDocument(node.resourceUri, { preview: false });
+                    const revealInOverview = () => vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });  
+
                     if (type === 'overview') {
-                        await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+                        await revealInOverview();
                     } else if (type === 'focused') {
                         const { node: target } = focusedIssuesProvider.findFirstFocusedNodeById(node.id) || {};
                         if (target) {
                             await vscode.commands.executeCommand('issueManager.views.focused.reveal', target, { select: true, focus: true, expand: true });
                         } else {
-                            await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+                            await revealInOverview();
                         }
                     }
                 })
