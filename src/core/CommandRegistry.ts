@@ -100,7 +100,28 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 5. 注册问题操作和创建命令
             this.registerIssueOperationCommands();
 
-            // 6. 注册结构视图命令
+            // 6. 注册“打开并定位”命令
+            this.context.subscriptions.push(
+                vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode, type: 'focused' | 'overview') => {
+                    if (!node || !node.resourceUri) { return; }
+                    // 打开文件
+                    await vscode.window.showTextDocument(node.resourceUri, { preview: false });
+                    const revealInOverview = () => vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });  
+
+                    if (type === 'overview') {
+                        await revealInOverview();
+                    } else if (type === 'focused') {
+                        const { node: target } = focusedIssuesProvider.findFirstFocusedNodeById(node.id) || {};
+                        if (target) {
+                            await vscode.commands.executeCommand('issueManager.views.focused.reveal', target, { select: true, focus: true, expand: true });
+                        } else {
+                            await revealInOverview();
+                        }
+                    }
+                })
+            );
+
+            // 7. 注册结构视图命令
             this.registerStructureViewCommands(issueStructureProvider);
             
             this.logger.info('✅ 所有命令注册完成');
