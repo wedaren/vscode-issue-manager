@@ -49,12 +49,7 @@
         "title": "解除关联"
       },
       {
-        "command": "issueManager.createChildIssueInOverview",
-        "title": "新建子问题",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.createChildIssueInFocused",
+        "command": "issueManager.createSubIssue",
         "title": "新建子问题",
         "icon": "$(add)"
       },
@@ -409,13 +404,8 @@
           "group": "modification@2"
         },
         {
-          "command": "issueManager.createChildIssueInOverview",
-          "when": "(view == 'issueManager.views.overview')",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.createChildIssueInFocused",
-          "when": "(view == 'issueManager.views.focused')",
+          "command": "issueManager.createSubIssue",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')",
           "group": "inline"
         },
         {

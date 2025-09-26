@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode } from '../data/treeManager';
+import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -79,7 +79,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         try {
             // 1. 注册基础问题管理命令
             this.registerBasicIssueCommands();
-            
+
             // 2. 设置视图提供者并注册视图命令
             this.viewCommandRegistry.setProviders({
                 focusedIssuesProvider,
@@ -89,14 +89,14 @@ export class CommandRegistry extends BaseCommandRegistry {
                 focusedView
             });
             this.viewCommandRegistry.registerCommands();
-            
+
             // 3. 注册状态管理命令
             this.stateCommandRegistry.registerCommands();
             this.stateCommandRegistry.registerExpandCollapseSync(overviewView, focusedView);
-            
+
             // 4. 注册外部定义的命令
             this.registerExternalCommands();
-            
+
             // 5. 注册问题操作和创建命令
             this.registerIssueOperationCommands();
 
@@ -106,7 +106,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
                     await vscode.window.showTextDocument(node.resourceUri, { preview: false });
-                    const revealInOverview = () => vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });  
+                    const revealInOverview = () => vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
 
                     if (type === 'overview') {
                         await revealInOverview();
@@ -123,9 +123,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 7. 注册结构视图命令
             this.registerStructureViewCommands(issueStructureProvider);
-            
+
             this.logger.info('✅ 所有命令注册完成');
-            
+
         } catch (error) {
             this.logger.error('✗ 命令注册过程中出现错误:', error);
             throw new Error(`命令注册失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -213,7 +213,8 @@ export class CommandRegistry extends BaseCommandRegistry {
                 // 类型守卫，确保 node 是一个有效的 IssueTreeNode
                 if (node && typeof node === 'object' && 'resourceUri' in node && 'id' in node) {
                     // 使用智能创建问题功能，并指定父节点ID和添加到树
-                    await smartCreateIssue((node as IssueTreeNode).id, true);
+                    const id = stripFocusedId((node as IssueTreeNode).id);
+                    await smartCreateIssue(id, true);
                     vscode.window.showInformationMessage('子问题创建成功');
                 } else {
                     this.logger.warn('createSubIssue 命令需要一个有效的树节点参数。');
@@ -223,14 +224,24 @@ export class CommandRegistry extends BaseCommandRegistry {
             '创建子问题'
         );
 
-        // 从关注问题创建新问题
+        // 从关注问题视图创建新问题
         this.registerCommand(
             'issueManager.createIssueFromFocused',
             async () => {
-                await smartCreateIssue();
+                await smartCreateIssue(null, true, true);
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
-            '从关注问题创建新问题'
+            '从关注问题视图创建新问题'
+        );
+
+        // 从问题总览视图创建新问题
+        this.registerCommand(
+            'issueManager.createIssueFromOverview',
+            async () => {
+                await smartCreateIssue(null, true);
+                vscode.commands.executeCommand('issueManager.refreshAllViews');
+            },
+            '从问题总览创建新问题'
         );
 
         // 在关注问题中搜索
@@ -239,6 +250,57 @@ export class CommandRegistry extends BaseCommandRegistry {
             async () => vscode.commands.executeCommand('issueManager.searchIssues', 'focused'),
             '在关注问题中搜索'
         );
+
+
+        // 解除问题关联命令
+        this.registerCommand(
+            'issueManager.disassociateIssue',
+            async (...args: unknown[]) => {
+                // 类型守卫，确保 node 是一个有效的 IssueTreeNode
+                const node = (Array.isArray(args) && args.length > 0) ? args[0] as IssueTreeNode : null;
+                
+                if (!node || node.id === 'placeholder-no-issues') {
+                    return;
+                }
+
+                // 类型守卫，确保 node 是一个有效的 IssueTreeNode  
+                if (node && typeof node === 'object' && 'id' in node && (node as IssueTreeNode).id !== 'placeholder-no-issues') {
+                    const issueNode = node as IssueTreeNode;
+
+                    // 判断是否有子节点  
+                    if (issueNode.children && issueNode.children.length > 0) {
+                        const confirm = await vscode.window.showWarningMessage(
+                            '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
+                            { modal: true },
+                            '确定'
+                        );
+                        if (confirm !== '确定') {
+                            return;
+                        }
+                    }
+
+                    const treeData = await readTree();
+                    if (!treeData) {
+                        vscode.window.showErrorMessage('无法读取问题树数据。');
+                        return;
+                    }
+
+                    const { success } = removeNode(treeData, stripFocusedId(issueNode.id));
+
+                    if (success) {
+                        await writeTree(treeData);
+                        vscode.commands.executeCommand('issueManager.refreshAllViews');
+                    } else {
+                        vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
+                    }
+                } else {
+                    this.logger.warn('disassociateIssue 命令需要一个有效的树节点参数。');
+                    vscode.window.showWarningMessage('请从视图中选择一个问题以解除关联。');
+                }
+            },
+            '解除问题关联'
+        );
+
     }
 
     /**
