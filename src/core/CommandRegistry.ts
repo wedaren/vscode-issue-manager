@@ -263,31 +263,39 @@ export class CommandRegistry extends BaseCommandRegistry {
                     return;
                 }
 
-                // 判断是否有子节点
-                if (node.children && node.children.length > 0) {
-                    const confirm = await vscode.window.showWarningMessage(
-                        '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
-                        { modal: true },
-                        '确定'
-                    );
-                    if (confirm !== '确定') {
+                // 类型守卫，确保 node 是一个有效的 IssueTreeNode  
+                if (node && typeof node === 'object' && 'id' in node && (node as IssueTreeNode).id !== 'placeholder-no-issues') {
+                    const issueNode = node as IssueTreeNode;
+
+                    // 判断是否有子节点  
+                    if (issueNode.children && issueNode.children.length > 0) {
+                        const confirm = await vscode.window.showWarningMessage(
+                            '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
+                            { modal: true },
+                            '确定'
+                        );
+                        if (confirm !== '确定') {
+                            return;
+                        }
+                    }
+
+                    const treeData = await readTree();
+                    if (!treeData) {
+                        vscode.window.showErrorMessage('无法读取问题树数据。');
                         return;
                     }
-                }
 
-                const treeData = await readTree();
-                if (!treeData) {
-                    vscode.window.showErrorMessage('无法读取问题树数据。');
-                    return;
-                }
+                    const { success } = removeNode(treeData, stripFocusedId(issueNode.id));
 
-                const { success } = removeNode(treeData, stripFocusedId(node.id));
-
-                if (success) {
-                    await writeTree(treeData);
-                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                    if (success) {
+                        await writeTree(treeData);
+                        vscode.commands.executeCommand('issueManager.refreshAllViews');
+                    } else {
+                        vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
+                    }
                 } else {
-                    vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
+                    this.logger.warn('disassociateIssue 命令需要一个有效的树节点参数。');
+                    vscode.window.showWarningMessage('请从视图中选择一个问题以解除关联。');
                 }
             },
             '解除问题关联'
