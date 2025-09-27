@@ -13,8 +13,17 @@ import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { addIssueToTree } from '../commands/issueFileUtils';
-import { moveToCommand as moveToFunction } from '../commands/moveTo';
+import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+
+/**
+ * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
+ * @param item 要检查的对象
+ * @returns 如果是有效的 IssueTreeNode 则返回 true
+ */
+function isIssueTreeNode(item: unknown): item is IssueTreeNode {
+    return !!item && typeof item === 'object' && 'id' in item && 'filePath' in item;
+}
 
 /**
  * 命令注册管理器
@@ -151,10 +160,12 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.moveTo',
             async (...args: unknown[]) => {
-                const node = args[0];
-                // 使用结构化类型守卫来检查节点是否符合 IssueTreeNode 的特征
-                if (node && typeof node === 'object' && 'id' in node && 'resourceUri' in node) {
-                    await moveToFunction([node as IssueTreeNode]);
+                const [node,nodes] = args;
+                if (nodes && Array.isArray(nodes) && nodes.length > 0) {
+                    const validNodes = nodes.filter(isIssueTreeNode);
+                    await moveIssuesTo(validNodes);
+                } else if (node && isIssueTreeNode(node)) {
+                    await moveIssuesTo([node]);
                 } else {
                     this.logger.warn('moveTo 命令需要一个有效的树节点参数。');
                     vscode.window.showWarningMessage('请从视图中选择一个问题以执行移动操作。');
@@ -167,16 +178,17 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.addIssueToTree',
             async (...args: unknown[]) => {
-                const [issueUris, parentId, isAddToFocused] = args;
+                let issues: vscode.TreeItem[];
+                const [firstArg, secondArg] = args;
 
-                // 添加类型守卫以确保参数类型正确
-                if (
-                    Array.isArray(issueUris) &&
-                    issueUris.every(uri => uri instanceof vscode.Uri) &&
-                    (parentId === null || typeof parentId === 'string') &&
-                    typeof isAddToFocused === 'boolean'
-                ) {
-                    await addIssueToTree(issueUris, parentId, isAddToFocused);
+                if (secondArg && Array.isArray(secondArg)) {
+                    if (secondArg.length > 0 && typeof secondArg[0] === 'object' && 'resourceUri' in secondArg[0]) {
+                        issues = (secondArg as vscode.TreeItem[]);
+                        await moveIssuesTo(issues);
+                    }
+                } else if (firstArg && typeof firstArg === 'object' && 'resourceUri' in firstArg) {
+                    issues = [firstArg as vscode.TreeItem];
+                    await moveIssuesTo(issues);
                 } else {
                     this.logger.error('addIssueToTree 命令接收到无效的参数', { args });
                     vscode.window.showErrorMessage('添加问题到树时发生内部错误，参数类型不匹配。');
@@ -211,9 +223,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 // 类型守卫，确保 node 是一个有效的 IssueTreeNode
-                if (node && typeof node === 'object' && 'resourceUri' in node && 'id' in node) {
+                if (node && isIssueTreeNode(node)) {
                     // 使用智能创建问题功能，并指定父节点ID和添加到树
-                    const id = stripFocusedId((node as IssueTreeNode).id);
+                    const id = stripFocusedId(node.id);
                     await smartCreateIssue(id, true);
                     vscode.window.showInformationMessage('子问题创建成功');
                 } else {
@@ -257,45 +269,37 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.disassociateIssue',
             async (...args: unknown[]) => {
                 // 类型守卫，确保 node 是一个有效的 IssueTreeNode
-                const node = (Array.isArray(args) && args.length > 0) ? args[0] as IssueTreeNode : null;
+                const node = (Array.isArray(args) && args.length > 0) ? args[0] : null;
                 
-                if (!node || node.id === 'placeholder-no-issues') {
+                if (!node || !isIssueTreeNode(node) || node.id === 'placeholder-no-issues') {
                     return;
                 }
 
-                // 类型守卫，确保 node 是一个有效的 IssueTreeNode  
-                if (node && typeof node === 'object' && 'id' in node && (node as IssueTreeNode).id !== 'placeholder-no-issues') {
-                    const issueNode = node as IssueTreeNode;
-
-                    // 判断是否有子节点  
-                    if (issueNode.children && issueNode.children.length > 0) {
-                        const confirm = await vscode.window.showWarningMessage(
-                            '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
-                            { modal: true },
-                            '确定'
-                        );
-                        if (confirm !== '确定') {
-                            return;
-                        }
-                    }
-
-                    const treeData = await readTree();
-                    if (!treeData) {
-                        vscode.window.showErrorMessage('无法读取问题树数据。');
+                // 判断是否有子节点  
+                if (node.children && node.children.length > 0) {
+                    const confirm = await vscode.window.showWarningMessage(
+                        '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
+                        { modal: true },
+                        '确定'
+                    );
+                    if (confirm !== '确定') {
                         return;
                     }
+                }
 
-                    const { success } = removeNode(treeData, stripFocusedId(issueNode.id));
+                const treeData = await readTree();
+                if (!treeData) {
+                    vscode.window.showErrorMessage('无法读取问题树数据。');
+                    return;
+                }
 
-                    if (success) {
-                        await writeTree(treeData);
-                        vscode.commands.executeCommand('issueManager.refreshAllViews');
-                    } else {
-                        vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
-                    }
+                const { success } = removeNode(treeData, stripFocusedId(node.id));
+
+                if (success) {
+                    await writeTree(treeData);
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
                 } else {
-                    this.logger.warn('disassociateIssue 命令需要一个有效的树节点参数。');
-                    vscode.window.showWarningMessage('请从视图中选择一个问题以解除关联。');
+                    vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
                 }
             },
             '解除问题关联'
