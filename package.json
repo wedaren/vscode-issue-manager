@@ -133,7 +133,7 @@
         "title": "移动到..."
       },
       {
-        "command": "issueManager.addTo",
+        "command": "issueManager.addIssueToTree",
         "title": "添加到..."
       },
       {
@@ -399,6 +399,16 @@
           "group": "inline"
         },
         {
+          "command": "issueManager.addIssueToTree",
+          "when": "view == 'issueManager.views.recent' && viewItem == 'isolatedIssue'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.focusIssueFromIssueFile",
+          "when": "(view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "group": "modification@3"
+        },
+        {
           "command": "issueManager.disassociateIssue",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')  && viewItem == 'issueNode'",
           "group": "modification@2"
@@ -411,11 +421,6 @@
         {
           "command": "issueManager.focusIssue",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem == 'issueNode'",
-          "group": "modification@3"
-        },
-        {
-          "command": "issueManager.focusIssueFromIssueFile",
-          "when": "(view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
           "group": "modification@3"
         },
         {
@@ -436,11 +441,6 @@
         {
           "command": "issueManager.moveTo",
           "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused'",
-          "group": "navigation@4"
-        },
-        {
-          "command": "issueManager.addTo",
-          "when": "view == 'issueManager.views.recent'",
           "group": "navigation@4"
         },
         {

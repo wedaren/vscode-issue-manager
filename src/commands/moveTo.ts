@@ -36,7 +36,7 @@ function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueTreeNode {
  * "移动到..." 与 "添加到..." 命令实现：支持多选节点移动到指定父节点，防止循环引用。
  * 支持 IssueTreeNode 和 vscode.TreeItem 两种类型的输入。
  */
-export async function moveToCommand(selectedNodes: (IssueTreeNode | vscode.TreeItem)[]) {
+export async function moveIssuesTo(selectedNodes: (IssueTreeNode | vscode.TreeItem)[]) {
     if (!selectedNodes || selectedNodes.length === 0) {
         vscode.window.showWarningMessage('请先选择要移动的节点。');
         return;

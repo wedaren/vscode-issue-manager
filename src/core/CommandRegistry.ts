@@ -13,7 +13,7 @@ import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { addIssueToTree } from '../commands/issueFileUtils';
-import { moveToCommand as moveToFunction } from '../commands/moveTo';
+import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 
 /**
@@ -154,7 +154,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                 const node = args[0];
                 // 使用结构化类型守卫来检查节点是否符合 IssueTreeNode 的特征
                 if (node && typeof node === 'object' && 'id' in node && 'resourceUri' in node) {
-                    await moveToFunction([node as IssueTreeNode]);
+                    await moveIssuesTo([node as IssueTreeNode]);
                 } else {
                     this.logger.warn('moveTo 命令需要一个有效的树节点参数。');
                     vscode.window.showWarningMessage('请从视图中选择一个问题以执行移动操作。');
@@ -167,16 +167,17 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.addIssueToTree',
             async (...args: unknown[]) => {
-                const [issueUris, parentId, isAddToFocused] = args;
+                let issues: vscode.TreeItem[];
+                const [firstArg, secondArg] = args;
 
-                // 添加类型守卫以确保参数类型正确
-                if (
-                    Array.isArray(issueUris) &&
-                    issueUris.every(uri => uri instanceof vscode.Uri) &&
-                    (parentId === null || typeof parentId === 'string') &&
-                    typeof isAddToFocused === 'boolean'
-                ) {
-                    await addIssueToTree(issueUris, parentId, isAddToFocused);
+                if (secondArg && Array.isArray(secondArg)) {
+                    if (secondArg.length > 0 && typeof secondArg[0] === 'object' && 'resourceUri' in secondArg[0]) {
+                        issues = (secondArg as vscode.TreeItem[]);
+                        await moveIssuesTo(issues);
+                    }
+                } else if (firstArg && typeof firstArg === 'object' && 'resourceUri' in firstArg) {
+                    issues = [firstArg as vscode.TreeItem];
+                    await moveIssuesTo(issues);
                 } else {
                     this.logger.error('addIssueToTree 命令接收到无效的参数', { args });
                     vscode.window.showErrorMessage('添加问题到树时发生内部错误，参数类型不匹配。');
