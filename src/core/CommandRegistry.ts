@@ -151,9 +151,11 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.moveTo',
             async (...args: unknown[]) => {
-                const node = args[0];
-                // 使用结构化类型守卫来检查节点是否符合 IssueTreeNode 的特征
-                if (node && typeof node === 'object' && 'id' in node && 'resourceUri' in node) {
+                const [node,nodes] = args;
+                if (nodes && Array.isArray(nodes) && nodes.length > 0) {
+                    const validNodes = nodes.filter(n => n && typeof n === 'object' && 'id' in n) as IssueTreeNode[];
+                    await moveIssuesTo(validNodes);
+                } else if (node && typeof node === 'object' && 'id' in node) {
                     await moveIssuesTo([node as IssueTreeNode]);
                 } else {
                     this.logger.warn('moveTo 命令需要一个有效的树节点参数。');
