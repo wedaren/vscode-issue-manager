@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.18]
+
+### 🔧 修复
+- 修复'添加到...'命令（issueManager.addIssueToTree）无法使用
+
+
 ## [0.1.17]
 
 ### 🔧 修复
