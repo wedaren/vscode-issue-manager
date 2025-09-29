@@ -26,19 +26,74 @@ export async function createIssueFromClipboard(): Promise<void> {
             vscode.window.showInformationMessage('无法创建问题：剪贴板为空。');
             return;
         }
+
         let finalContent = clipboard;
-        if (!hasH1(clipboard)) {
-            // 需要生成标题，LLMService.generateTitle 在失败时会返回空字符串而不是抛出异常
-            const suggestedTitle = await LLMService.generateTitle(clipboard);
-            const title = (suggestedTitle && suggestedTitle.trim()) || 'Untitled Issue';
-            finalContent = `# ${title}\n\n${clipboard}`;
+        let filenameTitle = '';
+
+        if (hasH1(clipboard)) {
+            // 如果剪贴板已有 H1，则提取第一行作为标题建议
+            const lines = clipboard.replace(/\r\n/g, '\n').split('\n');
+            const firstLine = lines.find(l => l.trim().length > 0) || '';
+            filenameTitle = firstLine.replace(/^#+\s*/, '').trim();
+        } else {
+            // 使用带进度并可取消的调用来生成标题
+            const controller = new AbortController();
+            const suggestedTitle = await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: '生成标题…',
+                    cancellable: true
+                },
+                async (progress, token) => {
+                    token.onCancellationRequested(() => controller.abort());
+                    progress.report({ message: finalContent.slice(0, 30) + (finalContent.length > 30 ? '...' : '') });
+                    try {
+                        const t = await LLMService.generateTitle(clipboard, { signal: controller.signal });
+                        return t || '';
+                    } catch (err) {
+                        return '';
+                    }
+                }
+            );
+
+            if (controller.signal.aborted) {
+                vscode.window.showInformationMessage('已取消自动标题生成。');
+                return;
+            }
+
+            if (suggestedTitle && suggestedTitle.trim().length > 0) {
+                // 让用户确认或编辑生成的标题
+                const use = '使用该标题';
+                const edit = '编辑标题';
+                const cancel = '取消';
+                const choice = await vscode.window.showInformationMessage(`建议标题：${suggestedTitle}`, use, edit, cancel);
+                if (choice === use) {
+                    filenameTitle = suggestedTitle.trim();
+                } else if (choice === edit) {
+                    const edited = await vscode.window.showInputBox({ value: suggestedTitle.trim(), prompt: '编辑自动生成的标题' });
+                    if (edited === undefined) {
+                        vscode.window.showInformationMessage('已取消创建问题。');
+                        return;
+                    }
+                    filenameTitle = (edited && edited.trim()) || 'Untitled Issue';
+                } else {
+                    vscode.window.showInformationMessage('已取消创建问题。');
+                    return;
+                }
+            } else {
+                filenameTitle = 'Untitled Issue';
+                vscode.window.showInformationMessage('未能自动生成标题，已使用占位标题。');
+            }
+
+            finalContent = `# ${filenameTitle}\n\n${clipboard}`;
         }
 
-        const uri = await createIssueFile('', finalContent);
+        const uri = await createIssueFile(filenameTitle || '', finalContent);
         if (!uri) {
             // createIssueFile 已经会弹错信息
             return;
         }
+
     } catch (error) {
         console.error('createIssueFromClipboard error:', error);
         vscode.window.showErrorMessage('从剪贴板创建问题失败。');
