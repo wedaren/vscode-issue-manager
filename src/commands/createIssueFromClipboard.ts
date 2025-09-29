@@ -28,15 +28,10 @@ export async function createIssueFromClipboard(): Promise<void> {
         }
         let finalContent = clipboard;
         if (!hasH1(clipboard)) {
-            // 需要生成标题，使用新的 generateTitle 接口
-            try {
-                const suggestedTitle = await LLMService.generateTitle(clipboard);
-                const title = suggestedTitle && suggestedTitle.trim().length > 0 ? suggestedTitle : 'Untitled Issue';
-                finalContent = `# ${title}\n\n${clipboard}`;
-            } catch (err) {
-                finalContent = `# Untitled Issue\n\n${clipboard}`;
-                vscode.window.showErrorMessage('无法自动生成标题，请手动修改。');
-            }
+            // 需要生成标题，LLMService.generateTitle 在失败时会返回空字符串而不是抛出异常
+            const suggestedTitle = await LLMService.generateTitle(clipboard);
+            const title = (suggestedTitle && suggestedTitle.trim()) || 'Untitled Issue';
+            finalContent = `# ${title}\n\n${clipboard}`;
         }
 
         const uri = await createIssueFile('', finalContent);
@@ -50,4 +45,3 @@ export async function createIssueFromClipboard(): Promise<void> {
     }
 }
 
-export default createIssueFromClipboard;

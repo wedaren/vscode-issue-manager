@@ -21,12 +21,7 @@ export async function createIssueFile(title: string, content?: string): Promise<
 	const filePath = vscode.Uri.file(path.join(issueDir, filename));
 
 	// 如果外部传入了 content，则直接使用；否则根据 title 生成最小内容
-	let finalContent: string;
-	if (typeof content === 'string' && content.length > 0) {
-		finalContent = content;
-	} else {
-		finalContent = `# ${title}\n\n`;
-	}
+	const finalContent = (typeof content === 'string' && content.length > 0) ? content : `# ${title}\n\n`;
 	const contentBytes = Buffer.from(finalContent, 'utf8');
 
 	await vscode.workspace.fs.writeFile(filePath, contentBytes);
