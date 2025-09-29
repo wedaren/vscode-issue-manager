@@ -5,6 +5,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.1.19]
+
+### 🔧 功能
+- 新增'从剪贴板创建问题'命令（issueManager.createIssueFromClipboard），快捷键 cmd+j cmd+b
+
 ## [0.1.18]
 
 ### 🔧 修复
