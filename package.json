@@ -527,8 +527,8 @@
       ,
       {
         "command": "issueManager.createIssueFromClipboard",
-        "key": "ctrl+j ctrl+m",
-        "mac": "cmd+j cmd+m",
+        "key": "ctrl+j ctrl+b",
+        "mac": "cmd+j cmd+b",
         "when": "issueManager.isDirConfigured"
       }
     ],

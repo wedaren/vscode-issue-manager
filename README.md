@@ -205,8 +205,8 @@ npm run test
 
 插件现在支持通过快捷键从系统剪贴板快速新建问题：
 
-- 快捷键（macOS）: `Cmd+J` 紧接 `Cmd+M`。
-- 快捷键（Windows/Linux）: `Ctrl+J` 紧接 `Ctrl+M`。
+- 快捷键（macOS）: `Cmd+J` 紧接 `Cmd+B`。
+- 快捷键（Windows/Linux）: `Ctrl+J` 紧接 `Ctrl+B`。
 
 行为：
 - 当剪贴板内容的第一行为 Markdown 一级标题（以 `# ` 开头）时，插件会直接将剪贴板内容（包括标题）写入新的 Markdown 问题文件。

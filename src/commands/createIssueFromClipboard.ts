@@ -63,13 +63,13 @@ export async function createIssueFromClipboard(): Promise<void> {
 
             if (suggestedTitle && suggestedTitle.trim().length > 0) {
                 // 让用户确认或编辑生成的标题
-                const use = '使用该标题';
-                const edit = '编辑标题';
-                const cancel = '取消';
-                const choice = await vscode.window.showInformationMessage(`建议标题：${suggestedTitle}`, use, edit, cancel);
-                if (choice === use) {
+                const USE_SUGGESTED_TITLE = '使用该标题';
+                const EDIT_SUGGESTED_TITLE = '编辑标题';
+                const CANCEL_CREATION = '取消';
+                const choice = await vscode.window.showInformationMessage(`建议标题：${suggestedTitle}`, USE_SUGGESTED_TITLE, EDIT_SUGGESTED_TITLE, CANCEL_CREATION);
+                if (choice === USE_SUGGESTED_TITLE) {
                     filenameTitle = suggestedTitle.trim();
-                } else if (choice === edit) {
+                } else if (choice === EDIT_SUGGESTED_TITLE) {
                     const edited = await vscode.window.showInputBox({ value: suggestedTitle.trim(), prompt: '编辑自动生成的标题' });
                     if (edited === undefined) {
                         vscode.window.showInformationMessage('已取消创建问题。');
