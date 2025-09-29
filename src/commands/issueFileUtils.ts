@@ -11,7 +11,7 @@ import { addFocus } from '../data/focusedManager';
  * @param title 问题标题
  * @returns 新建文件的 URI，如果失败则返回 null。
  */
-export async function createIssueFile(title: string): Promise<vscode.Uri | null> {
+export async function createIssueFile(title: string, content?: string): Promise<vscode.Uri | null> {
 	const issueDir = getIssueDir();
 	if (!issueDir) {
 		vscode.window.showErrorMessage('问题目录未配置。');
@@ -19,8 +19,10 @@ export async function createIssueFile(title: string): Promise<vscode.Uri | null>
 	}
 	const filename = generateFileName();
 	const filePath = vscode.Uri.file(path.join(issueDir, filename));
-	const content = `# ${title}\n\n`;
-	const contentBytes = Buffer.from(content, 'utf8');
+
+	// 如果外部传入了 content，则直接使用；否则根据 title 生成最小内容
+	const finalContent = (typeof content === 'string' && content.length > 0) ? content : `# ${title}\n\n`;
+	const contentBytes = Buffer.from(finalContent, 'utf8');
 
 	await vscode.workspace.fs.writeFile(filePath, contentBytes);
 	await vscode.window.showTextDocument(filePath);

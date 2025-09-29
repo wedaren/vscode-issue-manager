@@ -102,4 +102,91 @@ ${JSON.stringify(allIssues, null, 2)}
             return { optimized: [], similar: [] };
         }
     }
+
+    /**
+     * 根据输入文本生成一个简洁精确的 Markdown 一级标题（单条）。
+     * 如果失败或没有生成结果，返回空字符串。
+     */
+    public static async generateTitle(
+        text: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<string> {
+        if (!text || text.trim().length === 0) { return ''; }
+
+    const prompt = `请为以下文本生成一个简洁、精确的 Markdown 一级标题。仅返回 JSON 格式，内容如下：{ "title": "生成的标题文本" }。不要添加任何额外说明或标记。文本内容：『${text}』`;
+
+        try {
+            const [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4.1' });
+            if (!model) {
+                vscode.window.showErrorMessage('未找到可用的 Copilot 模型，无法自动生成标题。');
+                return '';
+            }
+
+            if (options?.signal?.aborted) {
+                throw new Error('请求已取消');
+            }
+
+            const response = await model.sendRequest([
+                vscode.LanguageModelChatMessage.User(prompt)
+            ]);
+
+            const fragments: string[] = [];
+            for await (const fragment of response.stream) {
+                if (options?.signal?.aborted) {
+                    throw new Error('请求已取消');
+                }
+                if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
+                    fragments.push(fragment.value as string);
+                } else {
+                    fragments.push(fragment as string);
+                }
+            }
+
+            const fullResponse = fragments.join('');
+            console.log('LLM generateTitle Raw Response:', fullResponse);
+
+            // 1) 优先尝试提取 ```json``` 区块中的 JSON
+            const jsonBlockMatch = fullResponse.match(/```json\s*([\s\S]*?)\s*```/i);
+            let jsonCandidate = '';
+            if (jsonBlockMatch && jsonBlockMatch[1]) {
+                jsonCandidate = jsonBlockMatch[1];
+            } else {
+                // 2) 尝试提取页面中第一个完整的 JSON 对象（匹配最外层的 {...}）
+                const firstBrace = fullResponse.indexOf('{');
+                const lastBrace = fullResponse.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                    jsonCandidate = fullResponse.substring(firstBrace, lastBrace + 1);
+                }
+            }
+
+            if (jsonCandidate) {
+                try {
+                    const parsed = JSON.parse(jsonCandidate);
+                    if (parsed && typeof parsed.title === 'string' && parsed.title.trim().length > 0) {
+                        return parsed.title.trim();
+                    }
+                } catch (err) {
+                    console.warn('解析 LLM 返回的 JSON 失败，回退到文本解析', err);
+                    // 继续进行文本解析
+                }
+            }
+
+            // 回退：从纯文本中提取第一行非空文本并清洗 Markdown 前缀
+            const lines = fullResponse.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            if (lines.length > 0) {
+                const first = lines[0].replace(/^#+\s*/, '').trim();
+                return first;
+            }
+
+            return '';
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return '';
+            }
+            console.error('generateTitle error:', error);
+            // 不弹过多错误弹窗以免干扰用户，但显示一次性错误
+            vscode.window.showErrorMessage('调用 Copilot 自动生成标题失败。');
+            return '';
+        }
+    }
 }
