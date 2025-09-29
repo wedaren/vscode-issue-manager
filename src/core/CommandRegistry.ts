@@ -12,6 +12,7 @@ import { registerSearchIssuesCommand } from '../commands/searchIssues';
 import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
+import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
@@ -254,6 +255,17 @@ export class CommandRegistry extends BaseCommandRegistry {
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从问题总览创建新问题'
+        );
+
+        // 从剪贴板智能创建问题（快捷键触发）
+        this.registerCommand(
+            'issueManager.createIssueFromClipboard',
+            async () => {
+                await createIssueFromClipboard();
+                // 刷新视图，确保新文件出现在树中（如果配置了自动添加可以进一步集成）
+                vscode.commands.executeCommand('issueManager.refreshAllViews');
+            },
+            '从剪贴板创建问题'
         );
 
         // 在关注问题中搜索

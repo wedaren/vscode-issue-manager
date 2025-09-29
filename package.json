@@ -40,6 +40,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createIssueFromClipboard",
+        "title": "从剪贴板创建问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.deleteIssue",
         "icon": "$(trash)",
         "title": "删除"
@@ -517,6 +522,13 @@
         "command": "workbench.action.togglePanel",
         "key": "ctrl+j ctrl+j",
         "mac": "cmd+j cmd+j",
+        "when": "issueManager.isDirConfigured"
+      }
+      ,
+      {
+        "command": "issueManager.createIssueFromClipboard",
+        "key": "ctrl+j ctrl+m",
+        "mac": "cmd+j cmd+m",
         "when": "issueManager.isDirConfigured"
       }
     ],
