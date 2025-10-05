@@ -44,13 +44,6 @@ export async function addIssueToParaCategory(
     // 刷新视图
     vscode.commands.executeCommand('issueManager.para.refresh');
   } catch (error) {
-    vscode.window.showErrorMessage(`操作失败: ${error}`);
+    vscode.window.showErrorMessage(`操作失败: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-/**
- * 刷新 PARA 视图
- */
-export function refreshParaView(): void {
-  // 这个函数会在注册命令时被具体的 provider 实例替换
 }

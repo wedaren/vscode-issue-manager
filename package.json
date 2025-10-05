@@ -567,21 +567,6 @@
           "group": "para@4"
         },
         {
-          "command": "issueManager.para.addToAreas",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
-          "group": "para@1"
-        },
-        {
-          "command": "issueManager.para.addToResources",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
-          "group": "para@2"
-        },
-        {
-          "command": "issueManager.para.addToArchives",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
-          "group": "para@3"
-        },
-        {
           "command": "issueManager.para.viewInProjects",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
           "group": "para@0"
