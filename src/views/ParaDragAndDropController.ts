@@ -1,0 +1,167 @@
+import * as vscode from 'vscode';
+import {
+  addIssueToCategory,
+  ParaCategory,
+  getCategoryLabel
+} from '../data/paraManager';
+import { getRelativePathToIssueDir } from '../utils/fileUtils';
+
+/**
+ * PARA 视图节点类型（与 ParaViewProvider 中的定义一致）
+ */
+type ParaViewNode = 
+  | { type: 'category'; category: ParaCategory }
+  | { type: 'issue'; filePath: string; category: ParaCategory };
+
+/**
+ * PARA 视图的拖拽控制器
+ */
+export class ParaDragAndDropController implements vscode.TreeDragAndDropController<ParaViewNode> {
+  dropMimeTypes = ['application/vnd.code.tree.issueManager.views.para'];
+  dragMimeTypes = ['application/vnd.code.tree.issueManager.views.para', 'text/uri-list'];
+
+  constructor(private refreshCallback: () => void) {}
+
+  /**
+   * 处理拖拽操作
+   */
+  public async handleDrag(
+    source: readonly ParaViewNode[],
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    // 只允许拖拽问题节点
+    const issues = source.filter(node => node.type === 'issue');
+    if (issues.length === 0) {
+      return;
+    }
+
+    dataTransfer.set(
+      'application/vnd.code.tree.issueManager.views.para',
+      new vscode.DataTransferItem(issues)
+    );
+  }
+
+  /**
+   * 处理放置操作
+   */
+  public async handleDrop(
+    target: ParaViewNode | undefined,
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    // 获取拖拽的数据
+    const transferItem = dataTransfer.get('application/vnd.code.tree.issueManager.views.para');
+    if (!transferItem) {
+      // 尝试从其他视图拖拽
+      await this.handleExternalDrop(target, dataTransfer);
+      return;
+    }
+
+    const sourceNodes = transferItem.value as ParaViewNode[];
+    if (!sourceNodes || sourceNodes.length === 0) {
+      return;
+    }
+
+    // 确定目标分类
+    let targetCategory: ParaCategory | null = null;
+
+    if (!target) {
+      vscode.window.showWarningMessage('请将问题拖放到具体的分类中');
+      return;
+    }
+
+    if (target.type === 'category') {
+      targetCategory = target.category;
+    } else if (target.type === 'issue') {
+      // 拖放到问题上，移动到该问题所在的分类
+      targetCategory = target.category;
+    }
+
+    if (!targetCategory) {
+      return;
+    }
+
+    // 移动所有问题
+    try {
+      for (const node of sourceNodes) {
+        if (node.type !== 'issue') {
+          continue;
+        }
+
+        await addIssueToCategory(targetCategory, node.filePath);
+      }
+
+      this.refreshCallback();
+      
+      const count = sourceNodes.length;
+      const categoryName = getCategoryLabel(targetCategory);
+      vscode.window.showInformationMessage(`已将 ${count} 个问题移动到 ${categoryName}`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`移动问题失败: ${error}`);
+    }
+  }
+
+  /**
+   * 处理从外部视图拖拽的问题
+   */
+  private async handleExternalDrop(
+    target: ParaViewNode | undefined,
+    dataTransfer: vscode.DataTransfer
+  ): Promise<void> {
+    // 尝试从 URI 列表中获取文件
+    const uriListItem = dataTransfer.get('text/uri-list');
+    if (!uriListItem) {
+      return;
+    }
+
+    const uriListText = uriListItem.value as string;
+    const uris = uriListText.split('\n').filter(line => line.trim().length > 0);
+
+    if (uris.length === 0) {
+      return;
+    }
+
+    // 确定目标分类
+    let targetCategory: ParaCategory | null = null;
+
+    if (!target) {
+      vscode.window.showWarningMessage('请将问题拖放到具体的分类中');
+      return;
+    }
+
+    if (target.type === 'category') {
+      targetCategory = target.category;
+    } else if (target.type === 'issue') {
+      targetCategory = target.category;
+    }
+
+    if (!targetCategory) {
+      return;
+    }
+
+    // 处理每个文件
+    try {
+      let movedCount = 0;
+      for (const uriString of uris) {
+        const uri = vscode.Uri.parse(uriString);
+        const relativePath = getRelativePathToIssueDir(uri.fsPath);
+        
+        if (!relativePath) {
+          continue;
+        }
+
+        await addIssueToCategory(targetCategory, relativePath);
+        movedCount++;
+      }
+
+      if (movedCount > 0) {
+        this.refreshCallback();
+        const categoryName = getCategoryLabel(targetCategory);
+        vscode.window.showInformationMessage(`已将 ${movedCount} 个问题移动到 ${categoryName}`);
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`移动问题失败: ${error}`);
+    }
+  }
+}

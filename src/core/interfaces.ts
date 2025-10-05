@@ -95,6 +95,12 @@ export interface IViewRegistryResult {
     
     /** 问题结构树视图实例 */
     structureView: vscode.TreeView<vscode.TreeItem>;
+    
+    /** PARA 视图提供者实例 */
+    paraViewProvider: IIssueViewProvider<any>;
+    
+    /** PARA 树视图实例 */
+    paraView: vscode.TreeView<any>;
 }
 
 /**

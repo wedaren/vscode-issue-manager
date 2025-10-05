@@ -237,6 +237,27 @@
         "command": "issueManager.structure.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.para.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.para.addToProjects",
+        "title": "添加到 Projects"
+      },
+      {
+        "command": "issueManager.para.addToAreas",
+        "title": "添加到 Areas"
+      },
+      {
+        "command": "issueManager.para.addToResources",
+        "title": "添加到 Resources"
+      },
+      {
+        "command": "issueManager.para.addToArchives",
+        "title": "添加到 Archives"
       }
     ],
     "submenus": [
@@ -372,6 +393,11 @@
           "command": "issueManager.structure.refresh",
           "when": "view == issueManager.views.structure",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.para.refresh",
+          "when": "view == issueManager.views.para",
+          "group": "navigation@1"
         }
       ],
       "issueManager.recentSortSubmenu": [
@@ -482,6 +508,26 @@
           "command": "issueManager.rss.addToOverview",
           "when": "view == 'issueManager.views.rss' && viewItem == 'rssItem'",
           "group": "modification@4"
+        },
+        {
+          "command": "issueManager.para.addToProjects",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.addToAreas",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.addToResources",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.addToArchives",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "group": "para@4"
         }
       ],
       "editor/context": [
@@ -754,6 +800,11 @@
           "id": "issueManager.views.structure",
           "name": "问题结构",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.para",
+          "name": "PARA",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -780,6 +831,11 @@
       },
       {
         "view": "issueManager.views.structure",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.para",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
       }

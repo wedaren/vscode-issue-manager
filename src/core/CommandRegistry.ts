@@ -65,10 +65,20 @@ export class CommandRegistry extends BaseCommandRegistry {
     }
 
     /**
-     * 注册所有命令
+     * 注册所有命令（实现抽象方法）
      * 
      * 按照功能模块分组注册所有VS Code命令，确保命令的
      * 注册顺序和依赖关系正确处理。
+     * 
+     * 注意：此方法需要先通过 setProviders 设置视图提供者
+     */
+    public registerCommands(): void {
+        // 此方法由 setProviders 后自动调用
+        // 不应该直接调用
+    }
+
+    /**
+     * 设置视图提供者并注册所有命令
      * 
      * @param focusedIssuesProvider 关注问题视图提供者
      * @param issueOverviewProvider 问题总览视图提供者
@@ -133,6 +143,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 7. 注册结构视图命令
             this.registerStructureViewCommands(issueStructureProvider);
+
+            // 8. 注册 PARA 视图命令
+            this.registerParaCommands();
 
             this.logger.info('✅ 所有命令注册完成');
 
@@ -335,7 +348,70 @@ export class CommandRegistry extends BaseCommandRegistry {
         );
     }
 
-    registerCommands(): void {
-        throw new Error('Method not implemented.');
+    /**
+     * 注册 PARA 视图命令
+     */
+    private registerParaCommands(): void {
+        this.logger.info('📋 注册 PARA 视图命令...');
+
+        const { addIssueToParaCategory } = require('../commands/paraCommands');
+        const { ParaCategory } = require('../data/paraManager');
+
+        // 刷新 PARA 视图
+        this.registerCommand(
+            'issueManager.para.refresh',
+            () => {
+                vscode.commands.executeCommand('issueManager.refreshAllViews');
+            },
+            '刷新 PARA 视图'
+        );
+
+        // 添加到 Projects
+        this.registerCommand(
+            'issueManager.para.addToProjects',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    await addIssueToParaCategory(ParaCategory.Projects, node.resourceUri);
+                }
+            },
+            '添加问题到 Projects'
+        );
+
+        // 添加到 Areas
+        this.registerCommand(
+            'issueManager.para.addToAreas',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    await addIssueToParaCategory(ParaCategory.Areas, node.resourceUri);
+                }
+            },
+            '添加问题到 Areas'
+        );
+
+        // 添加到 Resources
+        this.registerCommand(
+            'issueManager.para.addToResources',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    await addIssueToParaCategory(ParaCategory.Resources, node.resourceUri);
+                }
+            },
+            '添加问题到 Resources'
+        );
+
+        // 添加到 Archives
+        this.registerCommand(
+            'issueManager.para.addToArchives',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    await addIssueToParaCategory(ParaCategory.Archives, node.resourceUri);
+                }
+            },
+            '添加问题到 Archives'
+        );
     }
 }
