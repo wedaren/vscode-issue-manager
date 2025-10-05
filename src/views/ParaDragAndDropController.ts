@@ -4,6 +4,7 @@ import {
   ParaCategory,
   getCategoryLabel
 } from '../data/paraManager';
+import { readTree, IssueTreeNode } from '../data/treeManager';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 
 /**
@@ -11,7 +12,7 @@ import { getRelativePathToIssueDir } from '../utils/fileUtils';
  */
 type ParaViewNode = 
   | { type: 'category'; category: ParaCategory }
-  | { type: 'issue'; filePath: string; category: ParaCategory };
+  | { type: 'issue'; id: string; category: ParaCategory };
 
 /**
  * PARA 视图的拖拽控制器
@@ -89,7 +90,7 @@ export class ParaDragAndDropController implements vscode.TreeDragAndDropControll
           continue;
         }
 
-        await addIssueToCategory(targetCategory, node.filePath);
+        await addIssueToCategory(targetCategory, node.id);
       }
 
       this.refreshCallback();
@@ -142,6 +143,13 @@ export class ParaDragAndDropController implements vscode.TreeDragAndDropControll
 
     // 处理每个文件
     try {
+      // 读取树数据以查找节点 ID
+      const treeData = await readTree();
+      if (!treeData) {
+        vscode.window.showWarningMessage('无法读取问题树数据');
+        return;
+      }
+
       let movedCount = 0;
       for (const uriString of uris) {
         const uri = vscode.Uri.parse(uriString);
@@ -151,8 +159,18 @@ export class ParaDragAndDropController implements vscode.TreeDragAndDropControll
           continue;
         }
 
-        await addIssueToCategory(targetCategory, relativePath);
-        movedCount++;
+        // 根据 filePath 查找所有匹配的节点 ID
+        const nodeIds = this.findNodeIdsByFilePath(treeData, relativePath);
+        
+        if (nodeIds.length === 0) {
+          continue;
+        }
+
+        // 如果有多个节点引用同一文件，添加所有节点
+        for (const nodeId of nodeIds) {
+          await addIssueToCategory(targetCategory, nodeId);
+          movedCount++;
+        }
       }
 
       if (movedCount > 0) {
@@ -163,5 +181,28 @@ export class ParaDragAndDropController implements vscode.TreeDragAndDropControll
     } catch (error) {
       vscode.window.showErrorMessage(`移动问题失败: ${error}`);
     }
+  }
+
+  /**
+   * 根据 filePath 查找所有节点 ID
+   * （同一文件可能被多个节点引用）
+   */
+  private findNodeIdsByFilePath(treeData: any, filePath: string): string[] {
+    const ids: string[] = [];
+
+    const findInNode = (node: IssueTreeNode): void => {
+      if (node.filePath === filePath) {
+        ids.push(node.id);
+      }
+      for (const child of node.children) {
+        findInNode(child);
+      }
+    };
+
+    for (const root of treeData.rootNodes) {
+      findInNode(root);
+    }
+
+    return ids;
   }
 }

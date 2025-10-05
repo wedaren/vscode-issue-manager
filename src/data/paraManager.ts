@@ -19,7 +19,7 @@ export enum ParaCategory {
 export interface ParaData {
   version: string;
   lastModified: string;
-  projects: string[]; // 问题文件的相对路径
+  projects: string[]; // 问题节点的 id（不是 filePath，以支持同一文件的多个节点）
   areas: string[];
   resources: string[];
   archives: string[];
@@ -96,22 +96,24 @@ export const writePara = async (data: ParaData): Promise<void> => {
 
 /**
  * 添加问题到指定分类（会从其他分类中移除）
+ * @param category PARA 分类
+ * @param issueId 问题节点的 id（不是 filePath）
  */
 export const addIssueToCategory = async (
   category: ParaCategory,
-  issueFilePath: string
+  issueId: string
 ): Promise<void> => {
   const data = await readPara();
   
   // 从所有分类中移除
-  data.projects = data.projects.filter(p => p !== issueFilePath);
-  data.areas = data.areas.filter(p => p !== issueFilePath);
-  data.resources = data.resources.filter(p => p !== issueFilePath);
-  data.archives = data.archives.filter(p => p !== issueFilePath);
+  data.projects = data.projects.filter(p => p !== issueId);
+  data.areas = data.areas.filter(p => p !== issueId);
+  data.resources = data.resources.filter(p => p !== issueId);
+  data.archives = data.archives.filter(p => p !== issueId);
   
   // 添加到目标分类
-  if (!data[category].includes(issueFilePath)) {
-    data[category].push(issueFilePath);
+  if (!data[category].includes(issueId)) {
+    data[category].push(issueId);
   }
   
   await writePara(data);
@@ -119,13 +121,15 @@ export const addIssueToCategory = async (
 
 /**
  * 从指定分类移除问题
+ * @param category PARA 分类
+ * @param issueId 问题节点的 id（不是 filePath）
  */
 export const removeIssueFromCategory = async (
   category: ParaCategory,
-  issueFilePath: string
+  issueId: string
 ): Promise<void> => {
   const data = await readPara();
-  const index = data[category].indexOf(issueFilePath);
+  const index = data[category].indexOf(issueId);
   
   if (index > -1) {
     data[category].splice(index, 1);
@@ -135,20 +139,21 @@ export const removeIssueFromCategory = async (
 
 /**
  * 查找问题所在的分类
+ * @param issueId 问题节点的 id（不是 filePath）
  */
-export const findIssueCategory = async (issueFilePath: string): Promise<ParaCategory | null> => {
+export const findIssueCategory = async (issueId: string): Promise<ParaCategory | null> => {
   const data = await readPara();
   
-  if (data.projects.includes(issueFilePath)) {
+  if (data.projects.includes(issueId)) {
     return ParaCategory.Projects;
   }
-  if (data.areas.includes(issueFilePath)) {
+  if (data.areas.includes(issueId)) {
     return ParaCategory.Areas;
   }
-  if (data.resources.includes(issueFilePath)) {
+  if (data.resources.includes(issueId)) {
     return ParaCategory.Resources;
   }
-  if (data.archives.includes(issueFilePath)) {
+  if (data.archives.includes(issueId)) {
     return ParaCategory.Archives;
   }
   

@@ -5,41 +5,27 @@ import {
   addIssueToCategory,
   findIssueCategory
 } from '../data/paraManager';
-import { getRelativePathToIssueDir } from '../utils/fileUtils';
 
 /**
  * 添加问题到指定 PARA 分类
  * @param category PARA 分类 (projects, areas, resources, archives)
- * @param fileUri 问题文件 URI
+ * @param issueId 问题节点的 id（从树节点传递）
  */
 export async function addIssueToParaCategory(
   category: ParaCategory,
-  fileUri?: vscode.Uri
+  issueId?: string
 ): Promise<void> {
-  // 获取文件路径
-  let filePath: string | null = null;
-
-  if (fileUri) {
-    filePath = getRelativePathToIssueDir(fileUri.fsPath);
-  } else {
-    // 从当前活动编辑器获取
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor) {
-      filePath = getRelativePathToIssueDir(activeEditor.document.uri.fsPath);
-    }
-  }
-
-  if (!filePath) {
-    vscode.window.showWarningMessage('无法确定问题文件路径');
+  if (!issueId) {
+    vscode.window.showWarningMessage('无法确定问题节点 ID');
     return;
   }
 
   try {
     // 检查问题是否已在某个分类中
-    const currentCategory = await findIssueCategory(filePath);
+    const currentCategory = await findIssueCategory(issueId);
     
     // 添加到指定分类（会自动从其他分类移除）
-    await addIssueToCategory(category, filePath);
+    await addIssueToCategory(category, issueId);
     
     const categoryLabel = getCategoryLabel(category);
     

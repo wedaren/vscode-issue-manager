@@ -4,6 +4,7 @@ import { readTree, TreeData, IssueTreeNode, FocusedData } from '../data/treeMana
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
+import { findIssueCategory } from '../data/paraManager';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
   /**
@@ -116,11 +117,16 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
 
     item.id = element.id;
     item.resourceUri = uri;
+    
+    // 检查问题是否在 PARA 分类中（使用节点 id 而不是 filePath）
+    const paraCategory = await findIssueCategory(element.id);
+    const paraSuffix = paraCategory ? `-para${paraCategory}` : '';
+    
     if (focusIndex > -1) {
-      item.contextValue = 'focusedNode'; // 根据关注状态设置 contextValue
+      item.contextValue = `focusedNode${paraSuffix}`; // 根据关注状态设置 contextValue
       item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
-      item.contextValue = 'issueNode';
+      item.contextValue = `issueNode${paraSuffix}`;
     }
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',

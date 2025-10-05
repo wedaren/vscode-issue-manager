@@ -511,23 +511,83 @@
         },
         {
           "command": "issueManager.para.addToProjects",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "when": "(view == 'issueManager.views.overview' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.focused' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
           "group": "para@1"
         },
         {
           "command": "issueManager.para.addToAreas",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "when": "(view == 'issueManager.views.overview' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.focused' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
           "group": "para@2"
         },
         {
           "command": "issueManager.para.addToResources",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "when": "(view == 'issueManager.views.overview' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.focused' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
           "group": "para@3"
         },
         {
           "command": "issueManager.para.addToArchives",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
+          "when": "(view == 'issueManager.views.overview' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.focused' && viewItem =~ /^(issueNode|focusedNode(?!First))(?!.*-para)/) || (view == 'issueManager.views.recent' && viewItem == 'isolatedIssue')",
           "group": "para@4"
+        },
+        {
+          "command": "issueManager.para.addToAreas",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.addToResources",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.addToArchives",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.addToProjects",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraareas$/",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.addToResources",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraareas$/",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.addToArchives",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraareas$/",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.addToProjects",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-pararesources$/",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.addToAreas",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-pararesources$/",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.addToArchives",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-pararesources$/",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.addToProjects",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraarchives$/",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.addToAreas",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraarchives$/",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.addToResources",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraarchives$/",
+          "group": "para@3"
         }
       ],
       "editor/context": [

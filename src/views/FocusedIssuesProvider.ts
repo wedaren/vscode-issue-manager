@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
 import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
+import { findIssueCategory } from '../data/paraManager';
 
 import * as path from 'path';
 import { getTitle } from '../utils/markdown';
@@ -60,17 +61,21 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     item.id = element.id;
     item.resourceUri = uri;
 
+    // 检查问题是否在 PARA 分类中（使用节点 id 而不是 filePath）
+    const paraCategory = await findIssueCategory(element.id);
+    const paraSuffix = paraCategory ? `-para${paraCategory}` : '';
+
     if (isFocusedRootId(element.id)) {
       const focusIndex = this.focusedData?.focusList.indexOf(realId);
       // 第一个关注的根节点，不显示置顶
       if (focusIndex === 0) {
-        item.contextValue = 'focusedNodeFirst';
+        item.contextValue = `focusedNodeFirst${paraSuffix}`;
       } else {
-        item.contextValue = 'focusedNode'; // 用于 package.json 的 when 子句
+        item.contextValue = `focusedNode${paraSuffix}`; // 用于 package.json 的 when 子句
       }
       item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
-      item.contextValue = 'issueNode';
+      item.contextValue = `issueNode${paraSuffix}`;
     }
 
     item.command = {

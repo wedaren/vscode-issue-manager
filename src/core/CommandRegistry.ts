@@ -85,6 +85,8 @@ export class CommandRegistry extends BaseCommandRegistry {
      * @param recentIssuesProvider 最近问题视图提供者
      * @param overviewView 总览树视图实例
      * @param focusedView 关注问题树视图实例
+     * @param issueStructureProvider 问题结构视图提供者
+     * @param paraViewProvider PARA 视图提供者
      */
     public registerAllCommands(
         focusedIssuesProvider: IFocusedIssuesProvider,
@@ -92,7 +94,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
-        issueStructureProvider: IssueStructureProvider
+        issueStructureProvider: IssueStructureProvider,
+        paraViewProvider?: any
     ): void {
         this.logger.info('🔧 开始注册命令...');
 
@@ -105,6 +108,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                 focusedIssuesProvider,
                 issueOverviewProvider,
                 recentIssuesProvider,
+                paraViewProvider,
                 overviewView,
                 focusedView
             });
@@ -372,7 +376,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Projects, node.resourceUri);
+                    await addIssueToParaCategory(ParaCategory.Projects, node.id);
                 }
             },
             '添加问题到 Projects'
@@ -384,7 +388,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Areas, node.resourceUri);
+                    await addIssueToParaCategory(ParaCategory.Areas, node.id);
                 }
             },
             '添加问题到 Areas'
@@ -396,7 +400,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Resources, node.resourceUri);
+                    await addIssueToParaCategory(ParaCategory.Resources, node.id);
                 }
             },
             '添加问题到 Resources'
@@ -408,7 +412,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Archives, node.resourceUri);
+                    await addIssueToParaCategory(ParaCategory.Archives, node.id);
                 }
             },
             '添加问题到 Archives'

@@ -7,6 +7,7 @@ import {
   getCategoryLabel,
   getCategoryIcon
 } from '../data/paraManager';
+import { readTree, IssueTreeNode, TreeData } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 
@@ -15,7 +16,7 @@ import { getTitle } from '../utils/markdown';
  */
 type ParaViewNode = 
   | { type: 'category'; category: ParaCategory }
-  | { type: 'issue'; filePath: string; category: ParaCategory };
+  | { type: 'issue'; id: string; category: ParaCategory };
 
 /**
  * PARA 视图的 TreeDataProvider
@@ -29,6 +30,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     this._onDidChangeTreeData.event;
 
   private paraData: ParaData | null = null;
+  private treeData: TreeData | null = null;
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -44,6 +46,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
    */
   async loadData(): Promise<void> {
     this.paraData = await readPara();
+    this.treeData = await readTree();
     this._onDidChangeTreeData.fire();
   }
 
@@ -61,7 +64,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
         return this.createCategoryTreeItem(element.category);
       
       case 'issue':
-        return await this.createIssueTreeItem(element.filePath, element.category, issueDir);
+        return await this.createIssueTreeItem(element.id, element.category, issueDir);
     }
   }
 
@@ -89,10 +92,10 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
 
     // 分类节点：显示该分类下的问题
     if (element.type === 'category') {
-      const issues = this.paraData[element.category];
-      return issues.map(filePath => ({
+      const issueIds = this.paraData[element.category];
+      return issueIds.map(id => ({
         type: 'issue' as const,
-        filePath,
+        id,
         category: element.category
       }));
     }
@@ -122,10 +125,18 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
   /**
    * 创建问题树节点
    */
-  private async createIssueTreeItem(filePath: string, category: ParaCategory, issueDir: string): Promise<vscode.TreeItem> {
-    const absolutePath = path.join(issueDir, filePath);
+  private async createIssueTreeItem(issueId: string, category: ParaCategory, issueDir: string): Promise<vscode.TreeItem> {
+    // 从树数据中查找节点以获取 filePath
+    const node = this.findNodeById(issueId);
+    
+    if (!node) {
+      // 如果找不到节点，可能已被删除
+      return new vscode.TreeItem(`[已删除] ${issueId}`, vscode.TreeItemCollapsibleState.None);
+    }
+    
+    const absolutePath = path.join(issueDir, node.filePath);
     const fileUri = vscode.Uri.file(absolutePath);
-    const title = await getTitle(fileUri) || path.basename(filePath, '.md');
+    const title = await getTitle(fileUri) || path.basename(node.filePath, '.md');
     
     const item = new vscode.TreeItem(
       title,
@@ -135,7 +146,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     item.contextValue = 'paraIssue';
     item.resourceUri = fileUri;
     item.iconPath = vscode.ThemeIcon.File;
-    item.tooltip = filePath;
+    item.tooltip = node.filePath;
     
     // 点击打开文件
     item.command = {
@@ -145,6 +156,37 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     };
     
     return item;
+  }
+
+  /**
+   * 从树数据中根据 id 查找节点
+   */
+  private findNodeById(id: string): IssueTreeNode | null {
+    if (!this.treeData) {
+      return null;
+    }
+
+    const findInNode = (node: IssueTreeNode): IssueTreeNode | null => {
+      if (node.id === id) {
+        return node;
+      }
+      for (const child of node.children) {
+        const found = findInNode(child);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    };
+
+    for (const root of this.treeData.rootNodes) {
+      const found = findInNode(root);
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
   }
 
   /**
