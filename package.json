@@ -258,6 +258,22 @@
       {
         "command": "issueManager.para.addToArchives",
         "title": "添加到 Archives"
+      },
+      {
+        "command": "issueManager.para.viewInProjects",
+        "title": "在 Projects 中查看"
+      },
+      {
+        "command": "issueManager.para.viewInAreas",
+        "title": "在 Areas 中查看"
+      },
+      {
+        "command": "issueManager.para.viewInResources",
+        "title": "在 Resources 中查看"
+      },
+      {
+        "command": "issueManager.para.viewInArchives",
+        "title": "在 Archives 中查看"
       }
     ],
     "submenus": [
@@ -545,6 +561,31 @@
           "group": "para@3"
         },
         {
+          "command": "issueManager.para.viewInProjects",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
+          "group": "para@0"
+        },
+        {
+          "command": "issueManager.para.addToAreas",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.addToResources",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.addToArchives",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraprojects$/",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.viewInAreas",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraareas$/",
+          "group": "para@0"
+        },
+        {
           "command": "issueManager.para.addToProjects",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraareas$/",
           "group": "para@1"
@@ -560,6 +601,11 @@
           "group": "para@3"
         },
         {
+          "command": "issueManager.para.viewInResources",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-pararesources$/",
+          "group": "para@0"
+        },
+        {
           "command": "issueManager.para.addToProjects",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-pararesources$/",
           "group": "para@1"
@@ -573,6 +619,11 @@
           "command": "issueManager.para.addToArchives",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-pararesources$/",
           "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.viewInArchives",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraarchives$/",
+          "group": "para@0"
         },
         {
           "command": "issueManager.para.addToProjects",

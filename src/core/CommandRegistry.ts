@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
+import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, TreeData } from '../data/treeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { Logger } from './utils/Logger';
+import { ParaCategory } from '../data/paraManager';
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -77,6 +78,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 不应该直接调用
     }
 
+    private paraView?: vscode.TreeView<any>;
+
     /**
      * 设置视图提供者并注册所有命令
      * 
@@ -87,6 +90,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      * @param focusedView 关注问题树视图实例
      * @param issueStructureProvider 问题结构视图提供者
      * @param paraViewProvider PARA 视图提供者
+     * @param paraView PARA 树视图实例
      */
     public registerAllCommands(
         focusedIssuesProvider: IFocusedIssuesProvider,
@@ -95,8 +99,11 @@ export class CommandRegistry extends BaseCommandRegistry {
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
         issueStructureProvider: IssueStructureProvider,
-        paraViewProvider?: any
+        paraViewProvider: any,
+        paraView?: vscode.TreeView<any>
     ): void {
+        // 保存 paraView 引用
+        this.paraView = paraView;
         this.logger.info('🔧 开始注册命令...');
 
         try {
@@ -421,5 +428,175 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '添加问题到 Archives'
         );
+
+        // 在 Projects 中查看
+        this.registerCommand(
+            'issueManager.para.viewInProjects',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    const id = stripFocusedId(node.id);
+                    await this.revealInParaView(id, ParaCategory.Projects);
+                }
+            },
+            '在 Projects 中查看'
+        );
+
+        // 在 Areas 中查看
+        this.registerCommand(
+            'issueManager.para.viewInAreas',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    const id = stripFocusedId(node.id);
+                    await this.revealInParaView(id, ParaCategory.Areas);
+                }
+            },
+            '在 Areas 中查看'
+        );
+
+        // 在 Resources 中查看
+        this.registerCommand(
+            'issueManager.para.viewInResources',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    const id = stripFocusedId(node.id);
+                    await this.revealInParaView(id, ParaCategory.Resources);
+                }
+            },
+            '在 Resources 中查看'
+        );
+
+        // 在 Archives 中查看
+        this.registerCommand(
+            'issueManager.para.viewInArchives',
+            async (...args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    const id = stripFocusedId(node.id);
+                    await this.revealInParaView(id, ParaCategory.Archives);
+                }
+            },
+            '在 Archives 中查看'
+        );
+    }
+
+    /**
+     * 在 PARA 视图中定位并高亮显示节点
+     * @param nodeId 节点ID
+     * @param category PARA类别
+     */
+    private async revealInParaView(nodeId: string, category: ParaCategory): Promise<void> {
+        try {
+            if (!this.paraView) {
+                this.logger.warn('PARA 视图引用不存在,使用降级方案');
+                await vscode.commands.executeCommand('issueManager.views.para.focus');
+                vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${this.getCategoryLabel(category)} 分类中`);
+                return;
+            }
+
+            this.logger.info(`尝试在 PARA 视图中定位节点: ${nodeId}, 分类: ${category}`);
+            
+            // 构造 ParaViewNode 结构
+            const treeData = await readTree();
+            if (!treeData) {
+                vscode.window.showErrorMessage('无法读取树数据');
+                return;
+            }
+            
+            // 查找节点
+            const treeNode = this.findNodeInTree(treeData, nodeId);
+            if (!treeNode) {
+                this.logger.error(`在树中找不到节点: ${nodeId}`);
+                vscode.window.showErrorMessage('在树中找不到该问题');
+                return;
+            }
+            
+            // 构造目标节点
+            const targetNode = {
+                type: 'issue' as const,
+                id: nodeId,
+                category: category,
+                treeNode: treeNode
+            };
+            
+            // 先切换到 PARA 视图
+            await vscode.commands.executeCommand('issueManager.views.para.focus');
+            
+            // 等待视图完全加载
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // 先展开分类节点
+            const categoryNode = { type: 'category' as const, category: category };
+            try {
+                await this.paraView.reveal(categoryNode, { 
+                    select: false, 
+                    focus: false, 
+                    expand: true 
+                });
+                // 等待展开完成
+                await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (error) {
+                this.logger.warn('展开分类节点失败,继续尝试定位目标节点', error);
+            }
+            
+            // 定位到目标节点并高亮
+            await this.paraView.reveal(targetNode, { 
+                select: true,  // 选中节点
+                focus: true,   // 聚焦节点
+                expand: 1      // 展开一层子节点
+            });
+            
+            this.logger.info(`成功在 PARA 视图中定位节点: ${nodeId}`);
+            
+            // 可选:短暂显示成功提示
+            vscode.window.setStatusBarMessage(`✓ 已在 ${this.getCategoryLabel(category)} 中定位到该问题`, 2000);
+            
+        } catch (error) {
+            this.logger.error('在 PARA 视图中定位节点失败:', error);
+            // 降级方案：只切换到 PARA 视图
+            await vscode.commands.executeCommand('issueManager.views.para.focus');
+            vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${this.getCategoryLabel(category)} 分类中`);
+        }
+    }
+
+    /**
+     * 在树中查找节点
+     */
+    private findNodeInTree(treeData: TreeData, nodeId: string): IssueTreeNode | null {
+        const findInNode = (node: IssueTreeNode): IssueTreeNode | null => {
+            if (node.id === nodeId) {
+                return node;
+            }
+            for (const child of node.children) {
+                const found = findInNode(child);
+                if (found) {
+                    return found;
+                }
+            }
+            return null;
+        };
+
+        for (const root of treeData.rootNodes) {
+            const found = findInNode(root);
+            if (found) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 获取分类的中文标签
+     */
+    private getCategoryLabel(category: ParaCategory): string {
+        const labels: Record<string, string> = {
+            [ParaCategory.Projects]: 'Projects (项目)',
+            [ParaCategory.Areas]: 'Areas (领域)',
+            [ParaCategory.Resources]: 'Resources (资源)',
+            [ParaCategory.Archives]: 'Archives (归档)'
+        };
+        return labels[category] || category;
     }
 }
