@@ -376,7 +376,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Projects, node.id);
+                    const id = stripFocusedId(node.id);
+                    await addIssueToParaCategory(ParaCategory.Projects, id);
                 }
             },
             '添加问题到 Projects'
@@ -388,7 +389,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Areas, node.id);
+                    const id = stripFocusedId(node.id);
+                    await addIssueToParaCategory(ParaCategory.Areas, id);
                 }
             },
             '添加问题到 Areas'
@@ -400,7 +402,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Resources, node.id);
+                    const id = stripFocusedId(node.id);
+                    await addIssueToParaCategory(ParaCategory.Resources, id);
                 }
             },
             '添加问题到 Resources'
@@ -412,7 +415,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    await addIssueToParaCategory(ParaCategory.Archives, node.id);
+                    const id = stripFocusedId(node.id);
+                    await addIssueToParaCategory(ParaCategory.Archives, id);
                 }
             },
             '添加问题到 Archives'
