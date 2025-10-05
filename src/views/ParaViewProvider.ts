@@ -10,14 +10,7 @@ import {
 import { readTree, IssueTreeNode, TreeData } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
-
-/**
- * PARA 视图节点类型
- * 保持问题总览中的树结构
- */
-type ParaViewNode = 
-  | { type: 'category'; category: ParaCategory }
-  | { type: 'issue'; id: string; category: ParaCategory; treeNode: IssueTreeNode; isTopLevel: boolean };
+import { ParaViewNode } from '../types';
 
 /**
  * PARA 视图的 TreeDataProvider
@@ -65,7 +58,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
         return this.createCategoryTreeItem(element.category);
       
       case 'issue':
-        return await this.createIssueTreeItem(element.id, element.category, element.isTopLevel, issueDir);
+        return await this.createIssueTreeItem(element.id, element.category, element.isTopLevel ?? false, issueDir);
     }
   }
 

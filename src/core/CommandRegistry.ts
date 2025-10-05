@@ -7,6 +7,7 @@ import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { Logger } from './utils/Logger';
 import { ParaCategory, removeIssueFromCategory, addIssueToCategory } from '../data/paraManager';
 import { addIssueToParaCategory } from '../commands/paraCommands';
+import { isParaIssueNode } from '../types';
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -484,10 +485,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.para.removeFromCategory',
             async (...args: unknown[]) => {
                 const element = args[0];
-                // ParaViewNode 类型判断
-                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
-                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
-                    await this.removeFromParaCategory(node.id, node.category);
+                if (isParaIssueNode(element)) {
+                    await this.removeFromParaCategory(element.id, element.category);
                 }
             },
             '从 PARA 分类中移除'
@@ -498,9 +497,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.para.moveToProjects',
             async (...args: unknown[]) => {
                 const element = args[0];
-                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
-                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
-                    await this.moveParaIssue(node.id, node.category, ParaCategory.Projects);
+                if (isParaIssueNode(element)) {
+                    await this.moveParaIssue(element.id, element.category, ParaCategory.Projects);
                 }
             },
             '移动到 Projects'
@@ -511,9 +509,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.para.moveToAreas',
             async (...args: unknown[]) => {
                 const element = args[0];
-                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
-                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
-                    await this.moveParaIssue(node.id, node.category, ParaCategory.Areas);
+                if (isParaIssueNode(element)) {
+                    await this.moveParaIssue(element.id, element.category, ParaCategory.Areas);
                 }
             },
             '移动到 Areas'
@@ -524,9 +521,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.para.moveToResources',
             async (...args: unknown[]) => {
                 const element = args[0];
-                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
-                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
-                    await this.moveParaIssue(node.id, node.category, ParaCategory.Resources);
+                if (isParaIssueNode(element)) {
+                    await this.moveParaIssue(element.id, element.category, ParaCategory.Resources);
                 }
             },
             '移动到 Resources'
@@ -537,9 +533,8 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.para.moveToArchives',
             async (...args: unknown[]) => {
                 const element = args[0];
-                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
-                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
-                    await this.moveParaIssue(node.id, node.category, ParaCategory.Archives);
+                if (isParaIssueNode(element)) {
+                    await this.moveParaIssue(element.id, element.category, ParaCategory.Archives);
                 }
             },
             '移动到 Archives'
