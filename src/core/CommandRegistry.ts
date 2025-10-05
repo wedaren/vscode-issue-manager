@@ -5,7 +5,7 @@ import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { Logger } from './utils/Logger';
-import { ParaCategory, removeIssueFromCategory, addIssueToCategory } from '../data/paraManager';
+import { ParaCategory, removeIssueFromCategory, addIssueToCategory, getCategoryLabel } from '../data/paraManager';
 import { addIssueToParaCategory } from '../commands/paraCommands';
 import { isParaIssueNode } from '../types';
 
@@ -551,7 +551,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             if (!this.paraView) {
                 this.logger.warn('PARA 视图引用不存在,使用降级方案');
                 await vscode.commands.executeCommand('issueManager.views.para.focus');
-                vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${this.getCategoryLabel(category)} 分类中`);
+                vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${getCategoryLabel(category)} 分类中`);
                 return;
             }
 
@@ -610,13 +610,13 @@ export class CommandRegistry extends BaseCommandRegistry {
             this.logger.info(`成功在 PARA 视图中定位节点: ${nodeId}`);
             
             // 可选:短暂显示成功提示
-            vscode.window.setStatusBarMessage(`✓ 已在 ${this.getCategoryLabel(category)} 中定位到该问题`, 2000);
+            vscode.window.setStatusBarMessage(`✓ 已在 ${getCategoryLabel(category)} 中定位到该问题`, 2000);
             
         } catch (error) {
             this.logger.error('在 PARA 视图中定位节点失败:', error);
             // 降级方案：只切换到 PARA 视图
             await vscode.commands.executeCommand('issueManager.views.para.focus');
-            vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${this.getCategoryLabel(category)} 分类中`);
+            vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${getCategoryLabel(category)} 分类中`);
         }
     }
 
@@ -647,19 +647,6 @@ export class CommandRegistry extends BaseCommandRegistry {
     }
 
     /**
-     * 获取分类的中文标签
-     */
-    private getCategoryLabel(category: ParaCategory): string {
-        const labels: Record<string, string> = {
-            [ParaCategory.Projects]: 'Projects (项目)',
-            [ParaCategory.Areas]: 'Areas (领域)',
-            [ParaCategory.Resources]: 'Resources (资源)',
-            [ParaCategory.Archives]: 'Archives (归档)'
-        };
-        return labels[category] || category;
-    }
-
-    /**
      * 从 PARA 分类中移除问题
      * @param issueId 问题ID
      * @param category 当前所在分类
@@ -667,7 +654,7 @@ export class CommandRegistry extends BaseCommandRegistry {
     private async removeFromParaCategory(issueId: string, category: ParaCategory): Promise<void> {
         try {
             // 确认删除
-            const categoryLabel = this.getCategoryLabel(category);
+            const categoryLabel = getCategoryLabel(category);
             const confirm = await vscode.window.showWarningMessage(
                 `确定要从 ${categoryLabel} 中移除此问题吗？`,
                 { modal: false },
@@ -703,8 +690,8 @@ export class CommandRegistry extends BaseCommandRegistry {
                 return;
             }
 
-            const fromLabel = this.getCategoryLabel(fromCategory);
-            const toLabel = this.getCategoryLabel(toCategory);
+            const fromLabel = getCategoryLabel(fromCategory);
+            const toLabel = getCategoryLabel(toCategory);
             
             // 先从源分类移除
             await removeIssueFromCategory(fromCategory, issueId);
