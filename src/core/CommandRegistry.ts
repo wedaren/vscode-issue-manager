@@ -5,7 +5,8 @@ import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { Logger } from './utils/Logger';
-import { ParaCategory } from '../data/paraManager';
+import { ParaCategory, removeIssueFromCategory, addIssueToCategory } from '../data/paraManager';
+import { addIssueToParaCategory } from '../commands/paraCommands';
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -365,9 +366,6 @@ export class CommandRegistry extends BaseCommandRegistry {
     private registerParaCommands(): void {
         this.logger.info('📋 注册 PARA 视图命令...');
 
-        const { addIssueToParaCategory } = require('../commands/paraCommands');
-        const { ParaCategory } = require('../data/paraManager');
-
         // 刷新 PARA 视图
         this.registerCommand(
             'issueManager.para.refresh',
@@ -673,8 +671,6 @@ export class CommandRegistry extends BaseCommandRegistry {
      */
     private async removeFromParaCategory(issueId: string, category: ParaCategory): Promise<void> {
         try {
-            const { removeIssueFromCategory } = require('../data/paraManager');
-            
             // 确认删除
             const categoryLabel = this.getCategoryLabel(category);
             const confirm = await vscode.window.showWarningMessage(
@@ -712,8 +708,6 @@ export class CommandRegistry extends BaseCommandRegistry {
                 return;
             }
 
-            const { removeIssueFromCategory, addIssueToCategory } = require('../data/paraManager');
-            
             const fromLabel = this.getCategoryLabel(fromCategory);
             const toLabel = this.getCategoryLabel(toCategory);
             
