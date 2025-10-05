@@ -17,7 +17,7 @@ import { getTitle } from '../utils/markdown';
  */
 type ParaViewNode = 
   | { type: 'category'; category: ParaCategory }
-  | { type: 'issue'; id: string; category: ParaCategory; treeNode: IssueTreeNode };
+  | { type: 'issue'; id: string; category: ParaCategory; treeNode: IssueTreeNode; isTopLevel: boolean };
 
 /**
  * PARA 视图的 TreeDataProvider
@@ -65,7 +65,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
         return this.createCategoryTreeItem(element.category);
       
       case 'issue':
-        return await this.createIssueTreeItem(element.id, element.category, issueDir);
+        return await this.createIssueTreeItem(element.id, element.category, element.isTopLevel, issueDir);
     }
   }
 
@@ -103,7 +103,8 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
             type: 'issue' as const,
             id,
             category: element.category,
-            treeNode
+            treeNode,
+            isTopLevel: true  // 直接在分类下的节点是顶级节点
           });
         }
       }
@@ -118,7 +119,8 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
         type: 'issue' as const,
         id: child.id,
         category: element.category,
-        treeNode: child
+        treeNode: child,
+        isTopLevel: false  // 子节点不是顶级节点
       }));
     }
 
@@ -147,7 +149,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
   /**
    * 创建问题树节点
    */
-  private async createIssueTreeItem(issueId: string, category: ParaCategory, issueDir: string): Promise<vscode.TreeItem> {
+  private async createIssueTreeItem(issueId: string, category: ParaCategory, isTopLevel: boolean, issueDir: string): Promise<vscode.TreeItem> {
     // 从树数据中查找节点以获取 filePath
     const node = this.findNodeById(issueId);
     
@@ -171,7 +173,14 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
       collapsibleState
     );
     
-    item.contextValue = 'paraIssue';
+    // contextValue 区分顶级节点和子节点
+    // 只有顶级节点才能删除和移动
+    if (isTopLevel) {
+      item.contextValue = `paraIssue-${category}`;
+    } else {
+      item.contextValue = `paraIssueChild-${category}`;
+    }
+    
     item.resourceUri = fileUri;
     item.iconPath = vscode.ThemeIcon.File;
     item.tooltip = node.filePath;
@@ -231,11 +240,14 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
       
       if (parentTreeNode) {
         // 有父节点，返回父节点的 ParaViewNode
+        // 检查父节点是否是 PARA 顶级节点
+        const isParentTopLevel = this.paraData[element.category].includes(parentTreeNode.id);
         return {
           type: 'issue' as const,
           id: parentTreeNode.id,
           category: element.category,
-          treeNode: parentTreeNode
+          treeNode: parentTreeNode,
+          isTopLevel: isParentTopLevel
         };
       } else {
         // 没有父节点，说明是根节点，父节点是分类节点

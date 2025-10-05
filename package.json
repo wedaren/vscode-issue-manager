@@ -274,6 +274,27 @@
       {
         "command": "issueManager.para.viewInArchives",
         "title": "在 Archives 中查看"
+      },
+      {
+        "command": "issueManager.para.removeFromCategory",
+        "title": "从分类中移除",
+        "icon": "$(close)"
+      },
+      {
+        "command": "issueManager.para.moveToProjects",
+        "title": "移动到 Projects"
+      },
+      {
+        "command": "issueManager.para.moveToAreas",
+        "title": "移动到 Areas"
+      },
+      {
+        "command": "issueManager.para.moveToResources",
+        "title": "移动到 Resources"
+      },
+      {
+        "command": "issueManager.para.moveToArchives",
+        "title": "移动到 Archives"
       }
     ],
     "submenus": [
@@ -638,6 +659,71 @@
         {
           "command": "issueManager.para.addToResources",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /-paraarchives$/",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.removeFromCategory",
+          "when": "view == 'issueManager.views.para' && viewItem =~ /^paraIssue-/",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.para.moveToAreas",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-projects'",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.moveToResources",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-projects'",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.moveToArchives",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-projects'",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.moveToProjects",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-areas'",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.moveToResources",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-areas'",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.moveToArchives",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-areas'",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.moveToProjects",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-resources'",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.moveToAreas",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-resources'",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.moveToArchives",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-resources'",
+          "group": "para@3"
+        },
+        {
+          "command": "issueManager.para.moveToProjects",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-archives'",
+          "group": "para@1"
+        },
+        {
+          "command": "issueManager.para.moveToAreas",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-archives'",
+          "group": "para@2"
+        },
+        {
+          "command": "issueManager.para.moveToResources",
+          "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-archives'",
           "group": "para@3"
         }
       ],

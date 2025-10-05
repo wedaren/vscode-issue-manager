@@ -480,6 +480,72 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '在 Archives 中查看'
         );
+
+        // 从 PARA 视图中移除
+        this.registerCommand(
+            'issueManager.para.removeFromCategory',
+            async (...args: unknown[]) => {
+                const element = args[0];
+                // ParaViewNode 类型判断
+                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
+                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
+                    await this.removeFromParaCategory(node.id, node.category);
+                }
+            },
+            '从 PARA 分类中移除'
+        );
+
+        // 在 PARA 视图内移动到 Projects
+        this.registerCommand(
+            'issueManager.para.moveToProjects',
+            async (...args: unknown[]) => {
+                const element = args[0];
+                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
+                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
+                    await this.moveParaIssue(node.id, node.category, ParaCategory.Projects);
+                }
+            },
+            '移动到 Projects'
+        );
+
+        // 在 PARA 视图内移动到 Areas
+        this.registerCommand(
+            'issueManager.para.moveToAreas',
+            async (...args: unknown[]) => {
+                const element = args[0];
+                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
+                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
+                    await this.moveParaIssue(node.id, node.category, ParaCategory.Areas);
+                }
+            },
+            '移动到 Areas'
+        );
+
+        // 在 PARA 视图内移动到 Resources
+        this.registerCommand(
+            'issueManager.para.moveToResources',
+            async (...args: unknown[]) => {
+                const element = args[0];
+                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
+                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
+                    await this.moveParaIssue(node.id, node.category, ParaCategory.Resources);
+                }
+            },
+            '移动到 Resources'
+        );
+
+        // 在 PARA 视图内移动到 Archives
+        this.registerCommand(
+            'issueManager.para.moveToArchives',
+            async (...args: unknown[]) => {
+                const element = args[0];
+                if (element && typeof element === 'object' && 'type' in element && element.type === 'issue') {
+                    const node = element as { type: 'issue'; id: string; category: ParaCategory };
+                    await this.moveParaIssue(node.id, node.category, ParaCategory.Archives);
+                }
+            },
+            '移动到 Archives'
+        );
     }
 
     /**
@@ -598,5 +664,73 @@ export class CommandRegistry extends BaseCommandRegistry {
             [ParaCategory.Archives]: 'Archives (归档)'
         };
         return labels[category] || category;
+    }
+
+    /**
+     * 从 PARA 分类中移除问题
+     * @param issueId 问题ID
+     * @param category 当前所在分类
+     */
+    private async removeFromParaCategory(issueId: string, category: ParaCategory): Promise<void> {
+        try {
+            const { removeIssueFromCategory } = require('../data/paraManager');
+            
+            // 确认删除
+            const categoryLabel = this.getCategoryLabel(category);
+            const confirm = await vscode.window.showWarningMessage(
+                `确定要从 ${categoryLabel} 中移除此问题吗？`,
+                { modal: false },
+                '确定'
+            );
+            
+            if (confirm !== '确定') {
+                return;
+            }
+            
+            await removeIssueFromCategory(category, issueId);
+            await vscode.commands.executeCommand('issueManager.refreshAllViews');
+            
+            vscode.window.showInformationMessage(`已从 ${categoryLabel} 中移除`);
+            this.logger.info(`从 ${category} 中移除问题: ${issueId}`);
+            
+        } catch (error) {
+            this.logger.error('从 PARA 分类中移除问题失败:', error);
+            vscode.window.showErrorMessage(`移除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+    }
+
+    /**
+     * 在 PARA 视图内移动问题到其他分类
+     * @param issueId 问题ID
+     * @param fromCategory 源分类
+     * @param toCategory 目标分类
+     */
+    private async moveParaIssue(issueId: string, fromCategory: ParaCategory, toCategory: ParaCategory): Promise<void> {
+        try {
+            if (fromCategory === toCategory) {
+                vscode.window.showInformationMessage('该问题已在目标分类中');
+                return;
+            }
+
+            const { removeIssueFromCategory, addIssueToCategory } = require('../data/paraManager');
+            
+            const fromLabel = this.getCategoryLabel(fromCategory);
+            const toLabel = this.getCategoryLabel(toCategory);
+            
+            // 先从源分类移除
+            await removeIssueFromCategory(fromCategory, issueId);
+            
+            // 再添加到目标分类
+            await addIssueToCategory(toCategory, issueId);
+            
+            await vscode.commands.executeCommand('issueManager.refreshAllViews');
+            
+            vscode.window.showInformationMessage(`已从 ${fromLabel} 移动到 ${toLabel}`);
+            this.logger.info(`移动问题: ${issueId} 从 ${fromCategory} 到 ${toCategory}`);
+            
+        } catch (error) {
+            this.logger.error('移动 PARA 问题失败:', error);
+            vscode.window.showErrorMessage(`移动失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
     }
 }
