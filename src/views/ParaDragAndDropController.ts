@@ -12,7 +12,7 @@ import { getRelativePathToIssueDir } from '../utils/fileUtils';
  */
 type ParaViewNode = 
   | { type: 'category'; category: ParaCategory }
-  | { type: 'issue'; id: string; category: ParaCategory };
+  | { type: 'issue'; id: string; category: ParaCategory; treeNode: IssueTreeNode };
 
 /**
  * PARA 视图的拖拽控制器

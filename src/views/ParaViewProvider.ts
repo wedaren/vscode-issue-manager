@@ -13,10 +13,11 @@ import { getTitle } from '../utils/markdown';
 
 /**
  * PARA 视图节点类型
+ * 保持问题总览中的树结构
  */
 type ParaViewNode = 
   | { type: 'category'; category: ParaCategory }
-  | { type: 'issue'; id: string; category: ParaCategory };
+  | { type: 'issue'; id: string; category: ParaCategory; treeNode: IssueTreeNode };
 
 /**
  * PARA 视图的 TreeDataProvider
@@ -90,13 +91,34 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
       ];
     }
 
-    // 分类节点：显示该分类下的问题
+    // 分类节点：显示该分类下的问题（根节点）
     if (element.type === 'category') {
       const issueIds = this.paraData[element.category];
-      return issueIds.map(id => ({
+      const nodes: ParaViewNode[] = [];
+      
+      for (const id of issueIds) {
+        const treeNode = this.findNodeById(id);
+        if (treeNode) {
+          nodes.push({
+            type: 'issue' as const,
+            id,
+            category: element.category,
+            treeNode
+          });
+        }
+      }
+      
+      return nodes;
+    }
+
+    // 问题节点：显示其子节点（保持树结构）
+    if (element.type === 'issue') {
+      const children = element.treeNode.children;
+      return children.map(child => ({
         type: 'issue' as const,
-        id,
-        category: element.category
+        id: child.id,
+        category: element.category,
+        treeNode: child
       }));
     }
 
@@ -138,9 +160,15 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     const fileUri = vscode.Uri.file(absolutePath);
     const title = await getTitle(fileUri) || path.basename(node.filePath, '.md');
     
+    // 根据是否有子节点决定折叠状态
+    const hasChildren = node.children && node.children.length > 0;
+    const collapsibleState = hasChildren
+      ? (node.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+      : vscode.TreeItemCollapsibleState.None;
+    
     const item = new vscode.TreeItem(
       title,
-      vscode.TreeItemCollapsibleState.None
+      collapsibleState
     );
     
     item.contextValue = 'paraIssue';
@@ -193,13 +221,61 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
    * 获取父节点（用于 reveal）
    */
   getParent(element: ParaViewNode): vscode.ProviderResult<ParaViewNode> {
-    if (!this.paraData) {
+    if (!this.paraData || !this.treeData) {
       return null;
     }
 
     if (element.type === 'issue') {
-      // 问题的父节点是分类节点
-      return { type: 'category', category: element.category };
+      // 查找父节点
+      const parentTreeNode = this.findParentNode(element.id);
+      
+      if (parentTreeNode) {
+        // 有父节点，返回父节点的 ParaViewNode
+        return {
+          type: 'issue' as const,
+          id: parentTreeNode.id,
+          category: element.category,
+          treeNode: parentTreeNode
+        };
+      } else {
+        // 没有父节点，说明是根节点，父节点是分类节点
+        return { type: 'category', category: element.category };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 查找节点的父节点
+   */
+  private findParentNode(childId: string): IssueTreeNode | null {
+    if (!this.treeData) {
+      return null;
+    }
+
+    const findParent = (node: IssueTreeNode, targetId: string): IssueTreeNode | null => {
+      // 检查子节点中是否有目标节点
+      for (const child of node.children) {
+        if (child.id === targetId) {
+          return node;
+        }
+      }
+      // 递归查找
+      for (const child of node.children) {
+        const found = findParent(child, targetId);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    };
+
+    for (const root of this.treeData.rootNodes) {
+      const found = findParent(root, childId);
+      if (found) {
+        return found;
+      }
     }
 
     return null;
