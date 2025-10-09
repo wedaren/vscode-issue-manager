@@ -6,13 +6,7 @@ import {
 } from '../data/paraManager';
 import { readTree, IssueTreeNode } from '../data/treeManager';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
-
-/**
- * PARA 视图节点类型（与 ParaViewProvider 中的定义一致）
- */
-type ParaViewNode = 
-  | { type: 'category'; category: ParaCategory }
-  | { type: 'issue'; id: string; category: ParaCategory; treeNode: IssueTreeNode };
+import { ParaViewNode } from '../types';
 
 /**
  * PARA 视图的拖拽控制器
