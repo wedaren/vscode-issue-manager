@@ -4,7 +4,7 @@ import { readTree, TreeData, IssueTreeNode, FocusedData } from '../data/treeMana
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
-import { findIssueCategory } from '../data/paraManager';
+import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
   /**
@@ -67,16 +67,23 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
 
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
+  private paraCategoryCache: ParaCategoryCache;
 
   constructor(private context: vscode.ExtensionContext) {
+    // 获取 PARA 分类缓存服务
+    this.paraCategoryCache = ParaCategoryCache.getInstance(context);
+    
+    // 监听缓存更新，自动刷新视图
+    this.paraCategoryCache.onDidChangeCache(() => {
+      this._onDidChangeTreeData.fire();
+    });
+    
     this.loadData();
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('issueManager.issueDir')) {
         this.loadData();
       }
     });
-
-    
   }
 
   private async loadData(): Promise<void> {
@@ -118,15 +125,12 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     item.id = element.id;
     item.resourceUri = uri;
     
-    // 检查问题是否在 PARA 分类中（使用节点 id 而不是 filePath）
-    const paraCategory = await findIssueCategory(element.id);
-    const paraSuffix = paraCategory ? `-para${paraCategory}` : '';
-    
+    // 使用共享的 PARA 分类缓存服务，同步查找
     if (focusIndex > -1) {
-      item.contextValue = `focusedNode${paraSuffix}`; // 根据关注状态设置 contextValue
+      item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'focusedNode');
       item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
-      item.contextValue = `issueNode${paraSuffix}`;
+      item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'issueNode');
     }
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',

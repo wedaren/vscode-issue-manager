@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
 import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
-import { findIssueCategory, readParaCategoryMap } from '../data/paraManager';
+import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
 import { getTitle } from '../utils/markdown';
@@ -19,11 +19,16 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
   private filteredTreeCache: IssueTreeNode[] | null = null;
-  private paraCategoryMap: Record<string, string> | null = null;
+  private paraCategoryCache: ParaCategoryCache;
 
   constructor(private context: vscode.ExtensionContext) {
-    // 可在此处注册文件监听等
-
+    // 获取 PARA 分类缓存服务
+    this.paraCategoryCache = ParaCategoryCache.getInstance(context);
+    
+    // 监听缓存更新，自动刷新视图
+    this.paraCategoryCache.onDidChangeCache(() => {
+      this._onDidChangeTreeData.fire();
+    });
   }
 
   /** 刷新视图 */
@@ -35,7 +40,6 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   async loadData() {
     this.treeData = await readTree();
     this.focusedData = await readFocused();
-    this.paraCategoryMap = await readParaCategoryMap();
     this._onDidChangeTreeData.fire();
   }
 
@@ -63,21 +67,18 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     item.id = element.id;
     item.resourceUri = uri;
 
-    // 优化：同步查找 PARA 分类，无需每次节点都异步读取文件
-    const paraCategory = this.paraCategoryMap ? this.paraCategoryMap[element.id] : undefined;
-    const paraSuffix = paraCategory ? `-para${paraCategory}` : '';
-
+    // 使用共享的 PARA 分类缓存服务，同步查找（自动处理 focused id）
     if (isFocusedRootId(element.id)) {
       const focusIndex = this.focusedData?.focusList.indexOf(realId);
       // 第一个关注的根节点，不显示置顶
       if (focusIndex === 0) {
-        item.contextValue = `focusedNodeFirst${paraSuffix}`;
+        item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'focusedNodeFirst');
       } else {
-        item.contextValue = `focusedNode${paraSuffix}`; // 用于 package.json 的 when 子句
+        item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'focusedNode');
       }
       item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
-      item.contextValue = `issueNode${paraSuffix}`;
+      item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'issueNode');
     }
 
     item.command = {
