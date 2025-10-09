@@ -1,3 +1,23 @@
+/**
+ * 一次性读取 PARA 分类映射（id => category），用于高效同步查找。
+ */
+export const readParaCategoryMap = async (): Promise<Record<string, string>> => {
+  const data = await readPara();
+  const map: Record<string, string> = {};
+  for (const id of data.projects) {
+    map[id] = ParaCategory.Projects;
+  }
+  for (const id of data.areas) {
+    map[id] = ParaCategory.Areas;
+  }
+  for (const id of data.resources) {
+    map[id] = ParaCategory.Resources;
+  }
+  for (const id of data.archives) {
+    map[id] = ParaCategory.Archives;
+  }
+  return map;
+};
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';

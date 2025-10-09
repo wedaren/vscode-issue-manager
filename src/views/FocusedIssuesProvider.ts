@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
 import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
-import { findIssueCategory } from '../data/paraManager';
+import { findIssueCategory, readParaCategoryMap } from '../data/paraManager';
 
 import * as path from 'path';
 import { getTitle } from '../utils/markdown';
@@ -19,6 +19,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
   private filteredTreeCache: IssueTreeNode[] | null = null;
+  private paraCategoryMap: Record<string, string> | null = null;
 
   constructor(private context: vscode.ExtensionContext) {
     // 可在此处注册文件监听等
@@ -34,6 +35,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   async loadData() {
     this.treeData = await readTree();
     this.focusedData = await readFocused();
+    this.paraCategoryMap = await readParaCategoryMap();
     this._onDidChangeTreeData.fire();
   }
 
@@ -44,7 +46,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
       throw new Error("Issue directory or tree data is not available.");
     }
 
-    // Handle the placeholder case
+    // 占位节点处理
     if (element.id === 'placeholder-no-focused') {
       return new vscode.TreeItem("暂无关注问题，请在“问题总览”视图中右键选择“添加到关注”", vscode.TreeItemCollapsibleState.None);
     }
@@ -61,8 +63,8 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     item.id = element.id;
     item.resourceUri = uri;
 
-    // 检查问题是否在 PARA 分类中（使用节点 id 而不是 filePath）
-    const paraCategory = await findIssueCategory(element.id);
+    // 优化：同步查找 PARA 分类，无需每次节点都异步读取文件
+    const paraCategory = this.paraCategoryMap ? this.paraCategoryMap[element.id] : undefined;
     const paraSuffix = paraCategory ? `-para${paraCategory}` : '';
 
     if (isFocusedRootId(element.id)) {
