@@ -12,6 +12,7 @@ import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider'
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueTreeNode } from '../data/treeManager';
 import { IViewRegistryResult } from './interfaces';
+import { ParaViewNode } from '../types';
 
 /**
  * 视图注册管理器
@@ -206,7 +207,7 @@ export class ViewRegistry {
      */
     private registerParaView(): {
         paraViewProvider: ParaViewProvider;
-        paraView: vscode.TreeView<any>;
+        paraView: vscode.TreeView<ParaViewNode>;
     } {
         const paraViewProvider = new ParaViewProvider(this.context);
         
