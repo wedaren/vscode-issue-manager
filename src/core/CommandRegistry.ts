@@ -693,10 +693,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             const fromLabel = getCategoryLabel(fromCategory);
             const toLabel = getCategoryLabel(toCategory);
             
-            // 先从源分类移除
-            await removeIssueFromCategory(fromCategory, issueId);
-            
-            // 再添加到目标分类
+            // addIssueToCategory 会自动处理从旧分类中移除的逻辑
             await addIssueToCategory(toCategory, issueId);
             
             await vscode.commands.executeCommand('issueManager.refreshAllViews');
