@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 import { getUri } from '../utils/fileUtils';
 import { getIssueDir } from '../config';
 import { FocusedData } from './treeManager';
+import { getCategoryIcon, ParaCategory } from './paraManager';
 
 const FOCUSED_VERSION = '1.0.0';
 const FOCUSED_FILE = 'focused.json';
@@ -141,7 +142,7 @@ export async function pinFocus(nodeId: string): Promise<void> {
  * 根据关注索引返回对应的图标
  * @param focusIndex 关注列表中的索引
  */
-export function getFocusedNodeIconPath(focusIndex: number | undefined): vscode.ThemeIcon {
+export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategory?: ParaCategory): vscode.ThemeIcon | undefined {
   // 根据关注索引返回对应的图标，使用 switch 语句提升可读性和维护性
   switch (focusIndex) {
     case 0:
@@ -152,9 +153,15 @@ export function getFocusedNodeIconPath(focusIndex: number | undefined): vscode.T
     case 3:
     case 4:
     case 5:
-    case 6:
       return new vscode.ThemeIcon('star-empty');
-    default:
-      return new vscode.ThemeIcon('sparkle');
   }
+  if (paraCategory) {
+    return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+  }
+
+  if (focusIndex && focusIndex !== -1) {
+    return new vscode.ThemeIcon('sparkle');
+  }
+
+  return undefined;
 }

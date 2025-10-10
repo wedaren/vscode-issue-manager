@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
-import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
+import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
@@ -67,19 +67,12 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     item.id = element.id;
     item.resourceUri = uri;
 
-    // 使用共享的 PARA 分类缓存服务，同步查找（自动处理 focused id）
-    if (isFocusedRootId(element.id)) {
-      const focusIndex = this.focusedData?.focusList.indexOf(realId);
-      // 第一个关注的根节点，不显示置顶
-      if (focusIndex === 0) {
-        item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'focusedNodeFirst');
-      } else {
-        item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'focusedNode');
-      }
-      item.iconPath = getFocusedNodeIconPath(focusIndex);
-    } else {
-      item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
-    }
+    const focusIndex = this.focusedData?.focusList.indexOf(realId);
+    const isFirstLevelNode = isFocusedRootId(element.id);
+    // 第一个关注的根节点，不显示置顶
+    item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, isFirstLevelNode ?  focusIndex === 0 ? 'focusedNodeFirst' : 'focusedNode' : 'issueNode');
+    const {paraCategory} = this.paraCategoryCache.getParaMetadata(element.id);
+    item.iconPath = getIssueNodeIconPath(isFirstLevelNode ? focusIndex : undefined, paraCategory);
 
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',

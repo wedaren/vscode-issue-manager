@@ -3,7 +3,7 @@ import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode, FocusedData } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
-import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
+import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
@@ -125,13 +125,10 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     item.id = element.id;
     item.resourceUri = uri;
     
-    // 使用共享的 PARA 分类缓存服务，同步查找
-    if (focusIndex > -1) {
-      item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'focusedNode');
-      item.iconPath = getFocusedNodeIconPath(focusIndex);
-    } else {
-      item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
-    }
+    item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
+    
+    const {paraCategory} = this.paraCategoryCache.getParaMetadata(element.id);
+    item.iconPath = getIssueNodeIconPath(focusIndex, paraCategory);
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',

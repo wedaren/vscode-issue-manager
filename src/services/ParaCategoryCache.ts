@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readParaCategoryMap } from '../data/paraManager';
+import { ParaCategory, readParaCategoryMap } from '../data/paraManager';
 import { stripFocusedId } from '../data/treeManager';
 import { getIssueDir } from '../config';
 
@@ -18,7 +18,7 @@ import { getIssueDir } from '../config';
 export class ParaCategoryCache {
   private static instance: ParaCategoryCache | null = null;
   
-  private categoryMap: Record<string, string> | null = null;
+  private categoryMap: Record<string, ParaCategory> | null = null;
   private fileWatcher: vscode.FileSystemWatcher | null = null;
   private _onDidChangeCache = new vscode.EventEmitter<void>();
   
@@ -99,7 +99,7 @@ export class ParaCategoryCache {
       this._onDidChangeCache.fire();
     } catch (error) {
       console.error('刷新 PARA 分类缓存失败:', error);
-      this.categoryMap = {};
+      this.categoryMap = null;
     }
   }
 
@@ -109,7 +109,7 @@ export class ParaCategoryCache {
    * @param nodeId 节点 ID（支持带 focused 后缀的 ID）
    * @returns PARA 分类字符串，如果不在任何分类中则返回 undefined
    */
-  public getCategorySync(nodeId: string): string | undefined {
+  public getCategorySync(nodeId: string): ParaCategory | undefined {
     if (!this.categoryMap) {
       return undefined;
     }
@@ -132,7 +132,7 @@ export class ParaCategoryCache {
    * @returns 包含 PARA 元数据的 contextValue 字符串
    */
   public getContextValueWithParaMetadata(nodeId: string, baseContextValue: string): string {
-    const paraCategory = this.getCategorySync(nodeId);
+    const { paraCategory } = this.getParaMetadata(nodeId);
     const segments: string[] = [baseContextValue];
 
     if (paraCategory) {
@@ -143,6 +143,14 @@ export class ParaCategoryCache {
 
     const res = segments.join('|')
     return res;
+  }
+
+  public getParaMetadata(nodeId: string): { paraCategory?: ParaCategory; isAssignable: boolean } {
+    const paraCategory = this.getCategorySync(nodeId);
+    return {
+      paraCategory,
+      isAssignable: !paraCategory
+    };
   }
 
   /**

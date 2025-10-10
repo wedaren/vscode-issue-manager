@@ -5,20 +5,21 @@ import { getIssueDir } from '../config';
 /**
  * 一次性读取 PARA 分类映射（id => category），用于高效同步查找。
  */
-export const readParaCategoryMap = async (): Promise<Record<string, string>> => {
+export const readParaCategoryMap = async () => {
   const data = await readPara();
-  const map: Record<string, string> = {};
+  const map: Record<string, ParaCategory> = {};
+  const { Projects, Areas, Resources, Archives } = ParaCategory;
   for (const id of data.projects) {
-    map[id] = ParaCategory.Projects;
+    map[id] = Projects;
   }
   for (const id of data.areas) {
-    map[id] = ParaCategory.Areas;
+    map[id] = Areas;
   }
   for (const id of data.resources) {
-    map[id] = ParaCategory.Resources;
+    map[id] = Resources;
   }
   for (const id of data.archives) {
-    map[id] = ParaCategory.Archives;
+    map[id] = Archives;
   }
   return map;
 };
@@ -127,18 +128,18 @@ export const addIssueToCategory = async (
   issueId: string
 ): Promise<void> => {
   const data = await readPara();
-  
+
   // 从所有分类中移除
   data.projects = data.projects.filter(p => p !== issueId);
   data.areas = data.areas.filter(p => p !== issueId);
   data.resources = data.resources.filter(p => p !== issueId);
   data.archives = data.archives.filter(p => p !== issueId);
-  
+
   // 添加到目标分类
   if (!data[category].includes(issueId)) {
     data[category].push(issueId);
   }
-  
+
   await writePara(data);
 };
 
@@ -153,7 +154,7 @@ export const removeIssueFromCategory = async (
 ): Promise<void> => {
   const data = await readPara();
   const index = data[category].indexOf(issueId);
-  
+
   if (index > -1) {
     data[category].splice(index, 1);
     await writePara(data);
@@ -166,7 +167,7 @@ export const removeIssueFromCategory = async (
  */
 export const findIssueCategory = async (issueId: string): Promise<ParaCategory | null> => {
   const data = await readPara();
-  
+
   if (data.projects.includes(issueId)) {
     return ParaCategory.Projects;
   }
@@ -179,7 +180,7 @@ export const findIssueCategory = async (issueId: string): Promise<ParaCategory |
   if (data.archives.includes(issueId)) {
     return ParaCategory.Archives;
   }
-  
+
   return null;
 };
 
