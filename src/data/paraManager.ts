@@ -1,3 +1,7 @@
+import * as vscode from 'vscode';
+import * as path from 'path';
+import { getIssueDir } from '../config';
+
 /**
  * 一次性读取 PARA 分类映射（id => category），用于高效同步查找。
  */
@@ -18,10 +22,6 @@ export const readParaCategoryMap = async (): Promise<Record<string, string>> => 
   }
   return map;
 };
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-import { getIssueDir } from '../config';
 
 /**
  * PARA 分类枚举
