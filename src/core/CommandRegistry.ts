@@ -461,6 +461,11 @@ export class CommandRegistry extends BaseCommandRegistry {
      * @param category PARA类别
      */
     private async revealInParaView(nodeId: string, category: ParaCategory): Promise<void> {
+        // 等待视图切换和渲染完成的延迟时间  
+        const VIEW_REVEAL_DELAY_MS = 300;  
+        // 等待分类节点展开动画完成的延迟时间  
+        const EXPAND_ANIMATION_DELAY_MS = 100;  
+
         try {
             if (!this.paraView) {
                 this.logger.warn('PARA 视图引用不存在,使用降级方案');
@@ -498,7 +503,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             await vscode.commands.executeCommand('issueManager.views.para.focus');
             
             // 等待视图完全加载
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, VIEW_REVEAL_DELAY_MS));
             
             // 先展开分类节点
             const categoryNode = { type: 'category' as const, category: category };
@@ -509,7 +514,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                     expand: true 
                 });
                 // 等待展开完成
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, EXPAND_ANIMATION_DELAY_MS));
             } catch (error) {
                 this.logger.warn('展开分类节点失败,继续尝试定位目标节点', error);
             }
