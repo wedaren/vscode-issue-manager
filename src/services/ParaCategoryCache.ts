@@ -120,16 +120,29 @@ export class ParaCategoryCache {
   }
 
   /**
-   * 获取带 PARA 后缀的 contextValue
-   * 
+   * 构造包含 PARA 元数据的 contextValue。
+   *
+   * 规则：
+   * - 始终保留基础 contextValue，兼容现有相等匹配。
+   * - 如果节点已关联 PARA 分类，则附加 `paraAssigned:<category>` 标记。
+   * - 如果节点未关联且允许添加到 PARA，则附加 `paraAssignable` 标记。
+   *
    * @param nodeId 节点 ID
    * @param baseContextValue 基础 contextValue（如 'issueNode', 'focusedNode'）
-   * @returns 带 PARA 后缀的 contextValue
+   * @returns 包含 PARA 元数据的 contextValue 字符串
    */
-  public getContextValueWithParaSuffix(nodeId: string, baseContextValue: string): string {
+  public getContextValueWithParaMetadata(nodeId: string, baseContextValue: string): string {
     const paraCategory = this.getCategorySync(nodeId);
-    const paraSuffix = paraCategory ? `-para${paraCategory}` : '';
-    return `${baseContextValue}${paraSuffix}`;
+    const segments: string[] = [baseContextValue];
+
+    if (paraCategory) {
+      segments.push(`paraAssigned:${paraCategory}`);
+    } else if (baseContextValue !== 'focusedNodeFirst') {
+      segments.push('paraAssignable');
+    }
+
+    const res = segments.join('|')
+    return res;
   }
 
   /**

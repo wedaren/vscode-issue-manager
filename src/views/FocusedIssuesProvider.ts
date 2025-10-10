@@ -72,13 +72,13 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
       const focusIndex = this.focusedData?.focusList.indexOf(realId);
       // 第一个关注的根节点，不显示置顶
       if (focusIndex === 0) {
-        item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'focusedNodeFirst');
+        item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'focusedNodeFirst');
       } else {
-        item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'focusedNode');
+        item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'focusedNode');
       }
       item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
-      item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'issueNode');
+      item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
     }
 
     item.command = {

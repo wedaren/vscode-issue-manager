@@ -127,10 +127,10 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     
     // 使用共享的 PARA 分类缓存服务，同步查找
     if (focusIndex > -1) {
-      item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'focusedNode');
+      item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'focusedNode');
       item.iconPath = getFocusedNodeIconPath(focusIndex);
     } else {
-      item.contextValue = this.paraCategoryCache.getContextValueWithParaSuffix(element.id, 'issueNode');
+      item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
     }
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
