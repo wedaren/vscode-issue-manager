@@ -48,20 +48,22 @@ export interface ParaData {
 /**
  * 获取 para.json 文件的绝对路径
  */
-const getParaDataPath = (): string | null => {
+const getParaDataPath = async (): Promise<string | null> => {
   const issueDir = getIssueDir();
   if (!issueDir) {
     return null;
   }
+
   const dataDir = path.join(issueDir, '.issueManager');
+  const dataDirUri = vscode.Uri.file(dataDir);
+
   try {
-    if (!require('fs').existsSync(dataDir)) {
-      require('fs').mkdirSync(dataDir, { recursive: true });
-    }
-  } catch (e) {
-    vscode.window.showErrorMessage('创建 .issueManager 目录失败。');
+    await vscode.workspace.fs.stat(dataDirUri);
+  } catch (error) {
+    vscode.window.showErrorMessage('访问 .issueManager 目录失败。');
     return null;
   }
+
   return path.join(dataDir, 'para.json');
 };
 
@@ -81,13 +83,14 @@ const defaultParaData: ParaData = {
  * 读取 para.json 文件
  */
 export const readPara = async (): Promise<ParaData> => {
-  const paraPath = getParaDataPath();
+  const paraPath = await getParaDataPath();
   if (!paraPath) {
     return { ...defaultParaData };
   }
 
   try {
-    const content = await vscode.workspace.fs.readFile(vscode.Uri.file(paraPath));
+    const uri = vscode.Uri.file(paraPath);
+    const content = await vscode.workspace.fs.readFile(uri);
     const data = JSON.parse(Buffer.from(content).toString('utf8'));
     return data;
   } catch (error: unknown) {
@@ -104,7 +107,7 @@ export const readPara = async (): Promise<ParaData> => {
  * 写入 para.json 文件
  */
 export const writePara = async (data: ParaData): Promise<void> => {
-  const paraPath = getParaDataPath();
+  const paraPath = await getParaDataPath();
   if (!paraPath) {
     throw new Error('无法获取 para.json 路径');
   }
