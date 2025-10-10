@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, getTreeNodeById } from '../data/treeManager';
+import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -93,7 +93,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 不应该直接调用
     }
 
-    private paraView?: vscode.TreeView<any>;
+    private paraView?: vscode.TreeView<ParaViewNode>;
 
     /**
      * 设置视图提供者并注册所有命令
@@ -407,8 +407,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (category: ParaCategory, args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
-                    const id = stripFocusedId(node.id);
-                    await this.revealInParaView(id, category);
+                    await this.revealInParaView(node, category);
                 }
             }
         );
@@ -462,10 +461,10 @@ export class CommandRegistry extends BaseCommandRegistry {
 
     /**
      * 在 PARA 视图中定位并高亮显示节点
-     * @param nodeId 节点ID
+     * @param treeNode 已存在的树节点实例
      * @param category PARA类别
      */
-    private async revealInParaView(nodeId: string, category: ParaCategory): Promise<void> {
+    private async revealInParaView(treeNode: IssueTreeNode, category: ParaCategory): Promise<void> {
 
         try {
             if (!this.paraView) {
@@ -475,22 +474,8 @@ export class CommandRegistry extends BaseCommandRegistry {
                 return;
             }
 
+            const nodeId = stripFocusedId(treeNode.id);
             this.logger.info(`尝试在 PARA 视图中定位节点: ${nodeId}, 分类: ${category}`);
-            
-            // 构造 ParaViewNode 结构
-            const treeData = await readTree();
-            if (!treeData) {
-                vscode.window.showErrorMessage('无法读取树数据');
-                return;
-            }
-            
-            // 查找节点
-            const treeNode = getTreeNodeById(treeData, nodeId);
-            if (!treeNode) {
-                this.logger.error(`在树中找不到节点: ${nodeId}`);
-                vscode.window.showErrorMessage('在树中找不到该问题');
-                return;
-            }
             
             // 构造目标节点
             const targetNode = {

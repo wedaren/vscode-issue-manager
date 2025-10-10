@@ -137,11 +137,11 @@ export class ParaCategoryCache {
 
     if (paraCategory) {
       segments.push(`paraAssigned:${paraCategory}`);
-    } else if (baseContextValue !== 'focusedNodeFirst') {
+    } else {
       segments.push('paraAssignable');
     }
 
-    const res = segments.join('|')
+    const res = segments.join('|');
     return res;
   }
 

@@ -196,7 +196,7 @@ export const getCategoryLabel = (category: ParaCategory): string => {
     case ParaCategory.Resources:
       return 'R | Resources (资源)';
     case ParaCategory.Archives:
-      return 'A | Archives (归档)';
+      return 'Ar | Archives (归档)';
   }
 };
 
