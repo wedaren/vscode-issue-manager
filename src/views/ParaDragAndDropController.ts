@@ -4,7 +4,7 @@ import {
   ParaCategory,
   getCategoryLabel
 } from '../data/paraManager';
-import { readTree, IssueTreeNode } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData } from '../data/treeManager';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { ParaViewNode } from '../types';
 
@@ -181,7 +181,7 @@ export class ParaDragAndDropController implements vscode.TreeDragAndDropControll
    * 根据 filePath 查找所有节点 ID
    * （同一文件可能被多个节点引用）
    */
-  private findNodeIdsByFilePath(treeData: any, filePath: string): string[] {
+  private findNodeIdsByFilePath(treeData: TreeData, filePath: string): string[] {
     const ids: string[] = [];
 
     const findInNode = (node: IssueTreeNode): void => {
