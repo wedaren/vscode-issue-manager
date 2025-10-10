@@ -7,7 +7,7 @@ import {
   getCategoryLabel,
   getCategoryIcon
 } from '../data/paraManager';
-import { readTree, IssueTreeNode, TreeData } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData, getTreeNodeById } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { ParaViewNode } from '../types';
@@ -90,7 +90,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
       const nodes: ParaViewNode[] = [];
       
       for (const id of issueIds) {
-        const treeNode = this.findNodeById(id);
+        const treeNode = this.treeData ? getTreeNodeById(this.treeData, id) : null;
         if (treeNode) {
           nodes.push({
             type: 'issue' as const,
@@ -144,7 +144,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
    */
   private async createIssueTreeItem(issueId: string, category: ParaCategory, isTopLevel: boolean, issueDir: string): Promise<vscode.TreeItem> {
     // 从树数据中查找节点以获取 filePath
-    const node = this.findNodeById(issueId);
+  const node = this.treeData ? getTreeNodeById(this.treeData, issueId) : null;
     
     if (!node) {
       // 如果找不到节点，可能已被删除
@@ -186,37 +186,6 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     };
     
     return item;
-  }
-
-  /**
-   * 从树数据中根据 id 查找节点
-   */
-  private findNodeById(id: string): IssueTreeNode | null {
-    if (!this.treeData) {
-      return null;
-    }
-
-    const findInNode = (node: IssueTreeNode): IssueTreeNode | null => {
-      if (node.id === id) {
-        return node;
-      }
-      for (const child of node.children) {
-        const found = findInNode(child);
-        if (found) {
-          return found;
-        }
-      }
-      return null;
-    };
-
-    for (const root of this.treeData.rootNodes) {
-      const found = findInNode(root);
-      if (found) {
-        return found;
-      }
-    }
-
-    return null;
   }
 
   /**

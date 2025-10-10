@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, TreeData } from '../data/treeManager';
+import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, getTreeNodeById } from '../data/treeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -15,6 +15,11 @@ const PARA_CATEGORY_CONFIGS = [
     { category: ParaCategory.Resources, suffix: 'Resources', displayName: 'Resources' },
     { category: ParaCategory.Archives, suffix: 'Archives', displayName: 'Archives' }
 ] as const;
+
+// 等待视图切换和渲染完成的延迟时间  
+const VIEW_REVEAL_DELAY_MS = 300;  
+// 等待分类节点展开动画完成的延迟时间  
+const EXPAND_ANIMATION_DELAY_MS = 100;  
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -461,10 +466,6 @@ export class CommandRegistry extends BaseCommandRegistry {
      * @param category PARA类别
      */
     private async revealInParaView(nodeId: string, category: ParaCategory): Promise<void> {
-        // 等待视图切换和渲染完成的延迟时间  
-        const VIEW_REVEAL_DELAY_MS = 300;  
-        // 等待分类节点展开动画完成的延迟时间  
-        const EXPAND_ANIMATION_DELAY_MS = 100;  
 
         try {
             if (!this.paraView) {
@@ -484,7 +485,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             }
             
             // 查找节点
-            const treeNode = this.findNodeInTree(treeData, nodeId);
+            const treeNode = getTreeNodeById(treeData, nodeId);
             if (!treeNode) {
                 this.logger.error(`在树中找不到节点: ${nodeId}`);
                 vscode.window.showErrorMessage('在树中找不到该问题');
@@ -537,32 +538,6 @@ export class CommandRegistry extends BaseCommandRegistry {
             await vscode.commands.executeCommand('issueManager.views.para.focus');
             vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${getCategoryLabel(category)} 分类中`);
         }
-    }
-
-    /**
-     * 在树中查找节点
-     */
-    private findNodeInTree(treeData: TreeData, nodeId: string): IssueTreeNode | null {
-        const findInNode = (node: IssueTreeNode): IssueTreeNode | null => {
-            if (node.id === nodeId) {
-                return node;
-            }
-            for (const child of node.children) {
-                const found = findInNode(child);
-                if (found) {
-                    return found;
-                }
-            }
-            return null;
-        };
-
-        for (const root of treeData.rootNodes) {
-            const found = findInNode(root);
-            if (found) {
-                return found;
-            }
-        }
-        return null;
     }
 
     /**
