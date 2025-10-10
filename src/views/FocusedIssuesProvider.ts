@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
-import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
+import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
+import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
 import { getTitle } from '../utils/markdown';
@@ -18,10 +19,16 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
   private filteredTreeCache: IssueTreeNode[] | null = null;
+  private paraCategoryCache: ParaCategoryCache;
 
   constructor(private context: vscode.ExtensionContext) {
-    // 可在此处注册文件监听等
-
+    // 获取 PARA 分类缓存服务
+    this.paraCategoryCache = ParaCategoryCache.getInstance(context);
+    
+    // 监听缓存更新，自动刷新视图
+    this.paraCategoryCache.onDidChangeCache(() => {
+      this._onDidChangeTreeData.fire();
+    });
   }
 
   /** 刷新视图 */
@@ -43,7 +50,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
       throw new Error("Issue directory or tree data is not available.");
     }
 
-    // Handle the placeholder case
+    // 占位节点处理
     if (element.id === 'placeholder-no-focused') {
       return new vscode.TreeItem("暂无关注问题，请在“问题总览”视图中右键选择“添加到关注”", vscode.TreeItemCollapsibleState.None);
     }
@@ -60,18 +67,12 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     item.id = element.id;
     item.resourceUri = uri;
 
-    if (isFocusedRootId(element.id)) {
-      const focusIndex = this.focusedData?.focusList.indexOf(realId);
-      // 第一个关注的根节点，不显示置顶
-      if (focusIndex === 0) {
-        item.contextValue = 'focusedNodeFirst';
-      } else {
-        item.contextValue = 'focusedNode'; // 用于 package.json 的 when 子句
-      }
-      item.iconPath = getFocusedNodeIconPath(focusIndex);
-    } else {
-      item.contextValue = 'issueNode';
-    }
+    const focusIndex = this.focusedData?.focusList.indexOf(realId);
+    const isFirstLevelNode = isFocusedRootId(element.id);
+    // 第一个关注的根节点，不显示置顶
+    item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, isFirstLevelNode ?  focusIndex === 0 ? 'focusedNodeFirst' : 'focusedNode' : 'issueNode');
+    const {paraCategory} = this.paraCategoryCache.getParaMetadata(element.id);
+    item.iconPath = getIssueNodeIconPath(isFirstLevelNode ? focusIndex : undefined, paraCategory);
 
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',

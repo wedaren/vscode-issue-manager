@@ -225,7 +225,9 @@ export class ExtensionInitializer {
                 views.recentIssuesProvider,
                 views.overviewView,
                 views.focusedView,
-                views.issueStructureProvider
+                views.issueStructureProvider,
+                views.paraViewProvider,
+                views.paraView
             );
             this.logger.info('  ✓ 命令处理器注册成功');
         } catch (error) {

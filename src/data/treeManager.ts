@@ -259,6 +259,17 @@ export function findNodeById(nodes: IssueTreeNode[], id: string): { node: IssueT
 }
 
 /**
+ * 在完整树数据中查找节点并直接返回节点引用。
+ * @param tree 树数据
+ * @param nodeId 节点 ID
+ * @returns 匹配的节点，若未找到则返回 null
+ */
+export function getTreeNodeById(tree: TreeData, nodeId: string): IssueTreeNode | null {
+  const result = findNodeById(tree.rootNodes, nodeId);
+  return result ? result.node : null;
+}
+
+/**
  * 检查一个节点是否是另一个节点的祖先。
  * @param tree The tree data.
  * @param potentialAncestorId The ID of the potential ancestor node.

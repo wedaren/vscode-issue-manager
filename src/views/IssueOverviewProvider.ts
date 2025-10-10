@@ -3,7 +3,8 @@ import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode, FocusedData } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
-import { getFocusedNodeIconPath, readFocused } from '../data/focusedManager';
+import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
+import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
   /**
@@ -66,16 +67,23 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
 
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
+  private paraCategoryCache: ParaCategoryCache;
 
   constructor(private context: vscode.ExtensionContext) {
+    // 获取 PARA 分类缓存服务
+    this.paraCategoryCache = ParaCategoryCache.getInstance(context);
+    
+    // 监听缓存更新，自动刷新视图
+    this.paraCategoryCache.onDidChangeCache(() => {
+      this._onDidChangeTreeData.fire();
+    });
+    
     this.loadData();
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('issueManager.issueDir')) {
         this.loadData();
       }
     });
-
-    
   }
 
   private async loadData(): Promise<void> {
@@ -116,12 +124,11 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
 
     item.id = element.id;
     item.resourceUri = uri;
-    if (focusIndex > -1) {
-      item.contextValue = 'focusedNode'; // 根据关注状态设置 contextValue
-      item.iconPath = getFocusedNodeIconPath(focusIndex);
-    } else {
-      item.contextValue = 'issueNode';
-    }
+    
+    item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
+    
+    const {paraCategory} = this.paraCategoryCache.getParaMetadata(element.id);
+    item.iconPath = getIssueNodeIconPath(focusIndex, paraCategory);
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',

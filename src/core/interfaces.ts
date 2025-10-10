@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { IssueTreeNode } from '../data/treeManager';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { ParaViewProvider } from '../views/ParaViewProvider';
+import { ParaViewNode } from '../types';
 
 /**
  * 视图提供者基础接口
@@ -95,6 +97,12 @@ export interface IViewRegistryResult {
     
     /** 问题结构树视图实例 */
     structureView: vscode.TreeView<vscode.TreeItem>;
+    
+    /** PARA 视图提供者实例 */
+    paraViewProvider: ParaViewProvider;
+    
+    /** PARA 树视图实例 */
+    paraView: vscode.TreeView<ParaViewNode>;
 }
 
 /**

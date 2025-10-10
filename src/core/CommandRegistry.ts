@@ -5,6 +5,21 @@ import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { Logger } from './utils/Logger';
+import { ParaCategory, removeIssueFromCategory, addIssueToCategory, getCategoryLabel } from '../data/paraManager';
+import { addIssueToParaCategory } from '../commands/paraCommands';
+import { isParaIssueNode, ParaViewNode } from '../types';
+
+const PARA_CATEGORY_CONFIGS = [
+    { category: ParaCategory.Projects, suffix: 'Projects', displayName: 'Projects' },
+    { category: ParaCategory.Areas, suffix: 'Areas', displayName: 'Areas' },
+    { category: ParaCategory.Resources, suffix: 'Resources', displayName: 'Resources' },
+    { category: ParaCategory.Archives, suffix: 'Archives', displayName: 'Archives' }
+] as const;
+
+// 等待视图切换和渲染完成的延迟时间  
+const VIEW_REVEAL_DELAY_MS = 300;  
+// 等待分类节点展开动画完成的延迟时间  
+const EXPAND_ANIMATION_DELAY_MS = 100;  
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -16,6 +31,7 @@ import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { ParaViewProvider } from '../views/ParaViewProvider';
 
 /**
  * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
@@ -65,16 +81,31 @@ export class CommandRegistry extends BaseCommandRegistry {
     }
 
     /**
-     * 注册所有命令
+     * 注册所有命令（实现抽象方法）
      * 
      * 按照功能模块分组注册所有VS Code命令，确保命令的
      * 注册顺序和依赖关系正确处理。
+     * 
+     * 注意：此方法需要先通过 setProviders 设置视图提供者
+     */
+    public registerCommands(): void {
+        // 此方法由 setProviders 后自动调用
+        // 不应该直接调用
+    }
+
+    private paraView?: vscode.TreeView<ParaViewNode>;
+
+    /**
+     * 设置视图提供者并注册所有命令
      * 
      * @param focusedIssuesProvider 关注问题视图提供者
      * @param issueOverviewProvider 问题总览视图提供者
      * @param recentIssuesProvider 最近问题视图提供者
      * @param overviewView 总览树视图实例
      * @param focusedView 关注问题树视图实例
+     * @param issueStructureProvider 问题结构视图提供者
+     * @param paraViewProvider PARA 视图提供者
+     * @param paraView PARA 树视图实例
      */
     public registerAllCommands(
         focusedIssuesProvider: IFocusedIssuesProvider,
@@ -82,8 +113,12 @@ export class CommandRegistry extends BaseCommandRegistry {
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
-        issueStructureProvider: IssueStructureProvider
+        issueStructureProvider: IssueStructureProvider,
+        paraViewProvider: ParaViewProvider,
+        paraView?: vscode.TreeView<ParaViewNode>
     ): void {
+        // 保存 paraView 引用
+        this.paraView = paraView;
         this.logger.info('🔧 开始注册命令...');
 
         try {
@@ -95,6 +130,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                 focusedIssuesProvider,
                 issueOverviewProvider,
                 recentIssuesProvider,
+                paraViewProvider,
                 overviewView,
                 focusedView
             });
@@ -133,6 +169,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 7. 注册结构视图命令
             this.registerStructureViewCommands(issueStructureProvider);
+
+            // 8. 注册 PARA 视图命令
+            this.registerParaCommands();
 
             this.logger.info('✅ 所有命令注册完成');
 
@@ -335,7 +374,215 @@ export class CommandRegistry extends BaseCommandRegistry {
         );
     }
 
-    registerCommands(): void {
-        throw new Error('Method not implemented.');
+    /**
+     * 注册 PARA 视图命令
+     */
+    private registerParaCommands(): void {
+        this.logger.info('📋 注册 PARA 视图命令...');
+
+        // 刷新 PARA 视图
+        this.registerCommand(
+            'issueManager.para.refresh',
+            () => {
+                vscode.commands.executeCommand('issueManager.refreshAllViews');
+            },
+            '刷新 PARA 视图'
+        );
+
+        this.registerParaCategoryCommands(
+            'issueManager.para.addTo',
+            (displayName: string) => `添加问题到 ${displayName}`,
+            async (category: ParaCategory, args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    const id = stripFocusedId(node.id);
+                    await addIssueToParaCategory(category, id);
+                }
+            }
+        );
+
+        this.registerParaCategoryCommands(
+            'issueManager.para.viewIn',
+            (displayName: string) => `在 ${displayName} 中查看`,
+            async (category: ParaCategory, args: unknown[]) => {
+                const node = args[0];
+                if (node && isIssueTreeNode(node)) {
+                    await this.revealInParaView(node, category);
+                }
+            }
+        );
+
+        // 从 PARA 视图中移除
+        this.registerCommand(
+            'issueManager.para.removeFromCategory',
+            async (...args: unknown[]) => {
+                const element = args[0];
+                if (isParaIssueNode(element)) {
+                    await this.removeFromParaCategory(element.id, element.category);
+                }
+            },
+            '从 PARA 分类中移除'
+        );
+
+        this.registerParaCategoryCommands(
+            'issueManager.para.moveTo',
+            (displayName: string) => `移动到 ${displayName}`,
+            async (category: ParaCategory, args: unknown[]) => {
+                const element = args[0];
+                if (isParaIssueNode(element)) {
+                    await this.moveParaIssue(element.id, element.category, category);
+                }
+            }
+        );
+    }
+
+    /**
+     * 批量注册 PARA 分类相关命令
+     * @param commandPrefix 命令前缀，例如 issueManager.para.addTo
+     * @param descriptionFactory 根据分类显示名称返回命令描述
+     * @param handler 实际命令处理逻辑
+     */
+    private registerParaCategoryCommands(
+        commandPrefix: string,
+        descriptionFactory: (displayName: string) => string,
+        handler: (category: ParaCategory, args: unknown[]) => void | Promise<void>
+    ): void {
+        for (const { category, suffix, displayName } of PARA_CATEGORY_CONFIGS) {
+            const commandId = `${commandPrefix}${suffix}`;
+            this.registerCommand(
+                commandId,
+                async (...args: unknown[]) => {
+                    await handler(category, args);
+                },
+                descriptionFactory(displayName)
+            );
+        }
+    }
+
+    /**
+     * 在 PARA 视图中定位并高亮显示节点
+     * @param treeNode 已存在的树节点实例
+     * @param category PARA类别
+     */
+    private async revealInParaView(treeNode: IssueTreeNode, category: ParaCategory): Promise<void> {
+
+        try {
+            if (!this.paraView) {
+                this.logger.warn('PARA 视图引用不存在,使用降级方案');
+                await vscode.commands.executeCommand('issueManager.views.para.focus');
+                vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${getCategoryLabel(category)} 分类中`);
+                return;
+            }
+
+            const nodeId = stripFocusedId(treeNode.id);
+            this.logger.info(`尝试在 PARA 视图中定位节点: ${nodeId}, 分类: ${category}`);
+            
+            // 构造目标节点
+            const targetNode = {
+                type: 'issue' as const,
+                id: nodeId,
+                category: category,
+                treeNode: treeNode
+            };
+            
+            // 先切换到 PARA 视图
+            await vscode.commands.executeCommand('issueManager.views.para.focus');
+            
+            // 等待视图完全加载
+            await new Promise(resolve => setTimeout(resolve, VIEW_REVEAL_DELAY_MS));
+            
+            // 先展开分类节点
+            const categoryNode = { type: 'category' as const, category: category };
+            try {
+                await this.paraView.reveal(categoryNode, { 
+                    select: false, 
+                    focus: false, 
+                    expand: true 
+                });
+                // 等待展开完成
+                await new Promise(resolve => setTimeout(resolve, EXPAND_ANIMATION_DELAY_MS));
+            } catch (error) {
+                this.logger.warn('展开分类节点失败,继续尝试定位目标节点', error);
+            }
+            
+            // 定位到目标节点并高亮
+            await this.paraView.reveal(targetNode, { 
+                select: true,  // 选中节点
+                focus: true,   // 聚焦节点
+                expand: 1      // 展开一层子节点
+            });
+            
+            this.logger.info(`成功在 PARA 视图中定位节点: ${nodeId}`);
+            
+            // 可选:短暂显示成功提示
+            vscode.window.setStatusBarMessage(`✓ 已在 ${getCategoryLabel(category)} 中定位到该问题`, 2000);
+            
+        } catch (error) {
+            this.logger.error('在 PARA 视图中定位节点失败:', error);
+            // 降级方案：只切换到 PARA 视图
+            await vscode.commands.executeCommand('issueManager.views.para.focus');
+            vscode.window.showInformationMessage(`该问题位于 PARA 视图的 ${getCategoryLabel(category)} 分类中`);
+        }
+    }
+
+    /**
+     * 从 PARA 分类中移除问题
+     * @param issueId 问题ID
+     * @param category 当前所在分类
+     */
+    private async removeFromParaCategory(issueId: string, category: ParaCategory): Promise<void> {
+        try {
+            // 确认删除
+            const categoryLabel = getCategoryLabel(category);
+            const confirm = await vscode.window.showWarningMessage(
+                `确定要从 ${categoryLabel} 中移除此问题吗？`,
+                { modal: false },
+                '确定'
+            );
+            
+            if (confirm !== '确定') {
+                return;
+            }
+            
+            await removeIssueFromCategory(category, issueId);
+            await vscode.commands.executeCommand('issueManager.refreshAllViews');
+            
+            vscode.window.showInformationMessage(`已从 ${categoryLabel} 中移除`);
+            this.logger.info(`从 ${category} 中移除问题: ${issueId}`);
+            
+        } catch (error) {
+            this.logger.error('从 PARA 分类中移除问题失败:', error);
+            vscode.window.showErrorMessage(`移除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+    }
+
+    /**
+     * 在 PARA 视图内移动问题到其他分类
+     * @param issueId 问题ID
+     * @param fromCategory 源分类
+     * @param toCategory 目标分类
+     */
+    private async moveParaIssue(issueId: string, fromCategory: ParaCategory, toCategory: ParaCategory): Promise<void> {
+        try {
+            if (fromCategory === toCategory) {
+                vscode.window.showInformationMessage('该问题已在目标分类中');
+                return;
+            }
+
+            const fromLabel = getCategoryLabel(fromCategory);
+            const toLabel = getCategoryLabel(toCategory);
+            
+            // addIssueToCategory 会自动处理从旧分类中移除的逻辑
+            await addIssueToCategory(toCategory, issueId);
+            
+            await vscode.commands.executeCommand('issueManager.refreshAllViews');
+            
+            vscode.window.showInformationMessage(`已从 ${fromLabel} 移动到 ${toLabel}`);
+            this.logger.info(`移动问题: ${issueId} 从 ${fromCategory} 到 ${toCategory}`);
+            
+        } catch (error) {
+            this.logger.error('移动 PARA 问题失败:', error);
+            vscode.window.showErrorMessage(`移动失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
     }
 }

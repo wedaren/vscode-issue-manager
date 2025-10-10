@@ -405,7 +405,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       arguments: [uri],
     };
     item.contextValue = fileStat.isIsolated ? 'isolatedIssue' : 'recentIssue'; // 用于右键菜单
-    item.iconPath = fileStat.isIsolated ? new vscode.ThemeIcon('debug-disconnect') : new vscode.ThemeIcon('archive');
+    item.iconPath = fileStat.isIsolated ? new vscode.ThemeIcon('debug-disconnect') : new vscode.ThemeIcon('notebook');
     // 构建工具提示，包含访问统计信息
     let tooltipText = `路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`;
     

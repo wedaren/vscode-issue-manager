@@ -6,10 +6,13 @@ import { IssueDragAndDropController } from '../views/IssueDragAndDropController'
 import { RSSIssuesProvider } from '../views/RSSIssuesProvider';
 import { RSSIssueDragAndDropController } from '../views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { ParaViewProvider } from '../views/ParaViewProvider';
+import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueTreeNode } from '../data/treeManager';
 import { IViewRegistryResult } from './interfaces';
+import { ParaViewNode } from '../types';
 
 /**
  * 视图注册管理器
@@ -69,6 +72,9 @@ export class ViewRegistry {
         // 注册问题结构视图
         const { issueStructureProvider, structureView } = this.registerStructureView();
         
+        // 注册 PARA 视图
+        const { paraViewProvider, paraView } = this.registerParaView();
+        
         // 注册相关问题视图
         this.registerRelatedView();
         
@@ -85,7 +91,9 @@ export class ViewRegistry {
             rssIssuesProvider,
             rssIssuesView,
             issueStructureProvider,
-            structureView
+            structureView,
+            paraViewProvider,
+            paraView
         };
     }
 
@@ -192,6 +200,30 @@ export class ViewRegistry {
         this.context.subscriptions.push(issueStructureProvider);
         
         return { issueStructureProvider, structureView };
+    }
+
+    /**
+     * 注册 PARA 视图
+     */
+    private registerParaView(): {
+        paraViewProvider: ParaViewProvider;
+        paraView: vscode.TreeView<ParaViewNode>;
+    } {
+        const paraViewProvider = new ParaViewProvider(this.context);
+        
+        const paraView = vscode.window.createTreeView('issueManager.views.para', {
+            treeDataProvider: paraViewProvider,
+            dragAndDropController: new ParaDragAndDropController(() => paraViewProvider.refresh()),
+            canSelectMany: true,
+            showCollapseAll: true
+        });
+        
+        this.context.subscriptions.push(paraView);
+        
+        // 激活时加载一次数据
+        paraViewProvider.loadData();
+        
+        return { paraViewProvider, paraView };
     }
 
     /**
