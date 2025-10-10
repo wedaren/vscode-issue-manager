@@ -7,9 +7,11 @@ import {
 } from '../data/paraManager';
 
 /**
- * 添加问题到指定 PARA 分类
- * @param category PARA 分类 (projects, areas, resources, archives)
- * @param issueId 问题节点的 id（从树节点传递）
+ * 添加问题到指定 PARA 分类。
+ *
+ * @param category PARA 分类（projects、areas、resources、archives），用于指明目标分类。
+ * @param issueId 问题节点的 ID（从树节点传递）；若缺失则不会执行分类操作。
+ * @returns 返回一个 Promise，当分类操作完成并刷新 PARA 视图后 resolve；若过程中出现错误则会在消息面板提示。
  */
 export async function addIssueToParaCategory(
   category: ParaCategory,
