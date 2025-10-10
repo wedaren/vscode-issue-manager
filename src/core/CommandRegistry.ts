@@ -7,7 +7,14 @@ import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { Logger } from './utils/Logger';
 import { ParaCategory, removeIssueFromCategory, addIssueToCategory, getCategoryLabel } from '../data/paraManager';
 import { addIssueToParaCategory } from '../commands/paraCommands';
-import { isParaIssueNode } from '../types';
+import { isParaIssueNode, ParaViewNode } from '../types';
+
+const PARA_CATEGORY_CONFIGS = [
+    { category: ParaCategory.Projects, suffix: 'Projects', displayName: 'Projects' },
+    { category: ParaCategory.Areas, suffix: 'Areas', displayName: 'Areas' },
+    { category: ParaCategory.Resources, suffix: 'Resources', displayName: 'Resources' },
+    { category: ParaCategory.Archives, suffix: 'Archives', displayName: 'Archives' }
+] as const;
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
@@ -19,6 +26,7 @@ import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { ParaViewProvider } from '../views/ParaViewProvider';
 
 /**
  * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
@@ -101,8 +109,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
         issueStructureProvider: IssueStructureProvider,
-        paraViewProvider: any,
-        paraView?: vscode.TreeView<any>
+        paraViewProvider: ParaViewProvider,
+        paraView?: vscode.TreeView<ParaViewNode>
     ): void {
         // 保存 paraView 引用
         this.paraView = paraView;
@@ -376,108 +384,28 @@ export class CommandRegistry extends BaseCommandRegistry {
             '刷新 PARA 视图'
         );
 
-        // 添加到 Projects
-        this.registerCommand(
-            'issueManager.para.addToProjects',
-            async (...args: unknown[]) => {
+        this.registerParaCategoryCommands(
+            'issueManager.para.addTo',
+            (displayName: string) => `添加问题到 ${displayName}`,
+            async (category: ParaCategory, args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
                     const id = stripFocusedId(node.id);
-                    await addIssueToParaCategory(ParaCategory.Projects, id);
+                    await addIssueToParaCategory(category, id);
                 }
-            },
-            '添加问题到 Projects'
+            }
         );
 
-        // 添加到 Areas
-        this.registerCommand(
-            'issueManager.para.addToAreas',
-            async (...args: unknown[]) => {
+        this.registerParaCategoryCommands(
+            'issueManager.para.viewIn',
+            (displayName: string) => `在 ${displayName} 中查看`,
+            async (category: ParaCategory, args: unknown[]) => {
                 const node = args[0];
                 if (node && isIssueTreeNode(node)) {
                     const id = stripFocusedId(node.id);
-                    await addIssueToParaCategory(ParaCategory.Areas, id);
+                    await this.revealInParaView(id, category);
                 }
-            },
-            '添加问题到 Areas'
-        );
-
-        // 添加到 Resources
-        this.registerCommand(
-            'issueManager.para.addToResources',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                if (node && isIssueTreeNode(node)) {
-                    const id = stripFocusedId(node.id);
-                    await addIssueToParaCategory(ParaCategory.Resources, id);
-                }
-            },
-            '添加问题到 Resources'
-        );
-
-        // 添加到 Archives
-        this.registerCommand(
-            'issueManager.para.addToArchives',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                if (node && isIssueTreeNode(node)) {
-                    const id = stripFocusedId(node.id);
-                    await addIssueToParaCategory(ParaCategory.Archives, id);
-                }
-            },
-            '添加问题到 Archives'
-        );
-
-        // 在 Projects 中查看
-        this.registerCommand(
-            'issueManager.para.viewInProjects',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                if (node && isIssueTreeNode(node)) {
-                    const id = stripFocusedId(node.id);
-                    await this.revealInParaView(id, ParaCategory.Projects);
-                }
-            },
-            '在 Projects 中查看'
-        );
-
-        // 在 Areas 中查看
-        this.registerCommand(
-            'issueManager.para.viewInAreas',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                if (node && isIssueTreeNode(node)) {
-                    const id = stripFocusedId(node.id);
-                    await this.revealInParaView(id, ParaCategory.Areas);
-                }
-            },
-            '在 Areas 中查看'
-        );
-
-        // 在 Resources 中查看
-        this.registerCommand(
-            'issueManager.para.viewInResources',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                if (node && isIssueTreeNode(node)) {
-                    const id = stripFocusedId(node.id);
-                    await this.revealInParaView(id, ParaCategory.Resources);
-                }
-            },
-            '在 Resources 中查看'
-        );
-
-        // 在 Archives 中查看
-        this.registerCommand(
-            'issueManager.para.viewInArchives',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                if (node && isIssueTreeNode(node)) {
-                    const id = stripFocusedId(node.id);
-                    await this.revealInParaView(id, ParaCategory.Archives);
-                }
-            },
-            '在 Archives 中查看'
+            }
         );
 
         // 从 PARA 视图中移除
@@ -492,53 +420,39 @@ export class CommandRegistry extends BaseCommandRegistry {
             '从 PARA 分类中移除'
         );
 
-        // 在 PARA 视图内移动到 Projects
-        this.registerCommand(
-            'issueManager.para.moveToProjects',
-            async (...args: unknown[]) => {
+        this.registerParaCategoryCommands(
+            'issueManager.para.moveTo',
+            (displayName: string) => `移动到 ${displayName}`,
+            async (category: ParaCategory, args: unknown[]) => {
                 const element = args[0];
                 if (isParaIssueNode(element)) {
-                    await this.moveParaIssue(element.id, element.category, ParaCategory.Projects);
+                    await this.moveParaIssue(element.id, element.category, category);
                 }
-            },
-            '移动到 Projects'
+            }
         );
+    }
 
-        // 在 PARA 视图内移动到 Areas
-        this.registerCommand(
-            'issueManager.para.moveToAreas',
-            async (...args: unknown[]) => {
-                const element = args[0];
-                if (isParaIssueNode(element)) {
-                    await this.moveParaIssue(element.id, element.category, ParaCategory.Areas);
-                }
-            },
-            '移动到 Areas'
-        );
-
-        // 在 PARA 视图内移动到 Resources
-        this.registerCommand(
-            'issueManager.para.moveToResources',
-            async (...args: unknown[]) => {
-                const element = args[0];
-                if (isParaIssueNode(element)) {
-                    await this.moveParaIssue(element.id, element.category, ParaCategory.Resources);
-                }
-            },
-            '移动到 Resources'
-        );
-
-        // 在 PARA 视图内移动到 Archives
-        this.registerCommand(
-            'issueManager.para.moveToArchives',
-            async (...args: unknown[]) => {
-                const element = args[0];
-                if (isParaIssueNode(element)) {
-                    await this.moveParaIssue(element.id, element.category, ParaCategory.Archives);
-                }
-            },
-            '移动到 Archives'
-        );
+    /**
+     * 批量注册 PARA 分类相关命令
+     * @param commandPrefix 命令前缀，例如 issueManager.para.addTo
+     * @param descriptionFactory 根据分类显示名称返回命令描述
+     * @param handler 实际命令处理逻辑
+     */
+    private registerParaCategoryCommands(
+        commandPrefix: string,
+        descriptionFactory: (displayName: string) => string,
+        handler: (category: ParaCategory, args: unknown[]) => void | Promise<void>
+    ): void {
+        for (const { category, suffix, displayName } of PARA_CATEGORY_CONFIGS) {
+            const commandId = `${commandPrefix}${suffix}`;
+            this.registerCommand(
+                commandId,
+                async (...args: unknown[]) => {
+                    await handler(category, args);
+                },
+                descriptionFactory(displayName)
+            );
+        }
     }
 
     /**
