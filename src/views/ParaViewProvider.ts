@@ -180,8 +180,8 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     
     // 点击打开文件
     item.command = {
-      command: 'vscode.open',
-      title: '打开文件',
+      command: 'issueManager.openAndViewRelatedIssues',
+      title: '打开并查看相关联问题',
       arguments: [fileUri]
     };
     

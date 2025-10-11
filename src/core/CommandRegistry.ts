@@ -448,6 +448,18 @@ export class CommandRegistry extends BaseCommandRegistry {
         handler: (category: ParaCategory, args: unknown[]) => void | Promise<void>
     ): void {
         for (const { category, suffix, displayName } of PARA_CATEGORY_CONFIGS) {
+            // issueManager.para.viewInProjects
+            // issueManager.para.viewInAreas
+            // issueManager.para.viewInResources
+            // issueManager.para.viewInArchives
+            // issueManager.para.addToProjects
+            // issueManager.para.addToAreas
+            // issueManager.para.addToResources
+            // issueManager.para.addToArchives
+            // issueManager.para.moveToProjects
+            // issueManager.para.moveToAreas
+            // issueManager.para.moveToResources
+            // issueManager.para.moveToArchives
             const commandId = `${commandPrefix}${suffix}`;
             this.registerCommand(
                 commandId,
