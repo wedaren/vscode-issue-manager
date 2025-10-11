@@ -7,7 +7,7 @@ import {
   getCategoryLabel,
   getCategoryIcon
 } from '../data/paraManager';
-import { readTree, IssueTreeNode, TreeData, getTreeNodeById } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData, getTreeNodeById, findParentNodeById } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { ParaViewNode } from '../types';
@@ -198,7 +198,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
 
     if (element.type === 'issue') {
       // 查找父节点
-      const parentTreeNode = this.findParentNode(element.id);
+      const parentTreeNode = findParentNodeById(this.treeData.rootNodes, element.id);
       
       if (parentTreeNode) {
         // 有父节点，返回父节点的 ParaViewNode
@@ -220,38 +220,4 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     return null;
   }
 
-  /**
-   * 查找节点的父节点
-   */
-  private findParentNode(childId: string): IssueTreeNode | null {
-    if (!this.treeData) {
-      return null;
-    }
-
-    const findParent = (node: IssueTreeNode, targetId: string): IssueTreeNode | null => {
-      // 检查子节点中是否有目标节点
-      for (const child of node.children) {
-        if (child.id === targetId) {
-          return node;
-        }
-      }
-      // 递归查找
-      for (const child of node.children) {
-        const found = findParent(child, targetId);
-        if (found) {
-          return found;
-        }
-      }
-      return null;
-    };
-
-    for (const root of this.treeData.rootNodes) {
-      const found = findParent(root, childId);
-      if (found) {
-        return found;
-      }
-    }
-
-    return null;
-  }
 }

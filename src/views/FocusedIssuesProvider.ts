@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById } from '../data/treeManager';
 import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
@@ -139,26 +139,8 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
    */
   getParent(element: IssueTreeNode): IssueTreeNode | null {
     if (!this.treeData || !this.focusedData) { return null; }
-    // 递归查找父节点
-    const findParent = (node: IssueTreeNode, target: IssueTreeNode): IssueTreeNode | null => {
-      if (node.children) {
-        if (node.children.some(child => stripFocusedId(child.id) === stripFocusedId(target.id))) {
-          return node;
-        }
-        for (const child of node.children) {
-          const parent = findParent(child, target);
-          if (parent) { return parent; }
-        }
-      }
-      return null;
-    };
-    // 只在过滤后的树中查找
     const filtered = this.getFilteredTreeFromCache();
-    for (const root of filtered) {
-      const parent = findParent(root, element);
-      if (parent) { return parent; }
-    }
-    return null;
+    return findParentNodeById(filtered, element.id, (child, target) => stripFocusedId(child.id) === stripFocusedId(target));
   }
   findFirstFocusedNodeById(id: string): { node: IssueTreeNode, parentList: IssueTreeNode[] } | null {
 

@@ -270,6 +270,37 @@ export function getTreeNodeById(tree: TreeData, nodeId: string): IssueTreeNode |
 }
 
 /**
+ * 在树中查找目标节点的直接父节点。
+ * @param roots 根节点集合。
+ * @param targetId 目标节点 ID。
+ * @param comparator 可选的自定义匹配逻辑，默认按 ID 全等。
+ */
+export function findParentNodeById<T extends { id: string; children?: T[] }>(
+  roots: T[],
+  targetId: string,
+  comparator: (child: T, target: string) => boolean = (child, target) => child.id === target
+): T | null {
+  const queue: T[] = [...roots]; // 使用队列进行广度优先搜索  
+
+  while (queue.length > 0) {  
+    const node = queue.shift()!; // 从队列头部取出一个节点  
+
+    if (node.children) {  
+      // 检查当前节点的子节点是否是目标  
+      for (const child of node.children) {  
+        if (comparator(child, targetId)) {  
+          return node; // 如果是，当前节点就是父节点  
+        }  
+        // 将子节点加入队列，以便后续遍历  
+        queue.push(child);  
+      }  
+    }  
+  }  
+
+  return null; // 遍历完整棵树都未找到  
+}
+
+/**
  * 检查一个节点是否是另一个节点的祖先。
  * @param tree The tree data.
  * @param potentialAncestorId The ID of the potential ancestor node.

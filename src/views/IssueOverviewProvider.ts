@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode, FocusedData } from '../data/treeManager';
+import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
@@ -43,24 +43,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
    */  
   getParent(element: IssueTreeNode): IssueTreeNode | null {
     if (!this.treeData) { return null; }
-    // 递归查找父节点
-    const findParent = (node: IssueTreeNode, target: IssueTreeNode): IssueTreeNode | null => {
-      if (node.children && node.children.some(child => child.id === target.id)) {
-        return node;
-      }
-      if (node.children) {
-        for (const child of node.children) {
-          const parent = findParent(child, target);
-          if (parent) { return parent; }
-        }
-      }
-      return null;
-    };
-    for (const root of this.treeData.rootNodes) {
-      const parent = findParent(root, element);
-      if (parent) { return parent; }
-    }
-    return null;
+    return findParentNodeById(this.treeData.rootNodes, element.id);
   }
   private _onDidChangeTreeData: vscode.EventEmitter<IssueTreeNode | undefined | null | void> = new vscode.EventEmitter<IssueTreeNode | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<IssueTreeNode | undefined | null | void> = this._onDidChangeTreeData.event;

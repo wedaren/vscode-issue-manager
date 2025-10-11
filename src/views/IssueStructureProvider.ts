@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { getTitle, getFrontmatter, FrontmatterData } from '../utils/markdown';
 import { FrontmatterService } from '../services/FrontmatterService';
+import { findParentNodeById } from '../data/treeManager';
 
 /**
  * 问题结构节点
@@ -655,27 +656,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * @returns 父节点；若不存在则返回 null
      */
     getParent(element: IssueStructureNode): IssueStructureNode | null {
-        // 在树中查找父节点
-        const findParent = (node: IssueStructureNode, target: IssueStructureNode): IssueStructureNode | null => {
-            if (node.children.some(child => child.id === target.id)) {
-                return node;
-            }
-            for (const child of node.children) {
-                const parent = findParent(child, target);
-                if (parent) {
-                    return parent;
-                }
-            }
-            return null;
-        };
-
-        for (const root of this.rootNodes) {
-            const parent = findParent(root, element);
-            if (parent) {
-                return parent;
-            }
-        }
-        return null;
+        return findParentNodeById(this.rootNodes, element.id);
     }
 
     /**
