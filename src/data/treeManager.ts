@@ -270,6 +270,41 @@ export function getTreeNodeById(tree: TreeData, nodeId: string): IssueTreeNode |
 }
 
 /**
+ * 在树中查找目标节点的直接父节点。
+ * @param roots 根节点集合。
+ * @param targetId 目标节点 ID。
+ * @param comparator 可选的自定义匹配逻辑，默认按 ID 全等。
+ */
+export function findParentNodeById<T extends { id: string; children?: T[] }>(
+  roots: T[],
+  targetId: string,
+  comparator: (child: T, target: string) => boolean = (child, target) => child.id === target
+): T | null {
+  const visit = (node: T): T | null => {
+    const children = node.children ?? [];
+    if (children.some(child => comparator(child, targetId))) {
+      return node;
+    }
+    for (const child of children) {
+      const parent = visit(child);
+      if (parent) {
+        return parent;
+      }
+    }
+    return null;
+  };
+
+  for (const root of roots) {
+    const parent = visit(root);
+    if (parent) {
+      return parent;
+    }
+  }
+
+  return null;
+}
+
+/**
  * 检查一个节点是否是另一个节点的祖先。
  * @param tree The tree data.
  * @param potentialAncestorId The ID of the potential ancestor node.
