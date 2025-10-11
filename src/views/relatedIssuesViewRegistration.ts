@@ -60,6 +60,10 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
     }
   }));
 
-  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(triggerAutoView));
+  let triggerTimeout: NodeJS.Timeout;  
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {  
+    clearTimeout(triggerTimeout);  
+    triggerTimeout = setTimeout(() => triggerAutoView(editor), 300); // 300ms 防抖  
+  }));  
   triggerAutoView(vscode.window.activeTextEditor);
 }
