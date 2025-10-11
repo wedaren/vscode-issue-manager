@@ -24,6 +24,9 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   context.subscriptions.push(relatedIssuesView);
 
   const triggerAutoView = (editor?: vscode.TextEditor | null) => {
+    if (isPinned) {
+      return;
+    }
     if (!editor) {
       return;
     }
