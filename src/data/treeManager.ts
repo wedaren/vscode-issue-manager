@@ -280,28 +280,24 @@ export function findParentNodeById<T extends { id: string; children?: T[] }>(
   targetId: string,
   comparator: (child: T, target: string) => boolean = (child, target) => child.id === target
 ): T | null {
-  const visit = (node: T): T | null => {
-    const children = node.children ?? [];
-    if (children.some(child => comparator(child, targetId))) {
-      return node;
-    }
-    for (const child of children) {
-      const parent = visit(child);
-      if (parent) {
-        return parent;
-      }
-    }
-    return null;
-  };
+  const queue: T[] = [...roots]; // 使用队列进行广度优先搜索  
 
-  for (const root of roots) {
-    const parent = visit(root);
-    if (parent) {
-      return parent;
-    }
-  }
+  while (queue.length > 0) {  
+    const node = queue.shift()!; // 从队列头部取出一个节点  
 
-  return null;
+    if (node.children) {  
+      // 检查当前节点的子节点是否是目标  
+      for (const child of node.children) {  
+        if (comparator(child, targetId)) {  
+          return node; // 如果是，当前节点就是父节点  
+        }  
+        // 将子节点加入队列，以便后续遍历  
+        queue.push(child);  
+      }  
+    }  
+  }  
+
+  return null; // 遍历完整棵树都未找到  
 }
 
 /**
