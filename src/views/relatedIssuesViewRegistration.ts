@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
+import { getIssueDir } from '../config';
 
 /**
  * 注册“相关联问题视图”及相关命令
@@ -22,6 +23,19 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(relatedIssuesView);
 
+  const triggerAutoView = (editor?: vscode.TextEditor | null) => {
+    if (!editor) {
+      return;
+    }
+    if (editor.document.languageId !== 'markdown') {
+      return;
+    }
+    if (!getIssueDir()) {
+      return;
+    }
+    void vscode.commands.executeCommand('issueManager.viewRelatedIssues', editor.document.uri);
+  };
+
   // 注册锁定命令
   context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinRelatedView', () => {
     updatePinContext(true);
@@ -42,4 +56,7 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
       relatedIssuesProvider.updateContext(resourceUri);
     }
   }));
+
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(triggerAutoView));
+  triggerAutoView(vscode.window.activeTextEditor);
 }
