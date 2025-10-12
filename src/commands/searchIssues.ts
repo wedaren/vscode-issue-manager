@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 
 import { readTree, IssueTreeNode } from '../data/treeManager';
-import { getTitle } from '../utils/markdown';
+import { TitleCacheService } from '../services/TitleCacheService';
+import * as path from 'path';
 
 /**
  * 关注问题视图与问题总览视图搜索命令实现
@@ -61,11 +62,13 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
         type QuickPickItemWithId = vscode.QuickPickItem & { id: string };
 
         const items = await Promise.all(nodesWithMtime.map(async node => {
-            const title = await getTitle(node.resourceUri || vscode.Uri.file(node.filePath));
+            const cachedTitle = await TitleCacheService.getInstance().get(node.filePath);
+            const title = cachedTitle || path.basename(node.filePath, '.md');
             let description = '';
             // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
             if (node.parentPath.length > 0) {
-                description = [ '', ...(await Promise.all(node.parentPath.map(async n => await getTitle(n.resourceUri || vscode.Uri.file(n.filePath)))))].join(' / ');
+                const parentTitles = await TitleCacheService.getInstance().getMany(node.parentPath.map(n => n.filePath));
+                description = ['', ...parentTitles].join(' / ');
             }
             return {
                 label: title,

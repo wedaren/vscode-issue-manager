@@ -296,6 +296,12 @@
         "command": "issueManager.para.moveToArchives",
         "title": "移动到 Archives"
       }
+      ,
+      {
+        "command": "issueManager.reloadTitleCache",
+        "title": "重载标题缓存",
+        "icon": "$(refresh)"
+      }
     ],
     "submenus": [
       {

@@ -3,6 +3,7 @@ import { BaseCommandRegistry } from './BaseCommandRegistry';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from '../interfaces';
 import { IssueTreeNode } from '../../data/treeManager';
 import { ParaViewProvider } from '../../views/ParaViewProvider';
+import { TitleCacheService } from '../../services/TitleCacheService';
 
 /**
  * 视图操作命令注册器
@@ -79,6 +80,25 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
                 this.paraViewProvider?.refresh();
             },
             '刷新所有视图'
+        );
+
+        // 手动重载标题缓存
+        this.registerCommand(
+            'issueManager.reloadTitleCache',
+            async () => {
+                try {
+                    await TitleCacheService.getInstance().reload();
+                    this.focusedIssuesProvider?.refresh();
+                    this.issueOverviewProvider?.refresh();
+                    this.recentIssuesProvider?.refresh();
+                    this.paraViewProvider?.refresh();
+                    vscode.window.showInformationMessage('标题缓存已重载');
+                } catch (e) {
+                    this.logger.error('重载标题缓存失败', e);
+                    vscode.window.showErrorMessage('重载标题缓存失败，请检查 .issueManager/titleCache.json');
+                }
+            },
+            '重载标题缓存'
         );
 
         // 统一刷新视图命令（用于Language Model Tool等功能）

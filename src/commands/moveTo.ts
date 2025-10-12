@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/treeManager';
-import { getTitle } from '../utils/markdown';
+import { TitleCacheService } from '../services/TitleCacheService';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
@@ -106,11 +106,13 @@ export async function moveIssuesTo(selectedNodes: (IssueTreeNode | vscode.TreeIt
         node: null as FlatNode | null
     };
     const items = [rootItem, ...await Promise.all(flatNodes.map(async node => {
-        const title = await getTitle(node.resourceUri!);
+        const cachedTitle = await TitleCacheService.getInstance().get(node.filePath);
+        const title = cachedTitle || path.basename(node.filePath, '.md');
         // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
         let description = '';
         if (node.parentPath.length > 0) {
-            description = ['', ...(await Promise.all(node.parentPath.map(n => getTitle(n.resourceUri!))))].join(' / ');
+            const parentTitles = await TitleCacheService.getInstance().getMany(node.parentPath.map(n => n.filePath));
+            description = ['', ...parentTitles].join(' / ');
         }
         return {
             iconPath: node.hasChildren ? new vscode.ThemeIcon('find-collapsed') : new vscode.ThemeIcon('markdown'),

@@ -3,8 +3,9 @@
  * 只读视图，动态展示某问题在知识库中的所有引用及上下文
  */
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
-import { getTitle } from '../utils/markdown';
+import { TitleCacheService } from '../services/TitleCacheService';
 import { getUri } from '../utils/fileUtils';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode> {
@@ -67,9 +68,10 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     private async buildReferenceNode(node: IssueTreeNode, parentNodes: IssueTreeNode[]): Promise<RelatedIssueNode> {
         // 父路径（祖先链）
         const parentIssueNode = parentNodes.pop();
-        // 辅助方法：获取节点标题
+        // 辅助方法：获取节点标题（缓存优先，未命中回退为文件名）
         const getNodeTitle = async (n: IssueTreeNode) => {
-            return getTitle(n.resourceUri || getUri(n.filePath));
+            const cached = await TitleCacheService.getInstance().get(n.filePath);
+            return cached || path.basename(n.filePath, '.md');
         };
 
         const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
@@ -77,7 +79,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             type: 'parent',
             filePath: parentIssueNode.filePath,
             children: [],
-            tooltip: (await Promise.all(parentNodes.map(getNodeTitle))).join(' / '),
+            tooltip: (await TitleCacheService.getInstance().getMany(parentNodes.map(n => n.filePath))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
         } : undefined;

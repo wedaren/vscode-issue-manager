@@ -583,3 +583,21 @@ export const readTitleCacheJson = async (): Promise<Record<string, string>> => {
     return {};
   }
 };
+
+/**
+ * 写入 titleCache.json 文件
+ * @param data 标题映射 { [relativePath]: title }
+ */
+export const writeTitleCacheJson = async (data: Record<string, string>): Promise<void> => {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return;
+  }
+  const cachePath = path.join(issueDir, '.issueManager', 'titleCache.json');
+  try {
+    const uint8Array = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(cachePath), uint8Array);
+  } catch (e) {
+    console.error(`写入 titleCache.json 失败:`, e);
+  }
+};
