@@ -29,11 +29,6 @@ export async function ensureGitignoreForRSSState(): Promise<void> {
       await vscode.workspace.fs.writeFile(gitignoreUri, Buffer.from(content, 'utf8'));
       updated = true;
     }
-    if (updated) {
-      vscode.window.showInformationMessage('已自动为你添加 .issueManager/rss-feed-states.json 到 .gitignore');
-    } else {
-      vscode.window.showInformationMessage('已检测到你的 .gitignore 配置，无需修改');
-    }
   } catch (error) {
     vscode.window.showWarningMessage('自动配置 .gitignore 时发生错误，请手动检查。');
     console.error('自动配置 .gitignore 失败:', error);
