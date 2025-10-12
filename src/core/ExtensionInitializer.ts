@@ -6,7 +6,6 @@ import { ConfigurationManager } from './ConfigurationManager';
 import { IViewRegistryResult, InitializationPhase } from './interfaces';
 import { Logger } from './utils/Logger';
 
-const ACTIVATION_SUCCESS_MESSAGE_DELAY_MS = 500;
 const INITIALIZATION_RETRY_DELAY_MS = 2000;
 
 /**
@@ -100,13 +99,6 @@ export class ExtensionInitializer {
                 memoryIncrease: `${memoryIncrease.toFixed(2)}MB`,
                 finalMemoryUsage: `${finalMemory.heapUsed.toFixed(2)}MB`
             });
-            // 移除重复的console.log调用，已在logger中记录
-            
-            // 发送激活完成的通知（延迟发送，避免阻塞初始化）
-            setTimeout(() => {
-                vscode.window.showInformationMessage('问题管理器扩展已成功激活！');
-            }, ACTIVATION_SUCCESS_MESSAGE_DELAY_MS);
-            
         } catch (error) {
             const duration = Date.now() - startTime;
             const errorMessage = this.formatErrorMessage(error);
