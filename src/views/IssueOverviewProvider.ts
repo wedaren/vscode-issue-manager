@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById } from '../data/treeManager';
 import { getIssueDir } from '../config';
-import { getTitle } from '../utils/markdown';
+import { TitleCacheService } from '../services/TitleCacheService';
 import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
@@ -95,8 +95,10 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
       return new vscode.TreeItem("从“孤立问题”视图拖拽问题至此", vscode.TreeItemCollapsibleState.None);
     }
 
-    const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
-    const title = await getTitle(uri);
+  const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
+  const titleCache = TitleCacheService.getInstance();
+  const cachedTitle = await titleCache.get(element.filePath);
+  const title = cachedTitle || path.basename(element.filePath, '.md');
 
     const focusIndex = this.focusedData?.focusList.indexOf(element.id) ?? -1;
 

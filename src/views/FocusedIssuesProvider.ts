@@ -5,7 +5,7 @@ import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
-import { getTitle } from '../utils/markdown';
+import { TitleCacheService } from '../services/TitleCacheService';
 import { getIssueDir } from '../config';
 
 /**
@@ -56,8 +56,11 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     }
 
     const realId = stripFocusedId(element.id);
-    const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
-    const title = await getTitle(uri);
+  const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
+  // 使用标题缓存，未命中回退到文件名，避免渲染阶段 I/O
+  const titleCache = TitleCacheService.getInstance();
+  const cachedTitle = await titleCache.get(element.filePath);
+  const title = cachedTitle || path.basename(element.filePath, '.md');
 
     const item = new vscode.TreeItem(title,
       element.children && element.children.length > 0
@@ -82,9 +85,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
 
     // 生成并设置 description
     const ancestors = getAncestors(realId, this.treeData);
-    const ancestorTitles = await Promise.all(
-      ancestors.map(ancestor => getTitle(vscode.Uri.file(path.join(issueDir, ancestor.filePath))))
-    );
+    const ancestorTitles = await TitleCacheService.getInstance().getMany(ancestors.map(a => a.filePath));
     if (ancestorTitles.length > 0 && isFocusedRootId(element.id)) {
       item.description = `/ ${ancestorTitles.join(' / ')}`;
     }
