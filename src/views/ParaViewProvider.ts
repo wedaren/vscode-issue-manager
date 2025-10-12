@@ -7,7 +7,7 @@ import {
   getCategoryLabel,
   getCategoryIcon
 } from '../data/paraManager';
-import { readTree, IssueTreeNode, TreeData, getTreeNodeById, findParentNodeById } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData, getTreeNodeById, findParentNodeById, getAncestors } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { getTitle } from '../utils/markdown';
 import { ParaViewNode } from '../types';
@@ -184,6 +184,17 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
       title: '打开并查看相关联问题',
       arguments: [fileUri]
     };
+    
+    // 顶级（直接挂在分类下）的节点，展示其祖先路径，便于在 PARA 视图中辨识来源
+    if (isTopLevel && this.treeData) {
+      const ancestors = getAncestors(issueId, this.treeData);
+      const ancestorTitles = await Promise.all(
+        ancestors.map(ancestor => getTitle(vscode.Uri.file(path.join(issueDir, ancestor.filePath))))
+      );
+      if (ancestorTitles.length > 0) {
+        item.description = `/ ${ancestorTitles.join(' / ')}`;
+      }
+    }
     
     return item;
   }
