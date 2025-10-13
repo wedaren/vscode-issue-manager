@@ -147,7 +147,7 @@ export class ConfigurationManager {
                     const map = await readTitleCacheJson();
                     const oldTitle = map[rel];
                     if (oldTitle === newTitle) {
-                        this.logger.debug?.(`标题未变化，跳过写入: ${rel}` as any);
+                        this.logger.debug?.(`标题未变化，跳过写入: ${rel}`);
                         return;
                     }
                     map[rel] = newTitle;

@@ -24,9 +24,9 @@ export class TitleCacheService {
     try {
       this.cache = await readTitleCacheJson();
       this.loaded = true;
-    } catch {
+    } catch (e) {  
       // 读取失败时保持空缓存，避免影响主流程
-      this.cache = {};
+      console.error('预加载标题缓存失败:', e);  
       this.loaded = true;
     }
   }
