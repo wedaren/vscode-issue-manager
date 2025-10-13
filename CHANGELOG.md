@@ -5,6 +5,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.1] 
+
+### ✨ 新功能
+- feat(para): 顶级节点显示祖先路径描述，便于在 PARA 视图中辨识来源（#82）
+- feat: 新增标题缓存服务 TitleCacheService，提供快速标题查找能力与手动“重载标题缓存”命令
+- feat(markdown): getTitle 现在优先读取 frontmatter 的 `title`（兼容 `name`），未命中再回退到 H1 与文件名
+
+### ⚙️ 配置
+- 新增配置 `issueManager.titleCache.rebuildIntervalHours`（默认 24），用于控制标题缓存的过期重建阈值；设置为 0 可禁用按时间的自动重建
+
+### ⚡ 性能优化
+- perf(para/overview/focused): 视图统一改用标题缓存服务，避免在 getTreeItem 渲染阶段频繁文件 I/O
+- perf: 扩展激活时预加载标题缓存；当缓存缺失或超过配置的过期时长会自动全量重建
+- perf: 全量重建采用并发扫描（默认 16 并发）以加速大仓库的首次/过期重建
+
 ## [0.2.0]
 
 ### ✨ 新功能
