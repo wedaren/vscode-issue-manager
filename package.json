@@ -296,6 +296,12 @@
         "command": "issueManager.para.moveToArchives",
         "title": "移动到 Archives"
       }
+      ,
+      {
+        "command": "issueManager.reloadTitleCache",
+        "title": "重载标题缓存",
+        "icon": "$(refresh)"
+      }
     ],
     "submenus": [
       {
@@ -879,6 +885,12 @@
           "type": "object",
           "default": {},
           "description": "订阅源特定的内容处理配置。这是一个内部配置项，通常通过界面操作进行管理。"
+        }
+        ,
+        "issueManager.titleCache.rebuildIntervalHours": {
+          "type": "number",
+          "default": 24,
+          "description": "标题缓存自动重建的过期时长（单位：小时）。当 titleCache.json 的最近更新时间超过此时长时，插件将在下次预加载时自动重建缓存。设置为 0 可禁用因过期触发的自动重建（但在缓存文件缺失时仍会重建）。"
         }
       }
     },

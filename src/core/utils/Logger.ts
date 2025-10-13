@@ -26,12 +26,12 @@ export enum LogLevel {
  */
 export class Logger {
     private static instance: Logger;
-    private outputChannel: vscode.OutputChannel;
+    // 延迟创建输出通道，避免在非扩展宿主（如纯 Mocha 环境）中访问 vscode.window 导致崩溃
+    private outputChannel: vscode.OutputChannel | null = null;
     private logLevel: LogLevel;
     private isDevelopment = false;
 
     private constructor() {
-        this.outputChannel = vscode.window.createOutputChannel('Issue Manager');
         this.logLevel = LogLevel.INFO;
     }
 
@@ -110,7 +110,9 @@ export class Logger {
      * 显示输出通道
      */
     public show(): void {
-        this.outputChannel.show();
+        if (this.outputChannel) {
+            this.outputChannel.show();
+        }
     }
 
     /**
@@ -129,11 +131,25 @@ export class Logger {
         const levelText = LogLevel[level];
         const logMessage = `[${timestamp}] [${levelText}] ${message}`;
 
-        // 输出到VS Code输出通道
-        this.outputChannel.appendLine(logMessage);
+        // 尝试懒创建输出通道；若不可用（例如测试环境无扩展宿主），则回退到控制台
+        try {
+            if (!this.outputChannel && (vscode as any)?.window?.createOutputChannel) {
+                this.outputChannel = vscode.window.createOutputChannel('Issue Manager');
+            }
+        } catch {
+            // 忽略创建失败，使用控制台输出
+            this.outputChannel = null;
+        }
 
-        if (data) {
-            this.outputChannel.appendLine(`  Data: ${JSON.stringify(data, null, 2)}`);
+        if (this.outputChannel) {
+            this.outputChannel.appendLine(logMessage);
+            if (data) {
+                try {
+                    this.outputChannel.appendLine(`  Data: ${JSON.stringify(data, null, 2)}`);
+                } catch {
+                    // JSON 序列化失败则忽略附加数据
+                }
+            }
         }
 
         // 在开发模式下也输出到控制台
@@ -153,12 +169,34 @@ export class Logger {
                     break;
             }
         }
+
+        // 如果无法创建输出通道（例如测试环境），也在控制台输出一份最基本日志，确保可见性
+        if (!this.outputChannel && !this.isDevelopment) {
+            // 非开发模式下，仅在没有输出通道可用时输出摘要到控制台
+            switch (level) {
+                case LogLevel.ERROR:
+                    console.error(logMessage, data);
+                    break;
+                case LogLevel.WARN:
+                    console.warn(logMessage, data);
+                    break;
+                case LogLevel.INFO:
+                    console.info(logMessage, data);
+                    break;
+                case LogLevel.DEBUG:
+                    console.debug(logMessage, data);
+                    break;
+            }
+        }
     }
 
     /**
      * 清理资源
      */
     public dispose(): void {
-        this.outputChannel.dispose();
+        if (this.outputChannel) {
+            this.outputChannel.dispose();
+            this.outputChannel = null;
+        }
     }
 }

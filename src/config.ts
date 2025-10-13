@@ -101,3 +101,17 @@ export function isRSSAutoUpdateEnabled(): boolean {
     const config = vscode.workspace.getConfiguration('issueManager');
     return config.get<boolean>('rss.enableAutoUpdate', true);
 }
+
+/**
+ * 获取标题缓存重建的过期时长（小时）。
+ * 返回 0 表示禁用基于过期时间的自动重建（文件缺失仍会触发重建）。
+ */
+export function getTitleCacheRebuildIntervalHours(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const val = config.get<number>('titleCache.rebuildIntervalHours', 24);
+    // 防御性：避免负数或 NaN
+    if (typeof val !== 'number' || !isFinite(val) || val < 0) {
+        return 24;
+    }
+    return val;
+}

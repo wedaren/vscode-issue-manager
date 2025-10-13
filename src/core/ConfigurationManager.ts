@@ -2,7 +2,12 @@ import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { debounce } from '../utils/debounce';
+import { TitleCacheService } from '../services/TitleCacheService';
+import { getRelativePathToIssueDir, ensureIssueManagerDir } from '../utils/fileUtils';
+import { readTitleCacheJson, writeTitleCacheJson } from '../data/treeManager';
+import { getTitle } from '../utils/markdown';
 import { Logger } from './utils/Logger';
+import * as path from 'path';
 
 const DEBOUNCE_REFRESH_DELAY_MS = 500;
 
@@ -28,6 +33,7 @@ const DEBOUNCE_REFRESH_DELAY_MS = 500;
 export class ConfigurationManager {
     private readonly context: vscode.ExtensionContext;
     private watcher?: vscode.FileSystemWatcher;
+    private titleCacheWatcher?: vscode.FileSystemWatcher;
     private readonly logger: Logger;
 
     /**
@@ -90,6 +96,12 @@ export class ConfigurationManager {
                 // 刷新所有视图以反映新目录的内容
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             }
+            // 标题缓存过期重建间隔变更后，重载缓存服务以应用新配置（后续过期判断将使用新值）
+            if (e.affectsConfiguration('issueManager.titleCache.rebuildIntervalHours')) {
+                TitleCacheService.getInstance().reload()
+                    .then(() => this.logger.info('配置变更：已应用新的标题缓存过期重建间隔'))
+                    .catch(err => this.logger.warn('应用新的标题缓存过期重建间隔失败', err));
+            }
         });
         
         this.context.subscriptions.push(configListener);
@@ -108,6 +120,13 @@ export class ConfigurationManager {
                 this.context.subscriptions.splice(index, 1);
             }
         }
+        if (this.titleCacheWatcher) {
+            this.titleCacheWatcher.dispose();
+            const index = this.context.subscriptions.indexOf(this.titleCacheWatcher);
+            if (index !== -1) {
+                this.context.subscriptions.splice(index, 1);
+            }
+        }
 
         const issueDir = getIssueDir();
         if (issueDir) {
@@ -115,16 +134,84 @@ export class ConfigurationManager {
                 new vscode.RelativePattern(issueDir, '**/*.md')
             );
 
-            const debouncedRefresh = debounce(() => {
-                this.logger.info('Markdown file changed, refreshing views...');
-                vscode.commands.executeCommand('issueManager.refreshAllViews');
+            // 当 Markdown 变更时，更新标题缓存并刷新视图
+            const handleMarkdownChanged = debounce(async (uri?: vscode.Uri) => {
+                try {
+                    if (!uri) { 
+                        // 无 URI 时无法定位具体文件，交由其他机制刷新
+                        return; 
+                    }
+                    const rel = getRelativePathToIssueDir(uri.fsPath);
+                    if (!rel) { return; }
+
+                    // 提取最新标题
+                    const newTitle = await getTitle(uri);
+
+                    // 确保 .issueManager 目录存在
+                    await ensureIssueManagerDir();
+
+                    // 读取并更新缓存文件
+                    const map = await readTitleCacheJson();
+                    const oldTitle = map[rel];
+                    if (oldTitle === newTitle) {
+                        this.logger.debug?.(`标题未变化，跳过写入: ${rel}`);
+                        return;
+                    }
+                    map[rel] = newTitle;
+                    await writeTitleCacheJson(map);
+                    // 不在此处 reload/refresh，交由 titleCache.json 监听统一处理
+                    this.logger.info(`标题已变更，已写入缓存: ${rel} -> ${newTitle}`);
+                } catch (e) {
+                    this.logger.warn('处理 Markdown 变更并更新标题缓存失败', e);
+                }
             }, DEBOUNCE_REFRESH_DELAY_MS);
 
-            this.watcher.onDidChange(debouncedRefresh);
-            this.watcher.onDidCreate(debouncedRefresh);
-            this.watcher.onDidDelete(debouncedRefresh);
+            this.watcher.onDidChange(handleMarkdownChanged);
+            this.watcher.onDidCreate(handleMarkdownChanged);
+
+            const handleMarkdownDeleted = debounce(async (uri?: vscode.Uri) => {
+                try {
+                    if (!uri) { return; }
+                    const rel = getRelativePathToIssueDir(uri.fsPath);
+                    if (!rel) { return; }
+
+                    await ensureIssueManagerDir();
+                    const map = await readTitleCacheJson();
+                    if (Object.prototype.hasOwnProperty.call(map, rel)) {
+                        delete map[rel];
+                        await writeTitleCacheJson(map);
+                        // 不在此处 reload/refresh，交由 titleCache.json 监听统一处理
+                        this.logger.info(`Markdown 删除，已从标题缓存移除: ${rel}`);
+                    }
+                } catch (e) {
+                    this.logger.warn('处理 Markdown 删除并更新标题缓存失败', e);
+                }
+            }, DEBOUNCE_REFRESH_DELAY_MS);
+
+            this.watcher.onDidDelete(handleMarkdownDeleted);
 
             this.context.subscriptions.push(this.watcher);
+
+            // 监听标题缓存文件，触发热更新
+            const titleCachePattern = new vscode.RelativePattern(path.join(issueDir, '.issueManager'), 'titleCache.json');
+            this.titleCacheWatcher = vscode.workspace.createFileSystemWatcher(titleCachePattern);
+
+            const debouncedReloadTitleCache = debounce(async () => {
+                try {
+                    await TitleCacheService.getInstance().reload();
+                    this.logger.info('titleCache.json 变更，已重载标题缓存并刷新视图');
+                } catch (e) {
+                    this.logger.warn('重载标题缓存失败，将继续使用旧缓存', e);
+                } finally {
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                }
+            }, DEBOUNCE_REFRESH_DELAY_MS);
+
+            this.titleCacheWatcher.onDidChange(debouncedReloadTitleCache);
+            this.titleCacheWatcher.onDidCreate(debouncedReloadTitleCache);
+            this.titleCacheWatcher.onDidDelete(debouncedReloadTitleCache);
+
+            this.context.subscriptions.push(this.titleCacheWatcher);
         }
     }
 }

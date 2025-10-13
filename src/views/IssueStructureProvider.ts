@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
-import { getTitle, getFrontmatter, FrontmatterData } from '../utils/markdown';
+import { getFrontmatter, FrontmatterData } from '../utils/markdown';
+import { TitleCacheService } from '../services/TitleCacheService';
 import { FrontmatterService } from '../services/FrontmatterService';
 import { findParentNodeById } from '../data/treeManager';
 
@@ -475,8 +476,9 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             // 检查文件是否存在
             await vscode.workspace.fs.stat(fileUri);
             
-            // 获取文件标题
-            const title = await getTitle(fileUri);
+            // 获取文件标题（缓存优先）
+            const cachedTitle = await TitleCacheService.getInstance().get(fileName);
+            const title = cachedTitle || path.basename(fileName, '.md');
             
             // 获取 frontmatter
             const frontmatter = await getFrontmatter(fileUri);

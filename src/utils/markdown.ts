@@ -101,6 +101,17 @@ export async function getTitle(fileUri: vscode.Uri): Promise<string> {
     try {
         const contentBytes = await vscode.workspace.fs.readFile(fileUri);
         const content = Buffer.from(contentBytes).toString('utf-8');
+        // 1) 优先 frontmatter 中的 title（或 name）字段
+        const fm = parseFrontmatter(content);
+        if (fm) {
+            const fmAny = fm as Record<string, unknown>;
+            const fromFm = (typeof fmAny.title === 'string' && fmAny.title.trim())
+                || (typeof fmAny.name === 'string' && fmAny.name.trim());
+            if (fromFm) {
+                return String(fromFm);
+            }
+        }
+        // 2) 回退到 H1 标题
         const titleFromContent = extractTitleFromContent(content);
         if (titleFromContent) {
             return titleFromContent;
@@ -113,16 +124,26 @@ export async function getTitle(fileUri: vscode.Uri): Promise<string> {
 }
 
 /**
- * 获取问题目录中所有 Markdown 文件的标题和文件路径。
- * @returns 包含标题和文件路径的对象数组。
+ * 获取问题目录中所有 Markdown 文件;
+ * @returns 问题目录中所有 Markdown 文件
  */
-export async function getAllMarkdownIssues(): Promise<{ title: string, filePath: string }[]> {
+export async function getAllMarkdownFiles(): Promise<vscode.Uri[]> {
     const issueDir = getIssueDir();
     if (!issueDir) {
         return [];
     }
 
     const files = await vscode.workspace.findFiles(new vscode.RelativePattern(issueDir, '**/*.md'), '**/.issueManager/**');
+    return files;
+}
+
+
+/**
+ * 获取问题目录中所有 Markdown 文件的标题和文件路径。
+ * @returns 包含标题和文件路径的对象数组。
+ */
+export async function getAllMarkdownIssues(): Promise<{ title: string, filePath: string }[]> {
+    const files = await getAllMarkdownFiles();
     const issues: { title: string, filePath: string }[] = [];
 
     for (const file of files) {
