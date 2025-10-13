@@ -101,6 +101,17 @@ export async function getTitle(fileUri: vscode.Uri): Promise<string> {
     try {
         const contentBytes = await vscode.workspace.fs.readFile(fileUri);
         const content = Buffer.from(contentBytes).toString('utf-8');
+        // 1) 优先 frontmatter 中的 title（或 name）字段
+        const fm = parseFrontmatter(content);
+        if (fm) {
+            const fmAny = fm as Record<string, unknown>;
+            const fromFm = (typeof fmAny.title === 'string' && fmAny.title.trim())
+                || (typeof fmAny.name === 'string' && fmAny.name.trim());
+            if (fromFm) {
+                return String(fromFm);
+            }
+        }
+        // 2) 回退到 H1 标题
         const titleFromContent = extractTitleFromContent(content);
         if (titleFromContent) {
             return titleFromContent;
