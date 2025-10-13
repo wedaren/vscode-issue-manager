@@ -100,7 +100,7 @@ export class TitleCacheService {
 
       await this.buildAndWriteCache();
     } catch (err) {
-      console.warn('[TitleCacheService] 重建标题缓存失败，继续使用现有缓存：', err);
+      this.logger.warn('[TitleCacheService] 重建标题缓存失败，继续使用现有缓存：', err);
     }
   }
 
@@ -117,8 +117,7 @@ export class TitleCacheService {
       this.cache = await readTitleCacheJson();
       this.loaded = true;
     } catch (err) {
-      console.warn('[TitleCacheService] 强制重建标题缓存失败：', err);
-      // 失败时保持现有缓存，不抛出
+      this.logger.warn('[TitleCacheService] 强制重建标题缓存失败：', err);
     }
   }
 
@@ -146,7 +145,7 @@ export class TitleCacheService {
           if (rel) {
             map[rel] = title;
           }
-        } catch {
+        } catch (e) {
           // 忽略单文件失败，继续其它文件
           this.logger.warn(`获取文件标题失败，已跳过: ${file.fsPath}`, e);  
         }
