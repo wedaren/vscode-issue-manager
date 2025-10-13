@@ -4,6 +4,7 @@ import { readTitleCacheJson, writeTitleCacheJson } from '../data/treeManager';
 import { getIssueDir, getTitleCacheRebuildIntervalHours } from '../config';
 import { getAllMarkdownFiles, getTitle } from '../utils/markdown';
 import { ensureIssueManagerDir, getRelativePathToIssueDir } from '../utils/fileUtils';
+import { Logger } from '../core/utils/Logger';
 
 /**
  * 标题缓存服务：从 titleCache.json 读取并缓存 { [relativeFilePath]: title }
@@ -14,6 +15,12 @@ export class TitleCacheService {
   private static instance: TitleCacheService | null = null;
   private cache: Record<string, string> = {};
   private loaded = false;
+  private readonly logger: Logger;  
+
+  private constructor() {
+    this.logger = Logger.getInstance();
+  }
+
 
   static getInstance(): TitleCacheService {
     if (!TitleCacheService.instance) {
@@ -34,7 +41,7 @@ export class TitleCacheService {
       this.loaded = true;
     } catch (e) {  
       // 读取失败时保持空缓存，避免影响主流程
-      console.error('预加载标题缓存失败:', e);  
+      this.logger.error('预加载标题缓存失败:', e);  
       this.loaded = true;
     }
   }
@@ -141,6 +148,7 @@ export class TitleCacheService {
           }
         } catch {
           // 忽略单文件失败，继续其它文件
+          this.logger.warn(`获取文件标题失败，已跳过: ${file.fsPath}`, e);  
         }
       }
     };

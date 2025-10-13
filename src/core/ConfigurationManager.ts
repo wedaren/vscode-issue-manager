@@ -7,6 +7,7 @@ import { getRelativePathToIssueDir, ensureIssueManagerDir } from '../utils/fileU
 import { readTitleCacheJson, writeTitleCacheJson } from '../data/treeManager';
 import { getTitle } from '../utils/markdown';
 import { Logger } from './utils/Logger';
+import * as path from 'path';
 
 const DEBOUNCE_REFRESH_DELAY_MS = 500;
 
@@ -192,7 +193,7 @@ export class ConfigurationManager {
             this.context.subscriptions.push(this.watcher);
 
             // 监听标题缓存文件，触发热更新
-            const titleCachePattern = new vscode.RelativePattern(vscode.Uri.file(issueDir).fsPath + '/.issueManager', 'titleCache.json');
+            const titleCachePattern = new vscode.RelativePattern(path.join(issueDir, '.issueManager'), 'titleCache.json');
             this.titleCacheWatcher = vscode.workspace.createFileSystemWatcher(titleCachePattern);
 
             const debouncedReloadTitleCache = debounce(async () => {
