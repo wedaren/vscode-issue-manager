@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -295,8 +295,7 @@
       {
         "command": "issueManager.para.moveToArchives",
         "title": "移动到 Archives"
-      }
-      ,
+      },
       {
         "command": "issueManager.reloadTitleCache",
         "title": "重载标题缓存",
@@ -885,8 +884,7 @@
           "type": "object",
           "default": {},
           "description": "订阅源特定的内容处理配置。这是一个内部配置项，通常通过界面操作进行管理。"
-        }
-        ,
+        },
         "issueManager.titleCache.rebuildIntervalHours": {
           "type": "number",
           "default": 24,
