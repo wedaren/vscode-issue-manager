@@ -95,6 +95,12 @@ export class ConfigurationManager {
                 // 刷新所有视图以反映新目录的内容
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             }
+            // 标题缓存过期重建间隔变更后，重载缓存服务以应用新配置（后续过期判断将使用新值）
+            if (e.affectsConfiguration('issueManager.titleCache.rebuildIntervalHours')) {
+                TitleCacheService.getInstance().reload()
+                    .then(() => this.logger.info('配置变更：已应用新的标题缓存过期重建间隔'))
+                    .catch(err => this.logger.warn('应用新的标题缓存过期重建间隔失败', err));
+            }
         });
         
         this.context.subscriptions.push(configListener);

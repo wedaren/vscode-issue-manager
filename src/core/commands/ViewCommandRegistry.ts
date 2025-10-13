@@ -87,12 +87,12 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
             'issueManager.reloadTitleCache',
             async () => {
                 try {
-                    await TitleCacheService.getInstance().reload();
+                    await TitleCacheService.getInstance().forceRebuild();
                     this.focusedIssuesProvider?.refresh();
                     this.issueOverviewProvider?.refresh();
                     this.recentIssuesProvider?.refresh();
                     this.paraViewProvider?.refresh();
-                    vscode.window.showInformationMessage('标题缓存已重载');
+                    vscode.window.showInformationMessage('标题缓存已重建并重载');
                 } catch (e) {
                     this.logger.error('重载标题缓存失败', e);
                     vscode.window.showErrorMessage('重载标题缓存失败，请检查 .issueManager/titleCache.json');

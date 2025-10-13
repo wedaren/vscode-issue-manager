@@ -74,6 +74,7 @@
 | `issueManager.createIssue.similarResultsCount` | 数字 | `5` | 相似问题建议数量 |
 | `issueManager.createIssue.optimizedPhrasingsCount` | 数字 | `3` | AI 优化建议数量 |
 | `issueManager.recentIssues.defaultMode` | 字符串 | `grouped` | 最近问题视图默认显示模式，可选值 `'grouped'`（分组）或 `'list'`（列表） |
+| `issueManager.titleCache.rebuildIntervalHours` | 数字 | `24` | 标题缓存自动重建的过期时长（小时）。超过此间隔将于下次预加载时全量重建。设为 `0` 可禁用按时间的自动重建（但文件缺失仍会重建）。 |
 
 ### 最近问题视图分组与展开说明
 
