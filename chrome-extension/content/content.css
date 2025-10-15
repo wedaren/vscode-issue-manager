@@ -1,0 +1,23 @@
+/**
+ * Content Script 样式
+ * 用于高亮选取的元素和显示提示信息
+ */
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 确保我们的元素不受页面样式影响 */
+.issue-manager-overlay,
+.issue-manager-highlight,
+.issue-manager-toast {
+  all: initial;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif !important;
+}

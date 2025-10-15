@@ -45,6 +45,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createIssueFromHtml",
+        "title": "从 HTML 创建问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.deleteIssue",
         "icon": "$(trash)",
         "title": "删除"
