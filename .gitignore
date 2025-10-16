@@ -7,5 +7,3 @@ node_modules
 # Gemini Code Assist 缓存文件（如果有的话）
 .gemini/cache/
 
-# Chrome 扩展图标文件（需要设计师单独提供）
-chrome-extension/icons/*.png
