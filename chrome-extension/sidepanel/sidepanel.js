@@ -42,7 +42,8 @@ async function handleStartSelection() {
 
     // 发送消息到 Background Script
     const response = await chrome.runtime.sendMessage({
-      type: 'START_SELECTION'
+      type: 'START_SELECTION',
+      tabId: tab.id
     });
 
     if (response.success) {
@@ -64,8 +65,11 @@ async function handleCancelSelection() {
   console.log('Cancel selection clicked');
   
   try {
+    // 获取当前活动标签页，尽量保证与开始时相同窗口
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     await chrome.runtime.sendMessage({
-      type: 'CANCEL_SELECTION'
+      type: 'CANCEL_SELECTION',
+      tabId: tab?.id
     });
     
     setSelectingState(false);

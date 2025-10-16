@@ -15,8 +15,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
     case 'START_SELECTION':
       // Side Panel 请求开始选取
-      handleStartSelection(sender.tab?.id);
-      sendResponse({ success: true });
+      (async () => {
+        try {
+          await handleStartSelection(message.tabId || sender.tab?.id);
+          sendResponse({ success: true });
+        } catch (e) {
+          console.error('Failed to activate selection mode:', e);
+          sendResponse({ success: false, error: e?.message || String(e) });
+        }
+      })();
       break;
 
     case 'CONTENT_SELECTED':
@@ -27,7 +34,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'CANCEL_SELECTION':
       // 取消选取
-      handleCancelSelection(sender.tab?.id);
+      handleCancelSelection(message.tabId || sender.tab?.id);
       sendResponse({ success: true });
       break;
 
@@ -44,18 +51,63 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  */
 async function handleStartSelection(tabId) {
   if (!tabId) {
-    console.error('No tab ID provided');
-    return;
+    // 尝试获取当前活动标签页作为后备
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = activeTab?.id;
+    } catch (e) {
+      console.error('Failed to query active tab:', e);
+    }
+
+    if (!tabId) {
+      console.error('No tab ID provided');
+      // 通知 Side Panel 报错，便于用户感知
+      notifySidePanel({ type: 'CREATION_ERROR', error: '无法获取当前标签页，无法进入选取模式。' });
+      return;
+    }
   }
 
   try {
-    // 向 Content Script 发送开始选取的消息
-    await chrome.tabs.sendMessage(tabId, {
-      type: 'START_SELECTION'
-    });
+    // 尝试直接通知 Content Script
+    await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
     console.log('Selection mode activated in tab', tabId);
+    return;
   } catch (error) {
-    console.error('Failed to activate selection mode:', error);
+    console.warn('First attempt to activate selection failed, trying to inject content script...', error);
+  }
+
+  // 首次失败：尝试注入 content script 后重试
+  try {
+    await ensureContentScriptInjected(tabId);
+    await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
+    console.log('Selection mode activated after injection in tab', tabId);
+  } catch (error) {
+    // 检查是否为受限页面
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      const url = tab?.url || '';
+      if (/^(chrome|chrome-extension|edge|about|chrome-search):/i.test(url) || /chromewebstore\.google\.com/i.test(url)) {
+        throw new Error('该页面不支持内容脚本（如 chrome:// 或 Chrome Web Store），无法进入选取模式。请在普通网页中重试。');
+      }
+    } catch (_) {
+      // 忽略 tabs.get 错误，仅抛出通用错误
+    }
+    throw error;
+  }
+}
+
+/**
+ * 确保已注入 Content Script（幂等）
+ */
+async function ensureContentScriptInjected(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/content.js']
+    });
+  } catch (e) {
+    console.warn('executeScript failed or not needed:', e?.message || e);
+    // 即使注入失败，可能是已存在或权限受限，由上层判断
   }
 }
 
@@ -64,8 +116,18 @@ async function handleStartSelection(tabId) {
  */
 async function handleCancelSelection(tabId) {
   if (!tabId) {
-    console.error('No tab ID provided');
-    return;
+    // 尝试获取当前活动标签页作为后备
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = activeTab?.id;
+    } catch (e) {
+      console.error('Failed to query active tab:', e);
+    }
+
+    if (!tabId) {
+      console.error('No tab ID provided');
+      return;
+    }
   }
 
   try {

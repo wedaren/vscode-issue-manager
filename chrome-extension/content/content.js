@@ -3,6 +3,24 @@
  * 负责在网页中实现 DOM 选取功能
  */
 
+// 幂等注入哨兵，避免重复注入
+if (window.__ISSUE_MANAGER_CONTENT_INJECTED__) {
+  // 已经注入过，直接返回（仍需保留监听器，避免重复）
+  // 这里不抛错，允许后续 sendMessage 正常工作
+} else {
+  try {
+    Object.defineProperty(window, '__ISSUE_MANAGER_CONTENT_INJECTED__', {
+      value: true,
+      configurable: false,
+      enumerable: false,
+      writable: false
+    });
+  } catch (_) {
+    // 某些 CSP 下 defineProperty 可能失败，降级处理
+    window.__ISSUE_MANAGER_CONTENT_INJECTED__ = true;
+  }
+}
+
 // 状态管理
 let isSelectionMode = false;
 let overlay = null;
