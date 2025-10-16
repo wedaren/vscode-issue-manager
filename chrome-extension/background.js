@@ -3,7 +3,52 @@
  * 负责协调 Side Panel 和 Content Script 之间的通信
  */
 
-const VSCODE_NOTE_SERVER_URL = 'http://localhost:37892/create-note';  
+const DEFAULT_VSCODE_NOTE_SERVER_URL = 'http://localhost:37892/create-note';
+const SERVER_URL_STORAGE_KEY = 'issueManager.vscodeNoteServerUrl';
+const URI_FALLBACK_MAX_LENGTH = 60000; // 避免超长 vscode:// 链接导致失败
+
+async function getServerUrl() {
+  try {
+    const data = await chrome.storage?.sync?.get?.(SERVER_URL_STORAGE_KEY) || await chrome.storage?.local?.get?.(SERVER_URL_STORAGE_KEY) || {};
+    return data[SERVER_URL_STORAGE_KEY] || DEFAULT_VSCODE_NOTE_SERVER_URL;
+  } catch (_) {
+    return DEFAULT_VSCODE_NOTE_SERVER_URL;
+  }
+}
+
+async function postToServerWithRetry(url, body, retries = 1, timeoutMs = 5000) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0,200)}` : ''}`);
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      // 仅在网络错误/超时情况下重试一次
+      const isAbort = e?.name === 'AbortError';
+      const isNetwork = e && /Failed to fetch|TypeError/i.test(String(e));
+      if (attempt < retries && (isAbort || isNetwork)) {
+        await new Promise(r => setTimeout(r, 300));
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastErr;
+}
 
 // 监听扩展图标点击事件，打开 Side Panel
 chrome.action.onClicked.addListener((tab) => {
@@ -155,32 +200,32 @@ async function handleContentSelected(data) {
 
 
   try {
-    // 构建 VSCode URI
-    // 方案一：使用 VSCode URI Handler
-    // const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(JSON.stringify(params))}`;
-    
-    // 方案二：发送到本地服务器 (更可靠)
-    const response = await fetch(VSCODE_NOTE_SERVER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(params)
-    });
-
-    if (response.ok) {
+    // 优先发送到本地服务器 (更可靠)
+    const serverUrl = await getServerUrl();
+    const body = JSON.stringify(params);
+    const response = await postToServerWithRetry(serverUrl, body, 1, 5000);
+    if (response && response.ok) {
       console.log('Note created successfully in VSCode');
       // 通知 Side Panel 创建成功
       notifySidePanel({ type: 'CREATION_SUCCESS' });
     } else {
-      throw new Error(`Server responded with ${response.status}`);
+      throw new Error(`Server responded with ${response?.status}`);
     }
   } catch (error) {
     console.error('Failed to send content to VSCode:', error);
+    // 将错误反馈到 Side Panel，便于用户排查（不立即返回，仍尝试回退方案）
+    notifySidePanel({ 
+      type: 'CREATION_ERROR', 
+      error: `本地服务不可用或出错：${error?.message || String(error)}，尝试使用备用方式...`
+    });
     
     // 如果 HTTP 请求失败，尝试使用 URI Handler 作为备选方案
     try {
-      const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(JSON.stringify(params))}`;
+      const dataStr = JSON.stringify(params);
+      if (dataStr.length > URI_FALLBACK_MAX_LENGTH) {
+        throw new Error('所选内容过大，备用链接方式可能失败。请在 VSCode 中开启本地服务或缩小选取范围。');
+      }
+      const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(dataStr)}`;
       
       // 使用 chrome.tabs.create 打开 URI
       chrome.tabs.create({ url: vscodeUri, active: false }, (tab) => {
@@ -195,7 +240,7 @@ async function handleContentSelected(data) {
       console.error('Fallback method also failed:', fallbackError);
       notifySidePanel({ 
         type: 'CREATION_ERROR', 
-        error: '无法连接到 VSCode，请确保 VSCode 已打开且 Issue Manager 扩展已启用。' 
+        error: `无法通过备用方式创建笔记：${fallbackError?.message || String(fallbackError)}。\n建议：\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用；\n2) 在扩展设置中开启/确认本地服务（端口与本扩展一致）；\n3) 或在 Side Panel 缩小选取范围后重试。` 
       });
     }
   }
