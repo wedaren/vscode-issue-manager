@@ -83,7 +83,7 @@ async function handleCancelSelection() {
 /**
  * 处理来自 Background 的消息
  */
-function handleBackgroundMessage(message, sender, sendResponse) {
+function handleBackgroundMessage(message) {
   if (!message || !message.type) {
     return;
   }

@@ -170,20 +170,21 @@ async function generateTitleWithProgress(content: string): Promise<string> {
 
     // 如果生成了标题，让用户确认或编辑
     if (suggestedTitle && suggestedTitle.trim().length > 0) {
-        const USE_SUGGESTED = '使用该标题';
-        const EDIT_TITLE = '编辑标题';
-        const CANCEL = '取消';
+        const USE_SUGGESTED_ACTION = '使用该标题';
+        const EDIT_TITLE_ACTION = '编辑标题';
+        const CANCEL_ACTION = '取消';
+
         
         const choice = await vscode.window.showInformationMessage(
             `建议标题：${suggestedTitle}`,
-            USE_SUGGESTED,
-            EDIT_TITLE,
-            CANCEL
+            USE_SUGGESTED_ACTION,
+            EDIT_TITLE_ACTION,
+            CANCEL_ACTION
         );
         
-        if (choice === USE_SUGGESTED) {
+        if (choice === USE_SUGGESTED_ACTION) {
             return suggestedTitle.trim();
-        } else if (choice === EDIT_TITLE) {
+        } else if (choice ===   EDIT_TITLE_ACTION) {
             const edited = await vscode.window.showInputBox({
                 value: suggestedTitle.trim(),
                 prompt: '编辑自动生成的标题'

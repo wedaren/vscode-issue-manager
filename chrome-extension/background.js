@@ -3,6 +3,8 @@
  * 负责协调 Side Panel 和 Content Script 之间的通信
  */
 
+const VSCODE_NOTE_SERVER_URL = 'http://localhost:37892/create-note';  
+
 // 监听扩展图标点击事件，打开 Side Panel
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
@@ -145,20 +147,20 @@ async function handleCancelSelection(tabId) {
  */
 async function handleContentSelected(data) {
   console.log('Content selected:', data);
+  const params = {
+    html: data.html,
+    title: data.title,
+    url: data.url
+  };
+
 
   try {
     // 构建 VSCode URI
-    const params = {
-      html: data.html,
-      title: data.title,
-      url: data.url
-    };
-
     // 方案一：使用 VSCode URI Handler
     // const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(JSON.stringify(params))}`;
     
     // 方案二：发送到本地服务器 (更可靠)
-    const response = await fetch('http://localhost:37892/create-note', {
+    const response = await fetch(VSCODE_NOTE_SERVER_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -178,11 +180,6 @@ async function handleContentSelected(data) {
     
     // 如果 HTTP 请求失败，尝试使用 URI Handler 作为备选方案
     try {
-      const params = {
-        html: data.html,
-        title: data.title,
-        url: data.url
-      };
       const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(JSON.stringify(params))}`;
       
       // 使用 chrome.tabs.create 打开 URI
@@ -207,12 +204,16 @@ async function handleContentSelected(data) {
 /**
  * 通知 Side Panel
  */
-async function notifySidePanel(message) {
-  try {
-    // 使用 runtime.sendMessage 广播消息到所有监听器（包括 Side Panel）
-    await chrome.runtime.sendMessage(message);
-  } catch (error) {
-    // Side Panel 可能未打开，这是正常情况
-    console.log('Side Panel may not be open:', error.message);
-  }
-}
+async function notifySidePanel(message) {  
+  try {  
+    // 向扩展的所有部分（包括 Side Panel）广播消息  
+    await chrome.runtime.sendMessage(message);  
+  } catch (error) {  
+    // 如果没有监听器（例如 Side Panel 未打开），会抛出错误，可以安全地忽略  
+    if (error.message.includes('Could not establish connection. Receiving end does not exist.')) {  
+      console.log('Side Panel is not open, skipping notification.');  
+    } else {  
+      console.error('Failed to notify side panel:', error);  
+    }  
+  }  
+}  

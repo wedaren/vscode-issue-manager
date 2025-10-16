@@ -109,7 +109,8 @@ export class HtmlToMarkdownService {
                 return `\`${this.getTextContent($elem, $)}\``;
             
             case 'pre':
-                const codeContent = this.getTextContent($elem, $);
+                const codeContent = $elem.text();
+
                 const language = this.detectLanguage($elem);
                 return `\n\n\`\`\`${language}\n${codeContent}\n\`\`\`\n\n`;
             
