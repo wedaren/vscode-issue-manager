@@ -261,7 +261,7 @@ export class HtmlToMarkdownService {
     private static getTextContent($elem: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): string {
         // 对于某些元素（链接、代码块），直接返回纯文本
         const tagName = $elem.prop('tagName')?.toLowerCase();
-        if (tagName === 'a' || tagName === 'code' || tagName === 'pre') {
+        if (tagName === 'code' || tagName === 'pre') {
             return $elem.text().trim();
         }
         
@@ -269,7 +269,7 @@ export class HtmlToMarkdownService {
         let text = '';
         $elem.contents().each((_, node) => {
             if (node.type === 'text') {
-                text += $(node).text();
+                text += $(node).text().replace(/\s+/g, ' ');
             } else if (node.type === 'tag') {
                 const $node = $(node);
                 const childTag = $node.prop('tagName')?.toLowerCase();

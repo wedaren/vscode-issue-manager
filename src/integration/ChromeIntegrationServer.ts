@@ -3,6 +3,13 @@ import * as http from 'http';
 import { URL } from 'url';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
 
+
+interface ChromeRequestPayload {  
+  html?: string;  
+  title?: string;  
+  url?: string;  
+}  
+
 /**
  * 负责 VSCode 端与 Chrome 扩展集成：
  * - 本地 HTTP 服务：POST /create-note
@@ -119,7 +126,7 @@ export class ChromeIntegrationServer {
         });
 
         const raw = Buffer.concat(chunks).toString('utf8');
-        let body: any = {};
+        let body: ChromeRequestPayload = {};
         try {
           body = JSON.parse(raw);
         } catch (e) {
