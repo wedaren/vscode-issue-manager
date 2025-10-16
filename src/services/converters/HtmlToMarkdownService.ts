@@ -255,16 +255,16 @@ export class HtmlToMarkdownService {
     }
 
     /**
-     * 获取元素的纯文本内容
+     * 获取元素的纯文本内容，保留内联格式
      */
     private static getTextContent($elem: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): string {
-        // 对于某些元素，需要递归处理以保留内联格式
+        // 对于某些元素（链接、代码块），直接返回纯文本
         const tagName = $elem.prop('tagName')?.toLowerCase();
         if (tagName === 'a' || tagName === 'code' || tagName === 'pre') {
             return $elem.text().trim();
         }
         
-        // 处理包含内联格式的文本
+        // 递归处理包含内联格式的文本
         let text = '';
         $elem.contents().each((_, node) => {
             if (node.type === 'text') {
@@ -274,14 +274,18 @@ export class HtmlToMarkdownService {
                 const childTag = $node.prop('tagName')?.toLowerCase();
                 
                 if (childTag === 'strong' || childTag === 'b') {
-                    text += `**${$node.text().trim()}**`;
+                    // 递归处理内部内容以保留嵌套格式
+                    text += `**${this.getTextContent($node, $)}**`;
                 } else if (childTag === 'em' || childTag === 'i') {
-                    text += `*${$node.text().trim()}*`;
+                    // 递归处理内部内容以保留嵌套格式
+                    text += `*${this.getTextContent($node, $)}*`;
                 } else if (childTag === 'code') {
+                    // code 标签内部不应有其他格式，使用纯文本
                     text += `\`${$node.text().trim()}\``;
                 } else if (childTag === 'br') {
                     text += '  \n';
                 } else {
+                    // 其他标签递归处理
                     text += this.getTextContent($node, $);
                 }
             }
