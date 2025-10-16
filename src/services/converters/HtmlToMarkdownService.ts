@@ -238,7 +238,7 @@ export class HtmlToMarkdownService {
         }
         
         // 生成 Markdown 表格
-        const maxCols = Math.max(...rows.map(r => r.length));
+        const maxCols = Math.max(1, ...rows.map(r => r.length));
         
         // 表头
         if (rows.length > 0) {

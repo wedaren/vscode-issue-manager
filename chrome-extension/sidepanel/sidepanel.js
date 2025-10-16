@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   cancelBtn.addEventListener('click', handleCancelSelection);
   
   // 监听来自 Background 的消息
-  window.addEventListener('message', handleBackgroundMessage);
+  chrome.runtime.onMessage.addListener(handleBackgroundMessage);
 });
 
 /**
@@ -79,9 +79,7 @@ async function handleCancelSelection() {
 /**
  * 处理来自 Background 的消息
  */
-function handleBackgroundMessage(event) {
-  const message = event.data;
-  
+function handleBackgroundMessage(message, sender, sendResponse) {
   if (!message || !message.type) {
     return;
   }

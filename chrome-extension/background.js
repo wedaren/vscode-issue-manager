@@ -147,14 +147,10 @@ async function handleContentSelected(data) {
  */
 async function notifySidePanel(message) {
   try {
-    // 获取所有打开的 Side Panel 视图并发送消息
-    const views = chrome.extension.getViews({ type: 'popup' });
-    views.forEach(view => {
-      if (view.postMessage) {
-        view.postMessage(message, '*');
-      }
-    });
+    // 使用 runtime.sendMessage 广播消息到所有监听器（包括 Side Panel）
+    await chrome.runtime.sendMessage(message);
   } catch (error) {
-    console.error('Failed to notify side panel:', error);
+    // Side Panel 可能未打开，这是正常情况
+    console.log('Side Panel may not be open:', error.message);
   }
 }
