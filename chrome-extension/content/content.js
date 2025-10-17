@@ -26,6 +26,11 @@ let isSelectionMode = false;
 let overlay = null;
 let highlightBox = null;
 let currentElement = null;
+let hoverElement = null; // 鼠标悬停目标
+let keyboardNavigating = false; // 键盘导航锁定：true 时鼠标移动不改变选中
+let lastMouseX = 0;
+let lastMouseY = 0;
+const MOUSE_SWITCH_THRESHOLD = 8; // 像素阈值：超过则从键盘导航切回鼠标导航
 
 // 监听来自 Background Script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -73,7 +78,7 @@ function startSelectionMode() {
   document.addEventListener('keydown', handleKeyDown, true);
 
   // 显示提示
-  showToast('请选择要保存的内容，按 ESC 取消');
+  showToast('请选择内容：Enter 确认，ESC 取消，↑/→ 扩大层级，↓/← 缩小层级');
 }
 
 /**
@@ -109,6 +114,8 @@ function handleMouseMove(event) {
   }
 
   event.stopPropagation();
+  lastMouseX = event.clientX;
+  lastMouseY = event.clientY;
   
   // 获取鼠标位置下的元素
   const element = document.elementFromPoint(event.clientX, event.clientY);
@@ -123,8 +130,19 @@ function handleMouseMove(event) {
     return;
   }
 
-  currentElement = element;
-  updateHighlight(element);
+  hoverElement = element;
+  // 键盘导航时不自动改变 currentElement；当鼠标显著移动时，切回鼠标导航
+  if (!keyboardNavigating) {
+    currentElement = hoverElement;
+    updateHighlight(currentElement);
+  } else {
+    // 如果移动距离较大，则解除键盘锁定，切回鼠标导航
+    if (hasMouseMovedSignificantly()) {
+      keyboardNavigating = false;
+      currentElement = hoverElement;
+      updateHighlight(currentElement);
+    }
+  }
 }
 
 /**
@@ -138,26 +156,7 @@ function handleClick(event) {
   event.preventDefault();
   event.stopPropagation();
 
-  // 提取选中元素的内容
-  const html = currentElement.outerHTML;
-  const title = extractTitle();
-  const url = window.location.href;
-
-  console.log('Element selected:', { html: html.substring(0, 100), title, url });
-
-  // 发送到 Background Script
-  chrome.runtime.sendMessage({
-    type: 'CONTENT_SELECTED',
-    data: { html, title, url }
-  });
-
-  // 显示成功提示
-  showToast('✓ 内容已选取，正在创建笔记...', 'success');
-
-  // 延迟取消选取模式
-  setTimeout(() => {
-    cancelSelectionMode();
-  }, 1000);
+  confirmSelection();
 }
 
 /**
@@ -175,19 +174,75 @@ function handleKeyDown(event) {
     return;
   }
 
+  // Enter 确认当前选中
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!currentElement) {
+      seedCurrentFromHoverOrCenter();
+    }
+    if (currentElement) {
+      confirmSelection();
+    }
+    return;
+  }
+
   // 方向键层级选择
   if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
     event.preventDefault();
     event.stopPropagation();
+    if (!currentElement) {
+      seedCurrentFromHoverOrCenter();
+      if (!currentElement) { return; }
+    }
+    keyboardNavigating = true;
     shrinkSelectionLevel();
     return;
   }
   if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
     event.preventDefault();
     event.stopPropagation();
+    if (!currentElement) {
+      seedCurrentFromHoverOrCenter();
+      if (!currentElement) { return; }
+    }
+    keyboardNavigating = true;
     expandSelectionLevel();
     return;
   }
+}
+
+/**
+ * 将 currentElement 初始化为 hoverElement 或视口中心的元素
+ */
+function seedCurrentFromHoverOrCenter() {
+  if (hoverElement && isSelectable(hoverElement)) {
+    currentElement = hoverElement;
+    updateHighlight(currentElement);
+    return;
+  }
+  const centerX = Math.round(window.innerWidth / 2);
+  const centerY = Math.round(window.innerHeight / 2);
+  const el = document.elementFromPoint(centerX, centerY);
+  if (el && isSelectable(el)) {
+    currentElement = el;
+    updateHighlight(currentElement);
+  }
+}
+
+/**
+ * 判断鼠标是否显著移动，超过阈值则认为用户希望切回鼠标导航
+ */
+function hasMouseMovedSignificantly() {
+  const el = currentElement;
+  if (!el) {
+    return true;
+  }
+  const rect = el.getBoundingClientRect();
+  // 如果鼠标离当前元素的矩形边界较远，也视为显著移动
+  const dx = lastMouseX < rect.left ? rect.left - lastMouseX : (lastMouseX > rect.right ? lastMouseX - rect.right : 0);
+  const dy = lastMouseY < rect.top ? rect.top - lastMouseY : (lastMouseY > rect.bottom ? lastMouseY - rect.bottom : 0);
+  return (dx > MOUSE_SWITCH_THRESHOLD || dy > MOUSE_SWITCH_THRESHOLD);
 }
 
 /**
@@ -395,6 +450,35 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     removeToast();
   }, 3000);
+}
+
+/**
+ * 确认当前选中元素，将其发送给 Background 并结束选取
+ */
+function confirmSelection() {
+  if (!currentElement) {
+    return;
+  }
+  // 提取选中元素的内容
+  const html = currentElement.outerHTML;
+  const title = extractTitle();
+  const url = window.location.href;
+
+  console.log('Element selected:', { html: html.substring(0, 100), title, url });
+
+  // 发送到 Background Script
+  chrome.runtime.sendMessage({
+    type: 'CONTENT_SELECTED',
+    data: { html, title, url }
+  });
+
+  // 显示成功提示
+  showToast('✓ 内容已选取，正在创建笔记...', 'success');
+
+  // 延迟取消选取模式
+  setTimeout(() => {
+    cancelSelectionMode();
+  }, 1000);
 }
 
 /**
