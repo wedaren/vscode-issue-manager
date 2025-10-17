@@ -172,7 +172,98 @@ function handleKeyDown(event) {
     event.preventDefault();
     cancelSelectionMode();
     showToast('已取消选取', 'info');
+    return;
   }
+
+  // 方向键层级选择
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+    event.preventDefault();
+    event.stopPropagation();
+    shrinkSelectionLevel();
+    return;
+  }
+  if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    event.stopPropagation();
+    expandSelectionLevel();
+    return;
+  }
+}
+
+/**
+ * 尝试缩小选取层级：优先选择包含在当前元素中心点的子元素，其次使用第一个子元素
+ */
+function shrinkSelectionLevel() {
+  if (!currentElement) {
+    return;
+  }
+
+  // 找当前元素中心点下的元素
+  const rect = currentElement.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  // elementFromPoint 接受视口坐标（client 坐标），无需减去滚动偏移
+
+  let candidate = null;
+  try {
+  const el = document.elementFromPoint(centerX, centerY);
+    if (el && currentElement.contains(el) && el !== currentElement && isSelectable(el)) {
+      candidate = el;
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // 如果没有找到合适的中心子元素，尝试第一个子元素
+  if (!candidate) {
+    candidate = Array.from(currentElement.children).find(isSelectable) || null;
+  }
+
+  if (candidate) {
+    currentElement = candidate;
+    updateHighlight(currentElement);
+    showToast('已缩小层级（选中子元素）', 'info');
+  } else {
+    showToast('无法缩小：没有可选的子元素', 'error');
+  }
+}
+
+/**
+ * 尝试扩大选取层级：选择父元素（直到 body/html 之前）
+ */
+function expandSelectionLevel() {
+  if (!currentElement) {
+    return;
+  }
+
+  let parent = currentElement.parentElement;
+  while (parent && !isSelectable(parent)) {
+    parent = parent.parentElement;
+  }
+
+  if (parent && parent !== document.documentElement && parent !== document.body) {
+    currentElement = parent;
+    updateHighlight(currentElement);
+    showToast('已扩大层级（选中父元素）', 'info');
+  } else {
+    showToast('无法扩大：已经到达顶层', 'error');
+  }
+}
+
+/**
+ * 判断元素是否可被选作目标（排除我们创建的 UI 和文档根）
+ */
+function isSelectable(el) {
+  if (!el || el === overlay || el === highlightBox) {
+    return false;
+  }
+  if (el.classList && (el.classList.contains('issue-manager-overlay') || el.classList.contains('issue-manager-highlight') || el.classList.contains('issue-manager-toast'))) {
+    return false;
+  }
+  if (el === document.documentElement || el === document.body) {
+    return false;
+  }
+  return true;
 }
 
 /**
