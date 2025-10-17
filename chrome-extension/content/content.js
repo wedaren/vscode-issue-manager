@@ -31,6 +31,10 @@ let keyboardNavigating = false; // 键盘导航锁定：true 时鼠标移动不�
 let lastMouseX = 0;
 let lastMouseY = 0;
 const MOUSE_SWITCH_THRESHOLD = 8; // 像素阈值：超过则从键盘导航切回鼠标导航
+let controlPanel = null; // 右上角确认/取消面板
+let frozenByClick = false; // 点击后冻结鼠标对选中的影响，直到确认/取消或键盘微调
+
+const OUR_UI_CLASSES = ['issue-manager-overlay', 'issue-manager-highlight', 'issue-manager-toast', 'issue-manager-control'];
 
 // 监听来自 Background Script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -72,10 +76,27 @@ function startSelectionMode() {
   // 创建高亮框
   createHighlightBox();
 
+  // 创建控制面板（确认/取消）
+  createControlPanel();
+
   // 绑定事件监听器
   document.addEventListener('mousemove', handleMouseMove, true);
   document.addEventListener('click', handleClick, true);
   document.addEventListener('keydown', handleKeyDown, true);
+  // 同时在 window 层级捕获键盘，避免页面在 document 之前拦截
+  window.addEventListener('keydown', handleKeyDown, true);
+
+  // 尝试移除页面焦点，避免某些输入框或 iframe 抢占按键
+  try {
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    if (document.body && typeof document.body.focus === 'function') {
+      document.body.focus();
+    }
+  } catch (_) {
+    // 忽略聚焦相关异常
+  }
 
   // 显示提示
   showToast('请选择内容：Enter 确认，ESC 取消，↑/→ 扩大层级，↓/← 缩小层级');
@@ -96,13 +117,16 @@ function cancelSelectionMode() {
   document.removeEventListener('mousemove', handleMouseMove, true);
   document.removeEventListener('click', handleClick, true);
   document.removeEventListener('keydown', handleKeyDown, true);
+  window.removeEventListener('keydown', handleKeyDown, true);
 
   // 移除 UI 元素
   removeOverlay();
   removeHighlightBox();
   removeToast();
+  removeControlPanel();
 
   currentElement = null;
+  frozenByClick = false;
 }
 
 /**
@@ -124,9 +148,8 @@ function handleMouseMove(event) {
     return;
   }
 
-  // 跳过我们自己创建的元素
-  if (element.classList.contains('issue-manager-overlay') || 
-      element.classList.contains('issue-manager-highlight')) {
+  // 跳过我们自己创建的元素（包括控制面板、提示）
+  if (isOurUiElement(element)) {
     return;
   }
 
@@ -136,8 +159,8 @@ function handleMouseMove(event) {
     currentElement = hoverElement;
     updateHighlight(currentElement);
   } else {
-    // 如果移动距离较大，则解除键盘锁定，切回鼠标导航
-    if (hasMouseMovedSignificantly()) {
+    // 点击冻结时，不因鼠标移动解锁
+    if (!frozenByClick && hasMouseMovedSignificantly()) {
       keyboardNavigating = false;
       currentElement = hoverElement;
       updateHighlight(currentElement);
@@ -150,13 +173,26 @@ function handleMouseMove(event) {
  */
 function handleClick(event) {
   if (!isSelectionMode || !currentElement) {
+    // 即便 currentElement 为空，也允许通过点击来设定 currentElement
+    // 继续处理
+  }
+  // 如果点击在我们的控制面板或自有 UI 上，不拦截，让按钮自身处理
+  if (isOurUiElement(event.target)) {
     return;
   }
-
+  // 非自有 UI 的点击：用于选择元素，但不确认
   event.preventDefault();
   event.stopPropagation();
 
-  confirmSelection();
+  const el = document.elementFromPoint(event.clientX, event.clientY) || event.target;
+  if (el && isSelectable(el)) {
+    currentElement = el;
+    // 点击后锁定为“键盘导航/冻结”模式，鼠标移动不再改变选中
+    keyboardNavigating = true;
+    frozenByClick = true;
+    updateHighlight(currentElement);
+    showToast('已选中元素：鼠标已锁定，方向键微调，回车确认，或点击右上角“确认”。', 'info');
+  }
 }
 
 /**
@@ -169,6 +205,7 @@ function handleKeyDown(event) {
 
   if (event.key === 'Escape') {
     event.preventDefault();
+    event.stopImmediatePropagation();
     cancelSelectionMode();
     showToast('已取消选取', 'info');
     return;
@@ -178,6 +215,7 @@ function handleKeyDown(event) {
   if (event.key === 'Enter') {
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
     if (!currentElement) {
       seedCurrentFromHoverOrCenter();
     }
@@ -191,22 +229,26 @@ function handleKeyDown(event) {
   if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
     if (!currentElement) {
       seedCurrentFromHoverOrCenter();
       if (!currentElement) { return; }
     }
     keyboardNavigating = true;
+    // 键盘微调后仍保持冻结，直到用户再次点击或退出
     shrinkSelectionLevel();
     return;
   }
   if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
     if (!currentElement) {
       seedCurrentFromHoverOrCenter();
       if (!currentElement) { return; }
     }
     keyboardNavigating = true;
+    // 键盘微调后仍保持冻结，直到用户再次点击或退出
     expandSelectionLevel();
     return;
   }
@@ -312,13 +354,35 @@ function isSelectable(el) {
   if (!el || el === overlay || el === highlightBox) {
     return false;
   }
-  if (el.classList && (el.classList.contains('issue-manager-overlay') || el.classList.contains('issue-manager-highlight') || el.classList.contains('issue-manager-toast'))) {
+  if (isOurUiElement(el)) {
     return false;
   }
   if (el === document.documentElement || el === document.body) {
     return false;
   }
   return true;
+}
+
+/**
+ * 判断是否为我们创建的 UI 元素
+ */
+function isOurUiElement(el) {
+  if (!el) { return false; }
+  if (el.classList) {
+    for (const cls of OUR_UI_CLASSES) {
+      if (el.classList.contains(cls)) { return true; }
+    }
+  }
+  // 如果在控制面板内部，也视为自有 UI
+  if (controlPanel && (el === controlPanel || (el.closest && el.closest('.issue-manager-control')))) {
+    return true;
+  }
+  // 如果在提示元素内部
+  const toast = document.querySelector('.issue-manager-toast');
+  if (toast && (el === toast || (el.closest && el.closest('.issue-manager-toast')))) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -399,7 +463,10 @@ function updateHighlight(element) {
   if (!highlightBox) {
     return;
   }
-
+  if (!element) {
+    highlightBox.style.display = 'none';
+    return;
+  }
   const rect = element.getBoundingClientRect();
   const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
   const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
@@ -489,4 +556,110 @@ function removeToast() {
   if (existingToast && existingToast.parentNode) {
     existingToast.parentNode.removeChild(existingToast);
   }
+}
+
+/**
+ * 创建右上角控制面板（确认/取消）
+ */
+function createControlPanel() {
+  if (controlPanel) { return; }
+  controlPanel = document.createElement('div');
+  controlPanel.className = 'issue-manager-control';
+  controlPanel.style.cssText = `
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 10000000;
+    display: flex;
+    gap: 8px;
+    background: rgba(33, 37, 41, 0.9);
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  `;
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.textContent = '确认';
+  confirmBtn.style.cssText = `
+    background: #28a745;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+  `;
+  confirmBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!currentElement) {
+      seedCurrentFromHoverOrCenter();
+    }
+    if (currentElement) {
+      confirmSelection();
+    } else {
+      showToast('请先选择一个元素，然后再点击确认。', 'error');
+    }
+  }, true);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '取消选择';
+  cancelBtn.style.cssText = `
+    background: #dc3545;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+  `;
+  cancelBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // 软取消：清空当前选中并解锁，继续处于选取模式
+    clearCurrentSelection();
+    frozenByClick = false;
+    keyboardNavigating = false;
+    showToast('已取消当前选中，请移动鼠标重新选择；按 ESC 可退出。', 'info');
+  }, true);
+
+  const exitBtn = document.createElement('button');
+  exitBtn.textContent = '退出';
+  exitBtn.style.cssText = `
+    background: #6c757d;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+  `;
+  exitBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    cancelSelectionMode();
+    showToast('已退出选取模式', 'info');
+  }, true);
+
+  controlPanel.appendChild(confirmBtn);
+  controlPanel.appendChild(cancelBtn);
+  controlPanel.appendChild(exitBtn);
+  document.body.appendChild(controlPanel);
+}
+
+function removeControlPanel() {
+  if (controlPanel && controlPanel.parentNode) {
+    controlPanel.parentNode.removeChild(controlPanel);
+  }
+  controlPanel = null;
+}
+
+/**
+ * 清空当前选中并隐藏高亮
+ */
+function clearCurrentSelection() {
+  currentElement = null;
+  updateHighlight(null);
 }

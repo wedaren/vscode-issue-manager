@@ -7,6 +7,100 @@ const DEFAULT_VSCODE_NOTE_SERVER_URL = 'http://localhost:37892/create-note';
 const SERVER_URL_STORAGE_KEY = 'issueManager.vscodeNoteServerUrl';
 const URI_FALLBACK_MAX_LENGTH = 60000; // 避免超长 vscode:// 链接导致失败
 
+// --- Promise 封装：兼容部分环境下 chrome.* 不返回 Promise 的情况 ---
+const api = {
+  tabsQuery(queryInfo) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.query(queryInfo, (tabs) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            return reject(err);
+          }
+          resolve(tabs || []);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+  tabsSendMessage(tabId, message) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            return reject(err);
+          }
+          resolve(response);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+  tabsGet(tabId) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.get(tabId, (tab) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            return reject(err);
+          }
+          resolve(tab);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+  tabsCreate(createProperties) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.create(createProperties, (tab) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            return reject(err);
+          }
+          resolve(tab);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+  tabsRemove(tabId) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.remove(tabId, () => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            return reject(err);
+          }
+          resolve();
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+  runtimeSendMessage(message) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            return reject(err);
+          }
+          resolve(response);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+};
+
 async function getServerUrl() {
   try {
     const data = await chrome.storage?.sync?.get?.(SERVER_URL_STORAGE_KEY) || await chrome.storage?.local?.get?.(SERVER_URL_STORAGE_KEY) || {};
@@ -100,7 +194,7 @@ async function handleStartSelection(tabId) {
   if (!tabId) {
     // 尝试获取当前活动标签页作为后备
     try {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [activeTab] = await api.tabsQuery({ active: true, currentWindow: true });
       tabId = activeTab?.id;
     } catch (e) {
       console.error('Failed to query active tab:', e);
@@ -116,7 +210,7 @@ async function handleStartSelection(tabId) {
 
   try {
     // 尝试直接通知 Content Script
-    await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
+    await api.tabsSendMessage(tabId, { type: 'START_SELECTION' });
     console.log('Selection mode activated in tab', tabId);
     return;
   } catch (error) {
@@ -126,12 +220,12 @@ async function handleStartSelection(tabId) {
   // 首次失败：尝试注入 content script 后重试
   try {
     await ensureContentScriptInjected(tabId);
-    await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
+    await api.tabsSendMessage(tabId, { type: 'START_SELECTION' });
     console.log('Selection mode activated after injection in tab', tabId);
   } catch (error) {
     // 检查是否为受限页面
     try {
-      const tab = await chrome.tabs.get(tabId);
+      const tab = await api.tabsGet(tabId);
       const url = tab?.url || '';
       if (/^(chrome|chrome-extension|edge|about|chrome-search):/i.test(url) || /chromewebstore\.google\.com/i.test(url)) {
         throw new Error('该页面不支持内容脚本（如 chrome:// 或 Chrome Web Store），无法进入选取模式。请在普通网页中重试。');
@@ -149,9 +243,18 @@ async function handleStartSelection(tabId) {
 async function ensureContentScriptInjected(tabId) {
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId, allFrames: true },
       files: ['content/content.js']
     });
+    // 同步注入样式，确保高亮样式在所有 frame 中可见
+    try {
+      await chrome.scripting.insertCSS({
+        target: { tabId, allFrames: true },
+        files: ['content/content.css']
+      });
+    } catch (cssErr) {
+      console.warn('insertCSS failed or not needed:', cssErr?.message || cssErr);
+    }
   } catch (e) {
     console.warn('executeScript failed or not needed:', e?.message || e);
     // 即使注入失败，可能是已存在或权限受限，由上层判断
@@ -165,7 +268,7 @@ async function handleCancelSelection(tabId) {
   if (!tabId) {
     // 尝试获取当前活动标签页作为后备
     try {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [activeTab] = await api.tabsQuery({ active: true, currentWindow: true });
       tabId = activeTab?.id;
     } catch (e) {
       console.error('Failed to query active tab:', e);
@@ -178,7 +281,7 @@ async function handleCancelSelection(tabId) {
   }
 
   try {
-    await chrome.tabs.sendMessage(tabId, {
+    await api.tabsSendMessage(tabId, {
       type: 'CANCEL_SELECTION'
     });
     console.log('Selection mode cancelled in tab', tabId);
@@ -228,12 +331,13 @@ async function handleContentSelected(data) {
       const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(dataStr)}`;
       
       // 使用 chrome.tabs.create 打开 URI
-      chrome.tabs.create({ url: vscodeUri, active: false }, (tab) => {
-        // 创建后立即关闭标签页
-        if (tab.id) {
-          setTimeout(() => chrome.tabs.remove(tab.id), 100);
-        }
-      });
+      const tab = await api.tabsCreate({ url: vscodeUri, active: false });
+      // 创建后立即关闭标签页
+      if (tab?.id) {
+        setTimeout(() => {
+          api.tabsRemove(tab.id).catch(() => {});
+        }, 100);
+      }
       
       notifySidePanel({ type: 'CREATION_SUCCESS' });
     } catch (fallbackError) {
@@ -252,7 +356,7 @@ async function handleContentSelected(data) {
 async function notifySidePanel(message) {  
   try {  
     // 向扩展的所有部分（包括 Side Panel）广播消息  
-    await chrome.runtime.sendMessage(message);  
+    await api.runtimeSendMessage(message);  
   } catch (error) {  
     // 如果没有监听器（例如 Side Panel 未打开），会抛出错误，可以安全地忽略  
     if (error.message.includes('Could not establish connection. Receiving end does not exist.')) {  
