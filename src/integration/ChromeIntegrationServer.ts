@@ -59,6 +59,7 @@ export class ChromeIntegrationServer {
               url = parsed.url ?? url;
             } catch (e) {
               console.error('URI data 参数解析失败:', e);
+              void vscode.window.showErrorMessage('解析来自 Chrome 扩展的数据失败,请重试。');
             }
           }
 

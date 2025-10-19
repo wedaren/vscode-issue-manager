@@ -451,16 +451,6 @@ function extractTitle() {
 function createOverlay() {
   overlay = document.createElement('div');
   overlay.className = 'issue-manager-overlay';
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 999998;
-    pointer-events: none;
-  `;
   document.body.appendChild(overlay);
 }
 
@@ -480,15 +470,6 @@ function removeOverlay() {
 function createHighlightBox() {
   highlightBox = document.createElement('div');
   highlightBox.className = 'issue-manager-highlight';
-  highlightBox.style.cssText = `
-    position: absolute;
-    border: 3px solid #667eea;
-    background: rgba(102, 126, 234, 0.1);
-    pointer-events: none;
-    z-index: 999999;
-    transition: all 0.1s ease;
-    display: none;
-  `;
   document.body.appendChild(highlightBox);
 }
 
@@ -532,30 +513,7 @@ function showToast(message, type = 'info') {
   removeToast();
 
   const toast = document.createElement('div');
-  toast.className = 'issue-manager-toast';
-  
-  const bgColor = {
-    info: '#667eea',
-    success: '#28a745',
-    error: '#dc3545'
-  }[type] || '#667eea';
-
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: ${bgColor};
-    color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    z-index: 9999999;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    animation: slideDown 0.3s ease;
-  `;
-  
+  toast.className = `issue-manager-toast issue-manager-toast-${type}`;
   toast.textContent = message;
   document.body.appendChild(toast);
 
@@ -605,38 +563,16 @@ function removeToast() {
 }
 
 /**
- * 创建右上角控制面板（确认/取消）
+ * 创建右上角控制面板(确认/取消)
  */
 function createControlPanel() {
   if (controlPanel) { return; }
   controlPanel = document.createElement('div');
   controlPanel.className = 'issue-manager-control';
-  controlPanel.style.cssText = `
-    position: fixed;
-    top: 16px;
-    right: 16px;
-    z-index: 10000000;
-    display: flex;
-    gap: 8px;
-    background: rgba(33, 37, 41, 0.9);
-    padding: 8px 10px;
-    border-radius: 8px;
-    color: #fff;
-    font-size: 13px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  `;
 
   const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'issue-manager-control-confirm';
   confirmBtn.textContent = '确认';
-  confirmBtn.style.cssText = `
-    background: #28a745;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-weight: 600;
-  `;
   confirmBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -646,30 +582,22 @@ function createControlPanel() {
     if (currentElement) {
       confirmSelection();
     } else {
-      debouncedShowToast('请先选择一个元素，然后再点击确认。', 'error');
+      debouncedShowToast('请先选择一个元素,然后再点击确认。', 'error');
     }
   }, true);
 
   const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'issue-manager-control-cancel';
   cancelBtn.textContent = '重新选择';
-  cancelBtn.style.cssText = `
-    background: #dc3545;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-weight: 600;
-  `;
   cancelBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // 软取消：清空当前选中并解锁，继续处于选取模式
+    // 软取消:清空当前选中并解锁,继续处于选取模式
     clearCurrentSelection();
     frozenByClick = false;
     keyboardNavigating = false;
     navigationHistory = []; // 清空历史
-    debouncedShowToast('已取消当前选中，请移动鼠标重新选择；按 ESC 可退出。', 'info');
+    debouncedShowToast('已取消当前选中,请移动鼠标重新选择;按 ESC 可退出。', 'info');
   }, true);
 
 
