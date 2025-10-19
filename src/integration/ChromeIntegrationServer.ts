@@ -112,17 +112,68 @@ export class ChromeIntegrationServer {
         let total = 0;
         const MAX = 5 * 1024 * 1024;
         await new Promise<void>((resolve, reject) => {
-          req.on('data', (chunk: Buffer) => {
+          let settled = false;
+
+          const cleanup = () => {
+            req.removeListener('data', onData);
+            req.removeListener('end', onEnd);
+            req.removeListener('error', onError);
+            req.removeListener('aborted', onAborted);
+            req.removeListener('close', onClose);
+          };
+
+          const safeResolve = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+          };
+
+          const safeReject = (err: unknown) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(err);
+          };
+
+          const onError = (err: Error) => {
+            // 捕获 destroy() 等导致的 error，避免未处理异常
+            safeReject(err);
+          };
+
+          const onAborted = () => {
+            // 客户端中止
+            safeReject(new Error('Request aborted'));
+          };
+
+          const onClose = () => {
+            // 连接提前关闭
+            safeReject(new Error('Request closed'));
+          };
+
+          const onEnd = () => {
+            safeResolve();
+          };
+
+          const onData = (chunk: Buffer) => {
             total += chunk.length;
             if (total > MAX) {
-              reject(new Error('Payload too large'));
-              try { req.destroy(); } catch {}
+              // 超过上限：先 destroy，再通过 error/safeReject 结束
+              // 传入错误对象，确保 error 事件被触发并被监听到
+              req.destroy(new Error('Payload too large'));
+              // 直接安全拒绝（如果 error 先触发，safeReject 会避免重复执行）
+              safeReject(new Error('Payload too large'));
               return;
             }
             chunks.push(chunk);
-          });
-          req.on('end', () => resolve());
-          req.on('error', (err) => reject(err));
+          };
+
+          // 先绑定 error/aborted/close 监听器，确保 destroy() 的错误被捕获
+          req.on('error', onError);
+          req.on('aborted', onAborted);
+          req.on('close', onClose);
+          req.on('data', onData);
+          req.on('end', onEnd);
         });
 
         const raw = Buffer.concat(chunks).toString('utf8');
