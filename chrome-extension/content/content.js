@@ -33,8 +33,34 @@ let lastMouseY = 0;
 const MOUSE_SWITCH_THRESHOLD = 8; // 像素阈值：超过则从键盘导航切回鼠标导航
 let controlPanel = null; // 右上角确认/取消面板
 let frozenByClick = false; // 点击后冻结鼠标对选中的影响，直到确认/取消或键盘微调
+let navigationHistory = []; // 存储键盘导航路径，用于后退
 
 const OUR_UI_CLASSES = ['issue-manager-overlay', 'issue-manager-highlight', 'issue-manager-toast', 'issue-manager-control'];
+
+// --- 工具函数 ---
+
+/**
+ * 防抖函数
+ * @param {Function} func 要执行的函数
+ * @param {number} wait 等待时间（毫秒）
+ * @returns {Function} 防抖处理后的函数
+ */
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// 对 showToast 应用防抖
+const debouncedShowToast = debounce(showToast, 500);
+
+// -----------------
 
 // 监听来自 Background Script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -69,15 +95,15 @@ function startSelectionMode() {
 
   console.log('Starting selection mode');
   isSelectionMode = true;
+  frozenByClick = false; // 重置状态
+  currentElement = null; // 重置状态
+  navigationHistory = []; // 重置导航历史
 
   // 创建遮罩层
   createOverlay();
   
-  // 创建高亮框
+  // 创建高亮框（但此时不显示）
   createHighlightBox();
-
-  // 创建控制面板（确认/取消）
-  createControlPanel();
 
   // 绑定事件监听器
   document.addEventListener('mousemove', handleMouseMove, true);
@@ -98,8 +124,8 @@ function startSelectionMode() {
     // 忽略聚焦相关异常
   }
 
-  // 显示提示
-  showToast('请选择内容：Enter 确认，ESC 取消，↑/→ 扩大层级，↓/← 缩小层级');
+  // 显示初始提示
+  debouncedShowToast('请点击页面任意区域以选中内容');
 }
 
 /**
@@ -127,6 +153,7 @@ function cancelSelectionMode() {
 
   currentElement = null;
   frozenByClick = false;
+  navigationHistory = [];
 }
 
 /**
@@ -172,26 +199,34 @@ function handleMouseMove(event) {
  * 处理点击
  */
 function handleClick(event) {
-  if (!isSelectionMode || !currentElement) {
-    // 即便 currentElement 为空，也允许通过点击来设定 currentElement
-    // 继续处理
+  if (!isSelectionMode) {
+    return;
   }
   // 如果点击在我们的控制面板或自有 UI 上，不拦截，让按钮自身处理
   if (isOurUiElement(event.target)) {
     return;
   }
-  // 非自有 UI 的点击：用于选择元素，但不确认
+  // 阻止默认行为和事件传播，以完全控制点击
   event.preventDefault();
   event.stopPropagation();
 
   const el = document.elementFromPoint(event.clientX, event.clientY) || event.target;
   if (el && isSelectable(el)) {
     currentElement = el;
+    navigationHistory = [currentElement]; // 每次点击都重置并设置导航历史起点
+    updateHighlight(currentElement);
+
+    // 如果是第一次点击（通过 frozenByClick 状态判断），则创建控制面板
+    if (!frozenByClick) {
+      createControlPanel();
+      debouncedShowToast('已选中！方向键可微调，回车或点击“确认”完成。', 'info');
+    } else {
+      debouncedShowToast('已重新选择元素。', 'info');
+    }
+
     // 点击后锁定为“键盘导航/冻结”模式，鼠标移动不再改变选中
     keyboardNavigating = true;
     frozenByClick = true;
-    updateHighlight(currentElement);
-    showToast('已选中元素：鼠标已锁定，方向键微调，回车确认，或点击右上角“确认”。', 'info');
   }
 }
 
@@ -207,7 +242,7 @@ function handleKeyDown(event) {
     event.preventDefault();
     event.stopImmediatePropagation();
     cancelSelectionMode();
-    showToast('已取消选取', 'info');
+    debouncedShowToast('已取消选取', 'info');
     return;
   }
 
@@ -288,22 +323,31 @@ function hasMouseMovedSignificantly() {
 }
 
 /**
- * 尝试缩小选取层级：优先选择包含在当前元素中心点的子元素，其次使用第一个子元素
+ * 尝试缩小选取层级：优先返回上一级，否则深入子级
  */
 function shrinkSelectionLevel() {
   if (!currentElement) {
     return;
   }
 
+  // 优先：如果可以返回，则返回
+  if (navigationHistory.length > 1) {
+    navigationHistory.pop(); // 移除当前层级
+    currentElement = navigationHistory[navigationHistory.length - 1]; // 回到上一级
+    updateHighlight(currentElement);
+    debouncedShowToast('已返回上一级', 'info');
+    return;
+  }
+
+  // 否则：尝试深入子级
   // 找当前元素中心点下的元素
   const rect = currentElement.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
-  // elementFromPoint 接受视口坐标（client 坐标），无需减去滚动偏移
-
+  
   let candidate = null;
   try {
-  const el = document.elementFromPoint(centerX, centerY);
+    const el = document.elementFromPoint(centerX, centerY);
     if (el && currentElement.contains(el) && el !== currentElement && isSelectable(el)) {
       candidate = el;
     }
@@ -318,15 +362,16 @@ function shrinkSelectionLevel() {
 
   if (candidate) {
     currentElement = candidate;
+    navigationHistory.push(currentElement); // 深入子级，添加到历史
     updateHighlight(currentElement);
-    showToast('已缩小层级（选中子元素）', 'info');
+    debouncedShowToast('已深入子级', 'info');
   } else {
-    showToast('无法缩小：没有可选的子元素', 'error');
+    debouncedShowToast('无法缩小：已在最内层', 'error');
   }
 }
 
 /**
- * 尝试扩大选取层级：选择父元素（直到 body/html 之前）
+ * 尝试扩大选取层级：选择父元素并记录到历史
  */
 function expandSelectionLevel() {
   if (!currentElement) {
@@ -340,10 +385,11 @@ function expandSelectionLevel() {
 
   if (parent && parent !== document.documentElement && parent !== document.body) {
     currentElement = parent;
+    navigationHistory.push(currentElement); // 将新层级添加到历史记录
     updateHighlight(currentElement);
-    showToast('已扩大层级（选中父元素）', 'info');
+    debouncedShowToast('已扩大层级（选中父元素）', 'info');
   } else {
-    showToast('无法扩大：已经到达顶层', 'error');
+    debouncedShowToast('无法扩大：已经到达顶层', 'error');
   }
 }
 
@@ -540,7 +586,7 @@ function confirmSelection() {
   });
 
   // 显示成功提示
-  showToast('✓ 内容已选取，正在创建笔记...', 'success');
+  debouncedShowToast('✓ 内容已选取，正在创建笔记...', 'success');
 
   // 延迟取消选取模式
   setTimeout(() => {
@@ -600,12 +646,12 @@ function createControlPanel() {
     if (currentElement) {
       confirmSelection();
     } else {
-      showToast('请先选择一个元素，然后再点击确认。', 'error');
+      debouncedShowToast('请先选择一个元素，然后再点击确认。', 'error');
     }
   }, true);
 
   const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = '取消选择';
+  cancelBtn.textContent = '重新选择';
   cancelBtn.style.cssText = `
     background: #dc3545;
     color: #fff;
@@ -622,30 +668,13 @@ function createControlPanel() {
     clearCurrentSelection();
     frozenByClick = false;
     keyboardNavigating = false;
-    showToast('已取消当前选中，请移动鼠标重新选择；按 ESC 可退出。', 'info');
+    navigationHistory = []; // 清空历史
+    debouncedShowToast('已取消当前选中，请移动鼠标重新选择；按 ESC 可退出。', 'info');
   }, true);
 
-  const exitBtn = document.createElement('button');
-  exitBtn.textContent = '退出';
-  exitBtn.style.cssText = `
-    background: #6c757d;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-weight: 600;
-  `;
-  exitBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    cancelSelectionMode();
-    showToast('已退出选取模式', 'info');
-  }, true);
 
   controlPanel.appendChild(confirmBtn);
   controlPanel.appendChild(cancelBtn);
-  controlPanel.appendChild(exitBtn);
   document.body.appendChild(controlPanel);
 }
 
