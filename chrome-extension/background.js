@@ -8,97 +8,17 @@ const SERVER_URL_STORAGE_KEY = 'issueManager.vscodeNoteServerUrl';
 const URI_FALLBACK_MAX_LENGTH = 60000; // 避免超长 vscode:// 链接导致失败
 
 // --- Promise 封装：兼容部分环境下 chrome.* 不返回 Promise 的情况 ---
+/**
+ * 使用现代 Chrome 扩展 Promise API 的轻量别名。
+ * 如需兼容更旧环境，请在外部引入 polyfill，而非在此处做回调封装。
+ */
 const api = {
-  tabsQuery(queryInfo) {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.tabs.query(queryInfo, (tabs) => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            return reject(err);
-          }
-          resolve(tabs || []);
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
-  },
-  tabsSendMessage(tabId, message) {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.tabs.sendMessage(tabId, message, (response) => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            return reject(err);
-          }
-          resolve(response);
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
-  },
-  tabsGet(tabId) {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.tabs.get(tabId, (tab) => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            return reject(err);
-          }
-          resolve(tab);
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
-  },
-  tabsCreate(createProperties) {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.tabs.create(createProperties, (tab) => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            return reject(err);
-          }
-          resolve(tab);
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
-  },
-  tabsRemove(tabId) {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.tabs.remove(tabId, () => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            return reject(err);
-          }
-          resolve();
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
-  },
-  runtimeSendMessage(message) {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.runtime.sendMessage(message, (response) => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            return reject(err);
-          }
-          resolve(response);
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
+  tabsQuery: (queryInfo) => chrome.tabs.query(queryInfo),
+  tabsSendMessage: (tabId, message) => chrome.tabs.sendMessage(tabId, message),
+  tabsGet: (tabId) => chrome.tabs.get(tabId),
+  tabsCreate: (createProperties) => chrome.tabs.create(createProperties),
+  tabsRemove: (tabId) => chrome.tabs.remove(tabId),
+  runtimeSendMessage: (message) => chrome.runtime.sendMessage(message)
 };
 
 async function getServerUrl() {
