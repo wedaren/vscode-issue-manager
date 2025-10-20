@@ -9,6 +9,8 @@ const cancelBtn = document.getElementById('cancel-selection-btn');
 const statusText = document.getElementById('status-text');
 const statusDiv = document.getElementById('status');
 const messageDiv = document.getElementById('message');
+const wsStatusDiv = document.getElementById('ws-status');
+const wsStatusText = document.getElementById('ws-status-text');
 
 // 状态管理
 let isSelecting = false;
@@ -23,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 监听来自 Background 的消息
   chrome.runtime.onMessage.addListener(handleBackgroundMessage);
+  
+  // 查询当前 WebSocket 状态
+  queryWsStatus();
 });
 
 /**
@@ -99,6 +104,14 @@ function handleBackgroundMessage(message) {
       showMessage('❌ ' + (message.error || '创建笔记失败'), 'error');
       break;
       
+    case 'WS_CONNECTED':
+      updateWsStatus('connected');
+      break;
+      
+    case 'WS_DISCONNECTED':
+      updateWsStatus('disconnected');
+      break;
+      
     default:
       console.log('Unknown message type:', message.type);
   }
@@ -144,4 +157,49 @@ function showMessage(text, type = 'success') {
       statusDiv.classList.remove('error');
     }
   }, 3000);
+}
+
+/**
+ * 更新 WebSocket 连接状态
+ */
+function updateWsStatus(status) {
+  // 移除所有状态类
+  wsStatusDiv.classList.remove('connected', 'disconnected', 'connecting');
+  
+  switch (status) {
+    case 'connected':
+      wsStatusDiv.classList.add('connected');
+      wsStatusText.textContent = '已连接';
+      break;
+      
+    case 'disconnected':
+      wsStatusDiv.classList.add('disconnected');
+      wsStatusText.textContent = '已断开';
+      break;
+      
+    case 'connecting':
+      wsStatusDiv.classList.add('connecting');
+      wsStatusText.textContent = '连接中';
+      break;
+      
+    default:
+      wsStatusText.textContent = '未知';
+  }
+}
+
+/**
+ * 查询当前 WebSocket 连接状态
+ */
+async function queryWsStatus() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_WS_STATUS' });
+    if (response && response.status) {
+      updateWsStatus(response.status);
+    } else {
+      updateWsStatus('connecting');
+    }
+  } catch (error) {
+    console.error('Failed to query WebSocket status:', error);
+    updateWsStatus('disconnected');
+  }
 }

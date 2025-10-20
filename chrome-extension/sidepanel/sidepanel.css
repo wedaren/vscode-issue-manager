@@ -87,6 +87,52 @@ main {
   font-weight: 500;
 }
 
+/* WebSocket 状态样式 - 极简风格 */
+.ws-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.ws-status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #adb5bd;
+}
+
+.ws-status.connected .ws-status-indicator {
+  background: #28a745;
+}
+
+.ws-status.disconnected .ws-status-indicator {
+  background: #dc3545;
+}
+
+.ws-status.connecting .ws-status-indicator {
+  background: #ffc107;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+#ws-status-text {
+  font-size: 11px;
+  color: #868e96;
+  font-weight: 400;
+}
+
 .action-section {
   margin-bottom: 24px;
 }

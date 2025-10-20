@@ -3,9 +3,19 @@
  * 负责协调 Side Panel 和 Content Script 之间的通信
  */
 
-const DEFAULT_VSCODE_NOTE_SERVER_URL = 'http://localhost:37892/create-note';
-const SERVER_URL_STORAGE_KEY = 'issueManager.vscodeNoteServerUrl';
+const DEFAULT_VSCODE_WS_URL = 'ws://localhost:37892/ws';
+const WS_URL_STORAGE_KEY = 'issueManager.vscodeWsUrl';
 const URI_FALLBACK_MAX_LENGTH = 60000; // 避免超长 vscode:// 链接导致失败
+
+// WebSocket 连接管理
+let ws = null;
+let wsReconnectTimer = null;
+let wsConnected = false;
+const WS_RECONNECT_INTERVAL = 3000; // 重连间隔 3 秒
+const WS_PING_INTERVAL = 30000; // 心跳间隔 30 秒
+let wsPingTimer = null;
+let messageIdCounter = 0;
+const pendingMessages = new Map(); // 存储等待响应的消息
 
 // --- Promise 封装：兼容部分环境下 chrome.* 不返回 Promise 的情况 ---
 /**
@@ -21,13 +31,202 @@ const api = {
   runtimeSendMessage: (message) => chrome.runtime.sendMessage(message)
 };
 
-async function getServerUrl() {
+async function getWsUrl() {
   try {
-    const data = await chrome.storage?.sync?.get?.(SERVER_URL_STORAGE_KEY) || await chrome.storage?.local?.get?.(SERVER_URL_STORAGE_KEY) || {};
-    return data[SERVER_URL_STORAGE_KEY] || DEFAULT_VSCODE_NOTE_SERVER_URL;
+    const data = await chrome.storage?.sync?.get?.(WS_URL_STORAGE_KEY) || await chrome.storage?.local?.get?.(WS_URL_STORAGE_KEY) || {};
+    return data[WS_URL_STORAGE_KEY] || DEFAULT_VSCODE_WS_URL;
   } catch (_) {
-    return DEFAULT_VSCODE_NOTE_SERVER_URL;
+    return DEFAULT_VSCODE_WS_URL;
   }
+}
+
+/**
+ * 初始化 WebSocket 连接
+ */
+async function initWebSocket() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+    return; // 已经在连接或已连接
+  }
+
+  const wsUrl = await getWsUrl();
+  
+  try {
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('[WebSocket] 连接已建立');
+      wsConnected = true;
+      
+      // 清除重连定时器
+      if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+      }
+
+      // 启动心跳
+      startPing();
+      
+      // 通知 Side Panel 连接成功
+      notifySidePanel({ type: 'WS_CONNECTED' });
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log('[WebSocket] 收到消息:', message);
+
+        // 处理响应消息
+        if (message.id && pendingMessages.has(message.id)) {
+          const { resolve, reject } = pendingMessages.get(message.id);
+          pendingMessages.delete(message.id);
+
+          if (message.type === 'success') {
+            resolve(message);
+          } else if (message.type === 'error') {
+            reject(new Error(message.error || 'Unknown error'));
+          } else if (message.type === 'pong') {
+            resolve(message);
+          }
+        }
+
+        // 处理服务端主动发送的消息
+        if (message.type === 'connected') {
+          console.log('[WebSocket] 服务端欢迎消息:', message.message);
+        }
+      } catch (e) {
+        console.error('[WebSocket] 消息解析失败:', e);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('[WebSocket] 连接错误:', error);
+      wsConnected = false;
+    };
+
+    ws.onclose = () => {
+      console.log('[WebSocket] 连接已关闭');
+      wsConnected = false;
+      stopPing();
+      
+      // 拒绝所有等待中的消息
+      pendingMessages.forEach(({ reject }) => {
+        reject(new Error('WebSocket connection closed'));
+      });
+      pendingMessages.clear();
+
+      // 通知 Side Panel 连接断开
+      notifySidePanel({ type: 'WS_DISCONNECTED' });
+
+      // 尝试重连
+      scheduleReconnect();
+    };
+  } catch (e) {
+    console.error('[WebSocket] 初始化失败:', e);
+    scheduleReconnect();
+  }
+}
+
+/**
+ * 安排重连
+ */
+function scheduleReconnect() {
+  if (wsReconnectTimer) {
+    return; // 已经在重连中
+  }
+  
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    console.log('[WebSocket] 尝试重连...');
+    initWebSocket();
+  }, WS_RECONNECT_INTERVAL);
+}
+
+/**
+ * 启动心跳
+ */
+function startPing() {
+  stopPing(); // 确保只有一个心跳定时器
+  
+  wsPingTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const msgId = generateMessageId();
+      sendWebSocketMessage({ type: 'ping', id: msgId });
+    }
+  }, WS_PING_INTERVAL);
+}
+
+/**
+ * 停止心跳
+ */
+function stopPing() {
+  if (wsPingTimer) {
+    clearInterval(wsPingTimer);
+    wsPingTimer = null;
+  }
+}
+
+/**
+ * 定期检查 WebSocket 连接状态
+ */
+function startConnectionCheck() {
+  // 每 10 秒检查一次连接状态
+  setInterval(() => {
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      console.log('[WebSocket] 定期检查发现连接已断开,尝试重连');
+      initWebSocket();
+    }
+  }, 10000);
+}
+
+/**
+ * 生成消息 ID
+ */
+function generateMessageId() {
+  return `msg_${Date.now()}_${++messageIdCounter}`;
+}
+
+/**
+ * 发送 WebSocket 消息
+ */
+function sendWebSocketMessage(message, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      reject(new Error('WebSocket 未连接'));
+      return;
+    }
+
+    const msgId = message.id || generateMessageId();
+    const msgWithId = { ...message, id: msgId };
+
+    // 设置超时
+    const timer = setTimeout(() => {
+      if (pendingMessages.has(msgId)) {
+        pendingMessages.delete(msgId);
+        reject(new Error('WebSocket 消息超时'));
+      }
+    }, timeoutMs);
+
+    // 保存回调
+    pendingMessages.set(msgId, {
+      resolve: (response) => {
+        clearTimeout(timer);
+        resolve(response);
+      },
+      reject: (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+
+    // 发送消息
+    try {
+      ws.send(JSON.stringify(msgWithId));
+    } catch (e) {
+      clearTimeout(timer);
+      pendingMessages.delete(msgId);
+      reject(e);
+    }
+  });
 }
 
 async function postToServerWithRetry(url, body, retries = 1, timeoutMs = 5000) {
@@ -64,16 +263,56 @@ async function postToServerWithRetry(url, body, retries = 1, timeoutMs = 5000) {
   throw lastErr;
 }
 
-// 监听扩展图标点击事件，打开 Side Panel
+// 监听扩展图标点击事件,打开 Side Panel
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
+});
+
+// 扩展启动时初始化 WebSocket 连接
+initWebSocket();
+
+// 启动连接状态定期检查
+startConnectionCheck();
+
+// 监听扩展安装和启动事件
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[Extension] 扩展已安装或更新');
+  initWebSocket();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[Extension] 浏览器启动');
+  initWebSocket();
+});
+
+// 监听 Service Worker 唤醒
+self.addEventListener('activate', () => {
+  console.log('[Extension] Service Worker 已激活');
+  // 确保 WebSocket 连接
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+    initWebSocket();
+  }
 });
 
 // 监听来自 Side Panel 和 Content Script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Background received message:', message);
+  
+  // 确保 WebSocket 连接活跃
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+    console.log('[WebSocket] 检测到连接未建立,尝试重新连接');
+    initWebSocket();
+  }
 
   switch (message.type) {
+    case 'GET_WS_STATUS':
+      // Side Panel 查询 WebSocket 状态
+      const status = wsConnected && ws && ws.readyState === WebSocket.OPEN 
+        ? 'connected' 
+        : (ws && ws.readyState === WebSocket.CONNECTING ? 'connecting' : 'disconnected');
+      sendResponse({ status });
+      break;
+      
     case 'START_SELECTION':
       // Side Panel 请求开始选取
       (async () => {
@@ -221,32 +460,37 @@ async function handleContentSelected(data) {
     url: data.url
   };
 
-
   try {
-    // 优先发送到本地服务器 (更可靠)
-    const serverUrl = await getServerUrl();
-    const body = JSON.stringify(params);
-    const response = await postToServerWithRetry(serverUrl, body, 1, 5000);
-    if (response && response.ok) {
-      console.log('Note created successfully in VSCode');
-      // 通知 Side Panel 创建成功
-      notifySidePanel({ type: 'CREATION_SUCCESS' });
+    // 优先使用 WebSocket 发送(更可靠、更快)
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+      const response = await sendWebSocketMessage({
+        type: 'create-note',
+        data: params
+      }, 5000);
+      
+      if (response && response.type === 'success') {
+        console.log('Note created successfully in VSCode via WebSocket');
+        notifySidePanel({ type: 'CREATION_SUCCESS' });
+        return;
+      } else {
+        throw new Error('WebSocket response is not success');
+      }
     } else {
-      throw new Error(`Server responded with ${response?.status}`);
+      throw new Error('WebSocket not connected');
     }
   } catch (error) {
-    console.error('Failed to send content to VSCode:', error);
-    // 将错误反馈到 Side Panel，便于用户排查（不立即返回，仍尝试回退方案）
+    console.error('Failed to send content to VSCode via WebSocket:', error);
+    // 将错误反馈到 Side Panel,便于用户排查(不立即返回,仍尝试回退方案)
     notifySidePanel({ 
       type: 'CREATION_ERROR', 
-      error: `本地服务不可用或出错：${error?.message || String(error)}，尝试使用备用方式...`
+      error: `WebSocket 连接不可用或出错:${error?.message || String(error)},尝试使用备用方式...`
     });
     
-    // 如果 HTTP 请求失败，尝试使用 URI Handler 作为备选方案
+    // 如果 WebSocket 失败,尝试使用 URI Handler 作为备选方案
     try {
       const dataStr = JSON.stringify(params);
       if (dataStr.length > URI_FALLBACK_MAX_LENGTH) {
-        throw new Error('所选内容过大，备用链接方式可能失败。请在 VSCode 中开启本地服务或缩小选取范围。');
+        throw new Error('所选内容过大,备用链接方式可能失败。请在 VSCode 中开启 WebSocket 服务或缩小选取范围。');
       }
       const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(dataStr)}`;
       
@@ -264,7 +508,7 @@ async function handleContentSelected(data) {
       console.error('Fallback method also failed:', fallbackError);
       notifySidePanel({ 
         type: 'CREATION_ERROR', 
-        error: `无法通过备用方式创建笔记：${fallbackError?.message || String(fallbackError)}。\n建议：\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用；\n2) 在扩展设置中开启/确认本地服务（端口与本扩展一致）；\n3) 或在 Side Panel 缩小选取范围后重试。` 
+        error: `无法通过备用方式创建笔记:${fallbackError?.message || String(fallbackError)}。\n建议:\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用;\n2) 在扩展设置中开启/确认 WebSocket 服务(端口与本扩展一致);\n3) 或在 Side Panel 缩小选取范围后重试。` 
       });
     }
   }

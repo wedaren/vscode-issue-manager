@@ -907,12 +907,12 @@
         "issueManager.chromeIntegration.enableServer": {
           "type": "boolean",
           "default": true,
-          "description": "启用与 Chrome 扩展集成的本地 HTTP 服务（POST /create-note）。备用方案为 VSCode URI Handler。"
+          "description": "启用与 Chrome 扩展集成的 WebSocket 服务。备用方案为 VSCode URI Handler。"
         },
         "issueManager.chromeIntegration.port": {
           "type": "number",
           "default": 37892,
-          "description": "Chrome 集成本地服务监听端口。修改后需要重新加载窗口以生效。"
+          "description": "Chrome 集成 WebSocket 服务监听端口(ws://127.0.0.1:端口/ws)。修改后需要重新加载窗口以生效。"
         }
       }
     },
@@ -1015,6 +1015,7 @@
     "@types/sinon": "^17.0.4",
     "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.101.0",
+    "@types/ws": "^8.5.13",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
     "@vscode/test-cli": "^0.0.10",
@@ -1030,7 +1031,8 @@
     "cheerio": "^1.1.2",
     "js-yaml": "^4.1.0",
     "simple-git": "^3.28.0",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "ws": "^8.18.0"
   },
   "repository": {
     "type": "git",
