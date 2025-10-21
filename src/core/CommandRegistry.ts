@@ -28,6 +28,7 @@ import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
+import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
@@ -235,6 +236,15 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             },
             '添加问题到树'
+        );
+
+        // 从 HTML 创建问题命令
+        this.registerCommand(
+            'issueManager.createIssueFromHtml',
+            async (params?: unknown) => {
+                await createIssueFromHtml(params as CreateIssueFromHtmlParams);
+            },
+            '从 HTML 创建问题'
         );
     }
 

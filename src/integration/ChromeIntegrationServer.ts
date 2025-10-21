@@ -1,0 +1,220 @@
+import * as vscode from 'vscode';
+import * as http from 'http';
+import { URL } from 'url';
+import { WebSocketServer, WebSocket } from 'ws';
+import { createIssueFromHtml } from '../commands/createIssueFromHtml';
+
+
+interface ChromeRequestPayload {  
+  html?: string;  
+  title?: string;  
+  url?: string;  
+}  
+
+/**
+ * 负责 VSCode 端与 Chrome 扩展集成:
+ * - WebSocket 服务:接收来自 Chrome 扩展的实时消息
+ * - URI Handler:vscode://wedaren.issue-manager/create-from-html?data=... (备用)
+ */
+export class ChromeIntegrationServer {
+  private static instance: ChromeIntegrationServer | null = null;
+  private httpServer: http.Server | null = null;
+  private wss: WebSocketServer | null = null;
+  private disposed = false;
+
+  public static getInstance(): ChromeIntegrationServer {
+    if (!this.instance) {
+      this.instance = new ChromeIntegrationServer();
+    }
+    return this.instance;
+  }
+
+  public async start(context: vscode.ExtensionContext): Promise<void> {
+    if (this.httpServer) {
+      return; // 已启动
+    }
+
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const enable = config.get<boolean>('chromeIntegration.enableServer', true);
+    const port = config.get<number>('chromeIntegration.port', 37892);
+
+    // URI Handler(无论是否开启本地服务,都注册,备用)
+    const uriHandler: vscode.UriHandler = {
+      handleUri: async (uri: vscode.Uri) => {
+        try {
+          // 仅处理路径 /create-from-html
+          if (uri.path !== '/create-from-html') {
+            return;
+          }
+          const params = new URL(uri.toString()).searchParams;
+
+          let html = params.get('html') || '';
+          let title = params.get('title') || undefined;
+          let url = params.get('url') || undefined;
+
+          const dataRaw = params.get('data');
+          if (dataRaw) {
+            try {
+              const parsed = JSON.parse(dataRaw);
+              html = parsed.html ?? html;
+              title = parsed.title ?? title;
+              url = parsed.url ?? url;
+            } catch (e) {
+              console.error('URI data 参数解析失败:', e);
+              void vscode.window.showErrorMessage('解析来自 Chrome 扩展的数据失败,请重试。');
+            }
+          }
+
+          if (!html) {
+            void vscode.window.showErrorMessage('链接中缺少 html 内容,无法创建笔记');
+            return;
+          }
+
+          await createIssueFromHtml({ html, title, url });
+        } catch (e: any) {
+          console.error('URI 处理失败:', e);
+          void vscode.window.showErrorMessage('处理来自浏览器的创建请求失败');
+        }
+      }
+    };
+    context.subscriptions.push(vscode.window.registerUriHandler(uriHandler));
+
+    if (!enable) {
+      console.log('[ChromeIntegration] WebSocket 服务未启用(已注册 URI Handler 作为备用)');
+      return;
+    }
+
+    // 创建 HTTP 服务器用于 WebSocket 升级
+    this.httpServer = http.createServer((req, res) => {
+      // 对于非 WebSocket 的 HTTP 请求,返回 404
+      res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: 'WebSocket only' }));
+    });
+
+    // 创建 WebSocket 服务器
+    this.wss = new WebSocketServer({ 
+      server: this.httpServer,
+      path: '/ws' 
+    });
+
+    // 处理 WebSocket 连接
+    this.wss.on('connection', (ws: WebSocket) => {
+      console.log('[ChromeIntegration] Chrome 扩展已连接');
+
+      // 发送欢迎消息
+      ws.send(JSON.stringify({ type: 'connected', message: 'VSCode 已连接' }));
+
+      // 处理接收到的消息
+      ws.on('message', async (data: Buffer) => {
+        let message: any;
+        try {
+          message = JSON.parse(data.toString('utf8'));
+          console.log('[ChromeIntegration] 收到消息:', message);
+
+          if (message.type === 'create-note') {
+            const payload: ChromeRequestPayload = message.data || {};
+            const html: string = payload.html || '';
+            const title: string | undefined = payload.title || undefined;
+            const url: string | undefined = payload.url || undefined;
+
+            if (!html || typeof html !== 'string') {
+              ws.send(JSON.stringify({ 
+                type: 'error', 
+                error: 'Missing html',
+                id: message.id 
+              }));
+              return;
+            }
+
+            // 限制大小 5MB
+            if (html.length > 5 * 1024 * 1024) {
+              ws.send(JSON.stringify({ 
+                type: 'error', 
+                error: 'Content too large',
+                id: message.id 
+              }));
+              return;
+            }
+
+            const created = await createIssueFromHtml({ html, title, url });
+            ws.send(JSON.stringify({ 
+              type: 'success', 
+              path: created?.toString(),
+              id: message.id 
+            }));
+          } else if (message.type === 'ping') {
+            // 心跳响应
+            ws.send(JSON.stringify({ type: 'pong', id: message.id }));
+          } else {
+            ws.send(JSON.stringify({ 
+              type: 'error', 
+              error: 'Unknown message type',
+              id: message.id 
+            }));
+          }
+        } catch (e: any) {
+          console.error('[ChromeIntegration] 消息处理失败:', e);
+          try {
+            ws.send(JSON.stringify({ 
+              type: 'error', 
+              error: e?.message || String(e),
+              id: message?.id
+            }));
+          } catch {
+            // ignore
+          }
+        }
+      });
+
+      // 处理连接关闭
+      ws.on('close', () => {
+        console.log('[ChromeIntegration] Chrome 扩展已断开连接');
+      });
+
+      // 处理错误
+      ws.on('error', (error: Error) => {
+        console.error('[ChromeIntegration] WebSocket 错误:', error);
+      });
+    });
+
+    this.httpServer.listen(port, '127.0.0.1', () => {
+      console.log(`[ChromeIntegration] WebSocket 服务已启动: ws://127.0.0.1:${port}/ws`);
+    });
+
+    context.subscriptions.push({
+      dispose: () => this.stop()
+    });
+  }
+
+  public stop(): void {
+    if ((!this.httpServer && !this.wss) || this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    
+    try {
+      // 关闭所有 WebSocket 连接
+      if (this.wss) {
+        this.wss.clients.forEach((client: WebSocket) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.close();
+          }
+        });
+        this.wss.close(() => {
+          console.log('[ChromeIntegration] WebSocket 服务已停止');
+        });
+        this.wss = null;
+      }
+      
+      // 关闭 HTTP 服务器
+      if (this.httpServer) {
+        this.httpServer.close(() => {
+          console.log('[ChromeIntegration] HTTP 服务器已停止');
+        });
+        this.httpServer = null;
+      }
+    } catch (e) {
+      console.warn('[ChromeIntegration] 停止服务时出错:', e);
+    }
+  }
+}
