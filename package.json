@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -902,8 +902,7 @@
           "type": "number",
           "default": 24,
           "description": "标题缓存自动重建的过期时长（单位：小时）。当 titleCache.json 的最近更新时间超过此时长时，插件将在下次预加载时自动重建缓存。设置为 0 可禁用因过期触发的自动重建（但在缓存文件缺失时仍会重建）。"
-        }
-      ,
+        },
         "issueManager.chromeIntegration.enableServer": {
           "type": "boolean",
           "default": true,
