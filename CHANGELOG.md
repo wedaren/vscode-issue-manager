@@ -5,6 +5,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.2]
+
+### ✨ 新功能
+- feat: 实现 Chrome 扩展与 VSCode 集成，支持从网页选取内容创建笔记 (#83)
+  - 新增 Chrome 扩展，可在浏览器中选取网页内容
+  - 通过 WebSocket 与 VSCode 扩展实时通信
+  - 支持一键将网页选中内容转换为 Markdown 笔记并保存到问题管理系统
+  - 提供侧边栏面板显示连接状态和操作按钮
+
+### ⚙️ 配置
+- feat: 添加快捷键 `cmd+j cmd+h` 以快速打开问题目录
+
 ## [0.2.1] 
 
 ### ✨ 新功能
