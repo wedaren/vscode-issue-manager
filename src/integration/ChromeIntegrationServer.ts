@@ -106,8 +106,9 @@ export class ChromeIntegrationServer {
 
       // 处理接收到的消息
       ws.on('message', async (data: Buffer) => {
+        let message: any;
         try {
-          const message = JSON.parse(data.toString('utf8'));
+          message = JSON.parse(data.toString('utf8'));
           console.log('[ChromeIntegration] 收到消息:', message);
 
           if (message.type === 'create-note') {
@@ -156,7 +157,8 @@ export class ChromeIntegrationServer {
           try {
             ws.send(JSON.stringify({ 
               type: 'error', 
-              error: e?.message || String(e) 
+              error: e?.message || String(e),
+              id: message?.id
             }));
           } catch {
             // ignore

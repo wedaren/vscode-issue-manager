@@ -229,40 +229,6 @@ function sendWebSocketMessage(message, timeoutMs = 5000) {
   });
 }
 
-async function postToServerWithRetry(url, body, retries = 1, timeoutMs = 5000) {
-  let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0,200)}` : ''}`);
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      lastErr = e;
-      // 仅在网络错误/超时情况下重试一次
-      const isAbort = e?.name === 'AbortError';
-      const isNetwork = e && /Failed to fetch|TypeError/i.test(String(e));
-      if (attempt < retries && (isAbort || isNetwork)) {
-        await new Promise(r => setTimeout(r, 300));
-        continue;
-      }
-      break;
-    }
-  }
-  throw lastErr;
-}
-
 // 监听扩展图标点击事件,打开 Side Panel
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
