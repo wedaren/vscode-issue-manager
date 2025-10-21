@@ -116,7 +116,7 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
         // 添加元信息（如果提供了 URL）
         if (params.url) {
             // 在 frontmatter 或内容开头添加来源信息
-            const metadata = `\n\n---\n**来源**: [${params.url}](${params.url})  \n**创建时间**: ${new Date().toLocaleString('zh-CN')}\n\n`;
+            const metadata = `\n\n---\n**来源**: [${params.url}](${params.url})  \n**创建时间**: ${new Date().toISOString().slice(0, 19).replace('T', ' ')}\n\n`;
             finalContent = finalContent + metadata;
         }
 
@@ -184,7 +184,7 @@ async function generateTitleWithProgress(content: string): Promise<string> {
         
         if (choice === USE_SUGGESTED_ACTION) {
             return suggestedTitle.trim();
-        } else if (choice ===   EDIT_TITLE_ACTION) {
+        } else if (choice === EDIT_TITLE_ACTION) {
             const edited = await vscode.window.showInputBox({
                 value: suggestedTitle.trim(),
                 prompt: '编辑自动生成的标题'
