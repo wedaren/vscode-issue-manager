@@ -26,7 +26,7 @@ export class FileWatcherManager {
      * 2. 监听配置目录（.issueManager目录下的所有文件）
      * 
      * @param issueDir 问题目录路径
-     * @param isConflictMode 是否处于冲突模式
+     * @param isConflictMode 检查是否处于冲突模式的函数
      * @param onStatusChange 状态变更回调函数
      * @param onAutoSync 自动同步触发回调函数
      */
@@ -39,30 +39,50 @@ export class FileWatcherManager {
         // 清理现有监听器
         this.cleanup();
 
-        // 监听问题文件（.md文件）
-        const mdPattern = new vscode.RelativePattern(issueDir, '**/*.md');
-        this.fileWatcher = vscode.workspace.createFileSystemWatcher(mdPattern);
+        // 创建监听器
+        this.createMarkdownFileWatcher(issueDir);
+        this.createConfigFileWatcher(issueDir);
 
-        // 监听配置目录（.issueManager目录下的所有文件）
-        const configPattern = new vscode.RelativePattern(path.join(issueDir, '.issueManager'), '**/*');
-        this.configWatcher = vscode.workspace.createFileSystemWatcher(configPattern);
-
+        // 绑定事件处理
         const onFileChange = () => {
             this.handleFileChange(isConflictMode, onStatusChange, onAutoSync);
         };
 
-        // 为问题文件监听器绑定事件
-        this.fileWatcher.onDidChange(onFileChange);
-        this.fileWatcher.onDidCreate(onFileChange);
-        this.fileWatcher.onDidDelete(onFileChange);
+        this.bindFileWatcherEvents(this.fileWatcher!, onFileChange);
+        this.bindFileWatcherEvents(this.configWatcher!, onFileChange);
+    }
 
-        // 为配置文件监听器绑定事件
-        this.configWatcher.onDidChange(onFileChange);
-        this.configWatcher.onDidCreate(onFileChange);
-        this.configWatcher.onDidDelete(onFileChange);
-
+    /**
+     * 创建 Markdown 文件监听器
+     */
+    private createMarkdownFileWatcher(issueDir: string): void {
+        const mdPattern = new vscode.RelativePattern(issueDir, '**/*.md');
+        this.fileWatcher = vscode.workspace.createFileSystemWatcher(mdPattern);
         this.disposables.push(this.fileWatcher);
+    }
+
+    /**
+     * 创建配置文件监听器
+     */
+    private createConfigFileWatcher(issueDir: string): void {
+        const configPattern = new vscode.RelativePattern(
+            path.join(issueDir, '.issueManager'), 
+            '**/*'
+        );
+        this.configWatcher = vscode.workspace.createFileSystemWatcher(configPattern);
         this.disposables.push(this.configWatcher);
+    }
+
+    /**
+     * 绑定文件监听器事件
+     */
+    private bindFileWatcherEvents(
+        watcher: vscode.FileSystemWatcher,
+        onFileChange: () => void
+    ): void {
+        watcher.onDidChange(onFileChange);
+        watcher.onDidCreate(onFileChange);
+        watcher.onDidDelete(onFileChange);
     }
 
     /**
@@ -83,14 +103,13 @@ export class FileWatcherManager {
         onStatusChange: (status: SyncStatusInfo) => void,
         onAutoSync: () => void
     ): void {
+        // 如果处于冲突模式，不处理文件变更
         if (isConflictMode()) {
             return;
         }
         
-        // 防抖处理
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-        }
+        // 清除之前的防抖定时器
+        this.clearDebounceTimer();
         
         // 更新状态
         onStatusChange({ 
@@ -98,7 +117,26 @@ export class FileWatcherManager {
             message: '有本地更改待同步' 
         });
 
-        // 设置防抖定时器
+        // 设置新的防抖定时器
+        this.scheduleAutoSync(onAutoSync);
+    }
+
+    /**
+     * 清除防抖定时器
+     */
+    private clearDebounceTimer(): void {
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = undefined;
+        }
+    }
+
+    /**
+     * 安排自动同步
+     * 
+     * @param onAutoSync 自动同步回调函数
+     */
+    private scheduleAutoSync(onAutoSync: () => void): void {
         const debounceInterval = getChangeDebounceInterval() * 1000;
         this.debounceTimer = setTimeout(() => {
             onAutoSync();
@@ -112,14 +150,23 @@ export class FileWatcherManager {
      * 在服务停止或重新配置时调用。
      */
     public cleanup(): void {
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-            this.debounceTimer = undefined;
-        }
+        this.clearDebounceTimer();
+        this.disposeAllWatchers();
+        this.clearWatcherReferences();
+    }
 
+    /**
+     * 释放所有监听器
+     */
+    private disposeAllWatchers(): void {
         this.disposables.forEach(d => d.dispose());
         this.disposables = [];
+    }
 
+    /**
+     * 清除监听器引用
+     */
+    private clearWatcherReferences(): void {
         this.fileWatcher = undefined;
         this.configWatcher = undefined;
     }

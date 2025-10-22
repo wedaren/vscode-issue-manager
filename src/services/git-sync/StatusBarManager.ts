@@ -14,8 +14,21 @@ import { isAutoSyncEnabled } from '../../config';
 export class StatusBarManager {
     private statusBarItem: vscode.StatusBarItem;
 
+    // 状态图标映射
+    private static readonly STATUS_ICONS: Record<SyncStatus, string> = {
+        [SyncStatus.Synced]: '$(sync)',
+        [SyncStatus.Syncing]: '$(sync~spin)',
+        [SyncStatus.HasLocalChanges]: '$(cloud-upload)',
+        [SyncStatus.HasRemoteChanges]: '$(cloud-download)',
+        [SyncStatus.Conflict]: '$(error)',
+        [SyncStatus.Disabled]: '$(sync-ignored)'
+    };
+
     constructor() {
-        this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+        this.statusBarItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Right, 
+            100
+        );
         this.statusBarItem.command = 'issueManager.synchronizeNow';
         this.statusBarItem.show();
     }
@@ -35,41 +48,34 @@ export class StatusBarManager {
      * @param statusInfo 当前状态信息
      */
     public updateStatusBar(statusInfo: SyncStatusInfo): void {
-        const { status, message } = statusInfo;
-        
-        // 设置状态栏文本和图标
-        switch (status) {
-            case SyncStatus.Synced:
-                this.statusBarItem.text = '同步问题 $(sync)';
-                break;
-            case SyncStatus.Syncing:
-                this.statusBarItem.text = '同步问题 $(sync~spin)';
-                break;
-            case SyncStatus.HasLocalChanges:
-                this.statusBarItem.text = '同步问题 $(cloud-upload)';
-                break;
-            case SyncStatus.HasRemoteChanges:
-                this.statusBarItem.text = '同步问题 $(cloud-download)';
-                break;
-            case SyncStatus.Conflict:
-                this.statusBarItem.text = '同步问题 $(error)';
-                break;
-            case SyncStatus.Disabled:
-                this.statusBarItem.text = '同步问题 $(sync-ignored)';
-                break;
-        }
+        this.updateStatusBarText(statusInfo.status);
+        this.updateStatusBarTooltip(statusInfo);
+    }
 
-        // 构建工具提示
-        let tooltip = message;
+    /**
+     * 更新状态栏文本和图标
+     */
+    private updateStatusBarText(status: SyncStatus): void {
+        const icon = StatusBarManager.STATUS_ICONS[status];
+        this.statusBarItem.text = `同步问题 ${icon}`;
+    }
+
+    /**
+     * 更新状态栏工具提示
+     */
+    private updateStatusBarTooltip(statusInfo: SyncStatusInfo): void {
+        const tooltipParts = [statusInfo.message];
+        
         if (statusInfo.lastSync) {
             const timeAgo = this.getTimeAgo(statusInfo.lastSync);
-            tooltip += `\n上次同步: ${timeAgo}`;
-        }
-        if (isAutoSyncEnabled()) {
-            tooltip += '\n点击立即同步';
+            tooltipParts.push(`上次同步: ${timeAgo}`);
         }
         
-        this.statusBarItem.tooltip = tooltip;
+        if (isAutoSyncEnabled()) {
+            tooltipParts.push('点击立即同步');
+        }
+        
+        this.statusBarItem.tooltip = tooltipParts.join('\n');
     }
 
     /**
@@ -100,6 +106,7 @@ export class StatusBarManager {
         if (diffMins < 1) {
             return '刚刚';
         }
+        
         if (diffMins < 60) {
             return `${diffMins}分钟前`;
         }
