@@ -173,13 +173,11 @@ export class UnifiedFileWatcher implements vscode.Disposable {
         this.logger.debug?.(`Markdown 文件变更: ${fileName} (${type})`);
 
         // 分发事件给所有订阅者
-        for (const callback of this.mdChangeCallbacks) {
-            try {
-                await callback(event);
-            } catch (error) {
-                this.logger.warn(`Markdown 文件监听回调执行失败 (${fileName}):`, error);
-            }
-        }
+        for (const callback of this.mdChangeCallbacks) {  
+            Promise.resolve(callback(event)).catch(error => {  
+                this.logger.warn(`Markdown 文件监听回调执行失败 (${fileName}):`, error);  
+            });  
+        }  
     }
 
     /**
