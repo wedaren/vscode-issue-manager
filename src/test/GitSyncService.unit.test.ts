@@ -16,19 +16,11 @@ class MockStatusBarManager {
     dispose() {}
 }
 
-class MockFileWatcherManager {
-    public setupCalled = false;
-    setupFileWatcher() { this.setupCalled = true; }
-    cleanup() {}
-    dispose() {}
-}
-
 
 suite('GitSyncService 单元测试', () => {
     let tempDir: string;
     let gitSyncService: any;
     let statusBarManager: MockStatusBarManager;
-    let fileWatcherManager: MockFileWatcherManager;
 
     suiteSetup(() => {
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-sync-basic-test-'));
@@ -42,8 +34,7 @@ suite('GitSyncService 单元测试', () => {
 
     setup(() => {
         statusBarManager = new MockStatusBarManager();
-        fileWatcherManager = new MockFileWatcherManager();
-        gitSyncService = new (GitSyncService as any)(fileWatcherManager, statusBarManager);
+        gitSyncService = new (GitSyncService as any)(statusBarManager);
     });
 
     teardown(() => {
@@ -84,12 +75,10 @@ suite('GitSyncService 单元测试', () => {
 suite('GitSyncService 状态测试', () => {
     let gitSyncService: any;
     let statusBarManager: MockStatusBarManager;
-    let fileWatcherManager: MockFileWatcherManager;
 
     setup(() => {
         statusBarManager = new MockStatusBarManager();
-        fileWatcherManager = new MockFileWatcherManager();
-        gitSyncService = new (GitSyncService as any)(fileWatcherManager, statusBarManager);
+        gitSyncService = new (GitSyncService as any)(statusBarManager);
     });
 
     teardown(() => {

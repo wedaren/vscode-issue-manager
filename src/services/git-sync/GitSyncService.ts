@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { getIssueDir, isAutoSyncEnabled, getPeriodicPullInterval } from '../../config';
+import { getIssueDir, isAutoSyncEnabled, getPeriodicPullInterval, getChangeDebounceInterval } from '../../config';
 import { SyncStatus, SyncStatusInfo } from './types';
 import { GitOperations } from './GitOperations';
 import { SyncErrorHandler } from './SyncErrorHandler';
-import { FileWatcherManager } from './FileWatcherManager';
 import { StatusBarManager } from './StatusBarManager';
+import { UnifiedFileWatcher } from '../UnifiedFileWatcher';
 
 /**
  * Git自动同步服务（重构版）
@@ -22,7 +22,7 @@ import { StatusBarManager } from './StatusBarManager';
  * 重构后的版本将职责分离到不同的模块：
  * - GitOperations: 底层Git操作
  * - SyncErrorHandler: 错误处理
- * - FileWatcherManager: 文件监听
+ * - UnifiedFileWatcher: 统一文件监听
  * - StatusBarManager: 状态栏管理
  * 
  * @example
@@ -38,13 +38,13 @@ import { StatusBarManager } from './StatusBarManager';
 export class GitSyncService implements vscode.Disposable {
     private static instance: GitSyncService;
     private periodicTimer?: NodeJS.Timeout;
+    private debounceTimer?: NodeJS.Timeout;
     private isConflictMode = false;
     private currentStatus: SyncStatusInfo;
     private disposables: vscode.Disposable[] = [];
 
     // 依赖注入组件
     private constructor(
-        private readonly fileWatcherManager: FileWatcherManager,
         private readonly statusBarManager: StatusBarManager
     ) {
         this.currentStatus = { status: SyncStatus.Disabled, message: '自动同步已禁用' };
@@ -64,7 +64,6 @@ export class GitSyncService implements vscode.Disposable {
     public static getInstance(): GitSyncService {
         if (!GitSyncService.instance) {
             GitSyncService.instance = new GitSyncService(
-                new FileWatcherManager(),
                 new StatusBarManager()
             );
         }
@@ -139,7 +138,7 @@ export class GitSyncService implements vscode.Disposable {
         }
 
         // 设置文件监听器
-        this.setupFileWatcher(issueDir);
+        this.setupFileWatcher();
         
         // 设置周期性拉取
         this.setupPeriodicPull();
@@ -151,18 +150,73 @@ export class GitSyncService implements vscode.Disposable {
     /**
      * 设置文件监听器
      * 
-     * 使用FileWatcherManager设置文件监听，监听问题文件和配置文件的变化。
+     * 使用 UnifiedFileWatcher 监听问题文件和配置文件的变化。
      */
-    private setupFileWatcher(issueDir: string): void {
-        this.fileWatcherManager.setupFileWatcher(
-            issueDir,
-            () => this.isConflictMode,
-            (status) => {
-                this.currentStatus = status;
-                this.updateStatusBar();
-            },
-            () => this.performAutoCommitAndPush()
+    private setupFileWatcher(): void {
+        // 清理旧的监听器
+        this.cleanupFileWatcher();
+
+        const fileWatcher = UnifiedFileWatcher.getInstance();
+
+        const onFileChange = () => {
+            this.handleFileChange();
+        };
+
+        // 订阅 Markdown 文件变更
+        this.disposables.push(
+            fileWatcher.onMarkdownChange(onFileChange)
         );
+
+        // 订阅 .issueManager 目录下所有文件变更
+        this.disposables.push(
+            fileWatcher.onIssueManagerChange(onFileChange)
+        );
+    }
+
+    /**
+     * 处理文件变更事件
+     * 
+     * 当文件发生变化时：
+     * 1. 检查是否处于冲突模式，如果是则忽略
+     * 2. 清除之前的防抖定时器
+     * 3. 更新状态为"有本地更改待同步"
+     * 4. 设置防抖定时器，延迟触发自动同步
+     */
+    private handleFileChange(): void {
+        if (this.isConflictMode) {
+            return;
+        }
+        
+        // 防抖处理
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
+        
+        // 更新状态
+        this.currentStatus = { 
+            status: SyncStatus.HasLocalChanges, 
+            message: '有本地更改待同步' 
+        };
+        this.updateStatusBar();
+
+        // 设置防抖定时器
+        const debounceInterval = getChangeDebounceInterval() * 1000;
+        this.debounceTimer = setTimeout(() => {
+            this.performAutoCommitAndPush();
+        }, debounceInterval);
+    }
+
+    /**
+     * 清理文件监听器
+     */
+    private cleanupFileWatcher(): void {
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = undefined;
+        }
+
+        this.disposables.forEach(d => d.dispose());
+        this.disposables = [];
     }
 
     /**
@@ -408,7 +462,7 @@ export class GitSyncService implements vscode.Disposable {
             this.periodicTimer = undefined;
         }
         
-        this.fileWatcherManager.cleanup();
+        this.cleanupFileWatcher();
     }
 
     /**
@@ -431,10 +485,7 @@ export class GitSyncService implements vscode.Disposable {
      */
     public dispose(): void {
         this.cleanup();
-        this.fileWatcherManager.dispose();
         this.statusBarManager.dispose();
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
     }
 
     /**

@@ -5,6 +5,7 @@ import { getFrontmatter, FrontmatterData } from '../utils/markdown';
 import { TitleCacheService } from '../services/TitleCacheService';
 import { FrontmatterService } from '../services/FrontmatterService';
 import { findParentNodeById } from '../data/treeManager';
+import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 
 /**
  * 问题结构节点
@@ -59,27 +60,14 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      * 设置文件监听器，当 Markdown 文件变化时清除相关缓存
      */
     private setupFileWatcher(): void {
-        const issueDir = getIssueDir();
-        if (issueDir) {
-            const watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(issueDir, '**/*.md')
-            );
+        const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
 
-            // 统一的文件系统变化处理
-            watcher.onDidChange(async uri => {
-                await this.handleFileSystemChange(path.basename(uri.fsPath), 'change');
-            });
-
-            watcher.onDidCreate(async uri => {
-                await this.handleFileSystemChange(path.basename(uri.fsPath), 'create');
-            });
-
-            watcher.onDidDelete(async uri => {
-                await this.handleFileSystemChange(path.basename(uri.fsPath), 'delete');
-            });
-
-            this.context.subscriptions.push(watcher);
-        }
+        // 监听 Markdown 文件变化
+        this.context.subscriptions.push(
+            fileWatcher.onMarkdownChange(async (event) => {
+                await this.handleFileSystemChange(event.fileName, event.type);
+            })
+        );
     }
 
     /**
