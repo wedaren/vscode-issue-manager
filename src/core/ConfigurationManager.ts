@@ -33,6 +33,9 @@ const DEBOUNCE_REFRESH_DELAY_MS = 500;
 export class ConfigurationManager {
     private readonly context: vscode.ExtensionContext;
     private readonly logger: Logger;
+    
+    // 文件监听订阅（配置变更时需要重建）
+    private fileWatcherDisposables: vscode.Disposable[] = [];
 
     /**
      * 创建配置监听管理器实例
@@ -107,8 +110,14 @@ export class ConfigurationManager {
 
     /**
      * 设置文件监听器
+     * 
+     * 清理旧的订阅并创建新的文件监听订阅。
+     * 当 issueDir 配置变更时会被调用。
      */
     private setupFileWatcher(): void {
+        // 清理旧的文件监听订阅，避免重复订阅导致内存泄漏
+        this.cleanupFileWatcher();
+        
         const issueDir = getIssueDir();
         if (!issueDir) {
             return;
@@ -163,8 +172,8 @@ export class ConfigurationManager {
             }
         }, DEBOUNCE_REFRESH_DELAY_MS);
 
-        // 注册 Markdown 变更和删除监听
-        this.context.subscriptions.push(
+        // 注册 Markdown 变更和删除监听（保存到 fileWatcherDisposables）
+        this.fileWatcherDisposables.push(
             fileWatcher.onMarkdownChange(event => {
                 if (event.type === 'delete') {
                     handleMarkdownDeleted(event);
@@ -187,8 +196,18 @@ export class ConfigurationManager {
             }
         }, DEBOUNCE_REFRESH_DELAY_MS);
 
-        this.context.subscriptions.push(
+        this.fileWatcherDisposables.push(
             fileWatcher.onTitleCacheChange(debouncedReloadTitleCache)
         );
+    }
+
+    /**
+     * 清理文件监听器订阅
+     * 
+     * 在配置变更时调用，释放旧的文件监听订阅以避免内存泄漏。
+     */
+    private cleanupFileWatcher(): void {
+        this.fileWatcherDisposables.forEach(d => d.dispose());
+        this.fileWatcherDisposables = [];
     }
 }

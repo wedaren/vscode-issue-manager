@@ -41,7 +41,10 @@ export class GitSyncService implements vscode.Disposable {
     private debounceTimer?: NodeJS.Timeout;
     private isConflictMode = false;
     private currentStatus: SyncStatusInfo;
-    private disposables: vscode.Disposable[] = [];
+    
+    // 分离不同生命周期的资源管理
+    private fileWatcherDisposables: vscode.Disposable[] = []; // 文件监听订阅，setupAutoSync 时重建
+    private serviceDisposables: vscode.Disposable[] = []; // 服务级资源（命令、配置监听），仅在 dispose 时清理
 
     // 依赖注入组件
     private constructor(
@@ -93,13 +96,13 @@ export class GitSyncService implements vscode.Disposable {
         this.setupAutoSync();
         this.registerCommands();
         
-        // 监听配置变更
+        // 监听配置变更（服务级资源，只在 dispose 时清理）
         const configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('issueManager.sync')) {
-                this.setupAutoSync();
+                this.setupAutoSync(); // 配置变更时重新设置
             }
         });
-        this.disposables.push(configWatcher);
+        this.serviceDisposables.push(configWatcher);
 
         // VS Code启动时执行初始同步
         if (isAutoSyncEnabled()) {
@@ -162,13 +165,13 @@ export class GitSyncService implements vscode.Disposable {
             this.handleFileChange();
         };
 
-        // 订阅 Markdown 文件变更
-        this.disposables.push(
+        // 订阅 Markdown 文件变更（文件监听资源，setupAutoSync 时重建）
+        this.fileWatcherDisposables.push(
             fileWatcher.onMarkdownChange(onFileChange)
         );
 
         // 订阅 .issueManager 目录下所有文件变更
-        this.disposables.push(
+        this.fileWatcherDisposables.push(
             fileWatcher.onIssueManagerChange(onFileChange)
         );
     }
@@ -215,8 +218,9 @@ export class GitSyncService implements vscode.Disposable {
             this.debounceTimer = undefined;
         }
 
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
+        // 只清理文件监听相关的订阅
+        this.fileWatcherDisposables.forEach(d => d.dispose());
+        this.fileWatcherDisposables = [];
     }
 
     /**
@@ -246,7 +250,8 @@ export class GitSyncService implements vscode.Disposable {
         const syncCommand = vscode.commands.registerCommand('issueManager.synchronizeNow', () => {
             this.performManualSync();
         });
-        this.disposables.push(syncCommand);
+        // 命令注册是服务级资源，只在 dispose 时清理
+        this.serviceDisposables.push(syncCommand);
     }
 
     /**
@@ -486,6 +491,10 @@ export class GitSyncService implements vscode.Disposable {
     public dispose(): void {
         this.cleanup();
         this.statusBarManager.dispose();
+        
+        // 清理服务级资源（命令、配置监听器）
+        this.serviceDisposables.forEach(d => d.dispose());
+        this.serviceDisposables = [];
     }
 
     /**
