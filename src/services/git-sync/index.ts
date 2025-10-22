@@ -14,5 +14,4 @@ export { SyncStatus, SyncStatusInfo } from './types';
 // 组件模块（如果需要单独使用）
 export { GitOperations } from './GitOperations';
 export { SyncErrorHandler } from './SyncErrorHandler';
-export { FileWatcherManager } from './FileWatcherManager';
 export { StatusBarManager } from './StatusBarManager';

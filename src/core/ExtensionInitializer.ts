@@ -5,6 +5,7 @@ import { ServiceRegistry } from './ServiceRegistry';
 import { ConfigurationManager } from './ConfigurationManager';
 import { IViewRegistryResult, InitializationPhase } from './interfaces';
 import { Logger } from './utils/Logger';
+import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 
 const INITIALIZATION_RETRY_DELAY_MS = 2000;
 
@@ -41,6 +42,9 @@ export class ExtensionInitializer {
     constructor(context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
         this.logger.initialize(context.extensionMode); // 初始化Logger
+
+        // 初始化统一文件监听器（全局单例）
+        UnifiedFileWatcher.getInstance(context);
 
         this.commandRegistry = new CommandRegistry(context);
         this.viewRegistry = new ViewRegistry(context);

@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
-import { getIssueDir, isAutoSyncEnabled, getPeriodicPullInterval } from '../../config';
+import { getIssueDir, isAutoSyncEnabled, getPeriodicPullInterval, getChangeDebounceInterval } from '../../config';
 import { SyncStatus, SyncStatusInfo } from './types';
 import { GitOperations } from './GitOperations';
 import { SyncErrorHandler } from './SyncErrorHandler';
-import { FileWatcherManager } from './FileWatcherManager';
 import { StatusBarManager } from './StatusBarManager';
+import { UnifiedFileWatcher } from '../UnifiedFileWatcher';
+import { debounce, DebouncedFunction } from '../../utils/debounce';
+import { Logger } from '../../core/utils/Logger';
 
 /**
  * Git自动同步服务（重构版）
@@ -22,7 +24,7 @@ import { StatusBarManager } from './StatusBarManager';
  * 重构后的版本将职责分离到不同的模块：
  * - GitOperations: 底层Git操作
  * - SyncErrorHandler: 错误处理
- * - FileWatcherManager: 文件监听
+ * - UnifiedFileWatcher: 统一文件监听
  * - StatusBarManager: 状态栏管理
  * 
  * @example
@@ -40,15 +42,26 @@ export class GitSyncService implements vscode.Disposable {
     private periodicTimer?: NodeJS.Timeout;
     private isConflictMode = false;
     private currentStatus: SyncStatusInfo;
-    private disposables: vscode.Disposable[] = [];
+    
+    // 分离不同生命周期的资源管理
+    private fileWatcherDisposables: vscode.Disposable[] = []; // 文件监听订阅，setupAutoSync 时重建
+    private serviceDisposables: vscode.Disposable[] = []; // 服务级资源（命令、配置监听），仅在 dispose 时清理
+    
+    // 防抖函数
+    private debouncedAutoCommitAndPush: DebouncedFunction<() => void>;
 
     // 依赖注入组件
     private constructor(
-        private readonly fileWatcherManager: FileWatcherManager,
         private readonly statusBarManager: StatusBarManager
     ) {
         this.currentStatus = { status: SyncStatus.Disabled, message: '自动同步已禁用' };
         this.updateStatusBar();
+        
+        // 初始化防抖函数
+        this.debouncedAutoCommitAndPush = debounce(
+            () => this.performAutoCommitAndPush(),
+            getChangeDebounceInterval() * 1000
+        );
     }
 
     /**
@@ -64,7 +77,6 @@ export class GitSyncService implements vscode.Disposable {
     public static getInstance(): GitSyncService {
         if (!GitSyncService.instance) {
             GitSyncService.instance = new GitSyncService(
-                new FileWatcherManager(),
                 new StatusBarManager()
             );
         }
@@ -94,13 +106,13 @@ export class GitSyncService implements vscode.Disposable {
         this.setupAutoSync();
         this.registerCommands();
         
-        // 监听配置变更
+        // 监听配置变更（服务级资源，只在 dispose 时清理）
         const configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('issueManager.sync')) {
-                this.setupAutoSync();
+                this.setupAutoSync(); // 配置变更时重新设置
             }
         });
-        this.disposables.push(configWatcher);
+        this.serviceDisposables.push(configWatcher);
 
         // VS Code启动时执行初始同步
         if (isAutoSyncEnabled()) {
@@ -139,7 +151,7 @@ export class GitSyncService implements vscode.Disposable {
         }
 
         // 设置文件监听器
-        this.setupFileWatcher(issueDir);
+        this.setupFileWatcher();
         
         // 设置周期性拉取
         this.setupPeriodicPull();
@@ -151,18 +163,64 @@ export class GitSyncService implements vscode.Disposable {
     /**
      * 设置文件监听器
      * 
-     * 使用FileWatcherManager设置文件监听，监听问题文件和配置文件的变化。
+     * 使用 UnifiedFileWatcher 监听问题文件和配置文件的变化。
      */
-    private setupFileWatcher(issueDir: string): void {
-        this.fileWatcherManager.setupFileWatcher(
-            issueDir,
-            () => this.isConflictMode,
-            (status) => {
-                this.currentStatus = status;
-                this.updateStatusBar();
-            },
-            () => this.performAutoCommitAndPush()
+    private setupFileWatcher(): void {
+        // 清理旧的监听器
+        this.cleanupFileWatcher();
+
+        const fileWatcher = UnifiedFileWatcher.getInstance();
+
+        const onFileChange = () => {
+            this.handleFileChange();
+        };
+
+        // 订阅 Markdown 文件变更（文件监听资源，setupAutoSync 时重建）
+        this.fileWatcherDisposables.push(
+            fileWatcher.onMarkdownChange(onFileChange)
         );
+
+        // 订阅 .issueManager 目录下所有文件变更
+        this.fileWatcherDisposables.push(
+            fileWatcher.onIssueManagerChange(onFileChange)
+        );
+    }
+
+    /**
+     * 处理文件变更事件
+     * 
+     * 当文件发生变化时：
+     * 1. 检查是否处于冲突模式，如果是则忽略
+     * 2. 更新状态为"有本地更改待同步"
+     * 3. 触发防抖的自动同步操作
+     */
+    private handleFileChange(): void {
+        if (this.isConflictMode) {
+            return;
+        }
+        
+        // 立即更新状态，提供即时反馈
+        this.currentStatus = { 
+            status: SyncStatus.HasLocalChanges, 
+            message: '有本地更改待同步' 
+        };
+        this.updateStatusBar();
+
+        // 触发防抖的同步操作
+        this.debouncedAutoCommitAndPush();
+    }
+
+    /**
+     * 清理文件监听器
+     */
+    private cleanupFileWatcher(): void {
+        // 取消待处理的防抖调用
+        Logger.getInstance().debug('清理文件监听器,取消待处理的防抖调用');
+        this.debouncedAutoCommitAndPush.cancel();
+
+        // 只清理文件监听相关的订阅
+        this.fileWatcherDisposables.forEach(d => d.dispose());
+        this.fileWatcherDisposables = [];
     }
 
     /**
@@ -192,7 +250,8 @@ export class GitSyncService implements vscode.Disposable {
         const syncCommand = vscode.commands.registerCommand('issueManager.synchronizeNow', () => {
             this.performManualSync();
         });
-        this.disposables.push(syncCommand);
+        // 命令注册是服务级资源，只在 dispose 时清理
+        this.serviceDisposables.push(syncCommand);
     }
 
     /**
@@ -408,7 +467,7 @@ export class GitSyncService implements vscode.Disposable {
             this.periodicTimer = undefined;
         }
         
-        this.fileWatcherManager.cleanup();
+        this.cleanupFileWatcher();
     }
 
     /**
@@ -431,10 +490,11 @@ export class GitSyncService implements vscode.Disposable {
      */
     public dispose(): void {
         this.cleanup();
-        this.fileWatcherManager.dispose();
         this.statusBarManager.dispose();
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
+        
+        // 清理服务级资源（命令、配置监听器）
+        this.serviceDisposables.forEach(d => d.dispose());
+        this.serviceDisposables = [];
     }
 
     /**

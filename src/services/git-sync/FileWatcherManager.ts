@@ -1,37 +1,31 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { getChangeDebounceInterval } from '../../config';
 import { SyncStatus, SyncStatusInfo } from './types';
+import { UnifiedFileWatcher } from '../UnifiedFileWatcher';
 
 /**
  * 文件监听管理器
  * 
  * 负责监听问题文件和配置文件的变化，包括：
- * - 设置文件系统监听器
+ * - 使用统一文件监听器订阅文件变更
  * - 处理文件变更事件
  * - 防抖处理以避免频繁触发同步
  * - 管理监听器的生命周期
  */
 export class FileWatcherManager {
-    private fileWatcher?: vscode.FileSystemWatcher;
-    private configWatcher?: vscode.FileSystemWatcher;
     private debounceTimer?: NodeJS.Timeout;
     private disposables: vscode.Disposable[] = [];
 
     /**
      * 设置文件监听器
      * 
-     * 创建两个监听器：
-     * 1. 监听问题文件（.md文件）
-     * 2. 监听配置目录（.issueManager目录下的所有文件）
+     * 使用统一文件监听器订阅问题文件和配置文件变更
      * 
-     * @param issueDir 问题目录路径
      * @param isConflictMode 是否处于冲突模式
      * @param onStatusChange 状态变更回调函数
      * @param onAutoSync 自动同步触发回调函数
      */
     public setupFileWatcher(
-        issueDir: string,
         isConflictMode: () => boolean,
         onStatusChange: (status: SyncStatusInfo) => void,
         onAutoSync: () => void
@@ -39,30 +33,22 @@ export class FileWatcherManager {
         // 清理现有监听器
         this.cleanup();
 
-        // 监听问题文件（.md文件）
-        const mdPattern = new vscode.RelativePattern(issueDir, '**/*.md');
-        this.fileWatcher = vscode.workspace.createFileSystemWatcher(mdPattern);
-
-        // 监听配置目录（.issueManager目录下的所有文件）
-        const configPattern = new vscode.RelativePattern(path.join(issueDir, '.issueManager'), '**/*');
-        this.configWatcher = vscode.workspace.createFileSystemWatcher(configPattern);
+        // 从全局获取 UnifiedFileWatcher 实例（在 ExtensionInitializer 中已初始化）
+        const fileWatcher = UnifiedFileWatcher.getInstance();
 
         const onFileChange = () => {
             this.handleFileChange(isConflictMode, onStatusChange, onAutoSync);
         };
 
-        // 为问题文件监听器绑定事件
-        this.fileWatcher.onDidChange(onFileChange);
-        this.fileWatcher.onDidCreate(onFileChange);
-        this.fileWatcher.onDidDelete(onFileChange);
+        // 订阅 Markdown 文件变更
+        this.disposables.push(
+            fileWatcher.onMarkdownChange(onFileChange)
+        );
 
-        // 为配置文件监听器绑定事件
-        this.configWatcher.onDidChange(onFileChange);
-        this.configWatcher.onDidCreate(onFileChange);
-        this.configWatcher.onDidDelete(onFileChange);
-
-        this.disposables.push(this.fileWatcher);
-        this.disposables.push(this.configWatcher);
+        // 订阅 .issueManager 目录下所有文件变更
+        this.disposables.push(
+            fileWatcher.onIssueManagerChange(onFileChange)
+        );
     }
 
     /**
@@ -119,9 +105,6 @@ export class FileWatcherManager {
 
         this.disposables.forEach(d => d.dispose());
         this.disposables = [];
-
-        this.fileWatcher = undefined;
-        this.configWatcher = undefined;
     }
 
     /**

@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { ParaCategory, readParaCategoryMap } from '../data/paraManager';
 import { stripFocusedId } from '../data/treeManager';
-import { getIssueDir } from '../config';
+import { UnifiedFileWatcher } from './UnifiedFileWatcher';
 
 /**
  * PARA 分类缓存服务
@@ -19,7 +18,6 @@ export class ParaCategoryCache {
   private static instance: ParaCategoryCache | null = null;
   
   private categoryMap: Record<string, ParaCategory> | null = null;
-  private fileWatcher: vscode.FileSystemWatcher | null = null;
   private _onDidChangeCache = new vscode.EventEmitter<void>();
   
   /**
@@ -51,11 +49,10 @@ export class ParaCategoryCache {
     // 监听 para.json 文件变化
     this.setupFileWatcher();
 
-    // 监听配置变化（issueDir 改变时重新设置文件监听器）
+    // 监听配置变化（issueDir 改变时重新刷新缓存）
     this.context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('issueManager.issueDir')) {
-          this.setupFileWatcher();
           this.refresh();
         }
       })
@@ -66,28 +63,12 @@ export class ParaCategoryCache {
    * 设置文件监听器
    */
   private setupFileWatcher(): void {
-    // 清理旧的监听器
-    if (this.fileWatcher) {
-      this.fileWatcher.dispose();
-      this.fileWatcher = null;
-    }
+    const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
 
-    const issueDir = getIssueDir();
-    if (!issueDir) {
-      return;
-    }
-
-    const paraJsonPath = path.join(issueDir, '.issueManager', 'para.json');
-    const pattern = new vscode.RelativePattern(path.dirname(paraJsonPath), 'para.json');
-    
-    this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-    
-    // 监听文件变化
-    this.fileWatcher.onDidChange(() => this.refresh());
-    this.fileWatcher.onDidCreate(() => this.refresh());
-    this.fileWatcher.onDidDelete(() => this.refresh());
-
-    this.context.subscriptions.push(this.fileWatcher);
+    // 监听 para.json 文件变化
+    this.context.subscriptions.push(
+      fileWatcher.onParaCacheChange(() => this.refresh())
+    );
   }
 
   /**
@@ -158,9 +139,6 @@ export class ParaCategoryCache {
    */
   public dispose(): void {
     this._onDidChangeCache.dispose();
-    if (this.fileWatcher) {
-      this.fileWatcher.dispose();
-    }
     ParaCategoryCache.instance = null;
   }
 }
