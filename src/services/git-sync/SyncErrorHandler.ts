@@ -47,13 +47,40 @@ export class SyncErrorHandler {
         }
         
         // 通用错误处理
+        return this.createErrorResult(
+            '同步失败: 未知错误',
+            false
+        );
+    }
+
+    /**
+     * 创建错误结果对象
+     * 
+     * @param message 错误消息
+     * @param enterConflictMode 是否需要进入冲突模式
+     * @returns 错误处理结果
+     */
+    private static createErrorResult(
+        message: string, 
+        enterConflictMode: boolean
+    ): { statusInfo: SyncStatusInfo, enterConflictMode: boolean } {
         return {
             statusInfo: { 
                 status: SyncStatus.Conflict, 
-                message: `同步失败: ${error instanceof Error ? error.message.split('\n')[0] : '未知错误'}` 
+                message 
             },
-            enterConflictMode: false
+            enterConflictMode
         };
+    }
+
+    /**
+     * 提取错误消息的第一行
+     * 
+     * @param message 完整错误消息
+     * @returns 第一行消息
+     */
+    private static getFirstLine(message: string): string {
+        return message.split('\n')[0];
     }
 
     /**
@@ -66,38 +93,22 @@ export class SyncErrorHandler {
         enterConflictMode: boolean 
     } {
         const response = error.git;
-        if (response && typeof response === 'object') {
-            // 检查是否是合并相关的错误
-            if ('conflicts' in response || 'failed' in response) {
-                return {
-                    statusInfo: { 
-                        status: SyncStatus.Conflict, 
-                        message: '存在合并冲突，需要手动解决' 
-                    },
-                    enterConflictMode: true
-                };
-            }
+        
+        // 检查是否是合并相关的错误
+        if (response && typeof response === 'object' && 
+            ('conflicts' in response || 'failed' in response)) {
+            return this.createErrorResult('存在合并冲突，需要手动解决', true);
         }
         
         // 检查错误消息是否包含冲突信息
-        if (error.message && (error.message.includes('conflict') || error.message.includes('merge') || 
-            error.message.includes('冲突') || error.message.includes('合并'))) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: '存在合并冲突，需要手动解决' 
-                },
-                enterConflictMode: true
-            };
+        if (error.message && this.isConflictError(error.message.toLowerCase())) {
+            return this.createErrorResult('存在合并冲突，需要手动解决', true);
         }
 
-        return {
-            statusInfo: { 
-                status: SyncStatus.Conflict, 
-                message: `Git操作错误: ${error.message.split('\n')[0]}` 
-            },
-            enterConflictMode: false
-        };
+        return this.createErrorResult(
+            `Git操作错误: ${this.getFirstLine(error.message)}`,
+            false
+        );
     }
 
     /**
@@ -113,44 +124,32 @@ export class SyncErrorHandler {
         
         // 检查SSH连接错误
         if (this.isSSHConnectionError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置` 
-                },
-                enterConflictMode: false
-            };
+            return this.createErrorResult(
+                'SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置',
+                false
+            );
         }
         
         // 检查网络相关错误
         if (this.isNetworkError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: `网络错误: ${error.message.split('\n')[0]}` 
-                },
-                enterConflictMode: false
-            };
+            return this.createErrorResult(
+                `网络错误: ${this.getFirstLine(error.message)}`,
+                false
+            );
         }
         
         // 检查认证相关错误
         if (this.isAuthenticationError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: `认证错误: ${error.message.split('\n')[0]}` 
-                },
-                enterConflictMode: false
-            };
+            return this.createErrorResult(
+                `认证错误: ${this.getFirstLine(error.message)}`,
+                false
+            );
         }
 
-        return {
-            statusInfo: { 
-                status: SyncStatus.Conflict, 
-                message: `Git错误: ${error.message.split('\n')[0]}` 
-            },
-            enterConflictMode: false
-        };
+        return this.createErrorResult(
+            `Git错误: ${this.getFirstLine(error.message)}`,
+            false
+        );
     }
 
     /**
@@ -164,66 +163,42 @@ export class SyncErrorHandler {
         
         // 检查是否是冲突错误
         if (this.isConflictError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: '存在合并冲突，需要手动解决' 
-                },
-                enterConflictMode: true
-            };
+            return this.createErrorResult('存在合并冲突，需要手动解决', true);
         }
         
         // 检查SSH连接错误
         if (this.isSSHConnectionError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置` 
-                },
-                enterConflictMode: false
-            };
+            return this.createErrorResult(
+                'SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置',
+                false
+            );
         }
         
         // 检查是否是网络错误
         if (this.isNetworkError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: `网络错误: ${error.message.split('\n')[0]}` 
-                },
-                enterConflictMode: false
-            };
+            return this.createErrorResult(
+                `网络错误: ${this.getFirstLine(error.message)}`,
+                false
+            );
         }
         
         // 检查是否是认证错误
         if (this.isAuthenticationError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: `认证错误: ${error.message.split('\n')[0]}` 
-                },
-                enterConflictMode: false
-            };
+            return this.createErrorResult(
+                `认证错误: ${this.getFirstLine(error.message)}`,
+                false
+            );
         }
         
         // 检查是否是Git配置错误
         if (this.isGitConfigError(errorMessage)) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: `Git操作错误，请检查仓库状态` 
-                },
-                enterConflictMode: false
-            };
+            return this.createErrorResult('Git操作错误，请检查仓库状态', false);
         }
 
-        return {
-            statusInfo: { 
-                status: SyncStatus.Conflict, 
-                message: `同步失败: ${error.message.split('\n')[0]}` 
-            },
-            enterConflictMode: false
-        };
+        return this.createErrorResult(
+            `同步失败: ${this.getFirstLine(error.message)}`,
+            false
+        );
     }
 
     /**
@@ -231,7 +206,7 @@ export class SyncErrorHandler {
      * 
      * 当检测到合并冲突时，向用户显示处理选项。
      */
-    public static  async showConflictDialog(): Promise<void> {
+    public static async showConflictDialog(): Promise<void> {
         const selection = await vscode.window.showErrorMessage(
             '自动同步失败，因为存在合并冲突。自动化功能已暂停，请手动解决冲突。',
             '打开文件以解决冲突'
@@ -241,36 +216,64 @@ export class SyncErrorHandler {
         }
     }
 
-    // 私有方法：错误类型检查
+    // ========== 错误类型检查辅助方法 ==========
+
+    /**
+     * 检查是否为冲突错误
+     */
     private static isConflictError(errorMessage: string): boolean {
-        return errorMessage.includes('conflict') || errorMessage.includes('merge') ||
-               errorMessage.includes('冲突') || errorMessage.includes('合并');
+        return errorMessage.includes('conflict') || 
+               errorMessage.includes('merge') ||
+               errorMessage.includes('冲突') || 
+               errorMessage.includes('合并');
     }
 
+    /**
+     * 检查是否为SSH连接错误
+     */
     private static isSSHConnectionError(errorMessage: string): boolean {
         return errorMessage.includes('ssh: connect to host') || 
                errorMessage.includes('undefined error: 0') ||
                errorMessage.includes('无法读取远程仓库') ||
                errorMessage.includes('could not read from remote repository') ||
-               (errorMessage.includes('ssh') && (errorMessage.includes('port 22') || errorMessage.includes('github.com')));
+               (errorMessage.includes('ssh') && 
+                (errorMessage.includes('port 22') || errorMessage.includes('github.com')));
     }
 
+    /**
+     * 检查是否为网络错误
+     */
     private static isNetworkError(errorMessage: string): boolean {
-        return errorMessage.includes('network') || errorMessage.includes('connection') ||
-               errorMessage.includes('econnreset') || errorMessage.includes('timeout') ||
-               errorMessage.includes('网络') || errorMessage.includes('连接') ||
+        return errorMessage.includes('network') || 
+               errorMessage.includes('connection') ||
+               errorMessage.includes('econnreset') || 
+               errorMessage.includes('timeout') ||
+               errorMessage.includes('网络') || 
+               errorMessage.includes('连接') ||
                errorMessage.includes('超时');
     }
 
+    /**
+     * 检查是否为认证错误
+     */
     private static isAuthenticationError(errorMessage: string): boolean {
-        return errorMessage.includes('authentication') || errorMessage.includes('permission') ||
-               errorMessage.includes('access denied') || errorMessage.includes('unauthorized') ||
-               errorMessage.includes('认证') || errorMessage.includes('权限') ||
-               errorMessage.includes('拒绝访问') || errorMessage.includes('未授权');
+        return errorMessage.includes('authentication') || 
+               errorMessage.includes('permission') ||
+               errorMessage.includes('access denied') || 
+               errorMessage.includes('unauthorized') ||
+               errorMessage.includes('认证') || 
+               errorMessage.includes('权限') ||
+               errorMessage.includes('拒绝访问') || 
+               errorMessage.includes('未授权');
     }
 
+    /**
+     * 检查是否为Git配置错误
+     */
     private static isGitConfigError(errorMessage: string): boolean {
-        return errorMessage.includes('无法变基') || errorMessage.includes('rebase') ||
-               errorMessage.includes('cannot rebase') || errorMessage.includes('变基');
+        return errorMessage.includes('无法变基') || 
+               errorMessage.includes('rebase') ||
+               errorMessage.includes('cannot rebase') || 
+               errorMessage.includes('变基');
     }
 }

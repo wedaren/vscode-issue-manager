@@ -54,23 +54,26 @@ export class GitOperations {
      */
     public static async pullChanges(cwd: string): Promise<void> {
         const git = this.getGit(cwd);
-        try {
-            // 先检查当前分支
-            const branchSummary = await git.branch();
-            const currentBranch = branchSummary.current;
-            
-            // 获取远程分支状态
-            await git.fetch('origin');
-            
-            // 拉取当前分支的更新，使用merge而非rebase避免复杂情况
-            await git.pull('origin', currentBranch, { '--no-rebase': null });  
-        } catch (error) {
-            // 直接抛出错误，由上层统一处理。  
-            // 简单的 git.pull() 可能会根据用户配置意外触发 rebase，  
-            // 导致自动化流程中出现非预期的行为。  
-            // 保持明确的错误处理路径更为安全。  
-            throw error;
-        }
+        
+        // 先检查当前分支
+        const currentBranch = await this.getCurrentBranch(git);
+        
+        // 获取远程分支状态
+        await git.fetch('origin');
+        
+        // 拉取当前分支的更新，使用merge而非rebase避免复杂情况
+        await git.pull('origin', currentBranch, { '--no-rebase': null });
+    }
+
+    /**
+     * 获取当前分支名称
+     * 
+     * @param git SimpleGit实例
+     * @returns 当前分支名称
+     */
+    private static async getCurrentBranch(git: SimpleGit): Promise<string> {
+        const branchSummary = await git.branch();
+        return branchSummary.current;
     }
 
     /**
@@ -114,17 +117,23 @@ export class GitOperations {
         // 添加所有更改
         await git.add('.');
         
-        // 生成提交消息
-        const template = getAutoCommitMessage();
-        const commitMessage = template.replace('{date}', new Date().toISOString());  
-        
-        // 提交
+        // 生成提交消息并提交
+        const commitMessage = this.generateCommitMessage();
         await git.commit(commitMessage);
         
         // 获取当前分支并推送
-        const branchSummary = await git.branch();
-        const currentBranch = branchSummary.current;
+        const currentBranch = await this.getCurrentBranch(git);
         await git.push('origin', currentBranch);
+    }
+
+    /**
+     * 生成自动提交消息
+     * 
+     * @returns 格式化的提交消息
+     */
+    private static generateCommitMessage(): string {
+        const template = getAutoCommitMessage();
+        return template.replace('{date}', new Date().toISOString());
     }
 
     /**
@@ -143,7 +152,7 @@ export class GitOperations {
             await git.listRemote(['--heads', 'origin']);
             return true;
         } catch (error) {
-            console.log('Git connectivity test failed:', error);
+            console.error('Git connectivity test failed:', error);
             return false;
         }
     }
