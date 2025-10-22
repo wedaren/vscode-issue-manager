@@ -5,6 +5,7 @@ import { GitOperations } from './GitOperations';
 import { SyncErrorHandler } from './SyncErrorHandler';
 import { StatusBarManager } from './StatusBarManager';
 import { UnifiedFileWatcher } from '../UnifiedFileWatcher';
+import { debounce, DebouncedFunction } from '../../utils/debounce';
 
 /**
  * Git自动同步服务（重构版）
@@ -38,13 +39,15 @@ import { UnifiedFileWatcher } from '../UnifiedFileWatcher';
 export class GitSyncService implements vscode.Disposable {
     private static instance: GitSyncService;
     private periodicTimer?: NodeJS.Timeout;
-    private debounceTimer?: NodeJS.Timeout;
     private isConflictMode = false;
     private currentStatus: SyncStatusInfo;
     
     // 分离不同生命周期的资源管理
     private fileWatcherDisposables: vscode.Disposable[] = []; // 文件监听订阅，setupAutoSync 时重建
     private serviceDisposables: vscode.Disposable[] = []; // 服务级资源（命令、配置监听），仅在 dispose 时清理
+    
+    // 防抖函数
+    private debouncedAutoCommitAndPush: DebouncedFunction<() => void>;
 
     // 依赖注入组件
     private constructor(
@@ -52,6 +55,12 @@ export class GitSyncService implements vscode.Disposable {
     ) {
         this.currentStatus = { status: SyncStatus.Disabled, message: '自动同步已禁用' };
         this.updateStatusBar();
+        
+        // 初始化防抖函数
+        this.debouncedAutoCommitAndPush = debounce(
+            () => this.performAutoCommitAndPush(),
+            getChangeDebounceInterval() * 1000
+        );
     }
 
     /**
@@ -181,42 +190,31 @@ export class GitSyncService implements vscode.Disposable {
      * 
      * 当文件发生变化时：
      * 1. 检查是否处于冲突模式，如果是则忽略
-     * 2. 清除之前的防抖定时器
-     * 3. 更新状态为"有本地更改待同步"
-     * 4. 设置防抖定时器，延迟触发自动同步
+     * 2. 更新状态为"有本地更改待同步"
+     * 3. 触发防抖的自动同步操作
      */
     private handleFileChange(): void {
         if (this.isConflictMode) {
             return;
         }
         
-        // 防抖处理
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-        }
-        
-        // 更新状态
+        // 立即更新状态，提供即时反馈
         this.currentStatus = { 
             status: SyncStatus.HasLocalChanges, 
             message: '有本地更改待同步' 
         };
         this.updateStatusBar();
 
-        // 设置防抖定时器
-        const debounceInterval = getChangeDebounceInterval() * 1000;
-        this.debounceTimer = setTimeout(() => {
-            this.performAutoCommitAndPush();
-        }, debounceInterval);
+        // 触发防抖的同步操作
+        this.debouncedAutoCommitAndPush();
     }
 
     /**
      * 清理文件监听器
      */
     private cleanupFileWatcher(): void {
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-            this.debounceTimer = undefined;
-        }
+        // 取消待处理的防抖调用
+        this.debouncedAutoCommitAndPush.cancel();
 
         // 只清理文件监听相关的订阅
         this.fileWatcherDisposables.forEach(d => d.dispose());
