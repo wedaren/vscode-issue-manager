@@ -5,6 +5,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.3]
+
+### ♻️ 重构优化
+- refactor: 统一文件监听器重构，删除 FileWatcherManager 包装类 (#85)
+  - 创建统一的 `UnifiedFileWatcher` 服务，整合全部文件监听逻辑
+  - 将项目中 7+ 个重复的 `FileSystemWatcher` 实例整合为 2 个，减少 71% 的监听器数量
+  - 删除冗余的 `FileWatcherManager.ts` 包装类，简化代码结构
+  - 采用发布订阅模式，各服务通过回调函数订阅事件，实现解耦
+  - 消除 Markdown 文件的重复监听（从 3 次降至 1 次），提升性能
+  - 支持智能事件分发，自动将文件变更路由到对应的订阅者
+  - 降低系统资源占用和文件句柄使用，提高整体响应速度
+
 ## [0.2.2]
 
 ### ✨ 新功能
