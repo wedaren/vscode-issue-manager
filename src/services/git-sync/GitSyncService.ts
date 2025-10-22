@@ -6,6 +6,7 @@ import { SyncErrorHandler } from './SyncErrorHandler';
 import { StatusBarManager } from './StatusBarManager';
 import { UnifiedFileWatcher } from '../UnifiedFileWatcher';
 import { debounce, DebouncedFunction } from '../../utils/debounce';
+import { Logger } from '../../core/utils/Logger';
 
 /**
  * Git自动同步服务（重构版）
@@ -214,6 +215,7 @@ export class GitSyncService implements vscode.Disposable {
      */
     private cleanupFileWatcher(): void {
         // 取消待处理的防抖调用
+        Logger.getInstance().debug('清理文件监听器,取消待处理的防抖调用');
         this.debouncedAutoCommitAndPush.cancel();
 
         // 只清理文件监听相关的订阅
