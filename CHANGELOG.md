@@ -5,6 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [未发布]
+
+### ⚙️ 配置
+- feat: 调整快捷键绑定
+  - 打开关注问题视图：`cmd+j cmd+f`（原 `cmd+shift+i`）
+  - 搜索关注问题：`cmd+j cmd+s`（原 `cmd+j cmd+f`）
+
 ## [0.2.3]
 
 ### ♻️ 重构优化
