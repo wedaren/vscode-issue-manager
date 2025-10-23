@@ -115,3 +115,27 @@ export function getTitleCacheRebuildIntervalHours(): number {
     }
     return val;
 }
+
+/**
+ * 获取同步失败时的最大重试次数
+ */
+export function getSyncMaxRetries(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<number>('sync.maxRetries', 3);
+}
+
+/**
+ * 获取同步重试的初始延迟时间（秒）
+ */
+export function getSyncRetryInitialDelay(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<number>('sync.retryInitialDelay', 5);
+}
+
+/**
+ * 获取是否启用同步失败通知
+ */
+export function isSyncNotificationEnabled(): boolean {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<boolean>('sync.enableNotifications', true);
+}

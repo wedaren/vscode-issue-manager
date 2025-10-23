@@ -754,6 +754,21 @@
           "default": 15,
           "description": "后台周期性拉取远程更新的时间间隔（单位：分钟）。设置为0可禁用。"
         },
+        "issueManager.sync.maxRetries": {
+          "type": "number",
+          "default": 3,
+          "description": "同步失败时的最大自动重试次数。设置为0可禁用自动重试。"
+        },
+        "issueManager.sync.retryInitialDelay": {
+          "type": "number",
+          "default": 5,
+          "description": "同步重试的初始延迟时间（单位：秒）。后续重试会使用指数退避策略。"
+        },
+        "issueManager.sync.enableNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用同步失败时的桌面通知。禁用后仅在状态栏显示错误状态。"
+        },
         "issueManager.rss.enableAutoUpdate": {
           "type": "boolean",
           "default": true,

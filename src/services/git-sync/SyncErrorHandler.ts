@@ -32,25 +32,36 @@ export class SyncErrorHandler {
     } {
         console.error('Git sync error:', error);
         
+        // 获取错误详情（用于日志）
+        const errorDetails = this.getErrorDetails(error);
+        
         // 优先使用 simple-git 的特定错误类型进行判断
         if (error instanceof GitResponseError) {
-            return this.handleGitResponseError(error);
+            const result = this.handleGitResponseError(error);
+            result.statusInfo.errorDetails = errorDetails;
+            return result;
         }
         
         if (error instanceof GitError) {
-            return this.handleGitError(error);
+            const result = this.handleGitError(error);
+            result.statusInfo.errorDetails = errorDetails;
+            return result;
         }
         
         // 后备方案：基于错误消息文本的检查（保持向后兼容）
         if (error instanceof Error) {
-            return this.handleGenericError(error);
+            const result = this.handleGenericError(error);
+            result.statusInfo.errorDetails = errorDetails;
+            return result;
         }
         
         // 通用错误处理
         return {
             statusInfo: { 
                 status: SyncStatus.Conflict, 
-                message: `同步失败: ${error instanceof Error ? error.message.split('\n')[0] : '未知错误'}` 
+                message: `同步失败: ${error instanceof Error ? error.message.split('\n')[0] : '未知错误'}`,
+                shouldNotify: true,
+                errorDetails: errorDetails
             },
             enterConflictMode: false
         };
@@ -72,7 +83,8 @@ export class SyncErrorHandler {
                 return {
                     statusInfo: { 
                         status: SyncStatus.Conflict, 
-                        message: '存在合并冲突，需要手动解决' 
+                        message: '存在合并冲突，需要手动解决',
+                        shouldNotify: true
                     },
                     enterConflictMode: true
                 };
@@ -85,7 +97,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: '存在合并冲突，需要手动解决' 
+                    message: '存在合并冲突，需要手动解决',
+                    shouldNotify: true
                 },
                 enterConflictMode: true
             };
@@ -94,7 +107,8 @@ export class SyncErrorHandler {
         return {
             statusInfo: { 
                 status: SyncStatus.Conflict, 
-                message: `Git操作错误: ${error.message.split('\n')[0]}` 
+                message: `Git操作错误: ${error.message.split('\n')[0]}`,
+                shouldNotify: true
             },
             enterConflictMode: false
         };
@@ -116,7 +130,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置` 
+                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置`,
+                    shouldNotify: true
                 },
                 enterConflictMode: false
             };
@@ -127,7 +142,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: `网络错误: ${error.message.split('\n')[0]}` 
+                    message: `网络错误: ${error.message.split('\n')[0]}`,
+                    shouldNotify: true
                 },
                 enterConflictMode: false
             };
@@ -138,7 +154,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: `认证错误: ${error.message.split('\n')[0]}` 
+                    message: `认证错误: ${error.message.split('\n')[0]}`,
+                    shouldNotify: true
                 },
                 enterConflictMode: false
             };
@@ -147,7 +164,8 @@ export class SyncErrorHandler {
         return {
             statusInfo: { 
                 status: SyncStatus.Conflict, 
-                message: `Git错误: ${error.message.split('\n')[0]}` 
+                message: `Git错误: ${error.message.split('\n')[0]}`,
+                shouldNotify: true
             },
             enterConflictMode: false
         };
@@ -167,7 +185,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: '存在合并冲突，需要手动解决' 
+                    message: '存在合并冲突，需要手动解决',
+                    shouldNotify: true
                 },
                 enterConflictMode: true
             };
@@ -178,7 +197,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置` 
+                    message: `SSH连接错误: 无法连接到GitHub，请检查网络和SSH配置`,
+                    shouldNotify: true
                 },
                 enterConflictMode: false
             };
@@ -189,7 +209,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: `网络错误: ${error.message.split('\n')[0]}` 
+                    message: `网络错误: ${error.message.split('\n')[0]}`,
+                    shouldNotify: true
                 },
                 enterConflictMode: false
             };
@@ -200,7 +221,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: `认证错误: ${error.message.split('\n')[0]}` 
+                    message: `认证错误: ${error.message.split('\n')[0]}`,
+                    shouldNotify: true
                 },
                 enterConflictMode: false
             };
@@ -211,7 +233,8 @@ export class SyncErrorHandler {
             return {
                 statusInfo: { 
                     status: SyncStatus.Conflict, 
-                    message: `Git操作错误，请检查仓库状态` 
+                    message: `Git操作错误，请检查仓库状态`,
+                    shouldNotify: true
                 },
                 enterConflictMode: false
             };
@@ -220,7 +243,8 @@ export class SyncErrorHandler {
         return {
             statusInfo: { 
                 status: SyncStatus.Conflict, 
-                message: `同步失败: ${error.message.split('\n')[0]}` 
+                message: `同步失败: ${error.message.split('\n')[0]}`,
+                shouldNotify: true
             },
             enterConflictMode: false
         };
@@ -272,5 +296,24 @@ export class SyncErrorHandler {
     private static isGitConfigError(errorMessage: string): boolean {
         return errorMessage.includes('无法变基') || errorMessage.includes('rebase') ||
                errorMessage.includes('cannot rebase') || errorMessage.includes('变基');
+    }
+
+    /**
+     * 获取错误详情（用于日志记录）
+     * 
+     * @param error 错误对象
+     * @returns 错误详情字符串
+     */
+    private static getErrorDetails(error: unknown): string {
+        if (error instanceof Error) {
+            let details = `${error.name}: ${error.message}`;
+            if (error.stack) {
+                details += `\n堆栈:\n${error.stack}`;
+            }
+            return details;
+        } else if (typeof error === 'string') {
+            return error;
+        }
+        return JSON.stringify(error);
     }
 }
