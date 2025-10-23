@@ -6,11 +6,16 @@
 // DOM 元素
 const startBtn = document.getElementById('start-selection-btn');
 const cancelBtn = document.getElementById('cancel-selection-btn');
+const openIssueDirBtn = document.getElementById('open-issue-dir-btn');
 const statusText = document.getElementById('status-text');
 const statusDiv = document.getElementById('status');
 const messageDiv = document.getElementById('message');
 const wsStatusDiv = document.getElementById('ws-status');
 const wsStatusText = document.getElementById('ws-status-text');
+
+// 使用 vscode:// URI scheme 打开 VSCode 并执行命令
+// 格式: vscode://publisher.extensionName/path
+const VSCODE_OPEN_DIR_URI = 'vscode://wedaren.issue-manager/open-issue-dir';
 
 // 状态管理
 let isSelecting = false;
@@ -22,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 绑定事件监听器
   startBtn.addEventListener('click', handleStartSelection);
   cancelBtn.addEventListener('click', handleCancelSelection);
+  openIssueDirBtn.addEventListener('click', handleOpenIssueDir);
   
   // 监听来自 Background 的消息
   chrome.runtime.onMessage.addListener(handleBackgroundMessage);
@@ -82,6 +88,23 @@ async function handleCancelSelection() {
   } catch (error) {
     console.error('Failed to cancel selection:', error);
     showMessage('取消选取失败', 'error');
+  }
+}
+
+/**
+ * 处理打开问题目录按钮点击
+ */
+function handleOpenIssueDir() {
+  console.log('Open issue directory clicked');
+  
+  try {
+    // 在新标签页中打开 VSCode URI
+    window.open(VSCODE_OPEN_DIR_URI, '_blank');
+    
+    showMessage('正在打开 VSCode 问题目录...', 'success');
+  } catch (error) {
+    console.error('Failed to open issue directory:', error);
+    showMessage('打开问题目录失败: ' + error.message, 'error');
   }
 }
 

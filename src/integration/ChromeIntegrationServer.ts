@@ -3,13 +3,19 @@ import * as http from 'http';
 import { URL } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
+import { Logger } from '../core/utils/Logger';
 
 
 interface ChromeRequestPayload {  
   html?: string;  
   title?: string;  
   url?: string;  
-}  
+} 
+
+const URI_PATH_OPEN_DIR = '/open-issue-dir';  
+const URI_PATH_CREATE_FROM_HTML = '/create-from-html';  
+const COMMAND_OPEN_ISSUE_DIR = 'issueManager.openIssueDir';  
+
 
 /**
  * 负责 VSCode 端与 Chrome 扩展集成:
@@ -21,6 +27,7 @@ export class ChromeIntegrationServer {
   private httpServer: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private disposed = false;
+  private logger = Logger.getInstance();
 
   public static getInstance(): ChromeIntegrationServer {
     if (!this.instance) {
@@ -42,45 +49,59 @@ export class ChromeIntegrationServer {
     const uriHandler: vscode.UriHandler = {
       handleUri: async (uri: vscode.Uri) => {
         try {
-          // 仅处理路径 /create-from-html
-          if (uri.path !== '/create-from-html') {
-            return;
+
+          switch (uri.path) {
+            case URI_PATH_OPEN_DIR:
+              // 处理打开问题目录
+              await vscode.commands.executeCommand(COMMAND_OPEN_ISSUE_DIR);
+              return;
+
+            case URI_PATH_CREATE_FROM_HTML: {
+              // 处理创建笔记  
+              const params = new URL(uri.toString()).searchParams;  
+
+              let html = params.get('html') || '';  
+              let title = params.get('title') || undefined;  
+              let url = params.get('url') || undefined;  
+
+              const dataRaw = params.get('data');  
+              if (dataRaw) {  
+                try {  
+                  const parsed = JSON.parse(dataRaw);  
+                  html = parsed.html ?? html;  
+                  title = parsed.title ?? title;  
+                  url = parsed.url ?? url;  
+                } catch (e) {  
+                  this.logger.error('URI data 参数解析失败', e);  
+                  void vscode.window.showErrorMessage('解析来自 Chrome 扩展的数据失败,请重试。');  
+                }  
+              }  
+
+              if (!html) {  
+                void vscode.window.showErrorMessage('链接中缺少 html 内容,无法创建笔记');  
+                return;  
+              }  
+
+              await createIssueFromHtml({ html, title, url });  
+              return;  
+            }  
+
+            default:  
+              // 未知路径  
+              this.logger.warn('未知的 URI 路径', { path: uri.path });  
           }
-          const params = new URL(uri.toString()).searchParams;
 
-          let html = params.get('html') || '';
-          let title = params.get('title') || undefined;
-          let url = params.get('url') || undefined;
-
-          const dataRaw = params.get('data');
-          if (dataRaw) {
-            try {
-              const parsed = JSON.parse(dataRaw);
-              html = parsed.html ?? html;
-              title = parsed.title ?? title;
-              url = parsed.url ?? url;
-            } catch (e) {
-              console.error('URI data 参数解析失败:', e);
-              void vscode.window.showErrorMessage('解析来自 Chrome 扩展的数据失败,请重试。');
-            }
-          }
-
-          if (!html) {
-            void vscode.window.showErrorMessage('链接中缺少 html 内容,无法创建笔记');
-            return;
-          }
-
-          await createIssueFromHtml({ html, title, url });
         } catch (e: any) {
-          console.error('URI 处理失败:', e);
-          void vscode.window.showErrorMessage('处理来自浏览器的创建请求失败');
+          this.logger.error('URI 处理失败', e);  
+          const message = e instanceof Error ? e.message : String(e);  
+          void vscode.window.showErrorMessage(`处理来自浏览器的请求失败: ${message}`);  
         }
       }
     };
     context.subscriptions.push(vscode.window.registerUriHandler(uriHandler));
 
     if (!enable) {
-      console.log('[ChromeIntegration] WebSocket 服务未启用(已注册 URI Handler 作为备用)');
+      this.logger.info('[ChromeIntegration] WebSocket 服务未启用(已注册 URI Handler 作为备用)');
       return;
     }
 
@@ -99,7 +120,7 @@ export class ChromeIntegrationServer {
 
     // 处理 WebSocket 连接
     this.wss.on('connection', (ws: WebSocket) => {
-      console.log('[ChromeIntegration] Chrome 扩展已连接');
+      this.logger.info('[ChromeIntegration] Chrome 扩展已连接');
 
       // 发送欢迎消息
       ws.send(JSON.stringify({ type: 'connected', message: 'VSCode 已连接' }));
@@ -109,7 +130,7 @@ export class ChromeIntegrationServer {
         let message: any;
         try {
           message = JSON.parse(data.toString('utf8'));
-          console.log('[ChromeIntegration] 收到消息:', message);
+          this.logger.debug('[ChromeIntegration] 收到消息', message);
 
           if (message.type === 'create-note') {
             const payload: ChromeRequestPayload = message.data || {};
@@ -153,7 +174,7 @@ export class ChromeIntegrationServer {
             }));
           }
         } catch (e: any) {
-          console.error('[ChromeIntegration] 消息处理失败:', e);
+          this.logger.error('[ChromeIntegration] 消息处理失败', e);
           try {
             ws.send(JSON.stringify({ 
               type: 'error', 
@@ -168,17 +189,17 @@ export class ChromeIntegrationServer {
 
       // 处理连接关闭
       ws.on('close', () => {
-        console.log('[ChromeIntegration] Chrome 扩展已断开连接');
+        this.logger.info('[ChromeIntegration] Chrome 扩展已断开连接');
       });
 
       // 处理错误
       ws.on('error', (error: Error) => {
-        console.error('[ChromeIntegration] WebSocket 错误:', error);
+        this.logger.error('[ChromeIntegration] WebSocket 错误', error);
       });
     });
 
     this.httpServer.listen(port, '127.0.0.1', () => {
-      console.log(`[ChromeIntegration] WebSocket 服务已启动: ws://127.0.0.1:${port}/ws`);
+      this.logger.info(`[ChromeIntegration] WebSocket 服务已启动: ws://127.0.0.1:${port}/ws`);
     });
 
     context.subscriptions.push({
@@ -201,7 +222,7 @@ export class ChromeIntegrationServer {
           }
         });
         this.wss.close(() => {
-          console.log('[ChromeIntegration] WebSocket 服务已停止');
+          this.logger.info('[ChromeIntegration] WebSocket 服务已停止');
         });
         this.wss = null;
       }
@@ -209,12 +230,12 @@ export class ChromeIntegrationServer {
       // 关闭 HTTP 服务器
       if (this.httpServer) {
         this.httpServer.close(() => {
-          console.log('[ChromeIntegration] HTTP 服务器已停止');
+          this.logger.info('[ChromeIntegration] HTTP 服务器已停止');
         });
         this.httpServer = null;
       }
     } catch (e) {
-      console.warn('[ChromeIntegration] 停止服务时出错:', e);
+      this.logger.warn('[ChromeIntegration] 停止服务时出错', e);
     }
   }
 }
