@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
 
 /**
- * 注册“相关联问题视图”及相关命令
+ * 注册"相关联问题视图"及相关命令
  */
 export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   // 创建数据提供者实例
-  const relatedIssuesProvider = new RelatedIssuesProvider();
+  const relatedIssuesProvider = new RelatedIssuesProvider(context);
   // 视图锁定状态
   let isPinned = false;
   // 设置上下文变量

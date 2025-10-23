@@ -7,6 +7,7 @@ import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
 import { TitleCacheService } from '../services/TitleCacheService';
 import { getUri } from '../utils/fileUtils';
+import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
@@ -14,6 +15,8 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     private contextUri: vscode.Uri | undefined;
     private treeData: TreeData | null = null;
+    
+    constructor(private context: vscode.ExtensionContext) {}
 
     /** 切换当前分析的问题 */
     updateContext(resourceUri?: vscode.Uri) {
@@ -129,7 +132,13 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.tooltip = element.tooltip;
         item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
         item.description = element.type === 'parent' ? element.tooltip : '';
-        item.contextValue = 'relatedIssueNode';
+        
+        // 使用与问题总览视图相同的 contextValue，以支持相同的右键菜单
+        const paraCategoryCache = ParaCategoryCache.getInstance(this.context);
+        item.contextValue = paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
+        item.id = element.id;
+        item.resourceUri = element.resourceUri;
+        
         item.command = element.resourceUri ? {
             command: 'issueManager.openAndRevealIssue',
             title: '打开并定位问题',

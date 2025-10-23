@@ -490,27 +490,27 @@
         },
         {
           "command": "issueManager.disassociateIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')  && viewItem =~ /issueNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related')  && viewItem =~ /issueNode/",
           "group": "modification@2"
         },
         {
           "command": "issueManager.createSubIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related')",
           "group": "inline"
         },
         {
           "command": "issueManager.focusIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /issueNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /issueNode/",
           "group": "modification@3"
         },
         {
           "command": "issueManager.removeFocus",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && (viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && (viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
           "group": "modification@3"
         },
         {
           "command": "issueManager.pinFocus",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /focusedNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /focusedNode/",
           "group": "modification@3"
         },
         {
@@ -520,7 +520,7 @@
         },
         {
           "command": "issueManager.moveTo",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused'",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
           "group": "navigation@4"
         },
         {
@@ -560,42 +560,42 @@
         },
         {
           "command": "issueManager.para.addToProjects",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!projects)/)",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent' || view == 'issueManager.views.related') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!projects)/)",
           "group": "para@1"
         },
         {
           "command": "issueManager.para.addToAreas",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!areas)/)",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent' || view == 'issueManager.views.related') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!areas)/)",
           "group": "para@2"
         },
         {
           "command": "issueManager.para.addToResources",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!resources)/)",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent' || view == 'issueManager.views.related') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!resources)/)",
           "group": "para@3"
         },
         {
           "command": "issueManager.para.addToArchives",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!archives)/)",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent' || view == 'issueManager.views.related') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!archives)/)",
           "group": "para@4"
         },
         {
           "command": "issueManager.para.viewInProjects",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:projects/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /paraAssigned:projects/",
           "group": "para@0"
         },
         {
           "command": "issueManager.para.viewInAreas",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:areas/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /paraAssigned:areas/",
           "group": "para@1"
         },
         {
           "command": "issueManager.para.viewInResources",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:resources/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /paraAssigned:resources/",
           "group": "para@2"
         },
         {
           "command": "issueManager.para.viewInArchives",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:archives/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /paraAssigned:archives/",
           "group": "para@3"
         },
         {
