@@ -177,6 +177,11 @@ button {
   background: #5a6268;
 }
 
+/* 为多个按钮添加间距 */
+.action-section button + button {
+  margin-top: 12px;
+}
+
 .btn-icon {
   font-size: 18px;
 }
