@@ -178,7 +178,10 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     }
     
     item.resourceUri = fileUri;
-    item.iconPath = vscode.ThemeIcon.File;
+    // 顶级节点使用分类图标,子节点使用文件图标
+    item.iconPath = isTopLevel 
+      ? new vscode.ThemeIcon(getCategoryIcon(category))
+      : vscode.ThemeIcon.File;
     item.tooltip = node.filePath;
     
     // 点击打开文件
