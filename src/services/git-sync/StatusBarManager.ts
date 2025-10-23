@@ -29,7 +29,7 @@ export class StatusBarManager {
      * - Syncing: $(sync~spin) - 正在同步（带旋转动画）
      * - HasLocalChanges: $(cloud-upload) - 待上传
      * - HasRemoteChanges: $(cloud-download) - 待下载
-     * - Conflict: $(error) - 错误状态
+     * - Conflict: $(warning) - 错误状态（使用警告图标更醒目）
      * - Disabled: $(sync-ignored) - 已禁用
      * 
      * @param statusInfo 当前状态信息
@@ -40,22 +40,35 @@ export class StatusBarManager {
         // 设置状态栏文本和图标
         switch (status) {
             case SyncStatus.Synced:
-                this.statusBarItem.text = '同步问题 $(sync)';
+                this.statusBarItem.text = '$(sync) Git同步';
+                this.statusBarItem.backgroundColor = undefined;
+                this.statusBarItem.color = undefined;
                 break;
             case SyncStatus.Syncing:
-                this.statusBarItem.text = '同步问题 $(sync~spin)';
+                this.statusBarItem.text = '$(sync~spin) 同步中...';
+                this.statusBarItem.backgroundColor = undefined;
+                this.statusBarItem.color = undefined;
                 break;
             case SyncStatus.HasLocalChanges:
-                this.statusBarItem.text = '同步问题 $(cloud-upload)';
+                this.statusBarItem.text = '$(cloud-upload) 待同步';
+                this.statusBarItem.backgroundColor = undefined;
+                this.statusBarItem.color = undefined;
                 break;
             case SyncStatus.HasRemoteChanges:
-                this.statusBarItem.text = '同步问题 $(cloud-download)';
+                this.statusBarItem.text = '$(cloud-download) 有更新';
+                this.statusBarItem.backgroundColor = undefined;
+                this.statusBarItem.color = undefined;
                 break;
             case SyncStatus.Conflict:
-                this.statusBarItem.text = '同步问题 $(error)';
+                // 使用更醒目的警告样式
+                this.statusBarItem.text = '$(warning) 同步失败';
+                this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+                this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.warningForeground');
                 break;
             case SyncStatus.Disabled:
-                this.statusBarItem.text = '同步问题 $(sync-ignored)';
+                this.statusBarItem.text = '$(sync-ignored) Git同步';
+                this.statusBarItem.backgroundColor = undefined;
+                this.statusBarItem.color = undefined;
                 break;
         }
 
@@ -66,7 +79,9 @@ export class StatusBarManager {
             tooltip += `\n上次同步: ${timeAgo}`;
         }
         if (isAutoSyncEnabled()) {
-            tooltip += '\n点击立即同步';
+            tooltip += '\n\n点击立即同步';
+        } else if (status === SyncStatus.Conflict) {
+            tooltip += '\n\n点击查看详情并重试';
         }
         
         this.statusBarItem.tooltip = tooltip;

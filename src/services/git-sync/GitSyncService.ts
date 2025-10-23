@@ -271,6 +271,7 @@ export class GitSyncService implements vscode.Disposable {
             return;
         }
 
+        this.notificationManager.info('开始初始化同步...');
         this.currentStatus = { status: SyncStatus.Syncing, message: '正在初始化同步...' };
         this.updateStatusBar();
 
@@ -281,7 +282,9 @@ export class GitSyncService implements vscode.Disposable {
                 message: '初始化同步完成', 
                 lastSync: new Date() 
             };
+            this.notificationManager.info('初始化同步完成');
         } catch (error) {
+            this.notificationManager.error('初始化同步失败', error);
             this.handleSyncError(error);
         }
         this.updateStatusBar();

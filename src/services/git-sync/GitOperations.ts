@@ -59,16 +59,22 @@ export class GitOperations {
             const branchSummary = await git.branch();
             const currentBranch = branchSummary.current;
             
+            if (!currentBranch) {
+                throw new Error('无法确定当前 Git 分支');
+            }
+            
             // 获取远程分支状态
             await git.fetch('origin');
             
             // 拉取当前分支的更新，使用merge而非rebase避免复杂情况
             await git.pull('origin', currentBranch, { '--no-rebase': null });  
         } catch (error) {
-            // 直接抛出错误，由上层统一处理。  
-            // 简单的 git.pull() 可能会根据用户配置意外触发 rebase，  
-            // 导致自动化流程中出现非预期的行为。  
-            // 保持明确的错误处理路径更为安全。  
+            // 增强错误信息，包含更多上下文
+            if (error instanceof Error) {
+                const enhancedError = new Error(`拉取远程更改失败: ${error.message}`);
+                enhancedError.stack = error.stack;
+                throw enhancedError;
+            }
             throw error;
         }
     }
@@ -111,20 +117,35 @@ export class GitOperations {
     public static async commitAndPushChanges(cwd: string): Promise<void> {
         const git = this.getGit(cwd);
         
-        // 添加所有更改
-        await git.add('.');
-        
-        // 生成提交消息
-        const template = getAutoCommitMessage();
-        const commitMessage = template.replace('{date}', new Date().toISOString());  
-        
-        // 提交
-        await git.commit(commitMessage);
-        
-        // 获取当前分支并推送
-        const branchSummary = await git.branch();
-        const currentBranch = branchSummary.current;
-        await git.push('origin', currentBranch);
+        try {
+            // 添加所有更改
+            await git.add('.');
+            
+            // 生成提交消息
+            const template = getAutoCommitMessage();
+            const commitMessage = template.replace('{date}', new Date().toISOString());  
+            
+            // 提交
+            await git.commit(commitMessage);
+            
+            // 获取当前分支并推送
+            const branchSummary = await git.branch();
+            const currentBranch = branchSummary.current;
+            
+            if (!currentBranch) {
+                throw new Error('无法确定当前 Git 分支');
+            }
+            
+            await git.push('origin', currentBranch);
+        } catch (error) {
+            // 增强错误信息
+            if (error instanceof Error) {
+                const enhancedError = new Error(`提交并推送更改失败: ${error.message}`);
+                enhancedError.stack = error.stack;
+                throw enhancedError;
+            }
+            throw error;
+        }
     }
 
     /**

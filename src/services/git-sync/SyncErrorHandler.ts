@@ -253,15 +253,41 @@ export class SyncErrorHandler {
     /**
      * 显示冲突处理对话框
      * 
-     * 当检测到合并冲突时，向用户显示处理选项。
+     * 当检测到合并冲突时，向用户显示处理选项和详细指引。
      */
-    public static  async showConflictDialog(): Promise<void> {
+    public static async showConflictDialog(): Promise<void> {
+        const message = `Git 自动同步失败：检测到合并冲突
+
+自动化功能已暂停，需要您手动解决冲突后才能继续。
+
+解决步骤：
+1. 打开问题目录，找到有冲突的文件
+2. 编辑文件，解决冲突标记（<<<<<<< HEAD）
+3. 保存文件后，使用"手动同步"按钮完成同步
+
+提示：冲突通常发生在多设备同时编辑同一文件时。`;
+
         const selection = await vscode.window.showErrorMessage(
-            '自动同步失败，因为存在合并冲突。自动化功能已暂停，请手动解决冲突。',
-            '打开文件以解决冲突'
+            message,
+            { modal: true },
+            '打开问题目录',
+            '查看帮助文档',
+            '手动同步'
         );
-        if (selection === '打开文件以解决冲突') {
-            await vscode.commands.executeCommand('issueManager.openIssueDir');
+        
+        switch (selection) {
+            case '打开问题目录':
+                await vscode.commands.executeCommand('issueManager.openIssueDir');
+                break;
+            case '查看帮助文档':
+                // 打开 GitHub README 中的相关章节
+                vscode.env.openExternal(
+                    vscode.Uri.parse('https://github.com/wedaren/vscode-issue-manager#git自动同步')
+                );
+                break;
+            case '手动同步':
+                await vscode.commands.executeCommand('issueManager.synchronizeNow');
+                break;
         }
     }
 
