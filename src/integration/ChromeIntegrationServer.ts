@@ -9,7 +9,12 @@ interface ChromeRequestPayload {
   html?: string;  
   title?: string;  
   url?: string;  
-}  
+} 
+
+const URI_PATH_OPEN_DIR = '/open-issue-dir';  
+const URI_PATH_CREATE_FROM_HTML = '/create-from-html';  
+const COMMAND_OPEN_ISSUE_DIR = 'issueManager.openIssueDir';  
+
 
 /**
  * 负责 VSCode 端与 Chrome 扩展集成:
@@ -42,44 +47,48 @@ export class ChromeIntegrationServer {
     const uriHandler: vscode.UriHandler = {
       handleUri: async (uri: vscode.Uri) => {
         try {
-          // 处理打开问题目录
-          if (uri.path === '/open-issue-dir') {
-            await vscode.commands.executeCommand('issueManager.openIssueDir');
-            return;
-          }
 
-          // 处理创建笔记
-          if (uri.path === '/create-from-html') {
-            const params = new URL(uri.toString()).searchParams;
-
-            let html = params.get('html') || '';
-            let title = params.get('title') || undefined;
-            let url = params.get('url') || undefined;
-
-            const dataRaw = params.get('data');
-            if (dataRaw) {
-              try {
-                const parsed = JSON.parse(dataRaw);
-                html = parsed.html ?? html;
-                title = parsed.title ?? title;
-                url = parsed.url ?? url;
-              } catch (e) {
-                console.error('URI data 参数解析失败:', e);
-                void vscode.window.showErrorMessage('解析来自 Chrome 扩展的数据失败,请重试。');
-              }
-            }
-
-            if (!html) {
-              void vscode.window.showErrorMessage('链接中缺少 html 内容,无法创建笔记');
+          switch (uri.path) {
+            case URI_PATH_OPEN_DIR:
+              // 处理打开问题目录
+              await vscode.commands.executeCommand(COMMAND_OPEN_ISSUE_DIR);
               return;
-            }
 
-            await createIssueFromHtml({ html, title, url });
-            return;
+            case URI_PATH_CREATE_FROM_HTML: {
+              // 处理创建笔记  
+              const params = new URL(uri.toString()).searchParams;  
+
+              let html = params.get('html') || '';  
+              let title = params.get('title') || undefined;  
+              let url = params.get('url') || undefined;  
+
+              const dataRaw = params.get('data');  
+              if (dataRaw) {  
+                try {  
+                  const parsed = JSON.parse(dataRaw);  
+                  html = parsed.html ?? html;  
+                  title = parsed.title ?? title;  
+                  url = parsed.url ?? url;  
+                } catch (e) {  
+                  console.error('URI data 参数解析失败:', e);  
+                  void vscode.window.showErrorMessage('解析来自 Chrome 扩展的数据失败,请重试。');  
+                }  
+              }  
+
+              if (!html) {  
+                void vscode.window.showErrorMessage('链接中缺少 html 内容,无法创建笔记');  
+                return;  
+              }  
+
+              await createIssueFromHtml({ html, title, url });  
+              return;  
+            }  
+
+            default:  
+              // 未知路径  
+              console.warn('未知的 URI 路径:', uri.path);  
           }
 
-          // 未知路径
-          console.warn('未知的 URI 路径:', uri.path);
         } catch (e: any) {
           console.error('URI 处理失败:', e);
           void vscode.window.showErrorMessage('处理来自浏览器的请求失败');

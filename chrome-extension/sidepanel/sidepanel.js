@@ -13,6 +13,10 @@ const messageDiv = document.getElementById('message');
 const wsStatusDiv = document.getElementById('ws-status');
 const wsStatusText = document.getElementById('ws-status-text');
 
+// 使用 vscode:// URI scheme 打开 VSCode 并执行命令
+// 格式: vscode://publisher.extensionName/path
+const VSCODE_OPEN_DIR_URI = 'vscode://wedaren.issue-manager/open-issue-dir';
+
 // 状态管理
 let isSelecting = false;
 
@@ -94,12 +98,8 @@ function handleOpenIssueDir() {
   console.log('Open issue directory clicked');
   
   try {
-    // 使用 vscode:// URI scheme 打开 VSCode 并执行命令
-    // 格式: vscode://publisher.extensionName/path
-    const vscodeUri = 'vscode://wedaren.issue-manager/open-issue-dir';
-    
     // 在新标签页中打开 VSCode URI
-    window.open(vscodeUri, '_blank');
+    window.open(VSCODE_OPEN_DIR_URI, '_blank');
     
     showMessage('正在打开 VSCode 问题目录...', 'success');
   } catch (error) {
