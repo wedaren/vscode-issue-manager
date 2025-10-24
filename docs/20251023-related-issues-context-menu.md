@@ -3,7 +3,8 @@
 ## 修改日期
 2025年10月23日 - 初始实现  
 2025年10月24日 - 性能优化  
-2025年10月24日 - 资源管理优化
+2025年10月24日 - 资源管理优化  
+2025年10月24日 - 上下文变量简化
 
 ## 修改目标
 让相关联问题视图的节点右键菜单与问题总览视图的节点保持一致。
@@ -33,17 +34,7 @@
 ### 3. package.json
 为以下命令的 `when` 条件添加 `view == 'issueManager.views.related'`:
 
-#### 基础操作
-- `issueManager.disassociateIssue` - 解除关联
-- `issueManager.createSubIssue` - 新建子问题 (inline)
-- `issueManager.moveTo` - 移动到...
-
-#### 关注操作
-- `issueManager.focusIssue` - 添加关注
-- `issueManager.removeFocus` - 移除关注
-- `issueManager.pinFocus` - 置顶关注
-
-#### PARA 分类操作
+#### PARA 分类操作（使用统一上下文变量优化）
 - `issueManager.para.addToProjects` - 添加到 Projects
 - `issueManager.para.addToAreas` - 添加到 Areas
 - `issueManager.para.addToResources` - 添加到 Resources
@@ -54,6 +45,17 @@
 - `issueManager.para.viewInArchives` - 在 Archives 中查看
 
 注意: `issueManager.copyFilename` 命令不需要修改,因为其条件是基于 `viewItem` 匹配,而不是 `view`。
+
+### 4. ViewContextManager.ts（新增）
+- **创建视图上下文管理器**: 统一管理问题树视图的上下文状态
+- **监听视图可见性**: 监听所有问题树视图的可见性和选择变化
+- **设置上下文变量**: 维护 `issueManager.isInIssueTreeView` 上下文变量
+- **简化 when 条件**: 将复杂的多视图 OR 条件简化为单一上下文检查
+
+### 5. ViewRegistry.ts
+- **集成上下文管理器**: 在构造函数中创建 `ViewContextManager` 实例
+- **注册视图实例**: 将所有问题树视图注册到上下文管理器中
+- **生命周期管理**: 确保上下文管理器随扩展生命周期正确释放
 
 ## 技术细节
 
@@ -75,6 +77,12 @@
 2. **资源追踪**: 使用 `disposables` 数组追踪所有需要释放的资源
 3. **生命周期管理**: 通过 VS Code 的订阅机制自动管理组件生命周期
 4. **内存泄漏防护**: 确保所有事件监听器在组件销毁时正确释放
+
+### 上下文变量管理架构
+1. **统一上下文**: 引入 `issueManager.isInIssueTreeView` 上下文变量，标识用户当前在问题树视图中
+2. **视图监听**: 监听所有问题树视图的可见性和选择变化事件
+3. **条件简化**: 将 `package.json` 中的长条件（如 `view == 'a' || view == 'b' || view == 'c'`）简化为单一上下文检查
+4. **可维护性**: 添加新视图时只需在一处定义，无需修改所有相关的 when 条件
 
 ### PARA 分类支持
 相关联问题视图的节点现在可以:

@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
+import { ViewContextManager } from '../services/ViewContextManager';
 
 /**
  * 注册"相关联问题视图"及相关命令
+ * @param viewContextManager 可选的视图上下文管理器，用于注册视图实例
  */
-export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
+export function registerRelatedIssuesView(context: vscode.ExtensionContext, viewContextManager?: ViewContextManager) {
   // 创建数据提供者实例
   const relatedIssuesProvider = new RelatedIssuesProvider(context);
   // 将数据提供者添加到订阅列表，确保正确的生命周期管理
@@ -23,6 +25,11 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
     canSelectMany: false
   });
   context.subscriptions.push(relatedIssuesView);
+  
+  // 如果提供了视图上下文管理器，注册到管理器中
+  if (viewContextManager) {
+    viewContextManager.registerTreeView('issueManager.views.related', relatedIssuesView);
+  }
 
   // 注册锁定命令
   context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinRelatedView', () => {
