@@ -15,8 +15,17 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     private contextUri: vscode.Uri | undefined;
     private treeData: TreeData | null = null;
+    private paraCategoryCache: ParaCategoryCache;
     
-    constructor(private context: vscode.ExtensionContext) {}
+    constructor(private context: vscode.ExtensionContext) {
+        // 通过依赖注入的方式管理 ParaCategoryCache 实例
+        this.paraCategoryCache = ParaCategoryCache.getInstance(context);
+        
+        // 监听 PARA 分类缓存更新，自动刷新视图
+        this.paraCategoryCache.onDidChangeCache(() => {
+            this.refresh();
+        });
+    }
 
     /** 切换当前分析的问题 */
     updateContext(resourceUri?: vscode.Uri) {
@@ -85,6 +94,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             tooltip: (await TitleCacheService.getInstance().getMany(parentNodes.map(n => n.filePath))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
+            contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),
         } : undefined;
 
         // 当前问题
@@ -94,6 +104,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             filePath: node.filePath,
             resourceUri: node.resourceUri,
             id: node.id,
+            contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(node.id, 'issueNode'),
             children: node.children ? await Promise.all(node.children.map(async (child: IssueTreeNode) => ({
                 label: await getNodeTitle(child),
                 type: 'child',
@@ -101,6 +112,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 children: [],
                 resourceUri: child.resourceUri,
                 id: child.id,
+                contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(child.id, 'issueNode'),
             }))) : [],
         };
 
@@ -114,6 +126,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             tooltip: parentNode.tooltip,
             id: parentNode.id,
             resourceUri: parentNode.resourceUri,
+            contextValue: parentNode.contextValue,
             children: [
                 currentNode,
                 // ...siblings
@@ -133,9 +146,8 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
         item.description = element.type === 'parent' ? element.tooltip : '';
         
-        // 使用与问题总览视图相同的 contextValue，以支持相同的右键菜单
-        const paraCategoryCache = ParaCategoryCache.getInstance(this.context);
-        item.contextValue = paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
+        // 使用缓存的 contextValue 或计算新的 contextValue
+        item.contextValue = element.contextValue || this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
         item.id = element.id;
         item.resourceUri = element.resourceUri;
         
@@ -157,4 +169,5 @@ export interface RelatedIssueNode extends IssueTreeNode{
     tooltip?: string;
     icon?: string;
     children: RelatedIssueNode[];
+    contextValue?: string; // 缓存的上下文值，用于优化性能
 }

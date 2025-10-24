@@ -1,7 +1,8 @@
 # 相关联问题视图上下文菜单统一
 
 ## 修改日期
-2025年10月23日
+2025年10月23日 - 初始实现  
+2025年10月24日 - 性能优化
 
 ## 修改目标
 让相关联问题视图的节点右键菜单与问题总览视图的节点保持一致。
@@ -10,10 +11,13 @@
 
 ### 1. RelatedIssuesProvider.ts
 - **添加依赖**: 导入 `ParaCategoryCache` 服务
-- **添加构造函数**: 接收 `vscode.ExtensionContext` 参数,以便访问 PARA 分类缓存
+- **添加构造函数**: 接收 `vscode.ExtensionContext` 参数,通过依赖注入管理 `ParaCategoryCache` 实例
+- **性能优化**: 
+  - 在构建节点时预计算 `contextValue`，避免在 `getTreeItem` 中重复计算
+  - 在 `RelatedIssueNode` 接口中添加 `contextValue` 属性用于缓存
+  - 添加 PARA 分类缓存更新监听器，自动刷新视图
 - **修改 getTreeItem 方法**: 
-  - 使用 `ParaCategoryCache.getInstance()` 获取 PARA 分类缓存服务
-  - 使用 `getContextValueWithParaMetadata()` 方法设置节点的 `contextValue`
+  - 使用缓存的 `contextValue` 或按需计算
   - 设置节点的 `id` 和 `resourceUri` 属性,确保命令参数正确传递
 
 ### 2. relatedIssuesViewRegistration.ts
@@ -53,11 +57,18 @@
 - `issueNode:paraAssigned:projects` - 已分配到 Projects 的节点
 - `focusedNode` - 关注的问题节点
 
+### 性能优化架构
+1. **依赖注入**: 在构造函数中创建 `ParaCategoryCache` 实例，避免每次渲染时重复调用 `getInstance()`
+2. **预计算缓存**: 在构建节点时预计算 `contextValue`，存储在节点对象中
+3. **延迟计算**: `getTreeItem` 中使用缓存值，仅在缓存未命中时才重新计算
+4. **自动刷新**: 监听 PARA 分类缓存更新事件，自动刷新视图以保持数据同步
+
 ### PARA 分类支持
 相关联问题视图的节点现在可以:
 1. 显示 PARA 分类图标
 2. 通过右键菜单添加/移除 PARA 分类
 3. 在不同的 PARA 分类视图中查看
+4. 自动响应 PARA 分类变更，保持视图状态同步
 
 ## 测试建议
 1. 在相关联问题视图中右键点击节点,验证菜单项是否与问题总览视图一致
