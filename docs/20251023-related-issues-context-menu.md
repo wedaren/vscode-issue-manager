@@ -2,7 +2,8 @@
 
 ## 修改日期
 2025年10月23日 - 初始实现  
-2025年10月24日 - 性能优化
+2025年10月24日 - 性能优化  
+2025年10月24日 - 资源管理优化
 
 ## 修改目标
 让相关联问题视图的节点右键菜单与问题总览视图的节点保持一致。
@@ -12,6 +13,11 @@
 ### 1. RelatedIssuesProvider.ts
 - **添加依赖**: 导入 `ParaCategoryCache` 服务
 - **添加构造函数**: 接收 `vscode.ExtensionContext` 参数,通过依赖注入管理 `ParaCategoryCache` 实例
+- **资源管理优化**:
+  - 实现 `vscode.Disposable` 接口，确保正确的资源清理
+  - 添加 `disposables` 数组管理所有可释放资源
+  - 在 `dispose` 方法中统一释放事件发射器和事件监听器
+  - 避免内存泄漏，符合项目编码风格指南
 - **性能优化**: 
   - 在构建节点时预计算 `contextValue`，避免在 `getTreeItem` 中重复计算
   - 在 `RelatedIssueNode` 接口中添加 `contextValue` 属性用于缓存
@@ -22,6 +28,7 @@
 
 ### 2. relatedIssuesViewRegistration.ts
 - **修改实例化**: 在创建 `RelatedIssuesProvider` 实例时传递 `context` 参数
+- **生命周期管理**: 将 `relatedIssuesProvider` 添加到 `context.subscriptions` 中，确保 VS Code 能正确管理其生命周期
 
 ### 3. package.json
 为以下命令的 `when` 条件添加 `view == 'issueManager.views.related'`:
@@ -62,6 +69,12 @@
 2. **预计算缓存**: 在构建节点时预计算 `contextValue`，存储在节点对象中
 3. **延迟计算**: `getTreeItem` 中使用缓存值，仅在缓存未命中时才重新计算
 4. **自动刷新**: 监听 PARA 分类缓存更新事件，自动刷新视图以保持数据同步
+
+### 资源管理架构
+1. **Disposable 模式**: 实现 `vscode.Disposable` 接口，提供统一的资源清理机制
+2. **资源追踪**: 使用 `disposables` 数组追踪所有需要释放的资源
+3. **生命周期管理**: 通过 VS Code 的订阅机制自动管理组件生命周期
+4. **内存泄漏防护**: 确保所有事件监听器在组件销毁时正确释放
 
 ### PARA 分类支持
 相关联问题视图的节点现在可以:

@@ -7,6 +7,8 @@ import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
 export function registerRelatedIssuesView(context: vscode.ExtensionContext) {
   // 创建数据提供者实例
   const relatedIssuesProvider = new RelatedIssuesProvider(context);
+  // 将数据提供者添加到订阅列表，确保正确的生命周期管理
+  context.subscriptions.push(relatedIssuesProvider);
   // 视图锁定状态
   let isPinned = false;
   // 设置上下文变量

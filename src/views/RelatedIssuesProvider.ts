@@ -9,22 +9,23 @@ import { TitleCacheService } from '../services/TitleCacheService';
 import { getUri } from '../utils/fileUtils';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
-export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode> {
+export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private contextUri: vscode.Uri | undefined;
     private treeData: TreeData | null = null;
     private paraCategoryCache: ParaCategoryCache;
+    private disposables: vscode.Disposable[] = [];
     
     constructor(private context: vscode.ExtensionContext) {
         // 通过依赖注入的方式管理 ParaCategoryCache 实例
         this.paraCategoryCache = ParaCategoryCache.getInstance(context);
         
         // 监听 PARA 分类缓存更新，自动刷新视图
-        this.paraCategoryCache.onDidChangeCache(() => {
+        this.disposables.push(this.paraCategoryCache.onDidChangeCache(() => {
             this.refresh();
-        });
+        }));
     }
 
     /** 切换当前分析的问题 */
@@ -157,6 +158,15 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             arguments: [element, 'overview']
         } : undefined;
         return item;
+    }
+
+    /** 释放资源 */
+    public dispose(): void {
+        // 释放事件发射器
+        this._onDidChangeTreeData.dispose();
+        // 释放所有订阅的事件监听器
+        this.disposables.forEach(d => d.dispose());
+        this.disposables = [];
     }
 }
 
