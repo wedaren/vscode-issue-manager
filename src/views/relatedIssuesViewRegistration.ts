@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
 import { ViewContextManager } from '../services/ViewContextManager';
+import { EditorEventManager } from '../services/EditorEventManager';
 
 /**
  * 注册"相关联问题视图"及相关命令
- * @param viewContextManager 可选的视图上下文管理器，用于注册视图实例
+ * @param viewContextManager 可选的视图上下文管理器,用于注册视图实例
  */
 export function registerRelatedIssuesView(context: vscode.ExtensionContext, viewContextManager?: ViewContextManager) {
   // 创建数据提供者实例
@@ -51,4 +52,14 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
       relatedIssuesProvider.updateContext(resourceUri);
     }
   }));
+
+  // 订阅编辑器事件管理器，自动更新相关联问题视图
+  const editorEventManager = EditorEventManager.getInstance();
+  const subscription = editorEventManager.onIssueFileActivated((uri) => {
+    // 只在视图未锁定时自动更新
+    if (!isPinned) {
+      relatedIssuesProvider.updateContext(uri);
+    }
+  });
+  context.subscriptions.push(subscription);
 }
