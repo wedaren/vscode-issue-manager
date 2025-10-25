@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { GitSyncService } from '../services/GitSyncService';
 import { FileAccessTracker } from '../services/FileAccessTracker';
+import { EditorEventManager } from '../services/EditorEventManager';
 import { RecordContentTool } from '../llm/RecordContentTool';
 import { Logger } from './utils/Logger';
 
@@ -45,6 +46,9 @@ export class ServiceRegistry {
      */
     public initializeServices(): void {
         try {
+            // 0. 初始化编辑器事件管理器（基础服务，其他服务依赖它）
+            this.initializeEditorEventManager();
+            
             // 1. 初始化Git同步服务（核心功能）
             this.initializeGitSyncService();
             
@@ -58,6 +62,22 @@ export class ServiceRegistry {
         } catch (error) {
             this.logger.error('    ✗ 服务初始化过程中出现错误:', error);
             throw error;
+        }
+    }
+
+    /**
+     * 初始化编辑器事件管理器
+     * 
+     * 编辑器事件管理器统一管理编辑器相关的事件监听，
+     * 避免重复订阅。必须在其他依赖编辑器事件的服务之前初始化。
+     */
+    private initializeEditorEventManager(): void {
+        try {
+            EditorEventManager.initialize(this.context);
+            this.logger.info('      ✓ 编辑器事件管理器已启动');
+        } catch (error) {
+            this.logger.error('      ✗ 编辑器事件管理器启动失败:', error);
+            throw error; // 这是基础服务，失败应该中断初始化
         }
     }
 
