@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { debounce, DebouncedFunction } from '../utils/debounce';
-import { getUri, isIssueMarkdownFile } from '../utils/fileUtils';
+import { getUri } from '../utils/fileUtils';
+import { EditorEventManager } from './EditorEventManager';
 import * as path from 'path';
 /**
  * 文件访问统计数据接口
@@ -167,13 +168,12 @@ export class FileAccessTracker implements vscode.Disposable {
    * 设置事件监听器
    */
   private setupEventListeners(): void {
-    // 监听文档激活事件
-    const activeEditorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor && isIssueMarkdownFile(editor.document.uri)) {  
-        this.recordFileAccess(editor.document.fileName);  
-      }  
+    // 订阅编辑器事件管理器的 Issue 文件激活事件
+    const editorEventManager = EditorEventManager.getInstance();
+    const subscription = editorEventManager.onIssueFileActivated((uri) => {
+      this.recordFileAccess(uri.fsPath);
     });
-    this.disposables.push(activeEditorListener);
+    this.disposables.push(subscription);
 
     // TODO: 将来可以添加更多监听器
     // - 监听文档关闭事件计算阅读时间

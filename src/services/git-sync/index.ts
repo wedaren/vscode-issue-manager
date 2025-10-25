@@ -9,9 +9,11 @@
 export { GitSyncService } from './GitSyncService';
 
 // 类型定义
-export { SyncStatus, SyncStatusInfo } from './types';
+export { SyncStatus, SyncStatusInfo, RetryConfig } from './types';
 
 // 组件模块（如果需要单独使用）
 export { GitOperations } from './GitOperations';
 export { SyncErrorHandler } from './SyncErrorHandler';
 export { StatusBarManager } from './StatusBarManager';
+export { SyncNotificationManager } from './SyncNotificationManager';
+export { SyncRetryManager } from './SyncRetryManager';

@@ -13,6 +13,7 @@ import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistratio
 import { IssueTreeNode } from '../data/treeManager';
 import { IViewRegistryResult } from './interfaces';
 import { ParaViewNode } from '../types';
+import { ViewContextManager } from '../services/ViewContextManager';
 
 /**
  * 视图注册管理器
@@ -37,6 +38,7 @@ import { ParaViewNode } from '../types';
  */
 export class ViewRegistry {
     private readonly context: vscode.ExtensionContext;
+    private readonly viewContextManager: ViewContextManager;
 
     /**
      * 创建视图注册管理器实例
@@ -45,6 +47,8 @@ export class ViewRegistry {
      */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.viewContextManager = new ViewContextManager(context);
+        this.context.subscriptions.push(this.viewContextManager);
     }
 
     /**
@@ -115,6 +119,9 @@ export class ViewRegistry {
         
         this.context.subscriptions.push(overviewView);
         
+        // 注册到视图上下文管理器
+        this.viewContextManager.registerTreeView('issueManager.views.overview', overviewView);
+        
         return { issueOverviewProvider, overviewView };
     }
 
@@ -135,6 +142,9 @@ export class ViewRegistry {
         }) as vscode.TreeView<IssueTreeNode>;
         
         this.context.subscriptions.push(focusedView);
+        
+        // 注册到视图上下文管理器
+        this.viewContextManager.registerTreeView('issueManager.views.focused', focusedView);
         
         // 激活时加载一次数据
         focusedIssuesProvider.loadData();
@@ -158,6 +168,9 @@ export class ViewRegistry {
         });
         
         this.context.subscriptions.push(recentIssuesView);
+        
+        // 注册到视图上下文管理器
+        this.viewContextManager.registerTreeView('issueManager.views.recent', recentIssuesView);
         
         return { recentIssuesProvider, recentIssuesView };
     }
@@ -230,7 +243,7 @@ export class ViewRegistry {
      * 注册相关问题视图
      */
     private registerRelatedView(): void {
-        registerRelatedIssuesView(this.context);
+        registerRelatedIssuesView(this.context, this.viewContextManager);
     }
 
     /**

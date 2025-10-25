@@ -30,4 +30,22 @@ export interface SyncStatusInfo {
     message: string;
     /** 上次同步时间，用于显示时间间隔 */
     lastSync?: Date;
+    /** 是否需要显示通知 */
+    shouldNotify?: boolean;
+    /** 错误详情（用于日志） */
+    errorDetails?: string;
+}
+
+/**
+ * 重试策略配置
+ */
+export interface RetryConfig {
+    /** 最大重试次数 */
+    maxRetries: number;
+    /** 初始延迟时间（毫秒） */
+    initialDelay: number;
+    /** 退避倍数 */
+    backoffMultiplier: number;
+    /** 最大延迟时间（毫秒） */
+    maxDelay: number;
 }

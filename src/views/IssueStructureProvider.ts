@@ -6,6 +6,7 @@ import { TitleCacheService } from '../services/TitleCacheService';
 import { FrontmatterService } from '../services/FrontmatterService';
 import { findParentNodeById } from '../data/treeManager';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
+import { EditorEventManager } from '../services/EditorEventManager';
 
 /**
  * 问题结构节点
@@ -42,18 +43,21 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private refreshDebouncer: NodeJS.Timeout | null = null; // 防抖计时器
 
     constructor(private context: vscode.ExtensionContext) {
-        // 监听编辑器激活文件变化
-        this.context.subscriptions.push(
-            vscode.window.onDidChangeActiveTextEditor(editor => {
-                this.onActiveEditorChanged(editor);
-            })
-        );
+        // 订阅编辑器事件管理器的 Issue 文件激活事件
+        const editorEventManager = EditorEventManager.getInstance();
+        const subscription = editorEventManager.onIssueFileActivated((uri) => {
+            this.onIssueFileActivated(uri);
+        });
+        this.context.subscriptions.push(subscription);
 
         // 监听文件系统变化，用于缓存失效
         this.setupFileWatcher();
 
         // 初始化时检查当前激活的编辑器
-        this.onActiveEditorChanged(vscode.window.activeTextEditor);
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+            this.onIssueFileActivated(activeEditor.document.uri);
+        }
     }
 
     /**
@@ -307,26 +311,20 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     }
 
     /**
-     * 当激活编辑器改变时调用
+     * 当 Issue 文件被激活时调用
      */
-    private async onActiveEditorChanged(editor: vscode.TextEditor | undefined): Promise<void> {
-        const issueDir = getIssueDir();
-        if (!editor || editor.document.languageId !== 'markdown' || !issueDir || !editor.document.uri.fsPath.startsWith(issueDir)) {
-            return;
-        }
-
+    private async onIssueFileActivated(uri: vscode.Uri): Promise<void> {
         // 检查文件是否有有效的 frontmatter
-        const frontmatter = await getFrontmatter(editor.document.uri);
+        const frontmatter = await getFrontmatter(uri);
         if (!frontmatter || !frontmatter.root_file) {
             this.showGuidanceMessage();
             return;
         }
 
-        this.currentActiveFile = path.basename(editor.document.uri.fsPath);
+        this.currentActiveFile = path.basename(uri.fsPath);
         this.currentActiveFrontmatter = frontmatter; // 缓存当前活动文件的 frontmatter
         await this.buildStructureFromActiveFile(frontmatter);
         this._onDidChangeTreeData.fire();
-
     }
 
     /**
@@ -538,7 +536,10 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      */
     public refresh(): void {
         // 软刷新：保留缓存，依赖基于 mtime 的失效机制与 invalidateFileCache 的精准清理
-        this.onActiveEditorChanged(vscode.window.activeTextEditor);
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+            this.onIssueFileActivated(activeEditor.document.uri);
+        }
     }
 
     /**
