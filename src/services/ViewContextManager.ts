@@ -75,12 +75,12 @@ export class ViewContextManager implements vscode.Disposable {
      * 更新问题树视图上下文
      * 检查是否有任何问题树视图当前处于可见状态
      */
-    private async updateIssueTreeViewContext(): Promise<void> {
+    private updateIssueTreeViewContext(): void {
         // 检查是否有任何视图当前可见
         const hasVisibleView = Array.from(this.viewVisibilityMap.values()).some(visible => visible);
         
         // 根据实际状态设置上下文变量
-        await vscode.commands.executeCommand(
+        vscode.commands.executeCommand(
             'setContext',
             'issueManager.isInIssueTreeView',
             hasVisibleView

@@ -25,10 +25,8 @@ export class EditorEventManager implements vscode.Disposable {
     /**
      * 获取单例实例
      */
-    public static getInstance(context?: vscode.ExtensionContext): EditorEventManager {
-        if (!EditorEventManager.instance && context) {
-            EditorEventManager.instance = new EditorEventManager(context);
-        } else if (!EditorEventManager.instance) {
+    public static getInstance(): EditorEventManager {
+        if (!EditorEventManager.instance) {
             throw new Error('EditorEventManager 必须首先使用 context 进行初始化');
         }
         return EditorEventManager.instance;
@@ -37,8 +35,11 @@ export class EditorEventManager implements vscode.Disposable {
     /**
      * 初始化编辑器事件管理器
      */
-    public static initialize(context: vscode.ExtensionContext): EditorEventManager {
-        return EditorEventManager.getInstance(context);
+    public static initialize(context: vscode.ExtensionContext): void {
+        if (EditorEventManager.instance) {
+            return;
+        }
+        EditorEventManager.instance = new EditorEventManager(context);
     }
 
     /**

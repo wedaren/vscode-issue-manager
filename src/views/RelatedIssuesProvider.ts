@@ -148,7 +148,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.description = element.type === 'parent' ? element.tooltip : '';
         
         // 使用缓存的 contextValue 或计算新的 contextValue
-        item.contextValue = element.contextValue || this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
+        item.contextValue = element.contextValue ?? this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
         item.id = element.id;
         item.resourceUri = element.resourceUri;
         
