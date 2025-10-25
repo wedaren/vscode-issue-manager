@@ -69,13 +69,7 @@ export class GitOperations {
             // 拉取当前分支的更新，使用merge而非rebase避免复杂情况
             await git.pull('origin', currentBranch, { '--no-rebase': null });  
         } catch (error) {
-            // 增强错误信息，包含更多上下文
-            if (error instanceof Error) {
-                const enhancedError = new Error(`拉取远程更改失败: ${error.message}`);
-                enhancedError.stack = error.stack;
-                throw enhancedError;
-            }
-            throw error;
+            this.handleGitError(error, '拉取远程更改失败');
         }
     }
 
@@ -138,13 +132,7 @@ export class GitOperations {
             
             await git.push('origin', currentBranch);
         } catch (error) {
-            // 增强错误信息
-            if (error instanceof Error) {
-                const enhancedError = new Error(`提交并推送更改失败: ${error.message}`);
-                enhancedError.stack = error.stack;
-                throw enhancedError;
-            }
-            throw error;
+            this.handleGitError(error, '提交并推送更改失败');
         }
     }
 
@@ -167,5 +155,19 @@ export class GitOperations {
             console.log('Git connectivity test failed:', error);
             return false;
         }
+    }
+
+    /**
+     * 增强Git操作的错误信息并重新抛出
+     * @param error 捕获到的原始错误
+     * @param prefix 错误消息前缀
+     */
+    private static handleGitError(error: unknown, prefix: string): never {
+        if (error instanceof Error) {
+            const enhancedError = new Error(`${prefix}: ${error.message}`);
+            enhancedError.stack = error.stack;
+            throw enhancedError;
+        }
+        throw error;
     }
 }

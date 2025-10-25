@@ -305,8 +305,8 @@ export class GitSyncService implements vscode.Disposable {
         this.updateStatusBar();
 
         try {
-            // 使用重试机制执行同步操作
-            await this.retryManager.executeWithRetry(
+            // 使用重试机制执行同步操作，并获取是否执行了推送
+            const pushed = await this.retryManager.executeWithRetry(
                 'auto-sync',
                 async () => {
                     // 先拉取
@@ -316,7 +316,9 @@ export class GitSyncService implements vscode.Disposable {
                     if (await GitOperations.hasLocalChanges(issueDir)) {
                         // 提交并推送
                         await GitOperations.commitAndPushChanges(issueDir);
+                        return true; // 表示执行了推送
                     }
+                    return false; // 表示没有变更需要同步
                 },
                 (attempt, nextDelay) => {
                     // 重试回调
@@ -328,10 +330,10 @@ export class GitSyncService implements vscode.Disposable {
                 }
             );
 
-            // 同步成功
+            // 根据是否推送了变更来设置不同的成功消息
             this.currentStatus = { 
                 status: SyncStatus.Synced, 
-                message: '自动同步完成', 
+                message: pushed ? '自动同步完成' : '没有变更需要同步', 
                 lastSync: new Date() 
             };
         } catch (error) {
@@ -340,7 +342,7 @@ export class GitSyncService implements vscode.Disposable {
             if (maxRetries > 0) {
                 this.notificationManager.notifyRetryExhausted(
                     maxRetries,
-                    error instanceof Error ? error.message : String(error)
+                    error
                 );
             }
             this.handleSyncError(error);

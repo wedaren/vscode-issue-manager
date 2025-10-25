@@ -179,13 +179,14 @@ export class SyncNotificationManager {
     /**
      * 通知重试全部失败
      */
-    public notifyRetryExhausted(maxRetries: number, lastError: string): void {
+    public notifyRetryExhausted(maxRetries: number, lastError: unknown): void {
         const message = `同步失败，已达到最大重试次数 (${maxRetries})`;
         this.error(message, lastError);
         
         if (isSyncNotificationEnabled()) {
+            const errorMessage = lastError instanceof Error ? lastError.message : String(lastError);
             vscode.window.showErrorMessage(
-                `Git自动同步失败: ${lastError}`,
+                `Git自动同步失败: ${errorMessage}`,
                 '查看日志',
                 '手动同步',
                 '禁用自动同步'

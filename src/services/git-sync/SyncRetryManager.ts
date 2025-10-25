@@ -126,7 +126,13 @@ export class SyncRetryManager {
             }
 
             // 等待延迟后重试
-            await this.delay(delay);
+            await new Promise<void>(resolve => {
+                const timer = setTimeout(() => {
+                    this.retryTimers.delete(operationId);
+                    resolve();
+                }, delay);
+                this.retryTimers.set(operationId, timer);
+            });
 
             // 递归重试
             return this.executeWithRetry(operationId, operation, onRetry);
@@ -159,15 +165,6 @@ export class SyncRetryManager {
             clearTimeout(timer);
             this.retryTimers.delete(operationId);
         }
-    }
-
-    /**
-     * 延迟指定时间
-     * 
-     * @param ms 延迟时间（毫秒）
-     */
-    private delay(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
