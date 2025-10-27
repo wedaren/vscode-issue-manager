@@ -1,70 +1,51 @@
 import * as vscode from 'vscode';
 import { SyncStatus, SyncStatusInfo } from './types';
 import { isSyncNotificationEnabled } from '../../config';
+import { Logger } from '../../core/utils/Logger';
 
 /**
  * 同步通知管理器
  * 
  * 负责管理Git同步过程中的用户通知，包括：
  * - 桌面通知（仅在重要事件时显示）
- * - 输出通道日志（详细记录所有操作）
+ * - 日志记录（使用统一的 Logger）
  * - 通知频率控制（避免过度打扰）
  */
 export class SyncNotificationManager {
-    private outputChannel: vscode.OutputChannel;
+    private logger: Logger;
     private lastNotificationTime: Map<string, number> = new Map();
     private readonly NOTIFICATION_THROTTLE_MS = 60000; // 1分钟内相同类型的通知只显示一次
 
     constructor() {
-        this.outputChannel = vscode.window.createOutputChannel('Git自动同步', 'log');
+        this.logger = Logger.getInstance();
     }
 
     /**
      * 记录信息日志
      */
     public info(message: string, details?: any): void {
-        const timestamp = new Date().toISOString();
-        this.outputChannel.appendLine(`[${timestamp}] [INFO] ${message}`);
-        if (details) {
-            this.outputChannel.appendLine(`  详情: ${JSON.stringify(details, null, 2)}`);
-        }
+        this.logger.info(`[Git同步] ${message}`, details);
     }
 
     /**
      * 记录警告日志
      */
     public warn(message: string, details?: any): void {
-        const timestamp = new Date().toISOString();
-        this.outputChannel.appendLine(`[${timestamp}] [WARN] ${message}`);
-        if (details) {
-            this.outputChannel.appendLine(`  详情: ${JSON.stringify(details, null, 2)}`);
-        }
+        this.logger.warn(`[Git同步] ${message}`, details);
     }
 
     /**
      * 记录错误日志
      */
     public error(message: string, error?: unknown): void {
-        const timestamp = new Date().toISOString();
-        this.outputChannel.appendLine(`[${timestamp}] [ERROR] ${message}`);
-        
-        if (error) {
-            if (error instanceof Error) {
-                this.outputChannel.appendLine(`  错误信息: ${error.message}`);
-                if (error.stack) {
-                    this.outputChannel.appendLine(`  堆栈跟踪:\n${error.stack}`);
-                }
-            } else {
-                this.outputChannel.appendLine(`  错误详情: ${JSON.stringify(error, null, 2)}`);
-            }
-        }
+        this.logger.error(`[Git同步] ${message}`, error);
     }
 
     /**
      * 显示输出通道
      */
     public show(): void {
-        this.outputChannel.show(true);
+        this.logger.show();
     }
 
     /**
@@ -214,6 +195,6 @@ export class SyncNotificationManager {
      * 清理资源
      */
     public dispose(): void {
-        this.outputChannel.dispose();
+        // Logger 由扩展统一管理，无需单独释放
     }
 }
