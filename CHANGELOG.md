@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.5]
+
+### ✨ 新功能
+- feat: 统一相关联问题视图与问题总览视图的节点右键菜单 (#89)
+- feat: 添加 URI handler 支持从 Chrome 扩展打开问题目录 (#87)
+
 ## [0.2.4]
 
 ### ⚙️ 配置
