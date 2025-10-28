@@ -490,27 +490,27 @@
         },
         {
           "command": "issueManager.disassociateIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')  && viewItem =~ /issueNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related')  && viewItem =~ /issueNode/",
           "group": "modification@2"
         },
         {
           "command": "issueManager.createSubIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused')",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related')",
           "group": "inline"
         },
         {
           "command": "issueManager.focusIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /issueNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /issueNode/",
           "group": "modification@3"
         },
         {
           "command": "issueManager.removeFocus",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && (viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && (viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
           "group": "modification@3"
         },
         {
           "command": "issueManager.pinFocus",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /focusedNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /focusedNode/",
           "group": "modification@3"
         },
         {
@@ -520,7 +520,7 @@
         },
         {
           "command": "issueManager.moveTo",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused'",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
           "group": "navigation@4"
         },
         {
@@ -560,42 +560,42 @@
         },
         {
           "command": "issueManager.para.addToProjects",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!projects)/)",
+          "when": "issueManager.isInIssueTreeView && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!projects)/)",
           "group": "para@1"
         },
         {
           "command": "issueManager.para.addToAreas",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!areas)/)",
+          "when": "issueManager.isInIssueTreeView && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!areas)/)",
           "group": "para@2"
         },
         {
           "command": "issueManager.para.addToResources",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!resources)/)",
+          "when": "issueManager.isInIssueTreeView && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!resources)/)",
           "group": "para@3"
         },
         {
           "command": "issueManager.para.addToArchives",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.recent') && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!archives)/)",
+          "when": "issueManager.isInIssueTreeView && (viewItem =~ /paraAssignable/ || viewItem =~ /paraAssigned:(?!archives)/)",
           "group": "para@4"
         },
         {
           "command": "issueManager.para.viewInProjects",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:projects/",
+          "when": "issueManager.isInIssueTreeView && viewItem =~ /paraAssigned:projects/",
           "group": "para@0"
         },
         {
           "command": "issueManager.para.viewInAreas",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:areas/",
+          "when": "issueManager.isInIssueTreeView && viewItem =~ /paraAssigned:areas/",
           "group": "para@1"
         },
         {
           "command": "issueManager.para.viewInResources",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:resources/",
+          "when": "issueManager.isInIssueTreeView && viewItem =~ /paraAssigned:resources/",
           "group": "para@2"
         },
         {
           "command": "issueManager.para.viewInArchives",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused') && viewItem =~ /paraAssigned:archives/",
+          "when": "issueManager.isInIssueTreeView && viewItem =~ /paraAssigned:archives/",
           "group": "para@3"
         },
         {
@@ -753,6 +753,21 @@
           "type": "number",
           "default": 15,
           "description": "后台周期性拉取远程更新的时间间隔（单位：分钟）。设置为0可禁用。"
+        },
+        "issueManager.sync.maxRetries": {
+          "type": "number",
+          "default": 3,
+          "description": "同步失败时的最大自动重试次数。设置为0可禁用自动重试。"
+        },
+        "issueManager.sync.retryInitialDelay": {
+          "type": "number",
+          "default": 5,
+          "description": "同步重试的初始延迟时间（单位：秒）。后续重试会使用指数退避策略。"
+        },
+        "issueManager.sync.enableNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用同步失败时的桌面通知。禁用后仅在状态栏显示错误状态。"
         },
         "issueManager.rss.enableAutoUpdate": {
           "type": "boolean",

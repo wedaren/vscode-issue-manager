@@ -4,6 +4,8 @@ import { SyncStatus, SyncStatusInfo } from './types';
 import { GitOperations } from './GitOperations';
 import { SyncErrorHandler } from './SyncErrorHandler';
 import { StatusBarManager } from './StatusBarManager';
+import { SyncNotificationManager } from './SyncNotificationManager';
+import { SyncRetryManager } from './SyncRetryManager';
 import { UnifiedFileWatcher } from '../UnifiedFileWatcher';
 import { debounce, DebouncedFunction } from '../../utils/debounce';
 import { Logger } from '../../core/utils/Logger';
@@ -41,7 +43,7 @@ export class GitSyncService implements vscode.Disposable {
     private static instance: GitSyncService;
     private periodicTimer?: NodeJS.Timeout;
     private isConflictMode = false;
-    private currentStatus: SyncStatusInfo;
+    private currentStatus: SyncStatusInfo = { status: SyncStatus.Disabled, message: '初始化中...' };
     
     // 分离不同生命周期的资源管理
     private fileWatcherDisposables: vscode.Disposable[] = []; // 文件监听订阅，setupAutoSync 时重建
@@ -52,16 +54,18 @@ export class GitSyncService implements vscode.Disposable {
 
     // 依赖注入组件
     private constructor(
-        private readonly statusBarManager: StatusBarManager
+        private readonly statusBarManager: StatusBarManager,
+        private readonly notificationManager: SyncNotificationManager,
+        private readonly retryManager: SyncRetryManager
     ) {
-        this.currentStatus = { status: SyncStatus.Disabled, message: '自动同步已禁用' };
-        this.updateStatusBar();
-        
         // 初始化防抖函数
         this.debouncedAutoCommitAndPush = debounce(
             () => this.performAutoCommitAndPush(),
             getChangeDebounceInterval() * 1000
         );
+        
+        // 设置初始状态
+        this.setStatus({ status: SyncStatus.Disabled, message: '自动同步已禁用' });
     }
 
     /**
@@ -77,7 +81,9 @@ export class GitSyncService implements vscode.Disposable {
     public static getInstance(): GitSyncService {
         if (!GitSyncService.instance) {
             GitSyncService.instance = new GitSyncService(
-                new StatusBarManager()
+                new StatusBarManager(),
+                new SyncNotificationManager(),
+                new SyncRetryManager()
             );
         }
         return GitSyncService.instance;
@@ -131,22 +137,19 @@ export class GitSyncService implements vscode.Disposable {
         this.cleanup();
         
         if (!isAutoSyncEnabled()) {
-            this.currentStatus = { status: SyncStatus.Disabled, message: '自动同步已禁用' };
-            this.updateStatusBar();
+            this.setStatus({ status: SyncStatus.Disabled, message: '自动同步已禁用' });
             return;
         }
 
         const issueDir = getIssueDir();
         if (!issueDir) {
-            this.currentStatus = { status: SyncStatus.Disabled, message: '请先配置问题目录' };
-            this.updateStatusBar();
+            this.setStatus({ status: SyncStatus.Disabled, message: '请先配置问题目录' });
             return;
         }
 
         // 检查是否为Git仓库
         if (!GitOperations.isGitRepository(issueDir)) {
-            this.currentStatus = { status: SyncStatus.Disabled, message: '问题目录不是Git仓库' };
-            this.updateStatusBar();
+            this.setStatus({ status: SyncStatus.Disabled, message: '问题目录不是Git仓库' });
             return;
         }
 
@@ -156,8 +159,7 @@ export class GitSyncService implements vscode.Disposable {
         // 设置周期性拉取
         this.setupPeriodicPull();
         
-        this.currentStatus = { status: SyncStatus.Synced, message: '自动同步已启用' };
-        this.updateStatusBar();
+        this.setStatus({ status: SyncStatus.Synced, message: '自动同步已启用' });
     }
 
     /**
@@ -200,11 +202,10 @@ export class GitSyncService implements vscode.Disposable {
         }
         
         // 立即更新状态，提供即时反馈
-        this.currentStatus = { 
+        this.setStatus({ 
             status: SyncStatus.HasLocalChanges, 
             message: '有本地更改待同步' 
-        };
-        this.updateStatusBar();
+        });
 
         // 触发防抖的同步操作
         this.debouncedAutoCommitAndPush();
@@ -265,20 +266,21 @@ export class GitSyncService implements vscode.Disposable {
             return;
         }
 
-        this.currentStatus = { status: SyncStatus.Syncing, message: '正在初始化同步...' };
-        this.updateStatusBar();
+        this.notificationManager.info('开始初始化同步...');
+        this.setStatus({ status: SyncStatus.Syncing, message: '正在初始化同步...' });
 
         try {
             await GitOperations.pullChanges(issueDir);
-            this.currentStatus = { 
+            this.setStatus({ 
                 status: SyncStatus.Synced, 
                 message: '初始化同步完成', 
                 lastSync: new Date() 
-            };
+            });
+            this.notificationManager.info('初始化同步完成');
         } catch (error) {
+            this.notificationManager.error('初始化同步失败', error);
             this.handleSyncError(error);
         }
-        this.updateStatusBar();
     }
 
     /**
@@ -292,33 +294,51 @@ export class GitSyncService implements vscode.Disposable {
             return;
         }
 
-        this.currentStatus = { status: SyncStatus.Syncing, message: '正在自动同步...' };
-        this.updateStatusBar();
+        this.setStatus({ status: SyncStatus.Syncing, message: '正在自动同步...' });
 
         try {
-            // 先拉取
-            await GitOperations.pullChanges(issueDir);
-            
-            // 检查是否有本地更改
-            if (await GitOperations.hasLocalChanges(issueDir)) {
-                // 提交并推送
-                await GitOperations.commitAndPushChanges(issueDir);
-                this.currentStatus = { 
-                    status: SyncStatus.Synced, 
-                    message: '自动同步完成', 
-                    lastSync: new Date() 
-                };
-            } else {
-                this.currentStatus = { 
-                    status: SyncStatus.Synced, 
-                    message: '没有变更需要同步', 
-                    lastSync: new Date() 
-                };
-            }
+            // 使用重试机制执行同步操作，并获取是否执行了推送
+            const pushed = await this.retryManager.executeWithRetry(
+                'auto-sync',
+                async () => {
+                    // 先拉取
+                    await GitOperations.pullChanges(issueDir);
+                    
+                    // 检查是否有本地更改
+                    if (await GitOperations.hasLocalChanges(issueDir)) {
+                        // 提交并推送
+                        await GitOperations.commitAndPushChanges(issueDir);
+                        return true; // 表示执行了推送
+                    }
+                    return false; // 表示没有变更需要同步
+                },
+                (attempt, nextDelay) => {
+                    // 重试回调
+                    this.notificationManager.notifyRetry(
+                        attempt,
+                        this.retryManager.getRetryCount('auto-sync'),
+                        nextDelay
+                    );
+                }
+            );
+
+            // 根据是否推送了变更来设置不同的成功消息
+            this.setStatus({ 
+                status: SyncStatus.Synced, 
+                message: pushed ? '自动同步完成' : '没有变更需要同步', 
+                lastSync: new Date() 
+            });
         } catch (error) {
+            // 所有重试都失败了
+            const maxRetries = this.retryManager.getRetryCount('auto-sync');
+            if (maxRetries > 0) {
+                this.notificationManager.notifyRetryExhausted(
+                    maxRetries,
+                    error
+                );
+            }
             this.handleSyncError(error);
         }
-        this.updateStatusBar();
     }
 
     /**
@@ -333,18 +353,31 @@ export class GitSyncService implements vscode.Disposable {
         }
 
         try {
-            await GitOperations.pullChanges(issueDir);
+            // 使用重试机制执行拉取操作
+            await this.retryManager.executeWithRetry(
+                'periodic-pull',
+                async () => {
+                    await GitOperations.pullChanges(issueDir);
+                },
+                (attempt, nextDelay) => {
+                    // 周期性拉取失败时的重试，不需要显示通知
+                    this.notificationManager.info(
+                        `周期性拉取失败，将在 ${nextDelay} 秒后重试 (${attempt} 次)`
+                    );
+                }
+            );
+
             if (this.currentStatus.status !== SyncStatus.HasLocalChanges) {
-                this.currentStatus = { 
+                this.setStatus({ 
                     status: SyncStatus.Synced, 
                     message: '已是最新状态', 
                     lastSync: new Date() 
-                };
-                this.updateStatusBar();
+                });
             }
         } catch (error) {
-            this.handleSyncError(error);
-            this.updateStatusBar();
+            // 周期性拉取失败不应该触发冲突模式，只记录错误
+            this.notificationManager.error('周期性拉取失败', error);
+            // 不调用 handleSyncError，避免进入冲突模式
         }
     }
 
@@ -395,8 +428,7 @@ export class GitSyncService implements vscode.Disposable {
             }
         }
 
-        this.currentStatus = { status: SyncStatus.Syncing, message: '正在手动同步...' };
-        this.updateStatusBar();
+        this.setStatus({ status: SyncStatus.Syncing, message: '正在手动同步...' });
 
         try {
             // 拉取
@@ -407,17 +439,16 @@ export class GitSyncService implements vscode.Disposable {
                 await GitOperations.commitAndPushChanges(issueDir);
             }
             
-            this.currentStatus = { 
+            this.setStatus({ 
                 status: SyncStatus.Synced, 
                 message: '手动同步完成', 
                 lastSync: new Date() 
-            };
+            });
             vscode.window.showInformationMessage('同步完成');
         } catch (error) {
             this.handleSyncError(error);
             vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
-        this.updateStatusBar();
     }
 
     /**
@@ -428,7 +459,7 @@ export class GitSyncService implements vscode.Disposable {
      */
     private handleSyncError(error: unknown): void {
         const result = SyncErrorHandler.handleSyncError(error);
-        this.currentStatus = result.statusInfo;
+        this.setStatus(result.statusInfo);
         
         if (result.enterConflictMode) {
             this.enterConflictMode();
@@ -443,17 +474,34 @@ export class GitSyncService implements vscode.Disposable {
     private enterConflictMode(): void {
         this.isConflictMode = true;
         this.cleanup(); // 停止所有自动化操作
-        this.updateStatusBar();
         SyncErrorHandler.showConflictDialog();
     }
 
     /**
-     * 更新状态栏显示
+     * 设置同步状态并更新 UI
      * 
-     * 使用StatusBarManager更新状态栏的显示内容。
+     * 同时更新内部状态、状态栏显示和通知系统。
+     * 这是设置状态的推荐方式，确保状态和 UI 保持同步。
+     * 
+     * @param statusInfo 新的状态信息
+     */
+    private setStatus(statusInfo: SyncStatusInfo): void {
+        this.currentStatus = statusInfo;
+        this.statusBarManager.updateStatusBar(this.currentStatus);
+        this.notificationManager.notifyStatusChange(this.currentStatus);
+    }
+
+    /**
+     * 更新状态栏显示并发送通知
+     * 
+     * 使用StatusBarManager更新状态栏的显示内容，
+     * 并通过NotificationManager发送必要的通知。
+     * 
+     * @deprecated 使用 setStatus() 代替，避免状态和 UI 不同步
      */
     private updateStatusBar(): void {
         this.statusBarManager.updateStatusBar(this.currentStatus);
+        this.notificationManager.notifyStatusChange(this.currentStatus);
     }
 
     /**
@@ -468,6 +516,7 @@ export class GitSyncService implements vscode.Disposable {
         }
         
         this.cleanupFileWatcher();
+        this.retryManager.cleanup();
     }
 
     /**
@@ -491,6 +540,7 @@ export class GitSyncService implements vscode.Disposable {
     public dispose(): void {
         this.cleanup();
         this.statusBarManager.dispose();
+        this.notificationManager.dispose();
         
         // 清理服务级资源（命令、配置监听器）
         this.serviceDisposables.forEach(d => d.dispose());

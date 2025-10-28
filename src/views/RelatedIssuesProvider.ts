@@ -7,13 +7,26 @@ import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
 import { TitleCacheService } from '../services/TitleCacheService';
 import { getUri } from '../utils/fileUtils';
+import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
-export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode> {
+export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private contextUri: vscode.Uri | undefined;
     private treeData: TreeData | null = null;
+    private paraCategoryCache: ParaCategoryCache;
+    private disposables: vscode.Disposable[] = [];
+    
+    constructor(private context: vscode.ExtensionContext) {
+        // 通过依赖注入的方式管理 ParaCategoryCache 实例
+        this.paraCategoryCache = ParaCategoryCache.getInstance(context);
+        
+        // 监听 PARA 分类缓存更新，自动刷新视图
+        this.disposables.push(this.paraCategoryCache.onDidChangeCache(() => {
+            this.refresh();
+        }));
+    }
 
     /** 切换当前分析的问题 */
     updateContext(resourceUri?: vscode.Uri) {
@@ -82,6 +95,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             tooltip: (await TitleCacheService.getInstance().getMany(parentNodes.map(n => n.filePath))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
+            contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),
         } : undefined;
 
         // 当前问题
@@ -91,6 +105,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             filePath: node.filePath,
             resourceUri: node.resourceUri,
             id: node.id,
+            contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(node.id, 'issueNode'),
             children: node.children ? await Promise.all(node.children.map(async (child: IssueTreeNode) => ({
                 label: await getNodeTitle(child),
                 type: 'child',
@@ -98,6 +113,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 children: [],
                 resourceUri: child.resourceUri,
                 id: child.id,
+                contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(child.id, 'issueNode'),
             }))) : [],
         };
 
@@ -111,6 +127,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             tooltip: parentNode.tooltip,
             id: parentNode.id,
             resourceUri: parentNode.resourceUri,
+            contextValue: parentNode.contextValue,
             children: [
                 currentNode,
                 // ...siblings
@@ -129,13 +146,27 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.tooltip = element.tooltip;
         item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
         item.description = element.type === 'parent' ? element.tooltip : '';
-        item.contextValue = 'relatedIssueNode';
+        
+        // 使用缓存的 contextValue 或计算新的 contextValue
+        item.contextValue = element.contextValue ?? this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
+        item.id = element.id;
+        item.resourceUri = element.resourceUri;
+        
         item.command = element.resourceUri ? {
             command: 'issueManager.openAndRevealIssue',
             title: '打开并定位问题',
             arguments: [element, 'overview']
         } : undefined;
         return item;
+    }
+
+    /** 释放资源 */
+    public dispose(): void {
+        // 释放事件发射器
+        this._onDidChangeTreeData.dispose();
+        // 释放所有订阅的事件监听器
+        this.disposables.forEach(d => d.dispose());
+        this.disposables = [];
     }
 }
 
@@ -148,4 +179,5 @@ export interface RelatedIssueNode extends IssueTreeNode{
     tooltip?: string;
     icon?: string;
     children: RelatedIssueNode[];
+    contextValue?: string; // 缓存的上下文值，用于优化性能
 }
