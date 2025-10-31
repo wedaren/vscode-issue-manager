@@ -205,7 +205,7 @@ export class ChromeIntegrationServer {
                     return null;
                   }
                   
-                  const title = await titleCache.get(node.filePath) || path.basename(node.filePath, '.md');
+                  const title = await titleCache.get(node.filePath) ?? path.basename(node.filePath, '.md');
                   const absolutePath = path.join(issueDir, node.filePath);
                   
                   return {

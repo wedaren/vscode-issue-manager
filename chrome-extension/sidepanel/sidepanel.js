@@ -310,7 +310,7 @@ function handleFocusedItemClick(issue) {
   console.log('Focused item clicked:', issue);
   
   // 通过 VSCode URI 打开问题文件（使用绝对路径）
-  const filePath = issue.absolutePath || issue.filePath;
+  const filePath = issue.absolutePath ?? issue.filePath;
   const vscodeUri = `vscode://file/${filePath}`;
   window.open(vscodeUri, '_blank');
   
