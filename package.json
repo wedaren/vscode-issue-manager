@@ -119,6 +119,12 @@
         "category": "Issue Manager"
       },
       {
+        "command": "issueManager.copyIssueId",
+        "title": "复制问题 ID",
+        "icon": "$(symbol-key)",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.viewRelatedIssues",
         "title": "查看相关联问题"
       },
@@ -676,6 +682,13 @@
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
           "group": "navigation@0",
           "title": "复制文件名"
+        }
+        ,
+        {
+          "command": "issueManager.copyIssueId",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
+          "group": "navigation@0",
+          "title": "复制问题 ID"
         }
       ]
     },

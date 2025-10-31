@@ -6,6 +6,7 @@ import { ConfigurationManager } from './ConfigurationManager';
 import { IViewRegistryResult, InitializationPhase } from './interfaces';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
+import { EditorContextService } from '../services/EditorContextService';
 
 const INITIALIZATION_RETRY_DELAY_MS = 2000;
 
@@ -33,6 +34,7 @@ export class ExtensionInitializer {
     private readonly serviceRegistry: ServiceRegistry;
     private readonly configurationManager: ConfigurationManager;
     private readonly logger: Logger;
+    private readonly context: vscode.ExtensionContext;
 
     /**
      * 创建扩展初始化器实例
@@ -40,6 +42,7 @@ export class ExtensionInitializer {
      * @param context VS Code 扩展上下文，用于管理扩展生命周期
      */
     constructor(context: vscode.ExtensionContext) {
+        this.context = context;
         this.logger = Logger.getInstance();
         this.logger.initialize(context.extensionMode); // 初始化Logger
 
@@ -85,6 +88,7 @@ export class ExtensionInitializer {
             // 2. 初始化服务
             this.logger.info('⚙️ 步骤 2/4: 初始化核心服务...');
             await this.initializeServicesSafely();
+            EditorContextService.initialize(this.context);
 
             // 3. 注册所有视图
             this.logger.info('📊 步骤 3/4: 注册视图组件...');

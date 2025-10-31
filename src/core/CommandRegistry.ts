@@ -33,6 +33,7 @@ import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
+import { getIssueIdFromUri } from '../utils/uriUtils';
 
 /**
  * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
@@ -152,7 +153,13 @@ export class CommandRegistry extends BaseCommandRegistry {
                 vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode, type: 'focused' | 'overview') => {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
-                    await vscode.window.showTextDocument(node.resourceUri, { preview: false });
+                    const uri = node.resourceUri;
+                    if(node.id && uri){
+                        const id = stripFocusedId(node.id);
+                        await vscode.window.showTextDocument(uri.with({ query: `issueId=${encodeURIComponent(id)}` }), { preview: false });
+                    } else {
+                        await vscode.window.showTextDocument(uri, { preview: false });
+                    }
                     const revealInOverview = () => vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
 
                     if (type === 'overview') {
@@ -410,6 +417,31 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             }
         );
+
+            // 复制问题 ID 命令（用于编辑器右键菜单）
+            this.registerCommand(
+                'issueManager.copyIssueId',
+                async () => {
+                    const editor = vscode.window.activeTextEditor;
+                    if (!editor) {
+                        vscode.window.showWarningMessage('没有激活的编辑器可复制问题 ID。');
+                        return;
+                    }
+                    const id = getIssueIdFromUri(editor.document.uri);
+                    if (!id) {
+                        vscode.window.showWarningMessage('当前文档不包含问题 ID。');
+                        return;
+                    }
+                    try {
+                        await vscode.env.clipboard.writeText(id);
+                        vscode.window.showInformationMessage('已复制问题 ID');
+                    } catch (e) {
+                        this.logger.error('复制问题 ID 到剪贴板失败', e);
+                        vscode.window.showErrorMessage('复制问题 ID 失败');
+                    }
+                },
+                '复制问题 ID'
+            );
 
         this.registerParaCategoryCommands(
             'issueManager.para.viewIn',
