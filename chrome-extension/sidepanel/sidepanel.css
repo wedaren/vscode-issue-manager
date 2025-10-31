@@ -257,3 +257,129 @@ footer {
 .version {
   margin-bottom: 4px;
 }
+
+/* 关注问题视图样式 */
+.focused-section {
+  margin-bottom: 24px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-icon {
+  font-size: 18px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  width: auto;
+}
+
+.icon-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.icon-btn .btn-icon {
+  font-size: 14px;
+}
+
+.focused-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.focused-item {
+  background: white;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #e9ecef;
+}
+
+.focused-item:hover {
+  background: #f1f3f5;
+  border-color: #adb5bd;
+  transform: translateX(2px);
+}
+
+.focused-item:last-child {
+  margin-bottom: 0;
+}
+
+.focused-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.focused-item-path {
+  font-size: 11px;
+  color: #868e96;
+  font-family: 'Courier New', monospace;
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: #868e96;
+  font-size: 13px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 30px 20px;
+  color: #868e96;
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.empty-state-text {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* 滚动条样式 */
+.focused-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.focused-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.focused-list::-webkit-scrollbar-thumb {
+  background: #ced4da;
+  border-radius: 3px;
+}
+
+.focused-list::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
+}

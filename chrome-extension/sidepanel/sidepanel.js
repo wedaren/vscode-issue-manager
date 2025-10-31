@@ -7,6 +7,8 @@
 const startBtn = document.getElementById('start-selection-btn');
 const cancelBtn = document.getElementById('cancel-selection-btn');
 const openIssueDirBtn = document.getElementById('open-issue-dir-btn');
+const refreshFocusedBtn = document.getElementById('refresh-focused-btn');
+const focusedList = document.getElementById('focused-list');
 const statusText = document.getElementById('status-text');
 const statusDiv = document.getElementById('status');
 const messageDiv = document.getElementById('message');
@@ -28,12 +30,16 @@ document.addEventListener('DOMContentLoaded', () => {
   startBtn.addEventListener('click', handleStartSelection);
   cancelBtn.addEventListener('click', handleCancelSelection);
   openIssueDirBtn.addEventListener('click', handleOpenIssueDir);
+  refreshFocusedBtn.addEventListener('click', loadFocusedIssues);
   
   // 监听来自 Background 的消息
   chrome.runtime.onMessage.addListener(handleBackgroundMessage);
   
   // 查询当前 WebSocket 状态
   queryWsStatus();
+  
+  // 加载关注问题
+  loadFocusedIssues();
 });
 
 /**
@@ -225,4 +231,97 @@ async function queryWsStatus() {
     console.error('Failed to query WebSocket status:', error);
     updateWsStatus('disconnected');
   }
+}
+
+/**
+ * 加载关注问题列表
+ */
+async function loadFocusedIssues() {
+  console.log('Loading focused issues...');
+  
+  // 显示加载状态
+  focusedList.innerHTML = '<div class="loading">加载中...</div>';
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ 
+      type: 'GET_FOCUSED_ISSUES'
+    });
+    
+    if (response && response.success) {
+      displayFocusedIssues(response.data);
+    } else {
+      displayFocusedError(response.error || '加载关注问题失败');
+    }
+  } catch (error) {
+    console.error('Failed to load focused issues:', error);
+    displayFocusedError('无法连接到 VSCode，请确保 VSCode 已打开且 Issue Manager 扩展已启用');
+  }
+}
+
+/**
+ * 显示关注问题列表
+ */
+function displayFocusedIssues(issues) {
+  if (!issues || issues.length === 0) {
+    focusedList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📭</div>
+        <div class="empty-state-text">暂无关注问题<br>在 VSCode 中添加关注后将在此显示</div>
+      </div>
+    `;
+    return;
+  }
+  
+  focusedList.innerHTML = '';
+  
+  issues.forEach(issue => {
+    const item = document.createElement('div');
+    item.className = 'focused-item';
+    item.dataset.id = issue.id;
+    item.dataset.filePath = issue.filePath;
+    
+    item.innerHTML = `
+      <div class="focused-item-title">${escapeHtml(issue.title)}</div>
+      <div class="focused-item-path">${escapeHtml(issue.filePath)}</div>
+    `;
+    
+    item.addEventListener('click', () => handleFocusedItemClick(issue));
+    
+    focusedList.appendChild(item);
+  });
+}
+
+/**
+ * 显示关注问题加载错误
+ */
+function displayFocusedError(errorMessage) {
+  focusedList.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-state-icon">⚠️</div>
+      <div class="empty-state-text">${escapeHtml(errorMessage)}</div>
+    </div>
+  `;
+}
+
+/**
+ * 处理关注问题项点击
+ */
+function handleFocusedItemClick(issue) {
+  console.log('Focused item clicked:', issue);
+  
+  // 通过 VSCode URI 打开问题文件（使用绝对路径）
+  const filePath = issue.absolutePath || issue.filePath;
+  const vscodeUri = `vscode://file${filePath}`;
+  window.open(vscodeUri, '_blank');
+  
+  showMessage(`正在打开: ${issue.title}`, 'success');
+}
+
+/**
+ * HTML 转义函数
+ */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }

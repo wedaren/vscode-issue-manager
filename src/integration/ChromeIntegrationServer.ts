@@ -4,6 +4,11 @@ import { URL } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
 import { Logger } from '../core/utils/Logger';
+import { readFocused } from '../data/focusedManager';
+import { readTree, IssueTreeNode } from '../data/treeManager';
+import { TitleCacheService } from '../services/TitleCacheService';
+import * as path from 'path';
+import { getIssueDir } from '../config';
 
 
 interface ChromeRequestPayload {  
@@ -163,6 +168,71 @@ export class ChromeIntegrationServer {
               path: created?.toString(),
               id: message.id 
             }));
+          } else if (message.type === 'get-focused-issues') {
+            // 获取关注问题列表
+            try {
+              const focusedData = await readFocused();
+              const treeData = await readTree();
+              const issueDir = getIssueDir();
+              
+              if (!issueDir) {
+                ws.send(JSON.stringify({ 
+                  type: 'error', 
+                  error: 'Issue directory not configured',
+                  id: message.id 
+                }));
+                return;
+              }
+
+              // 构建 id 到节点的映射
+              const idToNode = new Map<string, IssueTreeNode>();
+              const collectMap = (nodes: IssueTreeNode[]) => {
+                for (const node of nodes) {
+                  idToNode.set(node.id, node);
+                  if (node.children) { 
+                    collectMap(node.children); 
+                  }
+                }
+              };
+              collectMap(treeData.rootNodes);
+
+              // 获取关注问题的详细信息
+              const titleCache = TitleCacheService.getInstance();
+              const focusedIssues = await Promise.all(
+                focusedData.focusList.map(async (id) => {
+                  const node = idToNode.get(id);
+                  if (!node) {
+                    return null;
+                  }
+                  
+                  const title = await titleCache.get(node.filePath) || path.basename(node.filePath, '.md');
+                  const absolutePath = path.join(issueDir, node.filePath);
+                  
+                  return {
+                    id: node.id,
+                    filePath: node.filePath,
+                    absolutePath: absolutePath,
+                    title: title
+                  };
+                })
+              );
+
+              // 过滤掉 null 值
+              const validFocusedIssues = focusedIssues.filter(issue => issue !== null);
+
+              ws.send(JSON.stringify({ 
+                type: 'focused-issues', 
+                data: validFocusedIssues,
+                id: message.id 
+              }));
+            } catch (e: any) {
+              this.logger.error('[ChromeIntegration] 获取关注问题失败', e);
+              ws.send(JSON.stringify({ 
+                type: 'error', 
+                error: e?.message || String(e),
+                id: message.id 
+              }));
+            }
           } else if (message.type === 'ping') {
             // 心跳响应
             ws.send(JSON.stringify({ type: 'pong', id: message.id }));
