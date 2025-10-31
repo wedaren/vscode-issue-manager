@@ -4,6 +4,11 @@ import { URL } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
 import { Logger } from '../core/utils/Logger';
+import { readFocused } from '../data/focusedManager';
+import { readTree, IssueTreeNode } from '../data/treeManager';
+import { TitleCacheService } from '../services/TitleCacheService';
+import * as path from 'path';
+import { getIssueDir } from '../config';
 
 
 interface ChromeRequestPayload {  
@@ -163,6 +168,89 @@ export class ChromeIntegrationServer {
               path: created?.toString(),
               id: message.id 
             }));
+          } else if (message.type === 'get-focused-issues') {
+            // 获取关注问题树结构
+            try {
+              const focusedData = await readFocused();
+              const treeData = await readTree();
+              const issueDir = getIssueDir();
+              
+              if (!issueDir) {
+                ws.send(JSON.stringify({ 
+                  type: 'error', 
+                  error: 'Issue directory not configured',
+                  id: message.id 
+                }));
+                return;
+              }
+
+              // 构建 id 到节点的映射
+              const idToNode = new Map<string, IssueTreeNode>();
+              const collectMap = (nodes: IssueTreeNode[]) => {
+                for (const node of nodes) {
+                  idToNode.set(node.id, node);
+                  if (node.children) { 
+                    collectMap(node.children); 
+                  }
+                }
+              };
+              collectMap(treeData.rootNodes);
+
+              // 获取标题缓存服务
+              const titleCache = TitleCacheService.getInstance();
+              
+              // 递归构建树节点，包含子节点和 markdown 内容
+              const buildTreeNode = async (node: IssueTreeNode): Promise<any> => {
+                const title = await titleCache.get(node.filePath) ?? path.basename(node.filePath, '.md');
+                const absolutePath = path.join(issueDir, node.filePath);
+                
+                // 读取 markdown 文件内容
+                let content = '';
+                try {
+                  const fileUri = vscode.Uri.file(absolutePath);
+                  const fileContent = await vscode.workspace.fs.readFile(fileUri);
+                  content = Buffer.from(fileContent).toString('utf8');
+                } catch (e) {
+                  this.logger.warn(`无法读取文件: ${absolutePath}`, e);
+                }
+                
+                // 递归处理子节点
+                const children = node.children && node.children.length > 0
+                  ? await Promise.all(node.children.map(child => buildTreeNode(child)))
+                  : [];
+                
+                return {
+                  id: node.id,
+                  filePath: node.filePath,
+                  absolutePath: absolutePath,
+                  title: title,
+                  content: content,
+                  children: children,
+                  expanded: node.expanded ?? false
+                };
+              };
+              
+              // 构建关注问题的树结构（每个关注的问题作为根节点，包含其完整子树）
+              const focusedTrees = await Promise.all(
+                focusedData.focusList
+                  .map(id => idToNode.get(id))
+                  .filter((node): node is IssueTreeNode => node !== undefined)
+                  .map(node => buildTreeNode(node))
+              );
+
+              ws.send(JSON.stringify({ 
+                type: 'focused-issues', 
+                data: focusedTrees,
+                id: message.id 
+              }));
+            } catch (e: any) {
+              this.logger.error('[ChromeIntegration] 获取关注问题失败', e);
+              ws.send(JSON.stringify({ 
+                type: 'error', 
+                error: e?.message || String(e),
+                id: message.id 
+              }));
+            }
           } else if (message.type === 'ping') {
             // 心跳响应
             ws.send(JSON.stringify({ type: 'pong', id: message.id }));

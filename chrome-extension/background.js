@@ -86,6 +86,12 @@ async function initWebSocket() {
             reject(new Error(message.error || 'Unknown error'));
           } else if (message.type === 'pong') {
             resolve(message);
+          } else if (message.type === 'focused-issues') {
+            // 处理关注问题响应
+            resolve(message);
+          } else {
+            // 其他类型的消息也resolve，让调用方处理
+            resolve(message);
           }
         }
 
@@ -304,6 +310,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true });
       break;
 
+    case 'GET_FOCUSED_ISSUES':
+      // 获取关注问题列表
+      (async () => {
+        try {
+          console.log('[Background] Getting focused issues...');
+          const data = await getFocusedIssues();
+          console.log('[Background] Got focused issues data:', data);
+          console.log('[Background] Data type:', typeof data);
+          console.log('[Background] Data is array:', Array.isArray(data));
+          sendResponse({ success: true, data });
+        } catch (e) {
+          console.error('[Background] Failed to get focused issues:', e);
+          sendResponse({ success: false, error: e?.message || String(e) });
+        }
+      })();
+      break;
+
     default:
       console.warn('Unknown message type:', message.type);
       sendResponse({ success: false, error: 'Unknown message type' });
@@ -477,6 +500,43 @@ async function handleContentSelected(data) {
         error: `无法通过备用方式创建笔记:${fallbackError?.message || String(fallbackError)}。\n建议:\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用;\n2) 在扩展设置中开启/确认 WebSocket 服务(端口与本扩展一致);\n3) 或在 Side Panel 缩小选取范围后重试。` 
       });
     }
+  }
+}
+
+/**
+ * 获取关注问题列表
+ */
+async function getFocusedIssues() {
+  console.log('[getFocusedIssues] Starting...');
+  console.log('[getFocusedIssues] WS connected:', wsConnected);
+  console.log('[getFocusedIssues] WS state:', ws?.readyState);
+  
+  if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+    throw new Error('WebSocket not connected to VSCode');
+  }
+
+  try {
+    console.log('[getFocusedIssues] Sending WebSocket message...');
+    const response = await sendWebSocketMessage({
+      type: 'get-focused-issues'
+    }, 5000);
+
+    console.log('[getFocusedIssues] Got response:', response);
+    console.log('[getFocusedIssues] Response type:', response?.type);
+    console.log('[getFocusedIssues] Response data:', response?.data);
+
+    if (response && response.type === 'focused-issues') {
+      const data = response.data || [];
+      console.log('[getFocusedIssues] Returning data:', data);
+      return data;
+    } else if (response && response.type === 'error') {
+      throw new Error(response.error || 'Failed to get focused issues');
+    } else {
+      throw new Error('Unexpected response from VSCode');
+    }
+  } catch (error) {
+    console.error('[getFocusedIssues] Failed to get focused issues via WebSocket:', error);
+    throw error;
   }
 }
 

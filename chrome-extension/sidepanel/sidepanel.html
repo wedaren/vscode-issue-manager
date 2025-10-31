@@ -20,6 +20,22 @@
         <span id="ws-status-text">WebSocket: 连接中...</span>
       </div>
 
+      <!-- 关注问题视图 -->
+      <div class="focused-section">
+        <div class="section-header">
+          <h3>
+            <span class="section-icon">⭐</span>
+            关注问题
+          </h3>
+          <button id="refresh-focused-btn" class="icon-btn" title="刷新关注问题">
+            <span class="btn-icon">🔄</span>
+          </button>
+        </div>
+        <div id="focused-list" class="focused-list">
+          <div class="loading">加载中...</div>
+        </div>
+      </div>
+
       <div class="action-section">
         <button id="start-selection-btn" class="primary-btn">
           <span class="btn-icon">✨</span>

@@ -3,10 +3,74 @@
  * 负责处理用户交互和显示状态
  */
 
+/**
+ * 简单的 Markdown 解析器
+ */
+function parseMarkdown(markdown) {
+  if (!markdown) return '';
+  
+  let html = markdown;
+  
+  // 转义 HTML 特殊字符
+  const escapeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;'
+  };
+  html = html.replace(/[&<>]/g, char => escapeMap[char] || char);
+  
+  // 代码块
+  html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  
+  // 行内代码
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // 标题
+  html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+  
+  // 粗体和斜体
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  
+  // 链接
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  
+  // 引用块
+  html = html.replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>');
+  
+  // 无序列表
+  html = html.replace(/^\- (.*$)/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  
+  // 有序列表
+  html = html.replace(/^\d+\. (.*$)/gm, '<li>$1</li>');
+  
+  // 段落
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  
+  // 清理多余的空段落
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>(<h[123]>)/g, '$1');
+  html = html.replace(/(<\/h[123]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<pre>)/g, '$1');
+  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>)/g, '$1');
+  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<blockquote>)/g, '$1');
+  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+  
+  return html;
+}
+
 // DOM 元素
 const startBtn = document.getElementById('start-selection-btn');
 const cancelBtn = document.getElementById('cancel-selection-btn');
 const openIssueDirBtn = document.getElementById('open-issue-dir-btn');
+const refreshFocusedBtn = document.getElementById('refresh-focused-btn');
+const focusedList = document.getElementById('focused-list');
 const statusText = document.getElementById('status-text');
 const statusDiv = document.getElementById('status');
 const messageDiv = document.getElementById('message');
@@ -28,12 +92,16 @@ document.addEventListener('DOMContentLoaded', () => {
   startBtn.addEventListener('click', handleStartSelection);
   cancelBtn.addEventListener('click', handleCancelSelection);
   openIssueDirBtn.addEventListener('click', handleOpenIssueDir);
+  refreshFocusedBtn.addEventListener('click', loadFocusedIssues);
   
   // 监听来自 Background 的消息
   chrome.runtime.onMessage.addListener(handleBackgroundMessage);
   
   // 查询当前 WebSocket 状态
   queryWsStatus();
+  
+  // 加载关注问题
+  loadFocusedIssues();
 });
 
 /**
@@ -226,3 +294,158 @@ async function queryWsStatus() {
     updateWsStatus('disconnected');
   }
 }
+
+/**
+ * 加载关注问题列表
+ */
+async function loadFocusedIssues() {
+  console.log('Loading focused issues...');
+  
+  // 显示加载状态
+  focusedList.innerHTML = '<div class="loading">加载中...</div>';
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ 
+      type: 'GET_FOCUSED_ISSUES'
+    });
+    
+    console.log('Received response from background:', response);
+    
+    if (response && response.success) {
+      console.log('Response is successful, data:', response.data);
+      displayFocusedIssues(response.data);
+    } else {
+      console.error('Response failed:', response);
+      displayFocusedError(response?.error || '加载关注问题失败');
+    }
+  } catch (error) {
+    console.error('Failed to load focused issues:', error);
+    displayFocusedError('无法连接到 VSCode，请确保 VSCode 已打开且 Issue Manager 扩展已启用');
+  }
+}
+
+/**
+ * 显示关注问题树结构
+ */
+function displayFocusedIssues(issueTree) {
+  console.log('displayFocusedIssues called with:', issueTree);
+  console.log('issueTree type:', typeof issueTree);
+  console.log('issueTree is array:', Array.isArray(issueTree));
+  console.log('issueTree length:', issueTree?.length);
+  
+  if (!issueTree || issueTree.length === 0) {
+    focusedList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📭</div>
+        <div class="empty-state-text">暂无关注问题<br>在 VSCode 中添加关注后将在此显示</div>
+      </div>
+    `;
+    return;
+  }
+  
+  focusedList.innerHTML = '';
+  
+  // 渲染每个根节点的树结构
+  issueTree.forEach((rootNode, index) => {
+    console.log(`Rendering root node ${index}:`, rootNode);
+    try {
+      const treeElement = renderTreeNode(rootNode, 0);
+      focusedList.appendChild(treeElement);
+      console.log(`Successfully rendered root node ${index}`);
+    } catch (error) {
+      console.error(`Error rendering root node ${index}:`, error);
+    }
+  });
+  
+  console.log('Finished rendering all nodes');
+}
+
+/**
+ * 渲染树节点（递归）
+ */
+function renderTreeNode(node, level) {
+  console.log(`renderTreeNode called with level ${level}, node:`, node);
+  
+  if (!node) {
+    console.error('renderTreeNode: node is null or undefined');
+    return document.createElement('div');
+  }
+  
+  const nodeDiv = document.createElement('div');
+  nodeDiv.className = 'tree-node';
+  nodeDiv.dataset.id = node.id;
+  
+  // 节点头部（标题和折叠按钮）
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'tree-node-header';
+  
+  // 折叠/展开图标
+  const hasChildren = node.children && node.children.length > 0;
+  const toggleSpan = document.createElement('span');
+  toggleSpan.className = 'tree-node-toggle';
+  toggleSpan.textContent = hasChildren ? (node.expanded !== false ? '▼' : '▶') : '•';
+  
+  // 标题
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'tree-node-title';
+  titleSpan.textContent = node.title;
+  
+  headerDiv.appendChild(toggleSpan);
+  headerDiv.appendChild(titleSpan);
+  
+  // 内容区域（markdown）
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'tree-node-content';
+  contentDiv.style.display = node.expanded !== false ? 'block' : 'none';
+  
+  // 渲染 markdown
+  if (node.content) {
+    const markdownDiv = document.createElement('div');
+    markdownDiv.className = 'markdown-body';
+    markdownDiv.innerHTML = parseMarkdown(node.content);
+    contentDiv.appendChild(markdownDiv);
+  }
+  
+  // 子节点容器
+  const childrenDiv = document.createElement('div');
+  childrenDiv.className = 'tree-node-children';
+  childrenDiv.style.display = node.expanded !== false && hasChildren ? 'block' : 'none';
+  
+  if (hasChildren) {
+    node.children.forEach(child => {
+      const childElement = renderTreeNode(child, level + 1);
+      childrenDiv.appendChild(childElement);
+    });
+  }
+  
+  // 点击头部切换展开/折叠
+  headerDiv.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isExpanded = contentDiv.style.display !== 'none';
+    contentDiv.style.display = isExpanded ? 'none' : 'block';
+    childrenDiv.style.display = isExpanded ? 'none' : 'block';
+    toggleSpan.textContent = hasChildren ? (isExpanded ? '▶' : '▼') : '•';
+  });
+  
+  nodeDiv.appendChild(headerDiv);
+  nodeDiv.appendChild(contentDiv);
+  if (hasChildren) {
+    nodeDiv.appendChild(childrenDiv);
+  }
+  
+  return nodeDiv;
+}
+
+/**
+ * 显示关注问题加载错误
+ */
+function displayFocusedError(errorMessage) {
+  focusedList.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-state-icon">⚠️</div>
+      <div class="empty-state-text">${escapeHtml(errorMessage)}</div>
+    </div>
+  `;
+}
+
+
