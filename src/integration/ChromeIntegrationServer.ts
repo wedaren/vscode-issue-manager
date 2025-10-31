@@ -198,27 +198,28 @@ export class ChromeIntegrationServer {
 
               // 获取关注问题的详细信息
               const titleCache = TitleCacheService.getInstance();
-              const focusedIssues = await Promise.all(
-                focusedData.focusList.map(async (id) => {
-                  const node = idToNode.get(id);
-                  if (!node) {
-                    return null;
-                  }
-                  
-                  const title = await titleCache.get(node.filePath) ?? path.basename(node.filePath, '.md');
-                  const absolutePath = path.join(issueDir, node.filePath);
-                  
-                  return {
-                    id: node.id,
-                    filePath: node.filePath,
-                    absolutePath: absolutePath,
-                    title: title
-                  };
-                })
-              );
-
-              // 过滤掉 null 值，使用类型谓词函数
-              const validFocusedIssues = focusedIssues.filter((issue): issue is NonNullable<typeof issue> => issue !== null);
+              
+              // 收集所有有效节点
+              const validNodes = focusedData.focusList
+                .map(id => ({ id, node: idToNode.get(id) }))
+                .filter((item): item is { id: string; node: IssueTreeNode } => item.node !== undefined);
+              
+              // 批量获取标题（性能优化）
+              const filePaths = validNodes.map(item => item.node.filePath);
+              const titles = await titleCache.getMany(filePaths);
+              
+              // 构建关注问题列表
+              const validFocusedIssues = validNodes.map((item, index) => {
+                const title = titles[index] || path.basename(item.node.filePath, '.md');
+                const absolutePath = path.join(issueDir, item.node.filePath);
+                
+                return {
+                  id: item.node.id,
+                  filePath: item.node.filePath,
+                  absolutePath: absolutePath,
+                  title: title
+                };
+              });
 
               ws.send(JSON.stringify({ 
                 type: 'focused-issues', 

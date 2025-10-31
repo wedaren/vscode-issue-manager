@@ -315,7 +315,9 @@ function handleFocusedItemClick(issue) {
     return;
   }
   
-  const vscodeUri = `vscode://file/${issue.absolutePath}`;
+  // 标准化路径为 URI 格式（将 Windows 反斜杠转换为正斜杠）
+  const normalizedPath = issue.absolutePath.replace(/\\/g, '/');
+  const vscodeUri = `vscode://file/${normalizedPath}`;
   window.open(vscodeUri, '_blank');
   
   showMessage(`正在打开: ${issue.title}`, 'success');
@@ -325,7 +327,12 @@ function handleFocusedItemClick(issue) {
  * HTML 转义函数
  */
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  const escapeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  };
+  return String(text).replace(/[&<>"']/g, (char) => escapeMap[char]);
 }
