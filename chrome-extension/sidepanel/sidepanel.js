@@ -309,9 +309,13 @@ function displayFocusedError(errorMessage) {
 function handleFocusedItemClick(issue) {
   console.log('Focused item clicked:', issue);
   
-  // 通过 VSCode URI 打开问题文件（使用绝对路径）
-  const filePath = issue.absolutePath ?? issue.filePath;
-  const vscodeUri = `vscode://file/${filePath}`;
+  // 通过 VSCode URI 打开问题文件（必须使用绝对路径）
+  if (!issue.absolutePath) {
+    showMessage('无法打开问题：缺少文件路径信息', 'error');
+    return;
+  }
+  
+  const vscodeUri = `vscode://file/${issue.absolutePath}`;
   window.open(vscodeUri, '_blank');
   
   showMessage(`正在打开: ${issue.title}`, 'success');
