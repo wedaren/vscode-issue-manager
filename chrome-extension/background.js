@@ -86,6 +86,12 @@ async function initWebSocket() {
             reject(new Error(message.error || 'Unknown error'));
           } else if (message.type === 'pong') {
             resolve(message);
+          } else if (message.type === 'focused-issues') {
+            // 处理关注问题响应
+            resolve(message);
+          } else {
+            // 其他类型的消息也resolve，让调用方处理
+            resolve(message);
           }
         }
 
