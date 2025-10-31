@@ -217,8 +217,8 @@ export class ChromeIntegrationServer {
                 })
               );
 
-              // 过滤掉 null 值
-              const validFocusedIssues = focusedIssues.filter(issue => issue !== null);
+              // 过滤掉 null 值，使用类型谓词函数
+              const validFocusedIssues = focusedIssues.filter((issue): issue is NonNullable<typeof issue> => issue !== null);
 
               ws.send(JSON.stringify({ 
                 type: 'focused-issues', 
