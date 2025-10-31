@@ -309,10 +309,14 @@ async function loadFocusedIssues() {
       type: 'GET_FOCUSED_ISSUES'
     });
     
+    console.log('Received response from background:', response);
+    
     if (response && response.success) {
+      console.log('Response is successful, data:', response.data);
       displayFocusedIssues(response.data);
     } else {
-      displayFocusedError(response.error || '加载关注问题失败');
+      console.error('Response failed:', response);
+      displayFocusedError(response?.error || '加载关注问题失败');
     }
   } catch (error) {
     console.error('Failed to load focused issues:', error);
@@ -324,6 +328,11 @@ async function loadFocusedIssues() {
  * 显示关注问题树结构
  */
 function displayFocusedIssues(issueTree) {
+  console.log('displayFocusedIssues called with:', issueTree);
+  console.log('issueTree type:', typeof issueTree);
+  console.log('issueTree is array:', Array.isArray(issueTree));
+  console.log('issueTree length:', issueTree?.length);
+  
   if (!issueTree || issueTree.length === 0) {
     focusedList.innerHTML = `
       <div class="empty-state">
@@ -337,16 +346,31 @@ function displayFocusedIssues(issueTree) {
   focusedList.innerHTML = '';
   
   // 渲染每个根节点的树结构
-  issueTree.forEach(rootNode => {
-    const treeElement = renderTreeNode(rootNode, 0);
-    focusedList.appendChild(treeElement);
+  issueTree.forEach((rootNode, index) => {
+    console.log(`Rendering root node ${index}:`, rootNode);
+    try {
+      const treeElement = renderTreeNode(rootNode, 0);
+      focusedList.appendChild(treeElement);
+      console.log(`Successfully rendered root node ${index}`);
+    } catch (error) {
+      console.error(`Error rendering root node ${index}:`, error);
+    }
   });
+  
+  console.log('Finished rendering all nodes');
 }
 
 /**
  * 渲染树节点（递归）
  */
 function renderTreeNode(node, level) {
+  console.log(`renderTreeNode called with level ${level}, node:`, node);
+  
+  if (!node) {
+    console.error('renderTreeNode: node is null or undefined');
+    return document.createElement('div');
+  }
+  
   const nodeDiv = document.createElement('div');
   nodeDiv.className = 'tree-node';
   nodeDiv.dataset.id = node.id;

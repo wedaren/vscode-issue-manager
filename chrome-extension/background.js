@@ -308,10 +308,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // 获取关注问题列表
       (async () => {
         try {
+          console.log('[Background] Getting focused issues...');
           const data = await getFocusedIssues();
+          console.log('[Background] Got focused issues data:', data);
+          console.log('[Background] Data type:', typeof data);
+          console.log('[Background] Data is array:', Array.isArray(data));
           sendResponse({ success: true, data });
         } catch (e) {
-          console.error('Failed to get focused issues:', e);
+          console.error('[Background] Failed to get focused issues:', e);
           sendResponse({ success: false, error: e?.message || String(e) });
         }
       })();
@@ -497,24 +501,35 @@ async function handleContentSelected(data) {
  * 获取关注问题列表
  */
 async function getFocusedIssues() {
+  console.log('[getFocusedIssues] Starting...');
+  console.log('[getFocusedIssues] WS connected:', wsConnected);
+  console.log('[getFocusedIssues] WS state:', ws?.readyState);
+  
   if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error('WebSocket not connected to VSCode');
   }
 
   try {
+    console.log('[getFocusedIssues] Sending WebSocket message...');
     const response = await sendWebSocketMessage({
       type: 'get-focused-issues'
     }, 5000);
 
+    console.log('[getFocusedIssues] Got response:', response);
+    console.log('[getFocusedIssues] Response type:', response?.type);
+    console.log('[getFocusedIssues] Response data:', response?.data);
+
     if (response && response.type === 'focused-issues') {
-      return response.data || [];
+      const data = response.data || [];
+      console.log('[getFocusedIssues] Returning data:', data);
+      return data;
     } else if (response && response.type === 'error') {
       throw new Error(response.error || 'Failed to get focused issues');
     } else {
       throw new Error('Unexpected response from VSCode');
     }
   } catch (error) {
-    console.error('Failed to get focused issues via WebSocket:', error);
+    console.error('[getFocusedIssues] Failed to get focused issues via WebSocket:', error);
     throw error;
   }
 }
