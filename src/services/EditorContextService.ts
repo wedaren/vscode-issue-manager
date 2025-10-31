@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '../core/utils/Logger';
+import { getIssueIdFromUri } from '../utils/uriUtils';
 
 /**
  * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。
@@ -50,23 +51,8 @@ export class EditorContextService implements vscode.Disposable {
      * @param editor 激活的文本编辑器
      */
     private updateEditorIssueContext(editor: vscode.TextEditor | undefined): void {
-        let hasId = false;
-        let issueId = '';
-
-        if (editor?.document?.uri) {
-            try {
-                const q = editor.document.uri.query || '';
-                const m = q.match(/(?:^|&)issueId=([^&]+)/);
-                if (m) {
-                    hasId = true;
-                    issueId = decodeURIComponent(m[1]);
-                }
-            } catch (error) {
-                this.logger.error('从编辑器 URI 解析 issueId 失败', { error, uri: editor.document.uri.toString() });
-            }
-        }
-
-        vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', hasId);
+        const issueId = getIssueIdFromUri(editor?.document?.uri);
+        vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', !!issueId);
         vscode.commands.executeCommand('setContext', 'issueManager.editorActiveIssueId', issueId);
     }
 

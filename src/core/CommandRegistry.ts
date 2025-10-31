@@ -33,6 +33,7 @@ import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
+import { getIssueIdFromUri } from '../utils/uriUtils';
 
 /**
  * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
@@ -152,7 +153,6 @@ export class CommandRegistry extends BaseCommandRegistry {
                 vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode, type: 'focused' | 'overview') => {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
-                    // TODO
                     const uri = node.resourceUri;
                     if(node.id && uri){
                         const id = stripFocusedId(node.id);
@@ -427,13 +427,11 @@ export class CommandRegistry extends BaseCommandRegistry {
                         vscode.window.showWarningMessage('没有激活的编辑器可复制问题 ID。');
                         return;
                     }
-                    const q = editor.document.uri.query || '';
-                    const m = q.match(/(?:^|&)issueId=([^&]+)/);
-                    if (!m) {
+                    const id = getIssueIdFromUri(editor.document.uri);
+                    if (!id) {
                         vscode.window.showWarningMessage('当前文档不包含问题 ID。');
                         return;
                     }
-                    const id = decodeURIComponent(m[1]);
                     try {
                         await vscode.env.clipboard.writeText(id);
                         vscode.window.showInformationMessage('已复制问题 ID');
