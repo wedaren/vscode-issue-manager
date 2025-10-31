@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Logger } from '../core/utils/Logger';  
 
 /**
  * 从给定的 URI 查询字符串中解析 issueId。
@@ -17,7 +18,7 @@ export function getIssueIdFromUri(uri: vscode.Uri | undefined): string | undefin
         }
     } catch (error) {
         // 在解析过程中可能出现错误，例如 URI 格式不正确
-        console.error('从 URI 解析 issueId 失败', error);
+        Logger.getInstance().error('从 URI 解析 issueId 失败', error);  
     }
     return undefined;
 }
