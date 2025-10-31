@@ -3,6 +3,68 @@
  * 负责处理用户交互和显示状态
  */
 
+/**
+ * 简单的 Markdown 解析器
+ */
+function parseMarkdown(markdown) {
+  if (!markdown) return '';
+  
+  let html = markdown;
+  
+  // 转义 HTML 特殊字符
+  const escapeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;'
+  };
+  html = html.replace(/[&<>]/g, char => escapeMap[char] || char);
+  
+  // 代码块
+  html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  
+  // 行内代码
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // 标题
+  html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+  
+  // 粗体和斜体
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  
+  // 链接
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  
+  // 引用块
+  html = html.replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>');
+  
+  // 无序列表
+  html = html.replace(/^\- (.*$)/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  
+  // 有序列表
+  html = html.replace(/^\d+\. (.*$)/gm, '<li>$1</li>');
+  
+  // 段落
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  
+  // 清理多余的空段落
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>(<h[123]>)/g, '$1');
+  html = html.replace(/(<\/h[123]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<pre>)/g, '$1');
+  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>)/g, '$1');
+  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<blockquote>)/g, '$1');
+  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+  
+  return html;
+}
+
 // DOM 元素
 const startBtn = document.getElementById('start-selection-btn');
 const cancelBtn = document.getElementById('cancel-selection-btn');
@@ -259,10 +321,10 @@ async function loadFocusedIssues() {
 }
 
 /**
- * 显示关注问题列表
+ * 显示关注问题树结构
  */
-function displayFocusedIssues(issues) {
-  if (!issues || issues.length === 0) {
+function displayFocusedIssues(issueTree) {
+  if (!issueTree || issueTree.length === 0) {
     focusedList.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">📭</div>
@@ -274,21 +336,80 @@ function displayFocusedIssues(issues) {
   
   focusedList.innerHTML = '';
   
-  issues.forEach(issue => {
-    const item = document.createElement('div');
-    item.className = 'focused-item';
-    item.dataset.id = issue.id;
-    item.dataset.filePath = issue.filePath;
-    
-    item.innerHTML = `
-      <div class="focused-item-title">${escapeHtml(issue.title)}</div>
-      <div class="focused-item-path">${escapeHtml(issue.filePath)}</div>
-    `;
-    
-    item.addEventListener('click', () => handleFocusedItemClick(issue));
-    
-    focusedList.appendChild(item);
+  // 渲染每个根节点的树结构
+  issueTree.forEach(rootNode => {
+    const treeElement = renderTreeNode(rootNode, 0);
+    focusedList.appendChild(treeElement);
   });
+}
+
+/**
+ * 渲染树节点（递归）
+ */
+function renderTreeNode(node, level) {
+  const nodeDiv = document.createElement('div');
+  nodeDiv.className = 'tree-node';
+  nodeDiv.dataset.id = node.id;
+  
+  // 节点头部（标题和折叠按钮）
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'tree-node-header';
+  
+  // 折叠/展开图标
+  const hasChildren = node.children && node.children.length > 0;
+  const toggleSpan = document.createElement('span');
+  toggleSpan.className = 'tree-node-toggle';
+  toggleSpan.textContent = hasChildren ? (node.expanded !== false ? '▼' : '▶') : '•';
+  
+  // 标题
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'tree-node-title';
+  titleSpan.textContent = node.title;
+  
+  headerDiv.appendChild(toggleSpan);
+  headerDiv.appendChild(titleSpan);
+  
+  // 内容区域（markdown）
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'tree-node-content';
+  contentDiv.style.display = node.expanded !== false ? 'block' : 'none';
+  
+  // 渲染 markdown
+  if (node.content) {
+    const markdownDiv = document.createElement('div');
+    markdownDiv.className = 'markdown-body';
+    markdownDiv.innerHTML = parseMarkdown(node.content);
+    contentDiv.appendChild(markdownDiv);
+  }
+  
+  // 子节点容器
+  const childrenDiv = document.createElement('div');
+  childrenDiv.className = 'tree-node-children';
+  childrenDiv.style.display = node.expanded !== false && hasChildren ? 'block' : 'none';
+  
+  if (hasChildren) {
+    node.children.forEach(child => {
+      const childElement = renderTreeNode(child, level + 1);
+      childrenDiv.appendChild(childElement);
+    });
+  }
+  
+  // 点击头部切换展开/折叠
+  headerDiv.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isExpanded = contentDiv.style.display !== 'none';
+    contentDiv.style.display = isExpanded ? 'none' : 'block';
+    childrenDiv.style.display = isExpanded ? 'none' : 'block';
+    toggleSpan.textContent = hasChildren ? (isExpanded ? '▶' : '▼') : '•';
+  });
+  
+  nodeDiv.appendChild(headerDiv);
+  nodeDiv.appendChild(contentDiv);
+  if (hasChildren) {
+    nodeDiv.appendChild(childrenDiv);
+  }
+  
+  return nodeDiv;
 }
 
 /**
@@ -303,36 +424,4 @@ function displayFocusedError(errorMessage) {
   `;
 }
 
-/**
- * 处理关注问题项点击
- */
-function handleFocusedItemClick(issue) {
-  console.log('Focused item clicked:', issue);
-  
-  // 通过 VSCode URI 打开问题文件（必须使用绝对路径）
-  if (!issue.absolutePath) {
-    showMessage('无法打开问题：缺少文件路径信息', 'error');
-    return;
-  }
-  
-  // 标准化路径为 URI 格式（将 Windows 反斜杠转换为正斜杠）
-  const normalizedPath = issue.absolutePath.replace(/\\/g, '/');
-  const vscodeUri = `vscode://file/${normalizedPath}`;
-  window.open(vscodeUri, '_blank');
-  
-  showMessage(`正在打开: ${issue.title}`, 'success');
-}
 
-/**
- * HTML 转义函数
- */
-function escapeHtml(text) {
-  const escapeMap = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  };
-  return String(text).replace(/[&<>"']/g, (char) => escapeMap[char]);
-}

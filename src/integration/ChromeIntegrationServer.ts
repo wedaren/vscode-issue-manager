@@ -169,7 +169,7 @@ export class ChromeIntegrationServer {
               id: message.id 
             }));
           } else if (message.type === 'get-focused-issues') {
-            // 获取关注问题列表
+            // 获取关注问题树结构
             try {
               const focusedData = await readFocused();
               const treeData = await readTree();
@@ -196,34 +196,51 @@ export class ChromeIntegrationServer {
               };
               collectMap(treeData.rootNodes);
 
-              // 获取关注问题的详细信息
+              // 获取标题缓存服务
               const titleCache = TitleCacheService.getInstance();
               
-              // 收集所有有效节点
-              const validNodes = focusedData.focusList
-                .map(id => ({ id, node: idToNode.get(id) }))
-                .filter((item): item is { id: string; node: IssueTreeNode } => item.node !== undefined);
-              
-              // 批量获取标题（性能优化）
-              const filePaths = validNodes.map(item => item.node.filePath);
-              const titles = await titleCache.getMany(filePaths);
-              
-              // 构建关注问题列表
-              const validFocusedIssues = validNodes.map((item, index) => {
-                const title = titles[index] || path.basename(item.node.filePath, '.md');
-                const absolutePath = path.join(issueDir, item.node.filePath);
+              // 递归构建树节点，包含子节点和 markdown 内容
+              const buildTreeNode = async (node: IssueTreeNode): Promise<any> => {
+                const title = await titleCache.get(node.filePath) ?? path.basename(node.filePath, '.md');
+                const absolutePath = path.join(issueDir, node.filePath);
+                
+                // 读取 markdown 文件内容
+                let content = '';
+                try {
+                  const fileUri = vscode.Uri.file(absolutePath);
+                  const fileContent = await vscode.workspace.fs.readFile(fileUri);
+                  content = Buffer.from(fileContent).toString('utf8');
+                } catch (e) {
+                  this.logger.warn(`无法读取文件: ${absolutePath}`, e);
+                }
+                
+                // 递归处理子节点
+                const children = node.children && node.children.length > 0
+                  ? await Promise.all(node.children.map(child => buildTreeNode(child)))
+                  : [];
                 
                 return {
-                  id: item.node.id,
-                  filePath: item.node.filePath,
+                  id: node.id,
+                  filePath: node.filePath,
                   absolutePath: absolutePath,
-                  title: title
+                  title: title,
+                  content: content,
+                  children: children,
+                  expanded: node.expanded ?? false
                 };
-              });
+              };
+              
+              // 构建关注问题的树结构（每个关注的问题作为根节点，包含其完整子树）
+              const focusedTrees = await Promise.all(
+                focusedData.focusList
+                  .map(id => idToNode.get(id))
+                  .filter((node): node is IssueTreeNode => node !== undefined)
+                  .map(node => buildTreeNode(node))
+              );
 
               ws.send(JSON.stringify({ 
                 type: 'focused-issues', 
-                data: validFocusedIssues,
+                data: focusedTrees,
                 id: message.id 
               }));
             } catch (e: any) {

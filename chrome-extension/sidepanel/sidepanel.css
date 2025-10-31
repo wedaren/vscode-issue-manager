@@ -383,3 +383,158 @@ footer {
 .focused-list::-webkit-scrollbar-thumb:hover {
   background: #adb5bd;
 }
+
+/* 树结构样式 */
+.tree-node {
+  margin-left: 0;
+}
+
+.tree-node-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s;
+  background: white;
+  margin-bottom: 4px;
+}
+
+.tree-node-header:hover {
+  background: #f1f3f5;
+}
+
+.tree-node-toggle {
+  font-size: 12px;
+  color: #868e96;
+  min-width: 16px;
+  text-align: center;
+  user-select: none;
+}
+
+.tree-node-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  flex: 1;
+}
+
+.tree-node-children {
+  margin-left: 20px;
+  border-left: 1px solid #e9ecef;
+  padding-left: 8px;
+}
+
+.tree-node-content {
+  background: white;
+  border-radius: 6px;
+  padding: 16px;
+  margin: 8px 0 12px 0;
+  border: 1px solid #e9ecef;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Markdown 内容样式 */
+.markdown-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.markdown-body h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 16px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #e9ecef;
+  padding-bottom: 8px;
+}
+
+.markdown-body h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 14px;
+  margin-bottom: 10px;
+}
+
+.markdown-body h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.markdown-body p {
+  margin-bottom: 10px;
+}
+
+.markdown-body ul, .markdown-body ol {
+  margin-left: 20px;
+  margin-bottom: 10px;
+}
+
+.markdown-body li {
+  margin-bottom: 4px;
+}
+
+.markdown-body code {
+  background: #f8f9fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.markdown-body pre {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 10px;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid #e9ecef;
+  padding-left: 12px;
+  color: #6c757d;
+  margin: 10px 0;
+}
+
+.markdown-body a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+
+.tree-node-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tree-node-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tree-node-content::-webkit-scrollbar-thumb {
+  background: #ced4da;
+  border-radius: 3px;
+}
+
+.tree-node-content::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
+}
