@@ -113,7 +113,7 @@ export default defineConfig({
 - `icon-48.png` (48×48) - 扩展详情页
 - `icon-128.png` (128×128) - Chrome Web Store
 
-图标文件位于 `chrome-extension-wxt/public/` 目录。构建时会自动复制到输出目录。
+图标文件位于 `chrome-extension-wxt/public/` 目录。WXT 的 `build:done` 钩子会自动将这些图标复制到开发模式和生产模式的构建输出目录中。
 
 **注意**: 当前所有尺寸使用同一图标文件。为获得最佳显示效果，建议为每个尺寸创建优化的图标。
 

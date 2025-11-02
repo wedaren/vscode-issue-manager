@@ -1040,8 +1040,7 @@
     "lint": "eslint src",
     "test": "vscode-test",
     "chrome:dev": "wxt",
-    "chrome:build": "wxt build && npm run chrome:postbuild",
-    "chrome:postbuild": "cp chrome-extension-wxt/public/icon*.png .output/chrome-mv3/",
+    "chrome:build": "wxt build",
     "chrome:zip": "wxt zip"
   },
   "devDependencies": {
