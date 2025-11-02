@@ -375,28 +375,9 @@ function renderTreeNode(node, level) {
   nodeDiv.className = 'tree-node';
   nodeDiv.dataset.id = node.id;
   
-  // 节点头部（标题和折叠按钮）
-  const headerDiv = document.createElement('div');
-  headerDiv.className = 'tree-node-header';
-  
-  // 折叠/展开图标
-  const hasChildren = node.children && node.children.length > 0;
-  const toggleSpan = document.createElement('span');
-  toggleSpan.className = 'tree-node-toggle';
-  toggleSpan.textContent = hasChildren ? (node.expanded !== false ? '▼' : '▶') : '•';
-  
-  // 标题
-  const titleSpan = document.createElement('span');
-  titleSpan.className = 'tree-node-title';
-  titleSpan.textContent = node.title;
-  
-  headerDiv.appendChild(toggleSpan);
-  headerDiv.appendChild(titleSpan);
-  
-  // 内容区域（markdown）
+  // 内容区域（markdown）- 直接显示，不需要单独的标题头部
   const contentDiv = document.createElement('div');
   contentDiv.className = 'tree-node-content';
-  contentDiv.style.display = node.expanded !== false ? 'block' : 'none';
   
   // 渲染 markdown
   if (node.content) {
@@ -407,9 +388,9 @@ function renderTreeNode(node, level) {
   }
   
   // 子节点容器
+  const hasChildren = node.children && node.children.length > 0;
   const childrenDiv = document.createElement('div');
   childrenDiv.className = 'tree-node-children';
-  childrenDiv.style.display = node.expanded !== false && hasChildren ? 'block' : 'none';
   
   if (hasChildren) {
     node.children.forEach(child => {
@@ -418,16 +399,6 @@ function renderTreeNode(node, level) {
     });
   }
   
-  // 点击头部切换展开/折叠
-  headerDiv.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isExpanded = contentDiv.style.display !== 'none';
-    contentDiv.style.display = isExpanded ? 'none' : 'block';
-    childrenDiv.style.display = isExpanded ? 'none' : 'block';
-    toggleSpan.textContent = hasChildren ? (isExpanded ? '▶' : '▼') : '•';
-  });
-  
-  nodeDiv.appendChild(headerDiv);
   nodeDiv.appendChild(contentDiv);
   if (hasChildren) {
     nodeDiv.appendChild(childrenDiv);

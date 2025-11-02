@@ -8,12 +8,6 @@
 </head>
 <body>
   <div class="container fullscreen-focused">
-    <!-- WebSocket 连接状态（简化版） -->
-    <div id="ws-status" class="ws-status-mini">
-      <div class="ws-status-indicator"></div>
-      <span id="ws-status-text">连接中...</span>
-    </div>
-
     <!-- 关注问题视图 - 全屏模式 -->
     <div class="focused-section-fullscreen">
       <div class="section-header-fullscreen">
@@ -21,13 +15,24 @@
           <span class="section-icon">⭐</span>
           关注问题
         </h2>
-        <button id="refresh-focused-btn" class="icon-btn" title="刷新关注问题">
-          <span class="btn-icon">🔄</span>
-        </button>
+        <div class="header-actions">
+          <button id="start-selection-btn" class="action-btn" title="新建笔记">
+            <span class="btn-icon">✨</span>
+          </button>
+          <button id="refresh-focused-btn" class="action-btn" title="刷新关注问题">
+            <span class="btn-icon">🔄</span>
+          </button>
+        </div>
       </div>
       <div id="focused-list" class="focused-list-fullscreen">
         <div class="loading">加载中...</div>
       </div>
+    </div>
+
+    <!-- WebSocket 连接状态 - 右下角 -->
+    <div id="ws-status" class="ws-status-bottom-right">
+      <div class="ws-status-indicator"></div>
+      <span id="ws-status-text">连接中...</span>
     </div>
 
     <div id="message" class="message" style="display: none;"></div>
@@ -38,7 +43,6 @@
         <div class="status-indicator"></div>
         <span id="status-text">就绪</span>
       </div>
-      <button id="start-selection-btn" class="primary-btn"></button>
       <button id="cancel-selection-btn" class="secondary-btn"></button>
       <button id="open-issue-dir-btn" class="primary-btn"></button>
     </div>

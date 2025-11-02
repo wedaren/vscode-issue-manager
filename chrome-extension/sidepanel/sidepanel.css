@@ -141,38 +141,39 @@ main {
 }
 
 /* 全屏关注视图样式 */
-.ws-status-mini {
+.ws-status-bottom-right {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  bottom: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 6px 12px;
   background: rgba(255, 255, 255, 0.95);
   border-radius: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  font-size: 10px;
+  font-size: 11px;
   color: #6c757d;
+  backdrop-filter: blur(10px);
 }
 
-.ws-status-mini .ws-status-indicator {
-  width: 6px;
-  height: 6px;
+.ws-status-bottom-right .ws-status-indicator {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #adb5bd;
 }
 
-.ws-status-mini.connected .ws-status-indicator {
+.ws-status-bottom-right.connected .ws-status-indicator {
   background: #28a745;
 }
 
-.ws-status-mini.disconnected .ws-status-indicator {
+.ws-status-bottom-right.disconnected .ws-status-indicator {
   background: #dc3545;
 }
 
-.ws-status-mini.connecting .ws-status-indicator {
+.ws-status-bottom-right.connecting .ws-status-indicator {
   background: #ffc107;
   animation: blink 1s infinite;
 }
@@ -208,6 +209,32 @@ main {
 
 .section-header-fullscreen .section-icon {
   font-size: 22px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background 0.2s;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  background: #f8f9fa;
+}
+
+.action-btn:active {
+  background: #e9ecef;
 }
 
 .focused-list-fullscreen {
@@ -470,88 +497,64 @@ footer {
 
 /* 树结构样式 */
 .tree-node {
-  margin-left: 0;
-}
-
-.tree-node-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: background 0.2s;
-  background: white;
-  margin-bottom: 4px;
-}
-
-.tree-node-header:hover {
-  background: #f1f3f5;
-}
-
-.tree-node-toggle {
-  font-size: 12px;
-  color: #868e96;
-  min-width: 16px;
-  text-align: center;
-  user-select: none;
-}
-
-.tree-node-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #333;
-  flex: 1;
+  margin-bottom: 24px;
 }
 
 .tree-node-children {
-  margin-left: 20px;
-  border-left: 1px solid #e9ecef;
-  padding-left: 8px;
+  margin-left: 24px;
+  margin-top: 16px;
+  padding-left: 16px;
+  border-left: 2px solid #e9ecef;
 }
 
 .tree-node-content {
   background: white;
-  border-radius: 6px;
-  padding: 16px;
-  margin: 8px 0 12px 0;
+  border-radius: 8px;
+  padding: 20px 24px;
   border: 1px solid #e9ecef;
-  max-height: 400px;
-  overflow-y: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 /* Markdown 内容样式 */
 .markdown-body {
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.7;
   color: #333;
 }
 
 .markdown-body h1 {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
-  margin-top: 16px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #e9ecef;
-  padding-bottom: 8px;
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #212529;
+  border-bottom: 2px solid #e9ecef;
+  padding-bottom: 12px;
+}
+
+.markdown-body h1:first-child {
+  margin-top: 0;
 }
 
 .markdown-body h2 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  margin-top: 14px;
-  margin-bottom: 10px;
+  margin-top: 20px;
+  margin-bottom: 12px;
+  color: #343a40;
 }
 
 .markdown-body h3 {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
-  margin-top: 12px;
-  margin-bottom: 8px;
+  margin-top: 16px;
+  margin-bottom: 10px;
+  color: #495057;
 }
 
 .markdown-body p {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  line-height: 1.7;
 }
 
 .markdown-body ul, .markdown-body ol {
