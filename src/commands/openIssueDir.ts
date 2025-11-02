@@ -25,3 +25,21 @@ export function registerOpenIssueDirCommand(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(disposable);
 };
+
+/**
+ * 打开vscode-issue-manager目录命令
+ * 在 VS Code 中打开配置的vscode-issue-manager目录
+ */
+export function registerOpenvscodeIssueManagerDirCommand(context: vscode.ExtensionContext) {
+    const disposable = vscode.commands.registerCommand('issueManager.openvscodeIssueManagerDir', async () => {
+        try {
+            const dirUri = vscode.Uri.file('/Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager');
+            // 在 VS Code 中打开文件夹
+            await vscode.commands.executeCommand('vscode.openFolder', dirUri, { forceNewWindow: true });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`打开vscode-issue-manager目录失败: ${message}`);
+        }
+    });
+    context.subscriptions.push(disposable);
+};
