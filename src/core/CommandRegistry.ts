@@ -22,7 +22,7 @@ const VIEW_REVEAL_DELAY_MS = 300;
 const EXPAND_ANIMATION_DELAY_MS = 100;  
 
 // 重新导入外部命令注册函数
-import { registerOpenIssueDirCommand } from '../commands/openIssueDir';
+import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand } from '../commands/openIssueDir';
 import { registerSearchIssuesCommand } from '../commands/searchIssues';
 import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
@@ -256,6 +256,7 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // 这些命令在其他模块中定义，直接调用注册函数
         registerOpenIssueDirCommand(this.context);
+        registerOpenvscodeIssueManagerDirCommand(this.context);
         registerSearchIssuesCommand(this.context);
         registerDeleteIssueCommand(this.context);
         registerFocusCommands(this.context);

@@ -687,6 +687,12 @@
         "when": "issueManager.isDirConfigured"
       },
       {
+        "command": "issueManager.openvscodeIssueManagerDir",
+        "key": "ctrl+j ctrl+d",
+        "mac": "cmd+j cmd+d",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
         "command": "issueManager.openIssueDir",
         "key": "ctrl+j ctrl+h",
         "mac": "cmd+j cmd+h",
