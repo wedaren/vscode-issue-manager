@@ -104,6 +104,19 @@ export default defineConfig({
 });
 ```
 
+### 图标配置
+
+扩展使用多种尺寸的图标以适应不同的显示场景：
+
+- `icon-16.png` (16×16) - 浏览器工具栏
+- `icon.png` (32×32) - 扩展管理页面
+- `icon-48.png` (48×48) - 扩展详情页
+- `icon-128.png` (128×128) - Chrome Web Store
+
+图标文件位于 `chrome-extension-wxt/public/` 目录。构建时会自动复制到输出目录。
+
+**注意**: 当前所有尺寸使用同一图标文件。为获得最佳显示效果，建议为每个尺寸创建优化的图标。
+
 ### VSCode 连接配置
 
 扩展通过 WebSocket 连接到 VSCode（默认端口 37892）。可以在扩展的存储中配置：
