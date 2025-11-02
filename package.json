@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -682,8 +682,7 @@
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
           "group": "navigation@0",
           "title": "复制文件名"
-        }
-        ,
+        },
         {
           "command": "issueManager.copyIssueId",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
