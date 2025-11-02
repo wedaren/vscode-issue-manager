@@ -7,81 +7,41 @@
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
-  <div class="container">
-    <main>
+  <div class="container fullscreen-focused">
+    <!-- WebSocket 连接状态（简化版） -->
+    <div id="ws-status" class="ws-status-mini">
+      <div class="ws-status-indicator"></div>
+      <span id="ws-status-text">连接中...</span>
+    </div>
+
+    <!-- 关注问题视图 - 全屏模式 -->
+    <div class="focused-section-fullscreen">
+      <div class="section-header-fullscreen">
+        <h2>
+          <span class="section-icon">⭐</span>
+          关注问题
+        </h2>
+        <button id="refresh-focused-btn" class="icon-btn" title="刷新关注问题">
+          <span class="btn-icon">🔄</span>
+        </button>
+      </div>
+      <div id="focused-list" class="focused-list-fullscreen">
+        <div class="loading">加载中...</div>
+      </div>
+    </div>
+
+    <div id="message" class="message" style="display: none;"></div>
+
+    <!-- 隐藏的元素，保留用于兼容性 -->
+    <div style="display: none;">
       <div id="status" class="status">
         <div class="status-indicator"></div>
         <span id="status-text">就绪</span>
       </div>
-
-      <!-- WebSocket 连接状态 -->
-      <div id="ws-status" class="ws-status">
-        <div class="ws-status-indicator"></div>
-        <span id="ws-status-text">WebSocket: 连接中...</span>
-      </div>
-
-      <!-- 关注问题视图 -->
-      <div class="focused-section">
-        <div class="section-header">
-          <h3>
-            <span class="section-icon">⭐</span>
-            关注问题
-          </h3>
-          <button id="refresh-focused-btn" class="icon-btn" title="刷新关注问题">
-            <span class="btn-icon">🔄</span>
-          </button>
-        </div>
-        <div id="focused-list" class="focused-list">
-          <div class="loading">加载中...</div>
-        </div>
-      </div>
-
-      <div class="action-section">
-        <button id="start-selection-btn" class="primary-btn">
-          <span class="btn-icon">✨</span>
-          新建笔记
-        </button>
-        
-        <button id="cancel-selection-btn" class="secondary-btn" style="display: none;">
-          <span class="btn-icon">✕</span>
-          取消选取
-        </button>
-
-        <button id="open-issue-dir-btn" class="primary-btn">
-          <span class="btn-icon">📁</span>
-          打开问题目录
-        </button>
-      </div>
-
-      <div class="info-section">
-        <div class="info-card">
-          <h3>使用说明</h3>
-          <ol>
-            <li>点击"新建笔记"按钮开始选取</li>
-            <li>页面将进入选取模式（半透明背景）</li>
-            <li>鼠标悬停在要选取的内容上</li>
-            <li>点击选中目标内容</li>
-            <li>内容将自动发送到 VSCode 并创建笔记</li>
-          </ol>
-        </div>
-
-        <div class="info-card">
-          <h3>⚠️ 注意事项</h3>
-          <ul>
-            <li>请确保 VSCode 已打开</li>
-            <li>请确保 Issue Manager 扩展已启用</li>
-            <li>请确保已配置问题目录</li>
-          </ul>
-        </div>
-      </div>
-
-      <div id="message" class="message" style="display: none;"></div>
-    </main>
-
-    <footer>
-      <p class="version">v1.0.0</p>
-      <p class="copyright">Issue Manager Chrome Extension</p>
-    </footer>
+      <button id="start-selection-btn" class="primary-btn"></button>
+      <button id="cancel-selection-btn" class="secondary-btn"></button>
+      <button id="open-issue-dir-btn" class="primary-btn"></button>
+    </div>
   </div>
 
   <script src="sidepanel.js"></script>

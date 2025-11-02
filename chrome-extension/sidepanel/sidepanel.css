@@ -6,19 +6,26 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-  background: transparent;
+  background: #f8f9fa;
   color: #333;
   line-height: 1.6;
   min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .container {
-  max-width: 400px;
-  margin: 0 auto;
-  padding: 20px;
-  min-height: 100vh;
+  width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.container.fullscreen-focused {
+  padding: 0;
+  margin: 0;
 }
 
 header {
@@ -131,6 +138,83 @@ main {
   font-size: 11px;
   color: #868e96;
   font-weight: 400;
+}
+
+/* 全屏关注视图样式 */
+.ws-status-mini {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  font-size: 10px;
+  color: #6c757d;
+}
+
+.ws-status-mini .ws-status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #adb5bd;
+}
+
+.ws-status-mini.connected .ws-status-indicator {
+  background: #28a745;
+}
+
+.ws-status-mini.disconnected .ws-status-indicator {
+  background: #dc3545;
+}
+
+.ws-status-mini.connecting .ws-status-indicator {
+  background: #ffc107;
+  animation: blink 1s infinite;
+}
+
+.focused-section-fullscreen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: white;
+}
+
+.section-header-fullscreen {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background: white;
+  border-bottom: 2px solid #e9ecef;
+  flex-shrink: 0;
+}
+
+.section-header-fullscreen h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #212529;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-header-fullscreen .section-icon {
+  font-size: 22px;
+}
+
+.focused-list-fullscreen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  background: #f8f9fa;
 }
 
 .action-section {
