@@ -375,9 +375,31 @@ function renderTreeNode(node, level) {
   nodeDiv.className = 'tree-node';
   nodeDiv.dataset.id = node.id;
   
-  // 内容区域（markdown）- 直接显示，不需要单独的标题头部
+  // 提取标题（从 markdown 内容的第一个 H1）
+  const titleMatch = node.content ? node.content.match(/^#\s+(.+)$/m) : null;
+  const title = titleMatch ? titleMatch[1] : (node.title || '未命名');
+  
+  // 可点击的标题头部
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'tree-node-header-compact';
+  
+  // 折叠图标
+  const toggleIcon = document.createElement('span');
+  toggleIcon.className = 'toggle-icon';
+  toggleIcon.textContent = '▶'; // 默认折叠
+  
+  // 标题文本
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'node-title';
+  titleSpan.textContent = title;
+  
+  headerDiv.appendChild(toggleIcon);
+  headerDiv.appendChild(titleSpan);
+  
+  // 内容区域（markdown）- 默认隐藏
   const contentDiv = document.createElement('div');
   contentDiv.className = 'tree-node-content';
+  contentDiv.style.display = 'none'; // 默认折叠
   
   // 渲染 markdown
   if (node.content) {
@@ -387,10 +409,11 @@ function renderTreeNode(node, level) {
     contentDiv.appendChild(markdownDiv);
   }
   
-  // 子节点容器
+  // 子节点容器 - 默认隐藏
   const hasChildren = node.children && node.children.length > 0;
   const childrenDiv = document.createElement('div');
   childrenDiv.className = 'tree-node-children';
+  childrenDiv.style.display = 'none'; // 默认折叠
   
   if (hasChildren) {
     node.children.forEach(child => {
@@ -399,6 +422,29 @@ function renderTreeNode(node, level) {
     });
   }
   
+  // 点击标题切换展开/折叠
+  headerDiv.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isExpanded = contentDiv.style.display !== 'none';
+    
+    if (isExpanded) {
+      // 折叠
+      contentDiv.style.display = 'none';
+      childrenDiv.style.display = 'none';
+      toggleIcon.textContent = '▶';
+      headerDiv.classList.remove('expanded');
+    } else {
+      // 展开
+      contentDiv.style.display = 'block';
+      if (hasChildren) {
+        childrenDiv.style.display = 'block';
+      }
+      toggleIcon.textContent = '▼';
+      headerDiv.classList.add('expanded');
+    }
+  });
+  
+  nodeDiv.appendChild(headerDiv);
   nodeDiv.appendChild(contentDiv);
   if (hasChildren) {
     nodeDiv.appendChild(childrenDiv);
