@@ -9,7 +9,6 @@ export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_start',
   allFrames: true,
-  cssInjectionMode: 'ui',
   
   main() {
     // 幂等注入哨兵，避免重复注入
