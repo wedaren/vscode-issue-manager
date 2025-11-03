@@ -32,20 +32,12 @@
           暂无关注问题
         </div>
         <div v-else class="focused-issues">
-          <div 
-            v-for="issue in focusedIssues" 
+          <TreeNode
+            v-for="issue in focusedIssues"
             :key="issue.id"
-            class="focused-issue-item"
-            @click="openIssue(issue)"
-          >
-            <div class="issue-title">{{ issue.title }}</div>
-            <div class="issue-meta">
-              <span class="issue-filename">{{ issue.filename }}</span>
-              <span v-if="issue.mtime" class="issue-time">
-                {{ formatTime(issue.mtime) }}
-              </span>
-            </div>
-          </div>
+            :node="issue"
+            :level="0"
+          />
         </div>
       </div>
     </div>
@@ -72,12 +64,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import TreeNode from './TreeNode.vue';
 
 interface FocusedIssue {
   id: string;
   title: string;
   filename: string;
+  content?: string;
   mtime?: number;
+  children?: FocusedIssue[];
 }
 
 interface Message {
@@ -345,45 +340,6 @@ onMounted(() => {
 .focused-issues {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.focused-issue-item {
-  background-color: #2d2d30;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s;
-}
-
-.focused-issue-item:hover {
-  background-color: #37373d;
-  border-color: #0e639c;
-}
-
-.issue-title {
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 8px;
-  color: #cccccc;
-  line-height: 1.4;
-}
-
-.issue-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  color: #858585;
-}
-
-.issue-filename {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-}
-
-.issue-time {
-  font-style: italic;
 }
 
 .ws-status-bottom-right {
