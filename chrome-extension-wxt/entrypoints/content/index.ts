@@ -43,7 +43,7 @@ export default defineContentScript({
 
     const OUR_UI_CLASSES = ['issue-manager-overlay', 'issue-manager-highlight', 'issue-manager-toast', 'issue-manager-control'];
 
-    function debounce(func: Function, wait: number) {
+    function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
       let timeout: NodeJS.Timeout;
       return function executedFunction(...args: any[]) {
         const later = () => {

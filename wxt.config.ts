@@ -1,7 +1,5 @@
 import { defineConfig } from 'wxt';
 import vue from '@vitejs/plugin-vue';
-import { copyFileSync, existsSync, mkdirSync } from 'fs';
-import { resolve, dirname } from 'path';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({

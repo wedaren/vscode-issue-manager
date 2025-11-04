@@ -234,7 +234,7 @@ export default defineBackground(() => {
     initWebSocket();
   });
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendResponse) => {
     console.log('Background received message:', message);
     
     if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
@@ -264,7 +264,7 @@ export default defineBackground(() => {
         break;
 
       case 'CONTENT_SELECTED':
-        handleContentSelected(message.data);
+        handleContentSelected(message.data!);
         sendResponse({ success: true });
         break;
 

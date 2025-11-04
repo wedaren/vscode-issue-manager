@@ -81,6 +81,11 @@ interface Message {
   type: 'success' | 'error' | 'info';
 }
 
+interface BackgroundMessage {
+  type: 'CREATION_SUCCESS' | 'CREATION_ERROR' | 'WS_CONNECTED' | 'WS_DISCONNECTED';
+  error?: string;
+}
+
 const focusedIssues = ref<FocusedIssue[]>([]);
 const loading = ref(true);
 const wsStatus = ref<'connected' | 'connecting' | 'disconnected'>('connecting');
@@ -177,7 +182,7 @@ async function handleStartSelection() {
 }
 
 
-function handleBackgroundMessage(msg: any) {
+function handleBackgroundMessage(msg: BackgroundMessage) {
   if (!msg || !msg.type) return;
 
   switch (msg.type) {
