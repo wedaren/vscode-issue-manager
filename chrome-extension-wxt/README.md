@@ -46,11 +46,26 @@ chrome-extension-wxt/
 
 ### 安装依赖
 
-在项目根目录运行：
+在项目根目录运行:
 
 ```bash
 npm install
 ```
+
+### 生成 WXT 类型
+
+首次开发或修改 `wxt.config.ts` 后,需要生成 WXT 类型定义:
+
+```bash
+npx wxt prepare
+```
+
+这个命令会:
+- 生成 `.wxt` 目录,包含类型定义文件
+- 为 `browser` API 生成类型提示
+- 确保 TypeScript 能正确识别 WXT 的模块和类型
+
+**注意**: `.wxt` 目录已添加到 `.gitignore`,每次安装依赖后都需要重新运行此命令。
 
 ### 开发模式
 
@@ -119,7 +134,7 @@ export default defineConfig({
 
 ### VSCode 连接配置
 
-扩展通过 WebSocket 连接到 VSCode（默认端口 37892）。可以在扩展的存储中配置：
+扩展通过 WebSocket 连接到 VSCode（默认端口 37895）。可以在扩展的存储中配置：
 
 ```javascript
 chrome.storage.sync.set({
@@ -206,7 +221,7 @@ VSCode Extension (本地服务器 :37892)
 1. 确保 VSCode 正在运行
 2. 确保 Issue Manager 扩展已启用
 3. 检查 VSCode 扩展设置中 WebSocket 服务已启用
-4. 检查端口（默认 37892）未被占用
+4. 检查端口（默认 37895）未被占用
 5. 检查防火墙设置
 
 ### 开发模式热重载不工作

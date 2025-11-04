@@ -31,15 +31,17 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
+interface TreeNode {
+  id: string;
+  title: string;
+  filename: string;
+  content?: string;
+  mtime?: number;
+  children?: TreeNode[];
+}
+
 interface TreeNodeProps {
-  node: {
-    id: string;
-    title: string;
-    filename: string;
-    content?: string;
-    mtime?: number;
-    children?: any[];
-  };
+  node: TreeNode;
   level: number;
 }
 

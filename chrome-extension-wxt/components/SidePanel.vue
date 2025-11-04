@@ -118,7 +118,7 @@ async function queryWsStatus() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_WS_STATUS' });
     wsStatus.value = response.status;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to query WS status:', error);
     wsStatus.value = 'disconnected';
   }
@@ -138,9 +138,10 @@ async function loadFocusedIssues() {
       showMessage('获取关注问题失败: ' + (response.error || '未知错误'), 'error');
       focusedIssues.value = [];
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to load focused issues:', error);
-    showMessage('获取关注问题失败: ' + error.message, 'error');
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    showMessage('获取关注问题失败: ' + errorMessage, 'error');
     focusedIssues.value = [];
   } finally {
     loading.value = false;
@@ -168,43 +169,13 @@ async function handleStartSelection() {
     } else {
       showMessage('启动选取模式失败', 'error');
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to start selection:', error);
-    showMessage('启动选取模式失败: ' + error.message, 'error');
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    showMessage('启动选取模式失败: ' + errorMessage, 'error');
   }
 }
 
-function openIssue(issue: FocusedIssue) {
-  // 通过 VSCode URI 打开问题
-  const uri = `vscode://wedaren.issue-manager/open-issue?filename=${encodeURIComponent(issue.filename)}`;
-  window.open(uri, '_blank');
-}
-
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  
-  if (diff < minute) {
-    return '刚刚';
-  } else if (diff < hour) {
-    return Math.floor(diff / minute) + '分钟前';
-  } else if (diff < day) {
-    return Math.floor(diff / hour) + '小时前';
-  } else if (diff < 7 * day) {
-    return Math.floor(diff / day) + '天前';
-  } else {
-    return date.toLocaleDateString('zh-CN', { 
-      year: 'numeric', 
-      month: '2-digit', 
-      day: '2-digit' 
-    });
-  }
-}
 
 function handleBackgroundMessage(msg: any) {
   if (!msg || !msg.type) return;

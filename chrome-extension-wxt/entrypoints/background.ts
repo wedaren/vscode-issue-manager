@@ -3,6 +3,41 @@
  * 负责协调 Side Panel 和 Content Script 之间的通信
  */
 
+// 类型定义
+interface WebSocketMessage {
+  type: string;
+  id?: string;
+  data?: unknown;
+  error?: string;
+  message?: string;
+}
+
+interface ContentData {
+  html: string;
+  title: string;
+  url: string;
+}
+
+interface FocusedIssue {
+  id: string;
+  title: string;
+  filename: string;
+  content?: string;
+  mtime?: number;
+  children?: FocusedIssue[];
+}
+
+interface ChromeMessage {
+  type: string;
+  tabId?: number;
+  data?: ContentData;
+}
+
+interface SidePanelNotification {
+  type: 'WS_CONNECTED' | 'WS_DISCONNECTED' | 'CREATION_SUCCESS' | 'CREATION_ERROR';
+  error?: string;
+}
+
 export default defineBackground(() => {
   const DEFAULT_VSCODE_WS_URL = 'ws://localhost:37892/ws';
   const WS_URL_STORAGE_KEY = 'issueManager.vscodeWsUrl';
@@ -16,7 +51,7 @@ export default defineBackground(() => {
   const WS_PING_INTERVAL = 30000;
   let wsPingTimer: NodeJS.Timeout | null = null;
   let messageIdCounter = 0;
-  const pendingMessages = new Map<string, { resolve: Function; reject: Function }>();
+  const pendingMessages = new Map<string, { resolve: (value: WebSocketMessage) => void; reject: (reason?: Error) => void }>();
 
   async function getWsUrl(): Promise<string> {
     try {
@@ -53,7 +88,7 @@ export default defineBackground(() => {
 
       ws.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data);
+          const message = JSON.parse(event.data) as WebSocketMessage;
           console.log('[WebSocket] 收到消息:', message);
 
           if (message.id && pendingMessages.has(message.id)) {
@@ -72,7 +107,7 @@ export default defineBackground(() => {
           if (message.type === 'connected') {
             console.log('[WebSocket] 服务端欢迎消息:', message.message);
           }
-        } catch (e) {
+        } catch (e: unknown) {
           console.error('[WebSocket] 消息解析失败:', e);
         }
       };
@@ -95,14 +130,16 @@ export default defineBackground(() => {
         notifySidePanel({ type: 'WS_DISCONNECTED' });
         scheduleReconnect();
       };
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('[WebSocket] 初始化失败:', e);
       scheduleReconnect();
     }
   }
 
   function scheduleReconnect() {
-    if (wsReconnectTimer) return;
+    if (wsReconnectTimer) {
+      return;
+    }
     
     wsReconnectTimer = setTimeout(() => {
       wsReconnectTimer = null;
@@ -142,14 +179,14 @@ export default defineBackground(() => {
     return `msg_${Date.now()}_${++messageIdCounter}`;
   }
 
-  function sendWebSocketMessage(message: any, timeoutMs = 5000): Promise<any> {
+  function sendWebSocketMessage(message: Record<string, unknown>, timeoutMs = 5000): Promise<WebSocketMessage> {
     return new Promise((resolve, reject) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         reject(new Error('WebSocket 未连接'));
         return;
       }
 
-      const msgId = message.id || generateMessageId();
+      const msgId = (message.id as string | undefined) || generateMessageId();
       const msgWithId = { ...message, id: msgId };
 
       const timer = setTimeout(() => {
@@ -160,11 +197,11 @@ export default defineBackground(() => {
       }, timeoutMs);
 
       pendingMessages.set(msgId, {
-        resolve: (response: any) => {
+        resolve: (response: WebSocketMessage) => {
           clearTimeout(timer);
           resolve(response);
         },
-        reject: (error: Error) => {
+        reject: (error?: Error) => {
           clearTimeout(timer);
           reject(error);
         }
@@ -172,10 +209,10 @@ export default defineBackground(() => {
 
       try {
         ws.send(JSON.stringify(msgWithId));
-      } catch (e) {
+      } catch (e: unknown) {
         clearTimeout(timer);
         pendingMessages.delete(msgId);
-        reject(e);
+        reject(e instanceof Error ? e : new Error(String(e)));
       }
     });
   }
@@ -218,9 +255,10 @@ export default defineBackground(() => {
           try {
             await handleStartSelection(message.tabId || sender.tab?.id);
             sendResponse({ success: true });
-          } catch (e: any) {
+          } catch (e: unknown) {
             console.error('Failed to activate selection mode:', e);
-            sendResponse({ success: false, error: e?.message || String(e) });
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
           }
         })();
         break;
@@ -242,9 +280,10 @@ export default defineBackground(() => {
             const data = await getFocusedIssues();
             console.log('[Background] Got focused issues data:', data);
             sendResponse({ success: true, data });
-          } catch (e: any) {
+          } catch (e: unknown) {
             console.error('[Background] Failed to get focused issues:', e);
-            sendResponse({ success: false, error: e?.message || String(e) });
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
           }
         })();
         break;
@@ -262,7 +301,7 @@ export default defineBackground(() => {
       try {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
         tabId = activeTab?.id;
-      } catch (e) {
+      } catch (e: unknown) {
         console.error('Failed to query active tab:', e);
       }
 
@@ -277,7 +316,7 @@ export default defineBackground(() => {
       await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
       console.log('Selection mode activated in tab', tabId);
       return;
-    } catch (error) {
+    } catch (error: unknown) {
       console.warn('First attempt to activate selection failed, trying to inject content script...', error);
     }
 
@@ -285,14 +324,14 @@ export default defineBackground(() => {
       await ensureContentScriptInjected(tabId);
       await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
       console.log('Selection mode activated after injection in tab', tabId);
-    } catch (error) {
+    } catch (error: unknown) {
       try {
         const tab = await chrome.tabs.get(tabId);
         const url = tab?.url || '';
         if (/^(chrome|chrome-extension|edge|about|chrome-search):/i.test(url) || /chromewebstore\.google\.com/i.test(url)) {
           throw new Error('该页面不支持内容脚本（如 chrome:// 或 Chrome Web Store），无法进入选取模式。请在普通网页中重试。');
         }
-      } catch (_) {}
+      } catch (_: unknown) {}
       throw error;
     }
   }
@@ -308,10 +347,10 @@ export default defineBackground(() => {
           target: { tabId, allFrames: true },
           files: ['content-scripts/content.css']
         });
-      } catch (cssErr) {
+      } catch (cssErr: unknown) {
         console.warn('insertCSS failed or not needed:', cssErr);
       }
-    } catch (e) {
+    } catch (e: unknown) {
       console.warn('executeScript failed or not needed:', e);
     }
   }
@@ -321,7 +360,7 @@ export default defineBackground(() => {
       try {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
         tabId = activeTab?.id;
-      } catch (e) {
+      } catch (e: unknown) {
         console.error('Failed to query active tab:', e);
       }
 
@@ -336,14 +375,14 @@ export default defineBackground(() => {
         type: 'CANCEL_SELECTION'
       });
       console.log('Selection mode cancelled in tab', tabId);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to cancel selection mode:', error);
     }
   }
 
-  async function handleContentSelected(data: any) {
+  async function handleContentSelected(data: ContentData) {
     console.log('Content selected:', data);
-    const params = {
+    const params: ContentData = {
       html: data.html,
       title: data.title,
       url: data.url
@@ -366,11 +405,12 @@ export default defineBackground(() => {
       } else {
         throw new Error('WebSocket not connected');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to send content to VSCode via WebSocket:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       notifySidePanel({ 
         type: 'CREATION_ERROR', 
-        error: `WebSocket 连接不可用或出错:${error?.message || String(error)},尝试使用备用方式...`
+        error: `WebSocket 连接不可用或出错:${errorMessage},尝试使用备用方式...`
       });
       
       try {
@@ -388,17 +428,18 @@ export default defineBackground(() => {
         }
         
         notifySidePanel({ type: 'CREATION_SUCCESS' });
-      } catch (fallbackError: any) {
+      } catch (fallbackError: unknown) {
         console.error('Fallback method also failed:', fallbackError);
+        const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
         notifySidePanel({ 
           type: 'CREATION_ERROR', 
-          error: `无法通过备用方式创建笔记:${fallbackError?.message || String(fallbackError)}。\n建议:\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用;\n2) 在扩展设置中开启/确认 WebSocket 服务(端口与本扩展一致);\n3) 或在 Side Panel 缩小选取范围后重试。` 
+          error: `无法通过备用方式创建笔记:${fallbackErrorMessage}。\n建议:\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用;\n2) 在扩展设置中开启/确认 WebSocket 服务(端口与本扩展一致);\n3) 或在 Side Panel 缩小选取范围后重试。` 
         });
       }
     }
   }
 
-  async function getFocusedIssues(): Promise<any> {
+  async function getFocusedIssues(): Promise<FocusedIssue[]> {
     console.log('[getFocusedIssues] Starting...');
     console.log('[getFocusedIssues] WS connected:', wsConnected);
     console.log('[getFocusedIssues] WS state:', ws?.readyState);
@@ -416,7 +457,7 @@ export default defineBackground(() => {
       console.log('[getFocusedIssues] Got response:', response);
 
       if (response && response.type === 'focused-issues') {
-        const data = response.data || [];
+        const data = (response.data as FocusedIssue[]) || [];
         console.log('[getFocusedIssues] Returning data:', data);
         return data;
       } else if (response && response.type === 'error') {
@@ -424,17 +465,17 @@ export default defineBackground(() => {
       } else {
         throw new Error('Unexpected response from VSCode');
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[getFocusedIssues] Failed to get focused issues via WebSocket:', error);
       throw error;
     }
   }
 
-  async function notifySidePanel(message: any) {  
+  async function notifySidePanel(message: SidePanelNotification) {  
     try {  
       await chrome.runtime.sendMessage(message);  
-    } catch (error: any) {  
-      if (error.message.includes('Could not establish connection. Receiving end does not exist.')) {  
+    } catch (error: unknown) {  
+      if (error instanceof Error && error.message.includes('Could not establish connection. Receiving end does not exist.')) {  
         console.log('Side Panel is not open, skipping notification.');  
       } else {  
         console.error('Failed to notify side panel:', error);  
