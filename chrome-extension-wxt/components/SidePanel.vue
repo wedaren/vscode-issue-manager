@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import TreeNode from './TreeNode.vue';
 
 interface FocusedIssue {
@@ -214,6 +214,13 @@ onMounted(() => {
   
   // 加载关注问题
   loadFocusedIssues();
+});
+
+onUnmounted(() => {
+  console.log('Side Panel unmounted');
+  
+  // 移除消息监听器,防止内存泄漏
+  chrome.runtime.onMessage.removeListener(handleBackgroundMessage);
 });
 </script>
 
