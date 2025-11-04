@@ -1044,7 +1044,9 @@
     "chrome:zip": "wxt zip"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.2.0",
     "@types/js-yaml": "^4.0.9",
+    "@types/marked": "^6.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.19.10",
     "@types/sinon": "^17.0.4",
@@ -1067,7 +1069,9 @@
   },
   "dependencies": {
     "cheerio": "^1.1.2",
+    "dompurify": "^3.3.0",
     "js-yaml": "^4.1.0",
+    "marked": "^16.4.1",
     "simple-git": "^3.28.0",
     "uuid": "^11.1.0",
     "ws": "^8.18.0"

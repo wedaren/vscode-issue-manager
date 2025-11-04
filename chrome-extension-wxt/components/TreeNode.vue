@@ -30,6 +30,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 interface TreeNode {
   id: string;
@@ -49,6 +51,12 @@ const props = defineProps<TreeNodeProps>();
 
 const isExpanded = ref(false);
 
+// 配置 marked 选项
+marked.setOptions({
+  breaks: true,        // 支持 GFM 换行
+  gfm: true,          // 启用 GitHub Flavored Markdown
+});
+
 const nodeTitle = computed(() => {
   // 优先使用 markdown 内容的第一个 H1 标题
   if (props.node.content) {
@@ -65,7 +73,9 @@ const hasChildren = computed(() => {
 });
 
 const parsedMarkdown = computed(() => {
-  if (!props.node.content) return '';
+  if (!props.node.content) {
+    return '';
+  }
   return parseMarkdown(props.node.content);
 });
 
@@ -73,63 +83,43 @@ function toggleExpand() {
   isExpanded.value = !isExpanded.value;
 }
 
+/**
+ * 安全地解析 Markdown 为 HTML
+ * 使用 marked 进行解析，使用 DOMPurify 进行 XSS 防护
+ */
 function parseMarkdown(markdown: string): string {
-  if (!markdown) return '';
+  if (!markdown) {
+    return '';
+  }
   
-  let html = markdown;
-  
-  // 转义 HTML 特殊字符
-  const escapeMap: { [key: string]: string } = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;'
-  };
-  html = html.replace(/[&<>]/g, char => escapeMap[char] || char);
-  
-  // 代码块
-  html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-  
-  // 行内代码
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  
-  // 标题
-  html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
-  
-  // 粗体和斜体
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  
-  // 链接
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-  
-  // 引用块
-  html = html.replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>');
-  
-  // 无序列表
-  html = html.replace(/^\- (.*$)/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-  
-  // 有序列表
-  html = html.replace(/^\d+\. (.*$)/gm, '<li>$1</li>');
-  
-  // 段落
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = '<p>' + html + '</p>';
-  
-  // 清理多余的空段落
-  html = html.replace(/<p><\/p>/g, '');
-  html = html.replace(/<p>(<h[123]>)/g, '$1');
-  html = html.replace(/(<\/h[123]>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<pre>)/g, '$1');
-  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<ul>)/g, '$1');
-  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<blockquote>)/g, '$1');
-  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
-  
-  return html;
+  try {
+    // 使用 marked 解析 Markdown
+    const rawHtml = marked.parse(markdown, { async: false }) as string;
+    
+    // 使用 DOMPurify 净化 HTML，防止 XSS 攻击
+    const cleanHtml = DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: [
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'p', 'br', 'strong', 'em', 'u', 's', 'del',
+        'a', 'code', 'pre',
+        'ul', 'ol', 'li',
+        'blockquote',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'hr', 'div', 'span'
+      ],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+      ALLOW_DATA_ATTR: false,
+    });
+    
+    return cleanHtml;
+  } catch (error: unknown) {
+    console.error('Failed to parse markdown:', error);
+    // 如果解析失败，返回原始文本（已转义）
+    const textNode = document.createTextNode(markdown);
+    const div = document.createElement('div');
+    div.appendChild(textNode);
+    return div.innerHTML;
+  }
 }
 </script>
 
