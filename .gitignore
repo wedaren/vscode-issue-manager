@@ -7,3 +7,9 @@ node_modules
 # Gemini Code Assist 缓存文件（如果有的话）
 .gemini/cache/
 
+# WXT 构建输出
+.output/
+.wxt/
+
+# Chrome extension backup
+chrome-extension.backup/

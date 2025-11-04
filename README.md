@@ -344,6 +344,38 @@ src/
     └── debounce.ts
 ```
 
+## 🌐 Chrome 浏览器扩展
+
+本项目包含一个配套的 Chrome 浏览器扩展，允许您直接从网页选取内容并在 VSCode 中创建笔记。
+
+### 技术栈
+- **WXT**: 现代化的浏览器扩展开发框架
+- **Vue 3**: 响应式 UI 框架
+- **TypeScript**: 类型安全
+
+### 主要功能
+- 🖱️ 可视化 DOM 选取器，支持键盘导航
+- ⭐ 显示和管理关注问题列表
+- 🔄 通过 WebSocket 与 VSCode 无缝集成
+- ✨ 自动将 HTML 内容转换为 Markdown
+
+### 开发和构建
+
+```bash
+# 开发模式（热重载）
+npm run chrome:dev
+
+# 生产构建
+npm run chrome:build
+
+# 打包为 ZIP（用于发布）
+npm run chrome:zip
+```
+
+构建产物位于 `.output/chrome-mv3/` 目录，可以直接在 Chrome 浏览器的扩展管理页面（`chrome://extensions/`）中加载。
+
+详细使用说明请参见 [Chrome 扩展 README](chrome-extension-wxt/README.md)。
+
 ## 📄 许可证
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
