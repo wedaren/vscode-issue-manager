@@ -5,6 +5,51 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.7]
+
+### 🎉 重大更新
+- **Chrome 扩展全面升级**: 从原生 JavaScript 迁移到现代化技术栈
+  - 采用 WXT 0.20.11 框架，提供更好的开发体验
+  - 使用 Vue 3 + Composition API 构建响应式 UI
+  - 完整的 TypeScript 支持，提升代码质量和类型安全
+  - 集成 Vite 构建工具，支持热重载和快速构建
+  - 组件化架构，代码更易维护和扩展
+
+### ✨ 新功能
+- 新增 Chrome 扩展开发命令：
+  - `npm run chrome:dev` - 开发模式，支持热重载
+  - `npm run chrome:build` - 生产构建
+  - `npm run chrome:zip` - 打包发布用 ZIP 文件
+- 新增多尺寸图标支持（16×16, 32×32, 48×48, 128×128）
+- 新增 Side Panel 关注问题树形视图，支持展开/折叠
+
+
+### 🔧 改进
+- Chrome 扩展代码质量大幅提升：
+  - 使用 TypeScript 替代原生 JavaScript
+  - 采用 Vue 响应式数据管理，替代手动 DOM 操作
+  - 组件化架构，将复杂的 UI 拆分为独立组件
+  - 开发体验优化，支持实时预览和快速迭代
+- 性能优化：
+  - 构建产物优化，总大小约 89KB
+  - 代码分割和懒加载
+  - 更快的加载速度
+
+### 📦 技术栈
+- 新增依赖：
+  - `wxt@^0.20.11` - Chrome 扩展开发框架
+  - `vue@^3.5.22` - UI 框架
+  - `@vitejs/plugin-vue@^6.0.1` - Vite Vue 插件
+
+### 🔄 兼容性
+- 所有原有 Chrome 扩展功能完整保留：
+  - WebSocket 与 VSCode 通信
+  - DOM 可视化选取器
+  - 键盘导航支持
+  - 关注问题列表
+  - HTML 到 Markdown 转换
+- 与 VSCode 扩展完全兼容，无需修改
+
 ## [0.2.6]
 
 ### ✨ 新功能
