@@ -67,6 +67,28 @@ npx wxt prepare
 
 **注意**: `.wxt` 目录已添加到 `.gitignore`,每次安装依赖后都需要重新运行此命令。
 
+### 配置环境变量（可选）
+
+在 `chrome-extension-wxt` 目录创建 `.env` 文件来自定义配置：
+
+```bash
+# 在 chrome-extension-wxt 目录下
+cp .env.example .env
+```
+
+编辑 `.env` 文件：
+
+```bash
+# .env
+VITE_VSCODE_WS_PORT=37892
+VITE_VSCODE_WS_HOST=localhost
+VITE_VSCODE_WS_PORT_RANGE_START=37892
+VITE_VSCODE_WS_PORT_RANGE_END=37899
+VITE_ENABLE_PORT_DISCOVERY=true
+```
+
+**注意**：WXT 使用 Vite 构建，环境变量必须以 `VITE_` 开头才会被注入到客户端代码中。
+
 ### 开发模式
 
 开发模式会启动热重载服务器，实时预览更改：
@@ -81,6 +103,8 @@ npm run chrome:dev
 3. 开启"开发者模式"
 4. 点击"加载已解压的扩展程序"
 5. 选择项目根目录下的 `.output/chrome-mv3` 目录
+
+**提示**：修改 `.env` 文件后需要重新运行 `npm run chrome:dev` 以重新构建。
 
 ### 生产构建
 
@@ -134,13 +158,105 @@ export default defineConfig({
 
 ### VSCode 连接配置
 
-扩展通过 WebSocket 连接到 VSCode（默认端口 37895）。可以在扩展的存储中配置：
+扩展通过 WebSocket 连接到 VSCode（默认端口 37892）。
+
+#### 自动配置（推荐）⭐
+
+**完全无需配置！** Chrome 扩展会自动发现并连接到 VSCode：
+
+1. **VSCode 端**：
+   - 读取 `.env` 文件（如果存在）获取端口配置
+   - 自动寻找可用端口（37892-37899）
+   - 启动 WebSocket 服务
+
+2. **Chrome 端**：
+   - 自动尝试端口范围内的所有端口
+   - 连接成功后，VSCode 会发送配置信息
+   - Chrome 扩展保存配置供后续使用
+
+支持的特性：
+- ✅ **零配置**：开箱即用，无需手动设置
+- ✅ **端口自动发现**：Chrome 扩展自动找到 VSCode 实例
+- ✅ **配置自动同步**：连接成功后 VSCode 自动发送配置
+- ✅ **多实例支持**：支持同时运行多个 VSCode 实例
+
+#### VSCode 端配置（可选）
+
+如果需要自定义端口，在 VSCode 工作区根目录创建 `.env` 文件：
+
+```bash
+# .env
+VSCODE_WS_PORT=37892           # 首选端口
+VSCODE_WS_HOST=localhost       # 主机地址
+VSCODE_WS_PORT_RANGE=37892-37899  # 端口搜索范围
+ENABLE_PORT_DISCOVERY=true     # 启用端口自动发现
+```
+
+VSCode 插件会按以下优先级读取配置：
+1. 环境变量 (`process.env.VSCODE_WS_PORT`)
+2. `.env` 文件
+3. VSCode 设置 (`issueManager.chromeIntegration.port`)
+4. 默认值 (37892)
+
+#### Chrome 端配置（可选）
+
+Chrome 扩展支持三种配置方式（优先级从高到低）：
+
+1. **Chrome Storage**（运行时保存的配置）- 连接成功后自动保存
+2. **环境变量**（`.env` 文件）- 开发时配置
+3. **默认值** - 无配置时使用
+
+**开发环境配置**：
+
+在 `chrome-extension-wxt` 目录创建 `.env` 文件：
+
+```bash
+# chrome-extension-wxt/.env
+VITE_VSCODE_WS_PORT=37892
+VITE_VSCODE_WS_HOST=localhost
+VITE_VSCODE_WS_PORT_RANGE_START=37892
+VITE_VSCODE_WS_PORT_RANGE_END=37899
+VITE_ENABLE_PORT_DISCOVERY=true
+```
+
+**手动配置（通过 Chrome DevTools）**：
 
 ```javascript
+// 在 Chrome DevTools Console 中执行
 chrome.storage.sync.set({
-  'issueManager.vscodeWsUrl': 'ws://localhost:37892/ws'
+  'issueManager.config': {
+    websocket: {
+      port: 37892,
+      host: 'localhost',
+      portRange: { start: 37892, end: 37899 },
+      enablePortDiscovery: true
+    }
+  }
 });
 ```
+
+#### 工作流程
+
+```
+1. VSCode 启动
+   ↓ 读取 .env 文件
+   ↓ 寻找可用端口（如 37893）
+   ↓ 启动 WebSocket 服务
+
+2. Chrome 扩展启动
+   ↓ 尝试连接端口范围 (37892-37899)
+   ↓ 连接成功（端口 37893）
+   ↓ VSCode 发送配置信息
+   ↓ Chrome 保存配置
+
+3. 下次连接
+   ↓ 优先使用保存的端口 (37893)
+   ↓ 如果失败，重新端口发现
+```
+
+#### 配置说明
+
+详细的配置选项和使用方法，请参考 [共享配置使用指南](../docs/shared-config-guide.md)。
 
 ## 📖 使用方法
 
@@ -221,7 +337,7 @@ VSCode Extension (本地服务器 :37892)
 1. 确保 VSCode 正在运行
 2. 确保 Issue Manager 扩展已启用
 3. 检查 VSCode 扩展设置中 WebSocket 服务已启用
-4. 检查端口（默认 37895）未被占用
+4. 检查端口（默认 37892）未被占用
 5. 检查防火墙设置
 
 ### 开发模式热重载不工作

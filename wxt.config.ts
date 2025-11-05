@@ -29,5 +29,8 @@ export default defineConfig({
   },
   vite: () => ({
     plugins: [vue()],
+    // 允许非 VITE_ 前缀的环境变量被注入
+    // 这样可以避免在 .env 文件中重复配置
+    envPrefix: ['VITE_', 'WS_', 'ENABLE_', 'PORT_', 'LOG_', 'CHROME_'],
   }),
 });

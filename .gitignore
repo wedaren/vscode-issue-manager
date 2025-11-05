@@ -13,3 +13,6 @@ node_modules
 
 # Chrome extension backup
 chrome-extension.backup/
+
+# 注意：.env 文件是扩展的配置文件，应该提交到仓库
+# 因为它不包含敏感信息，只有默认配置

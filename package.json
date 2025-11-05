@@ -1058,6 +1058,7 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "dotenv": "^17.2.3",
     "eslint": "^9.21.0",
     "sinon": "^21.0.0",
     "ts-loader": "^9.5.2",
