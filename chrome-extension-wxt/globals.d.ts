@@ -18,6 +18,9 @@ interface ImportMetaEnv {
   
   // 功能开关
   readonly ENABLE_PORT_DISCOVERY?: string;
+  readonly ENABLE_VERBOSE_LOGGING?: string;
+  readonly ENABLE_PERFORMANCE_MONITORING?: string;
+  readonly ENABLE_DEBUG_PANEL?: string;
   
   // 其他配置
   readonly PORT_DISCOVERY_TIMEOUT?: string;

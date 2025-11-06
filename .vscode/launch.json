@@ -16,7 +16,17 @@
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
 			],
-			"preLaunchTask": "${defaultBuildTask}"
+			"preLaunchTask": "${defaultBuildTask}",
+			// 环境配置说明:
+			// 调试模式会自动使用 .env.development 配置文件
+			// - 端口: 37895 (而不是生产的 37892)
+			// - 日志级别: debug
+			// - 超时时间: 500ms
+			// SharedConfig 会自动检测 extensionMode 并加载对应配置
+			// 如需覆盖,可创建 .env.local 文件或设置 env 变量:
+			// "env": {
+			//   "NODE_ENV": "development"
+			// }
 		}
 	]
 }

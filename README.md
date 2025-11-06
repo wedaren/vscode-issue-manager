@@ -361,11 +361,45 @@ src/
 
 ### 开发和构建
 
+#### 环境配置
+
+项目支持多环境配置，开发环境会自动使用 `.env.development`:
+
+- **开发端口**: 37895（避免与生产环境冲突）
+- **日志级别**: debug（详细调试信息）
+- **快速超时**: 更短的超时时间，更快发现问题
+
+如需个人配置，可创建 `.env.local`:
+```bash
+cp .env.local.example .env.local
+# 编辑 .env.local 设置个人配置
+```
+
+详细说明请参见 [多环境配置指南](docs/multi-env-setup-guide.md)。
+
+#### VSCode 插件开发
+
 ```bash
 # 开发模式（热重载）
+npm run watch
+
+# 编译
+npm run compile
+
+# 打包（生产环境）
+npm run package
+```
+
+#### Chrome 扩展开发
+
+```bash
+# 开发模式（使用 .env.development）
 npm run chrome:dev
 
-# 生产构建
+# 开发构建（使用 .env.development）
+npm run chrome:build:dev
+
+# 生产构建（使用 .env）
 npm run chrome:build
 
 # 打包为 ZIP（用于发布）

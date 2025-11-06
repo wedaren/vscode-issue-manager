@@ -53,14 +53,15 @@ export class SharedConfig {
 
   private constructor() {
     // 查找扩展根目录的 .env 文件
+    // 支持多环境配置文件：.env, .env.local, .env.[mode], .env.[mode].local
     // 注意：不支持工作区 .env 文件，避免混淆
     // 用户应该通过 VSCode 设置（settings.json）来覆盖配置
     
-    let extensionEnvPath = '';
+    let extensionPath = '';
     
     // 如果有扩展上下文，使用扩展路径
     if (SharedConfig.extensionContext) {
-      extensionEnvPath = path.join(SharedConfig.extensionContext.extensionPath, '.env');
+      extensionPath = SharedConfig.extensionContext.extensionPath;
     } else {
       // 开发模式：__dirname 可能指向 out/ 或 dist/ 目录
       // 尝试向上查找 .env 文件
@@ -69,21 +70,66 @@ export class SharedConfig {
         currentDir = path.join(currentDir, '..');
         const testPath = path.join(currentDir, '.env');
         if (fs.existsSync(testPath)) {
-          extensionEnvPath = testPath;
+          extensionPath = currentDir;
           break;
         }
       }
     }
     
-    // 加载扩展目录的 .env 文件
-    if (extensionEnvPath && fs.existsSync(extensionEnvPath)) {
-      this.envFilePath = extensionEnvPath;
-      loadEnv({ path: extensionEnvPath });
-      this.logger.info('[SharedConfig] 已加载 .env 文件:', extensionEnvPath);
+    // 加载多个 .env 文件（按优先级从低到高）
+    if (extensionPath) {
+      const mode = this.getMode();
+      
+      // 按 Vite 标准顺序加载：.env -> .env.local -> .env.[mode] -> .env.[mode].local
+      const envFiles = [
+        path.join(extensionPath, '.env'),
+        path.join(extensionPath, '.env.local'),
+        path.join(extensionPath, `.env.${mode}`),
+        path.join(extensionPath, `.env.${mode}.local`)
+      ];
+      
+      let loadedCount = 0;
+      for (const envFile of envFiles) {
+        if (fs.existsSync(envFile)) {
+          loadEnv({ path: envFile, override: true });
+          this.logger.info(`[SharedConfig] 已加载配置文件: ${path.basename(envFile)}`);
+          loadedCount++;
+        }
+      }
+      
+      this.envFilePath = extensionPath;
+      
+      if (loadedCount === 0) {
+        this.logger.info('[SharedConfig] 未找到 .env 文件，使用默认配置');
+      } else {
+        this.logger.info(`[SharedConfig] 当前运行模式: ${mode}`);
+      }
     } else {
       this.envFilePath = '';
-      this.logger.info('[SharedConfig] 未找到 .env 文件，使用默认配置');
+      this.logger.info('[SharedConfig] 未找到扩展路径，使用默认配置');
     }
+  }
+  
+  /**
+   * 获取运行模式
+   * 优先级：环境变量 > 扩展模式 > 默认值(development)
+   */
+  private getMode(): string {
+    // 1. 环境变量指定
+    if (process.env.NODE_ENV) {
+      return process.env.NODE_ENV;
+    }
+    
+    // 2. 根据扩展上下文判断
+    if (SharedConfig.extensionContext) {
+      const extensionMode = SharedConfig.extensionContext.extensionMode;
+      // vscode.ExtensionMode.Development = 2
+      // vscode.ExtensionMode.Production = 1
+      return extensionMode === vscode.ExtensionMode.Development ? 'development' : 'production';
+    }
+    
+    // 3. 默认为开发模式
+    return 'development';
   }
 
   /**

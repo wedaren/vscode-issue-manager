@@ -14,5 +14,14 @@ node_modules
 # Chrome extension backup
 chrome-extension.backup/
 
-# 注意：.env 文件是扩展的配置文件，应该提交到仓库
-# 因为它不包含敏感信息，只有默认配置
+# 环境配置文件
+# 基础配置和环境特定配置提交到 Git
+# 本地覆盖配置不提交
+.env.local
+.env.*.local
+
+# 保留示例文件
+!.env.local.example
+
+# 注意：.env、.env.development 等文件应该提交到仓库
+# 因为它们不包含敏感信息，只有默认配置
