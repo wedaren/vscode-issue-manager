@@ -60,15 +60,15 @@ def create_dev_icon(src_path, dest_path):
     try:
         # 尝试使用系统字体
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-    except:
+    except (OSError, IOError):
         try:
             # Windows 字体路径
             font = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", font_size)
-        except:
+        except (OSError, IOError):
             try:
                 # macOS 字体路径
                 font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
-            except:
+            except (OSError, IOError):
                 # 如果找不到字体，使用默认字体
                 font = ImageFont.load_default()
                 print(f"警告: 无法加载系统字体，使用默认字体")
