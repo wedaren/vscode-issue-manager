@@ -1039,9 +1039,9 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "chrome:dev": "wxt",
-    "chrome:build": "wxt build",
-    "chrome:zip": "wxt zip"
+    "chrome:dev": "wxt --mode development",
+    "chrome:build": "wxt build --mode production",
+    "chrome:zip": "wxt zip --mode production"
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",

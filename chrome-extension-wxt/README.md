@@ -154,9 +154,45 @@ chrome-extension-wxt/public/
 **自定义开发版本图标**:
 如果需要重新生成开发版本的图标，可以修改图标生成脚本并运行。图标会自动根据 `wxt.config.ts` 中的配置在不同构建模式下使用相应的版本。
 
+### 环境变量配置
+
+项目支持通过环境变量配置不同环境的参数，避免在开发时频繁修改配置文件。
+
+#### 配置文件
+
+- `.env.example` - 环境变量配置示例（已提交到 Git）
+- `.env.development` - 开发环境配置（已提交到 Git，可根据需要修改）
+- `.env` - 生产环境配置（不提交到 Git，需本地创建）
+
+#### 支持的环境变量
+
+- `VITE_VSCODE_WS_PORT` - VSCode WebSocket 服务端口，默认值 `37892`
+
+#### 使用方法
+
+1. **开发环境**: 修改 `.env.development` 中的端口配置
+   ```env
+   VITE_VSCODE_WS_PORT=37892
+   ```
+
+2. **生产环境**: 创建 `.env` 文件并配置生产端口
+   ```bash
+   cp .env.example .env
+   # 编辑 .env 文件设置生产环境端口
+   ```
+
+3. **VSCode 端配置**: 在 VSCode 设置中配置相同的端口
+   ```json
+   {
+     "issueManager.chromeIntegration.port": 37892
+   }
+   ```
+
+**注意**: 修改环境变量后需要重新构建扩展才能生效。
+
 ### VSCode 连接配置
 
-扩展通过 WebSocket 连接到 VSCode（默认端口 37895）。可以在扩展的存储中配置：
+扩展通过 WebSocket 连接到 VSCode。默认端口从环境变量 `VITE_VSCODE_WS_PORT` 读取（默认 37892）。也可以在扩展的存储中手动配置：
 
 ```javascript
 chrome.storage.sync.set({

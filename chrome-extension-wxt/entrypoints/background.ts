@@ -39,7 +39,9 @@ interface SidePanelNotification {
 }
 
 export default defineBackground(() => {
-  const DEFAULT_VSCODE_WS_URL = 'ws://localhost:37892/ws';
+  // 从环境变量读取 WebSocket 端口,如果未定义则使用默认值 37892
+  const WS_PORT = import.meta.env.VITE_VSCODE_WS_PORT || '37892';
+  const DEFAULT_VSCODE_WS_URL = `ws://localhost:${WS_PORT}/ws`;
   const WS_URL_STORAGE_KEY = 'issueManager.vscodeWsUrl';
   const URI_FALLBACK_MAX_LENGTH = 60000;
 
