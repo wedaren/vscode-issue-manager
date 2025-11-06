@@ -3,6 +3,8 @@
  * 负责协调 Side Panel 和 Content Script 之间的通信
  */
 
+import { ChromeConfigManager } from '../utils/ChromeConfigManager';
+
 // 类型定义
 interface WebSocketMessage {
   type: string;
@@ -39,27 +41,65 @@ interface SidePanelNotification {
 }
 
 export default defineBackground(() => {
-  const DEFAULT_VSCODE_WS_URL = 'ws://localhost:37892/ws';
-  const WS_URL_STORAGE_KEY = 'issueManager.vscodeWsUrl';
   const URI_FALLBACK_MAX_LENGTH = 60000;
+  const configManager = ChromeConfigManager.getInstance();
 
   // WebSocket 连接管理
   let ws: WebSocket | null = null;
   let wsReconnectTimer: NodeJS.Timeout | null = null;
-  let wsConnected = false;
-  const WS_RECONNECT_INTERVAL = 3000;
-  const WS_PING_INTERVAL = 30000;
   let wsPingTimer: NodeJS.Timeout | null = null;
+  let wsConnected = false;
   let messageIdCounter = 0;
   const pendingMessages = new Map<string, { resolve: (value: WebSocketMessage) => void; reject: (reason?: Error) => void }>();
+  
+  // WebSocket 配置（从配置管理器获取）
+  let wsConfig: {
+    url: string;
+    reconnectInterval: number;
+    pingInterval: number;
+  } | null = null;
 
+  /**
+   * 获取 WebSocket 配置
+   */
+  async function getWsConfig() {
+    if (wsConfig) {
+      return wsConfig;
+    }
+
+    const config = await configManager.getWebSocketConfig();
+    wsConfig = {
+      url: config.url,
+      reconnectInterval: config.retryDelay,
+      pingInterval: 30000 // 30秒心跳
+    };
+    
+    return wsConfig;
+  }
+
+  /**
+   * 获取 WebSocket URL（支持端口自动发现）
+   */
   async function getWsUrl(): Promise<string> {
     try {
-      const data = await chrome.storage?.sync?.get?.(WS_URL_STORAGE_KEY) || 
-                   await chrome.storage?.local?.get?.(WS_URL_STORAGE_KEY) || {};
-      return data[WS_URL_STORAGE_KEY] || DEFAULT_VSCODE_WS_URL;
-    } catch {
-      return DEFAULT_VSCODE_WS_URL;
+      const config = await configManager.getWebSocketConfig();
+      
+      // 如果启用了端口发现，尝试发现可用端口
+      if (config.enablePortDiscovery) {
+        console.log('[Config] 端口自动发现已启用');
+        const discoveredPort = await configManager.discoverPort();
+        if (discoveredPort) {
+          console.log(`[Config] 使用发现的端口: ${discoveredPort}`);
+          return `ws://${config.host}:${discoveredPort}/ws`;
+        }
+      }
+      
+      // 使用配置中的 URL
+      return config.url;
+    } catch (error) {
+      console.error('[Config] 获取 WebSocket URL 失败:', error);
+      // 返回默认值
+      return 'ws://localhost:37892/ws';
     }
   }
 
@@ -68,7 +108,11 @@ export default defineBackground(() => {
       return;
     }
 
+    // 获取配置
+    const config = await getWsConfig();
     const wsUrl = await getWsUrl();
+    
+    console.log(`[WebSocket] 尝试连接到: ${wsUrl}`);
     
     try {
       ws = new WebSocket(wsUrl);
@@ -106,6 +150,20 @@ export default defineBackground(() => {
 
           if (message.type === 'connected') {
             console.log('[WebSocket] 服务端欢迎消息:', message.message);
+            
+            // 保存服务器返回的配置信息
+            const serverConfig = (message as any).config;
+            if (serverConfig) {
+              console.log('[WebSocket] 保存服务器配置:', serverConfig);
+              configManager.save({
+                websocket: {
+                  ...serverConfig,
+                  url: `ws://${serverConfig.host}:${serverConfig.port}/ws`
+                }
+              }).catch(err => {
+                console.error('[WebSocket] 保存配置失败:', err);
+              });
+            }
           }
         } catch (e: unknown) {
           console.error('[WebSocket] 消息解析失败:', e);
@@ -136,27 +194,29 @@ export default defineBackground(() => {
     }
   }
 
-  function scheduleReconnect() {
+  async function scheduleReconnect() {
     if (wsReconnectTimer) {
       return;
     }
     
+    const config = await getWsConfig();
     wsReconnectTimer = setTimeout(() => {
       wsReconnectTimer = null;
       console.log('[WebSocket] 尝试重连...');
       initWebSocket();
-    }, WS_RECONNECT_INTERVAL);
+    }, config.reconnectInterval);
   }
 
-  function startPing() {
-    stopPing();
+  async function startPing() {
+    await stopPing();
     
+    const config = await getWsConfig();
     wsPingTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         const msgId = generateMessageId();
         sendWebSocketMessage({ type: 'ping', id: msgId });
       }
-    }, WS_PING_INTERVAL);
+    }, config.pingInterval) as unknown as NodeJS.Timeout;
   }
 
   function stopPing() {
@@ -164,6 +224,7 @@ export default defineBackground(() => {
       clearInterval(wsPingTimer);
       wsPingTimer = null;
     }
+    return Promise.resolve();
   }
 
   function startConnectionCheck() {

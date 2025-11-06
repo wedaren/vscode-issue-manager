@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as http from 'http';
+import * as net from 'net';
 import { URL } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
@@ -9,6 +10,7 @@ import { readTree, IssueTreeNode } from '../data/treeManager';
 import { TitleCacheService } from '../services/TitleCacheService';
 import * as path from 'path';
 import { getIssueDir } from '../config';
+import { SharedConfig } from '../config/SharedConfig';
 
 
 interface ChromeRequestPayload {  
@@ -48,7 +50,17 @@ export class ChromeIntegrationServer {
 
     const config = vscode.workspace.getConfiguration('issueManager');
     const enable = config.get<boolean>('chromeIntegration.enableServer', true);
-    const port = config.get<number>('chromeIntegration.port', 37892);
+    
+    // 使用共享配置
+    const sharedConfig = SharedConfig.getInstance();
+    const wsConfig = sharedConfig.getWebSocketConfig();
+    
+    // 尝试找到可用端口
+    let port = wsConfig.port;
+    if (wsConfig.enablePortDiscovery) {
+      port = await this.findAvailablePort(wsConfig.portRange.start, wsConfig.portRange.end);
+      this.logger.info(`[ChromeIntegration] 使用端口: ${port} (配置端口: ${wsConfig.port})`);
+    }
 
     // URI Handler(无论是否开启本地服务,都注册,备用)
     const uriHandler: vscode.UriHandler = {
@@ -126,6 +138,19 @@ export class ChromeIntegrationServer {
     // 处理 WebSocket 连接
     this.wss.on('connection', (ws: WebSocket) => {
       this.logger.info('[ChromeIntegration] Chrome 扩展已连接');
+      
+      // 发送欢迎消息和配置信息
+      const sharedConfig = SharedConfig.getInstance();
+      const wsConfig = sharedConfig.getWebSocketConfig();
+      ws.send(JSON.stringify({
+        type: 'connected',
+        message: '已连接到 VSCode Issue Manager',
+        config: {
+          port,
+          host: wsConfig.host,
+          portRange: wsConfig.portRange
+        }
+      }));
 
       // 发送欢迎消息
       ws.send(JSON.stringify({ type: 'connected', message: 'VSCode 已连接' }));
@@ -288,10 +313,50 @@ export class ChromeIntegrationServer {
 
     this.httpServer.listen(port, '127.0.0.1', () => {
       this.logger.info(`[ChromeIntegration] WebSocket 服务已启动: ws://127.0.0.1:${port}/ws`);
+      
+      // 可选：将端口信息显示在状态栏
+      vscode.window.setStatusBarMessage(
+        `$(broadcast) Chrome 扩展端口: ${port}`,
+        5000
+      );
     });
 
     context.subscriptions.push({
       dispose: () => this.stop()
+    });
+  }
+
+  /**
+   * 查找可用端口
+   */
+  private async findAvailablePort(startPort: number, endPort: number): Promise<number> {
+    for (let port = startPort; port <= endPort; port++) {
+      if (await this.isPortAvailable(port)) {
+        return port;
+      }
+    }
+    // 如果没有找到可用端口，使用起始端口（会报错，但至少有个明确的错误信息）
+    this.logger.warn(`[ChromeIntegration] 端口范围 ${startPort}-${endPort} 内没有可用端口，使用 ${startPort}`);
+    return startPort;
+  }
+
+  /**
+   * 检查端口是否可用
+   */
+  private isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      
+      server.once('error', () => {
+        resolve(false);
+      });
+      
+      server.once('listening', () => {
+        server.close();
+        resolve(true);
+      });
+      
+      server.listen(port, '127.0.0.1');
     });
   }
 

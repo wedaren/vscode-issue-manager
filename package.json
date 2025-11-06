@@ -1039,8 +1039,9 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "chrome:dev": "wxt",
-    "chrome:build": "wxt build",
+    "chrome:dev": "wxt --mode development",
+    "chrome:build": "wxt build --mode production",
+    "chrome:build:dev": "wxt build --mode development",
     "chrome:zip": "wxt zip"
   },
   "devDependencies": {
@@ -1058,6 +1059,7 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "dotenv": "^17.2.3",
     "eslint": "^9.21.0",
     "sinon": "^21.0.0",
     "ts-loader": "^9.5.2",
