@@ -128,9 +128,31 @@ export default defineConfig({
 - `icon-48.png` (48×48) - 扩展详情页
 - `icon-128.png` (128×128) - Chrome Web Store
 
-图标文件位于 `chrome-extension-wxt/public/` 目录。WXT 的 `build:done` 钩子会自动将这些图标复制到开发模式和生产模式的构建输出目录中。
+#### 开发版本与生产版本的图标区分
 
-**注意**: 当前所有尺寸使用同一图标文件。为获得最佳显示效果，建议为每个尺寸创建优化的图标。
+为了便于区分开发环境和生产环境的扩展，项目支持为不同构建模式使用不同的图标：
+
+- **生产版本** (`npm run chrome:build`): 使用 `public/` 目录下的标准图标
+- **开发版本** (`npm run chrome:dev` 或 `wxt build --mode development`): 使用 `public/dev/` 目录下带有红色 "DEV" 标识的图标
+
+开发版本的图标会在右下角显示红色三角形背景和白色 "DEV" 文字，便于在浏览器中一眼识别当前使用的是哪个版本的扩展。
+
+**图标目录结构**:
+```
+chrome-extension-wxt/public/
+├── icon-16.png          # 生产版本图标
+├── icon.png
+├── icon-48.png
+├── icon-128.png
+└── dev/                 # 开发版本图标（带 DEV 标识）
+    ├── icon-16.png
+    ├── icon.png
+    ├── icon-48.png
+    └── icon-128.png
+```
+
+**自定义开发版本图标**:
+如果需要重新生成开发版本的图标，可以修改图标生成脚本并运行。图标会自动根据 `wxt.config.ts` 中的配置在不同构建模式下使用相应的版本。
 
 ### VSCode 连接配置
 
