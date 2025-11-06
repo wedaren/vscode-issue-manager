@@ -361,6 +361,22 @@ src/
 
 ### 开发和构建
 
+#### 环境配置
+
+项目支持通过环境变量配置不同环境的参数。详见 [环境配置指南](ENV_CONFIG_GUIDE.md)。
+
+```bash
+# 开发环境配置（可选，如需更改默认端口）
+# 编辑 .env.development 文件
+VITE_VSCODE_WS_PORT=37892
+
+# 生产环境配置（可选）
+# 创建 .env 文件
+cp .env.example .env
+```
+
+#### 构建命令
+
 ```bash
 # 开发模式（热重载）
 npm run chrome:dev
