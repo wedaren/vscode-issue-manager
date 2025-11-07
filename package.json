@@ -715,25 +715,25 @@
         },
         {
           "command": "issueManager.revealInOverview",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && (issueManager.editorFromOverview || issueManager.editorFromFocused || issueManager.editorFromPara)",
           "group": "navigation@1",
           "title": "在问题总览中显示"
         },
         {
           "command": "issueManager.revealInFocused",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorFromFocused",
           "group": "navigation@1",
           "title": "在关注问题中显示"
         },
         {
           "command": "issueManager.revealInPara",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorFromPara",
           "group": "navigation@1",
           "title": "在 PARA 视图中显示"
         },
         {
           "command": "issueManager.revealInRecent",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorFromRecent",
           "group": "navigation@1",
           "title": "在最近问题中显示"
         }

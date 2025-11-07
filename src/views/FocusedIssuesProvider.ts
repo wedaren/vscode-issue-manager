@@ -80,7 +80,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',
-      arguments: [uri.with({ query: `issueId=${encodeURIComponent(stripFocusedId(element.id))}` })],
+      arguments: [uri.with({ query: `issueId=${encodeURIComponent(stripFocusedId(element.id))}&viewSource=focused` })],
     };
 
     // 生成并设置 description

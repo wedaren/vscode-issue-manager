@@ -117,8 +117,8 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',
-      // 在 URI 上附加 issueId，保证同一路径可打开为不同上下文的编辑器
-      arguments: [uri.with({ query: `issueId=${encodeURIComponent(element.id)}` })],
+      // 在 URI 上附加 issueId 和 viewSource，保证同一路径可打开为不同上下文的编辑器
+      arguments: [uri.with({ query: `issueId=${encodeURIComponent(element.id)}&viewSource=overview` })],
     };
 
     return item;

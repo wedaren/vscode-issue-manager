@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { Logger } from '../core/utils/Logger';
-import { getIssueIdFromUri } from '../utils/uriUtils';
+import { getIssueIdFromUri, getViewSourceFromUri } from '../utils/uriUtils';
 
 /**
- * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。
+ * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId 和 viewSource。
  * 
  * 尽管 `setContext` 是一个全局操作，但 VS Code 的事件模型确保了 `onDidChangeActiveTextEditor`
  * 总是在用户当前交互的窗口中触发。当用户切换窗口时，新窗口变为活动状态，
@@ -52,8 +52,17 @@ export class EditorContextService implements vscode.Disposable {
      */
     private updateEditorIssueContext(editor: vscode.TextEditor | undefined): void {
         const issueId = getIssueIdFromUri(editor?.document?.uri);
+        const viewSource = getViewSourceFromUri(editor?.document?.uri);
+        
         vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', !!issueId);
         vscode.commands.executeCommand('setContext', 'issueManager.editorActiveIssueId', issueId);
+        
+        // 设置视图来源上下文
+        vscode.commands.executeCommand('setContext', 'issueManager.editorViewSource', viewSource || 'none');
+        vscode.commands.executeCommand('setContext', 'issueManager.editorFromOverview', viewSource === 'overview');
+        vscode.commands.executeCommand('setContext', 'issueManager.editorFromFocused', viewSource === 'focused');
+        vscode.commands.executeCommand('setContext', 'issueManager.editorFromPara', viewSource === 'para');
+        vscode.commands.executeCommand('setContext', 'issueManager.editorFromRecent', viewSource === 'recent');
     }
 
     public dispose(): void {

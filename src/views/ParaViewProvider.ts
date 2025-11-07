@@ -188,8 +188,8 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',
-      // 附带 issueId，方便在编辑器中区分同一路径的不同节点上下文
-      arguments: [fileUri.with({ query: `issueId=${encodeURIComponent(issueId)}` })]
+      // 附带 issueId 和 viewSource，方便在编辑器中区分同一路径的不同节点上下文
+      arguments: [fileUri.with({ query: `issueId=${encodeURIComponent(issueId)}&viewSource=para` })]
     };
     
     // 顶级（直接挂在分类下）的节点，展示其祖先路径，便于在 PARA 视图中辨识来源

@@ -404,7 +404,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',
-      arguments: [uri],
+      arguments: [uri.with({ query: 'viewSource=recent' })],
     };
     item.contextValue = fileStat.isIsolated ? 'isolatedIssue' : 'recentIssue'; // 用于右键菜单
     item.iconPath = fileStat.isIsolated ? new vscode.ThemeIcon('debug-disconnect') : new vscode.ThemeIcon('notebook');
