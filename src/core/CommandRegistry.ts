@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
 import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
@@ -8,6 +9,8 @@ import { Logger } from './utils/Logger';
 import { ParaCategory, removeIssueFromCategory, addIssueToCategory, getCategoryLabel } from '../data/paraManager';
 import { addIssueToParaCategory } from '../commands/paraCommands';
 import { isParaIssueNode, ParaViewNode } from '../types';
+import { getIssueDir } from '../config';
+import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 const PARA_CATEGORY_CONFIGS = [
     { category: ParaCategory.Projects, suffix: 'Projects', displayName: 'Projects' },
@@ -70,6 +73,18 @@ function isIssueTreeNode(item: unknown): item is IssueTreeNode {
 export class CommandRegistry extends BaseCommandRegistry {
     private readonly viewCommandRegistry: ViewCommandRegistry;
     private readonly stateCommandRegistry: StateCommandRegistry;
+    
+    // 保存视图引用
+    private paraView?: vscode.TreeView<ParaViewNode>;
+    private overviewView?: vscode.TreeView<IssueTreeNode>;
+    private focusedView?: vscode.TreeView<IssueTreeNode>;
+    private recentIssuesView?: vscode.TreeView<vscode.TreeItem>;
+    
+    // 保存视图提供者引用
+    private issueOverviewProvider?: IIssueOverviewProvider;
+    private focusedIssuesProvider?: IFocusedIssuesProvider;
+    private recentIssuesProvider?: IIssueViewProvider<vscode.TreeItem>;
+    private paraViewProvider?: ParaViewProvider;
 
     /**
      * 创建命令注册管理器实例
@@ -95,8 +110,6 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 不应该直接调用
     }
 
-    private paraView?: vscode.TreeView<ParaViewNode>;
-
     /**
      * 设置视图提供者并注册所有命令
      * 
@@ -105,6 +118,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      * @param recentIssuesProvider 最近问题视图提供者
      * @param overviewView 总览树视图实例
      * @param focusedView 关注问题树视图实例
+     * @param recentIssuesView 最近问题树视图实例
      * @param issueStructureProvider 问题结构视图提供者
      * @param paraViewProvider PARA 视图提供者
      * @param paraView PARA 树视图实例
@@ -115,12 +129,21 @@ export class CommandRegistry extends BaseCommandRegistry {
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
+        recentIssuesView: vscode.TreeView<vscode.TreeItem>,
         issueStructureProvider: IssueStructureProvider,
         paraViewProvider: ParaViewProvider,
         paraView?: vscode.TreeView<ParaViewNode>
     ): void {
-        // 保存 paraView 引用
+        // 保存视图和提供者引用
         this.paraView = paraView;
+        this.overviewView = overviewView;
+        this.focusedView = focusedView;
+        this.recentIssuesView = recentIssuesView;
+        this.issueOverviewProvider = issueOverviewProvider;
+        this.focusedIssuesProvider = focusedIssuesProvider;
+        this.recentIssuesProvider = recentIssuesProvider;
+        this.paraViewProvider = paraViewProvider;
+        
         this.logger.info('🔧 开始注册命令...');
 
         try {
@@ -477,6 +500,9 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             }
         );
+        
+        // 注册 reveal 命令
+        this.registerRevealCommands();
     }
 
     /**
@@ -639,5 +665,218 @@ export class CommandRegistry extends BaseCommandRegistry {
             this.logger.error('移动 PARA 问题失败:', error);
             vscode.window.showErrorMessage(`移动失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+    }
+
+    /**
+     * 注册 reveal 命令
+     * 在编辑器右键菜单中提供在不同视图中显示当前文档的功能
+     */
+    private registerRevealCommands(): void {
+        this.logger.info('👁️ 注册 reveal 命令...');
+
+        // 在问题总览中显示
+        this.registerCommand(
+            'issueManager.revealInOverview',
+            async () => {
+                await this.revealCurrentFileInView('overview');
+            },
+            '在问题总览中显示'
+        );
+
+        // 在关注问题中显示
+        this.registerCommand(
+            'issueManager.revealInFocused',
+            async () => {
+                await this.revealCurrentFileInView('focused');
+            },
+            '在关注问题中显示'
+        );
+
+        // 在 PARA 视图中显示
+        this.registerCommand(
+            'issueManager.revealInPara',
+            async () => {
+                await this.revealCurrentFileInView('para');
+            },
+            '在 PARA 视图中显示'
+        );
+
+        // 在最近问题中显示
+        this.registerCommand(
+            'issueManager.revealInRecent',
+            async () => {
+                await this.revealCurrentFileInView('recent');
+            },
+            '在最近问题中显示'
+        );
+    }
+
+    /**
+     * 在指定视图中定位并高亮当前打开的文件
+     * @param viewType 视图类型
+     */
+    private async revealCurrentFileInView(viewType: 'overview' | 'focused' | 'para' | 'recent'): Promise<void> {
+        try {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showWarningMessage('没有激活的编辑器。');
+                return;
+            }
+
+            const uri = editor.document.uri;
+            const issueDir = getIssueDir();
+            if (!issueDir) {
+                vscode.window.showWarningMessage('问题目录未配置。');
+                return;
+            }
+
+            // 检查是否是问题目录下的文件
+            if (!uri.fsPath.startsWith(issueDir)) {
+                vscode.window.showWarningMessage('当前文件不在问题目录中。');
+                return;
+            }
+
+            switch (viewType) {
+                case 'overview':
+                    await this.revealInOverviewView(uri);
+                    break;
+                case 'focused':
+                    await this.revealInFocusedView(uri);
+                    break;
+                case 'para':
+                    await this.revealInParaViewByUri(uri);
+                    break;
+                case 'recent':
+                    await this.revealInRecentView(uri);
+                    break;
+            }
+        } catch (error) {
+            this.logger.error(`在 ${viewType} 视图中显示文件失败:`, error);
+            vscode.window.showErrorMessage(`在视图中显示失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+    }
+
+    /**
+     * 在问题总览视图中定位文件
+     */
+    private async revealInOverviewView(uri: vscode.Uri): Promise<void> {
+        if (!this.overviewView || !this.issueOverviewProvider) {
+            vscode.window.showWarningMessage('问题总览视图未初始化。');
+            return;
+        }
+
+        const node = this.issueOverviewProvider.findNodeByUri(uri);
+        if (!node) {
+            vscode.window.showWarningMessage('在问题总览中未找到该文件。');
+            return;
+        }
+
+        // 切换到视图并定位
+        await vscode.commands.executeCommand('issueManager.views.overview.focus');
+        await new Promise(resolve => setTimeout(resolve, VIEW_REVEAL_DELAY_MS));
+        
+        await this.overviewView.reveal(node, {
+            select: true,
+            focus: true,
+            expand: true
+        });
+
+        vscode.window.setStatusBarMessage('✓ 已在问题总览中定位', 2000);
+    }
+
+    /**
+     * 在关注问题视图中定位文件
+     */
+    private async revealInFocusedView(uri: vscode.Uri): Promise<void> {
+        if (!this.focusedView || !this.focusedIssuesProvider) {
+            vscode.window.showWarningMessage('关注问题视图未初始化。');
+            return;
+        }
+
+        // 先尝试通过 URI 找到对应的问题 ID
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            vscode.window.showWarningMessage('问题目录未配置。');
+            return;
+        }
+
+        // 从 URI 中提取相对路径作为 ID 查找
+        const relativePath = path.relative(issueDir, uri.fsPath);
+        const issueId = relativePath.replace(/\\/g, '/');
+
+        const result = this.focusedIssuesProvider.findFirstFocusedNodeById(issueId);
+        if (!result) {
+            vscode.window.showWarningMessage('该文件未在关注问题中。');
+            return;
+        }
+
+        // 切换到视图并定位
+        await vscode.commands.executeCommand('issueManager.views.focused.focus');
+        await new Promise(resolve => setTimeout(resolve, VIEW_REVEAL_DELAY_MS));
+        
+        await this.focusedView.reveal(result.node, {
+            select: true,
+            focus: true,
+            expand: true
+        });
+
+        vscode.window.setStatusBarMessage('✓ 已在关注问题中定位', 2000);
+    }
+
+    /**
+     * 在 PARA 视图中定位文件
+     */
+    private async revealInParaViewByUri(uri: vscode.Uri): Promise<void> {
+        if (!this.paraView || !this.paraViewProvider) {
+            vscode.window.showWarningMessage('PARA 视图未初始化。');
+            return;
+        }
+
+        // 从 URI 获取问题 ID
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            vscode.window.showWarningMessage('问题目录未配置。');
+            return;
+        }
+
+        const relativePath = path.relative(issueDir, uri.fsPath);
+        const issueId = relativePath.replace(/\\/g, '/');
+
+        // 获取该问题的 PARA 分类
+        const paraCategoryCache = ParaCategoryCache.getInstance(this.context);
+        const { paraCategory } = paraCategoryCache.getParaMetadata(issueId);
+
+        if (!paraCategory) {
+            vscode.window.showWarningMessage('该文件未分配到任何 PARA 分类。');
+            return;
+        }
+
+        // 构造节点并定位
+        // 需要一个临时的 IssueTreeNode 用于定位
+        const tempNode: IssueTreeNode = {
+            id: issueId,
+            filePath: relativePath,
+            children: []
+        };
+
+        await this.revealInParaView(tempNode, paraCategory);
+    }
+
+    /**
+     * 在最近问题视图中定位文件
+     */
+    private async revealInRecentView(uri: vscode.Uri): Promise<void> {
+        if (!this.recentIssuesView) {
+            vscode.window.showWarningMessage('最近问题视图未初始化。');
+            return;
+        }
+
+        // 最近问题视图使用的是 TreeItem 而不是 IssueTreeNode
+        // 需要通过刷新视图并切换到它来显示
+        await vscode.commands.executeCommand('issueManager.views.recent.focus');
+        
+        // 由于最近问题视图的特殊结构（分组、列表模式等），
+        // 我们无法直接 reveal 特定文件，但可以确保视图已经显示
+        vscode.window.setStatusBarMessage('✓ 已切换到最近问题视图', 2000);
     }
 }

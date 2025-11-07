@@ -57,8 +57,12 @@ export interface IFocusedIssuesProvider extends IIssueViewProvider<IssueTreeNode
  * 为将来可能的扩展预留接口空间。
  */
 export interface IIssueOverviewProvider extends IIssueViewProvider<IssueTreeNode> {
-    // 问题总览视图的特有方法可以在这里定义
-    // 目前使用基础接口功能即可
+    /**
+     * 根据文件 URI 查找树节点
+     * @param uri vscode.Uri
+     * @returns 找到的节点，未找到则返回 undefined
+     */
+    findNodeByUri(uri: vscode.Uri): IssueTreeNode | undefined;
 }
 
 /**
