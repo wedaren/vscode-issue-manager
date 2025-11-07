@@ -864,6 +864,16 @@ export class CommandRegistry extends BaseCommandRegistry {
 
     /**
      * 在最近问题视图中定位文件
+     * 
+     * 注意：最近问题视图具有特殊的结构（支持分组和列表两种模式），
+     * 并且使用 TreeItem 而不是 IssueTreeNode，这使得直接定位变得复杂。
+     * 
+     * 当前实现：切换到最近问题视图并刷新，文件会出现在视图中但不会被高亮。
+     * 
+     * 未来改进方向：
+     * 1. 在 RecentIssuesProvider 中添加 findFileInView 方法
+     * 2. 实现根据视图模式（列表/分组）的不同查找逻辑
+     * 3. 支持在分组模式下展开包含目标文件的组并高亮文件
      */
     private async revealInRecentView(uri: vscode.Uri): Promise<void> {
         if (!this.recentIssuesView) {
@@ -871,12 +881,17 @@ export class CommandRegistry extends BaseCommandRegistry {
             return;
         }
 
-        // 最近问题视图使用的是 TreeItem 而不是 IssueTreeNode
-        // 需要通过刷新视图并切换到它来显示
+        // 切换到最近问题视图
         await vscode.commands.executeCommand('issueManager.views.recent.focus');
         
-        // 由于最近问题视图的特殊结构（分组、列表模式等），
-        // 我们无法直接 reveal 特定文件，但可以确保视图已经显示
+        // 刷新视图以确保当前文件在列表中
+        if (this.recentIssuesProvider) {
+            this.recentIssuesProvider.refresh();
+        }
+        
+        // 提示用户：由于视图结构复杂，无法直接定位
+        // 但文件会在视图中可见（按排序规则）
         vscode.window.setStatusBarMessage('✓ 已切换到最近问题视图', 2000);
+        this.logger.info('已切换到最近问题视图，文件可见但未高亮');
     }
 }
