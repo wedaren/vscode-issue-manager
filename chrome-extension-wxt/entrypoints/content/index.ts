@@ -57,6 +57,167 @@ export default defineContentScript({
 
     const debouncedShowToast = debounce(showToast, 500);
 
+    /**
+     * 自动登录功能
+     * 根据页面表单结构自动填充用户名和密码,并点击登录按钮
+     */
+    async function handleAutoLogin(username: string, password: string): Promise<void> {
+      try {
+        console.log('[Auto Login] 开始自动登录...');
+        
+        // 等待页面加载完成
+        if (document.readyState !== 'complete') {
+          console.log('[Auto Login] 等待页面加载...');
+          await new Promise(resolve => {
+            if (document.readyState === 'complete') {
+              resolve(null);
+            } else {
+              window.addEventListener('load', () => resolve(null), { once: true });
+              // 超时保护
+              setTimeout(() => resolve(null), 5000);
+            }
+          });
+        }
+
+        console.log('[Auto Login] 页面已加载,查找表单元素...');
+
+        // 查找用户名输入框 - 使用更宽松的选择器
+        const usernameSelectors = [
+          'input[name="username"]',
+          'input[yotta-test="login-username-input"]',
+          'input[type="text"][placeholder*="用户名"]',
+          'input[type="text"][placeholder*="账号"]',
+          'input[autocomplete="username"]',
+          'input[id*="username"]',
+          'input[id*="user"]',
+          'input[class*="username"]'
+        ];
+
+        let usernameInput: HTMLInputElement | null = null;
+        for (const selector of usernameSelectors) {
+          usernameInput = document.querySelector<HTMLInputElement>(selector);
+          if (usernameInput) {
+            console.log('[Auto Login] 找到用户名输入框:', selector);
+            break;
+          }
+        }
+        
+        if (!usernameInput) {
+          throw new Error('未找到用户名输入框');
+        }
+
+        // 查找密码输入框
+        const passwordSelectors = [
+          'input[name="password"]',
+          'input[yotta-test="login-password-input"]',
+          'input[type="password"]',
+          'input[autocomplete="current-password"]',
+          'input[id*="password"]',
+          'input[id*="passwd"]',
+          'input[class*="password"]'
+        ];
+
+        let passwordInput: HTMLInputElement | null = null;
+        for (const selector of passwordSelectors) {
+          passwordInput = document.querySelector<HTMLInputElement>(selector);
+          if (passwordInput) {
+            console.log('[Auto Login] 找到密码输入框:', selector);
+            break;
+          }
+        }
+        
+        if (!passwordInput) {
+          throw new Error('未找到密码输入框');
+        }
+
+        console.log('[Auto Login] 开始填充表单...');
+
+        // 填充用户名
+        usernameInput.focus();
+        usernameInput.value = username;
+        usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        usernameInput.dispatchEvent(new Event('change', { bubbles: true }));
+        usernameInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+
+        // 填充密码
+        passwordInput.focus();
+        passwordInput.value = password;
+        passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+        passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+        passwordInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+
+        console.log('[Auto Login] 表单填充完成,等待...');
+
+        // 等待一小段时间,确保输入事件被处理
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // 查找并点击登录按钮
+        const buttonSelectors = [
+          'button[type="submit"]',
+          'button[yotta-test="login-login-button"]',
+          'button.yotta-button-primary',
+          'input[type="submit"]',
+          'button:has-text("登录")',
+          'button:has-text("Login")',
+          'a:has-text("登录")'
+        ];
+
+        let loginButton: HTMLElement | null = null;
+        for (const selector of buttonSelectors) {
+          try {
+            loginButton = document.querySelector<HTMLElement>(selector);
+            if (loginButton) {
+              console.log('[Auto Login] 找到登录按钮:', selector);
+              break;
+            }
+          } catch (e) {
+            // 某些选择器可能不支持(如 :has-text)
+            continue;
+          }
+        }
+
+        // 如果没找到按钮,尝试查找包含"登录"文字的按钮
+        if (!loginButton) {
+          const allButtons = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="submit"]'));
+          loginButton = allButtons.find(btn => 
+            btn.textContent?.includes('登录') || 
+            btn.textContent?.includes('Login') ||
+            btn.getAttribute('value')?.includes('登录')
+          ) || null;
+          
+          if (loginButton) {
+            console.log('[Auto Login] 通过文本找到登录按钮');
+          }
+        }
+
+        if (loginButton) {
+          console.log('[Auto Login] 点击登录按钮...');
+          loginButton.click();
+          console.log('[Auto Login] 自动登录完成');
+        } else {
+          // 如果没有找到登录按钮,尝试提交表单
+          const form = usernameInput.closest('form');
+          if (form) {
+            console.log('[Auto Login] 未找到登录按钮,提交表单...');
+            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            // 如果 submit 事件没被阻止,直接调用 submit
+            setTimeout(() => {
+              if (form.checkValidity()) {
+                form.submit();
+              }
+            }, 100);
+            console.log('[Auto Login] 表单已提交');
+          } else {
+            console.warn('[Auto Login] 未找到登录按钮或表单,但已填充账号密码');
+          }
+        }
+
+      } catch (error) {
+        console.error('[Auto Login] 自动登录失败:', error);
+        throw error;
+      }
+    }
+
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.log('Content Script received message:', message);
 
@@ -64,19 +225,31 @@ export default defineContentScript({
         case 'START_SELECTION':
           startSelectionMode();
           sendResponse({ success: true });
-          break;
+          return false;
 
         case 'CANCEL_SELECTION':
           cancelSelectionMode();
           sendResponse({ success: true });
-          break;
+          return false;
+
+        case 'AUTO_LOGIN':
+          // 异步处理,需要返回 true 保持消息通道开启
+          handleAutoLogin(message.username, message.password)
+            .then(() => {
+              console.log('[Auto Login] 发送成功响应');
+              sendResponse({ success: true });
+            })
+            .catch((error: Error) => {
+              console.error('[Auto Login] 发送失败响应:', error.message);
+              sendResponse({ success: false, error: error.message });
+            });
+          return true; // 重要:保持消息通道开启以支持异步响应
 
         default:
           console.warn('Unknown message type:', message.type);
           sendResponse({ success: false });
+          return false;
       }
-
-      return true;
     });
 
     function startSelectionMode() {

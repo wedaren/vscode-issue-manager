@@ -1,13 +1,24 @@
 <template>
   <div class="container fullscreen-focused">
+    <!-- 自动登录工具视图 -->
+    <AutoLoginPanel v-if="showAutoLogin" @back="showAutoLogin = false" />
+    
     <!-- 关注问题视图 - 全屏模式 -->
-    <div class="focused-section-fullscreen">
+    <div v-else class="focused-section-fullscreen">
       <div class="section-header-fullscreen">
         <h2>
           <span class="section-icon">⭐</span>
           关注问题
         </h2>
         <div class="header-actions">
+          <button 
+            id="auto-login-btn" 
+            class="action-btn tool-btn" 
+            title="自动登录工具"
+            @click="showAutoLogin = true"
+          >
+            <span class="btn-icon">🔐</span>
+          </button>
           <button 
             id="start-selection-btn" 
             class="action-btn" 
@@ -65,6 +76,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import TreeNode from './TreeNode.vue';
+import AutoLoginPanel from './AutoLoginPanel.vue';
 
 interface FocusedIssue {
   id: string;
@@ -90,6 +102,7 @@ const focusedIssues = ref<FocusedIssue[]>([]);
 const loading = ref(true);
 const wsStatus = ref<'connected' | 'connecting' | 'disconnected'>('connecting');
 const message = ref<Message>({ show: false, text: '', type: 'info' });
+const showAutoLogin = ref(false);
 
 const wsStatusClass = computed(() => {
   return {
@@ -292,6 +305,14 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   transition: background-color 0.2s;
+}
+
+.tool-btn {
+  background-color: #5a3e1e;
+}
+
+.tool-btn:hover {
+  background-color: #6e4c23;
 }
 
 .action-btn:hover {
