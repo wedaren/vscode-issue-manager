@@ -167,6 +167,8 @@ interface Message {
 const emit = defineEmits<{
   (e: 'back'): void;
 }>();
+const MESSAGE_DISPLAY_DURATION_MS = 3000;
+
 
 const accounts = ref<Account[]>([]);
 const currentUrl = ref('');
@@ -198,8 +200,8 @@ const filteredAccounts = computed(() => {
       // 比较 origin (协议 + 域名 + 端口)
       return accountUrl.origin === pageUrl.origin;
     } catch {
-      // URL 解析失败,显示该账号
-      return true;
+      // URL 解析失败,不显示该账号  
+      return false;  
     }
   });
 });
@@ -208,7 +210,7 @@ function showMessage(text: string, type: 'success' | 'error' | 'info' = 'info') 
   message.value = { show: true, text, type };
   setTimeout(() => {
     message.value.show = false;
-  }, 3000);
+  }, MESSAGE_DISPLAY_DURATION_MS);
 }
 
 function goBack() {
@@ -247,21 +249,22 @@ async function loadAccounts() {
     console.log('[AutoLogin] 开始加载账号...');
     const result = await chrome.storage.local.get('autoLoginAccounts');
     const loadedAccounts = result.autoLoginAccounts || [];
+    console.log('[AutoLogin] 从存储加载的账号数据:', JSON.stringify(loadedAccounts, null, 2));
     // 确保是数组
     accounts.value = Array.isArray(loadedAccounts) ? loadedAccounts : [];
     console.log('[AutoLogin] 账号加载成功,数量:', accounts.value.length);
     console.log('[AutoLogin] accounts.value 类型:', typeof accounts.value, Array.isArray(accounts.value));
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AutoLogin] 加载账号失败:', error);
-    const errorMsg = error?.message || '未知错误';
+    const errorMsg = (error as Error)?.message || '未知错误';
     showMessage('加载账号失败: ' + errorMsg, 'error');
   }
 }
 
 async function saveAccounts() {
   try {
-    console.log('[AutoLogin] 开始保存账号,数量:', accounts.value.length);
-    await chrome.storage.local.set({ autoLoginAccounts: accounts.value });
+    console.log('[AutoLogin] 开始保存账号,数量:', accounts.value.length,JSON.stringify(accounts.value, null, 2));
+    await chrome.storage.local.set({ autoLoginAccounts: [...accounts.value] });
     console.log('[AutoLogin] 账号保存成功');
   } catch (error: any) {
     console.error('[AutoLogin] 保存账号失败:', error);
@@ -270,6 +273,26 @@ async function saveAccounts() {
   }
 }
 
+function validateNewAccount(){
+  
+  // 验证必填字段
+  if (!newAccount.value.name.trim()) {
+    showMessage('请输入账号名称', 'error');
+    return false;
+  }
+  
+  if (!newAccount.value.username.trim()) {
+    showMessage('请输入用户名', 'error');
+    return false;
+  }
+  
+  if (!newAccount.value.password.trim()) {
+    showMessage('请输入密码', 'error');
+    return false;
+  }
+  
+  return true;
+}
 async function addAccount() {
   try {
     console.log('[AutoLogin] 开始添加账号...');
@@ -280,25 +303,13 @@ async function addAccount() {
       console.warn('[AutoLogin] accounts.value 不是数组,重置为空数组');
       accounts.value = [];
     }
-    
-    // 验证必填字段
-    if (!newAccount.value.name.trim()) {
-      showMessage('请输入账号名称', 'error');
-      return;
-    }
-    
-    if (!newAccount.value.username.trim()) {
-      showMessage('请输入用户名', 'error');
-      return;
-    }
-    
-    if (!newAccount.value.password.trim()) {
-      showMessage('请输入密码', 'error');
+
+    if (!validateNewAccount()) {
       return;
     }
 
     const account: Account = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name: newAccount.value.name.trim(),
       username: newAccount.value.username.trim(),
       password: newAccount.value.password.trim(),
@@ -340,18 +351,7 @@ async function updateAccount() {
     }
     
     // 验证必填字段
-    if (!newAccount.value.name.trim()) {
-      showMessage('请输入账号名称', 'error');
-      return;
-    }
-    
-    if (!newAccount.value.username.trim()) {
-      showMessage('请输入用户名', 'error');
-      return;
-    }
-    
-    if (!newAccount.value.password.trim()) {
-      showMessage('请输入密码', 'error');
+    if(!validateNewAccount()){
       return;
     }
 

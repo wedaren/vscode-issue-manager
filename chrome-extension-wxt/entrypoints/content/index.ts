@@ -37,6 +37,7 @@ export default defineContentScript({
     let lastMouseX = 0;
     let lastMouseY = 0;
     const MOUSE_SWITCH_THRESHOLD = 8;
+    const PAGE_LOAD_TIMEOUT_MS = 5000;
     let controlPanel: HTMLElement | null = null;
     let frozenByClick = false;
     let navigationHistory: HTMLElement[] = [];
@@ -74,7 +75,7 @@ export default defineContentScript({
             } else {
               window.addEventListener('load', () => resolve(null), { once: true });
               // 超时保护
-              setTimeout(() => resolve(null), 5000);
+              setTimeout(() => resolve(null), PAGE_LOAD_TIMEOUT_MS);
             }
           });
         }
@@ -156,10 +157,7 @@ export default defineContentScript({
           'button[type="submit"]',
           'button[yotta-test="login-login-button"]',
           'button.yotta-button-primary',
-          'input[type="submit"]',
-          'button:has-text("登录")',
-          'button:has-text("Login")',
-          'a:has-text("登录")'
+          'input[type="submit"]'
         ];
 
         let loginButton: HTMLElement | null = null;
