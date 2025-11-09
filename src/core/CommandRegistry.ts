@@ -467,6 +467,18 @@ export class CommandRegistry extends BaseCommandRegistry {
             '从 PARA 分类中移除'
         );
 
+        // 从 PARA 视图添加到关注视图
+        this.registerCommand(
+            'issueManager.para.addToFocused',
+            async (...args: unknown[]) => {
+                const element = args[0];
+                if (isParaIssueNode(element)) {
+                    await this.addParaNodeToFocused(element.id);
+                }
+            },
+            '从 PARA 视图添加到关注视图'
+        );
+
         this.registerParaCategoryCommands(
             'issueManager.para.moveTo',
             (displayName: string) => `移动到 ${displayName}`,
@@ -608,6 +620,25 @@ export class CommandRegistry extends BaseCommandRegistry {
         } catch (error) {
             this.logger.error('从 PARA 分类中移除问题失败:', error);
             vscode.window.showErrorMessage(`移除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+    }
+
+    /**
+     * 从 PARA 视图添加节点到关注视图
+     * @param issueId 问题节点ID
+     */
+    private async addParaNodeToFocused(issueId: string): Promise<void> {
+        try {
+            const { addFocus } = await import('../data/focusedManager');
+            await addFocus([issueId]);
+            await vscode.commands.executeCommand('issueManager.refreshAllViews');
+            
+            vscode.window.showInformationMessage('已添加到关注问题');
+            this.logger.info(`从 PARA 视图添加到关注: ${issueId}`);
+            
+        } catch (error) {
+            this.logger.error('从 PARA 视图添加到关注失败:', error);
+            vscode.window.showErrorMessage(`添加失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
     }
 
