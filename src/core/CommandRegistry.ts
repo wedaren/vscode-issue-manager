@@ -629,10 +629,12 @@ export class CommandRegistry extends BaseCommandRegistry {
      */
     private async addParaNodeToFocused(issueId: string): Promise<void> {
         try {
-            const { addFocus } = await import('../data/focusedManager');
+            const { addFocus } = await import('../data/focusedManager.js');
             await addFocus([issueId]);
-            await vscode.commands.executeCommand('issueManager.refreshAllViews');
-            
+            await Promise.all([
+                vscode.commands.executeCommand('issueManager.focused.refresh'),
+                vscode.commands.executeCommand('issueManager.para.refresh')
+            ]);            
             vscode.window.showInformationMessage('已添加到关注问题');
             this.logger.info(`从 PARA 视图添加到关注: ${issueId}`);
             
