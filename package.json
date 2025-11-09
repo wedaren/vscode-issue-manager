@@ -298,6 +298,11 @@
         "icon": "$(close)"
       },
       {
+        "command": "issueManager.para.addToFocused",
+        "title": "添加到关注",
+        "icon": "$(star)"
+      },
+      {
         "command": "issueManager.para.moveToProjects",
         "title": "移动到 Projects"
       },
@@ -612,6 +617,11 @@
           "command": "issueManager.para.removeFromCategory",
           "when": "view == 'issueManager.views.para' && viewItem =~ /^paraIssue-/",
           "group": "modification@1"
+        },
+        {
+          "command": "issueManager.para.addToFocused",
+          "when": "view == 'issueManager.views.para' && viewItem =~ /^paraIssue-/",
+          "group": "inline"
         },
         {
           "command": "issueManager.para.moveToAreas",

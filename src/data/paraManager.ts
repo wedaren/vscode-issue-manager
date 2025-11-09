@@ -135,9 +135,9 @@ export const addIssueToCategory = async (
   data.resources = data.resources.filter(p => p !== issueId);
   data.archives = data.archives.filter(p => p !== issueId);
 
-  // 添加到目标分类
+  // 添加到目标分类（新增的节点排在最前面）
   if (!data[category].includes(issueId)) {
-    data[category].push(issueId);
+    data[category].unshift(issueId);
   }
 
   await writePara(data);
