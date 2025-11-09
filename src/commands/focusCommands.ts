@@ -40,7 +40,7 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
         const issueDir = getIssueDir();
         if (!issueDir) { 
             vscode.window.showErrorMessage('请先配置问题目录。');
-            return; 
+            return;
         }
 
         const editor = vscode.window.activeTextEditor;
