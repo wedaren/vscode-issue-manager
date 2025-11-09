@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 import { getIssueIdFromUri } from '../utils/uriUtils';
+import { getIssueDir } from '../config';
 
 /**
  * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。
@@ -52,8 +54,34 @@ export class EditorContextService implements vscode.Disposable {
      */
     private updateEditorIssueContext(editor: vscode.TextEditor | undefined): void {
         const issueId = getIssueIdFromUri(editor?.document?.uri);
+        const isInIssueDir = this.isFileInIssueDir(editor?.document?.uri);
+        
         vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', !!issueId);
         vscode.commands.executeCommand('setContext', 'issueManager.editorActiveIssueId', issueId);
+        vscode.commands.executeCommand('setContext', 'issueManager.editorInIssueDir', isInIssueDir);
+    }
+
+    /**
+     * 检查文件是否在配置的问题目录下
+     * @param uri 文件的 URI
+     * @returns 是否在问题目录下
+     */
+    private isFileInIssueDir(uri: vscode.Uri | undefined): boolean {
+        if (!uri || uri.scheme !== 'file') {
+            return false;
+        }
+
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            return false;
+        }
+
+        const filePath = uri.fsPath;
+        const normalizedIssueDir = path.normalize(issueDir);
+        const normalizedFilePath = path.normalize(filePath);
+
+        return normalizedFilePath.startsWith(normalizedIssueDir + path.sep) || 
+               normalizedFilePath === normalizedIssueDir;
     }
 
     public dispose(): void {

@@ -74,6 +74,11 @@
         "title": "添加关注"
       },
       {
+        "command": "issueManager.addToFocusedViewFromEditor",
+        "title": "添加到关注视图",
+        "icon": "$(star)"
+      },
+      {
         "command": "issueManager.removeFocus",
         "title": "移除关注"
       },
@@ -671,6 +676,12 @@
         }
       ],
       "editor/context": [
+        {
+          "command": "issueManager.addToFocusedViewFromEditor",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorInIssueDir",
+          "group": "navigation@0",
+          "title": "添加到关注视图"
+        },
         {
           "command": "issueManager.viewRelatedIssues",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
