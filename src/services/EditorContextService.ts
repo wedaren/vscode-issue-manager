@@ -77,11 +77,11 @@ export class EditorContextService implements vscode.Disposable {
         }
 
         const filePath = uri.fsPath;
-        const normalizedIssueDir = path.normalize(issueDir);
-        const normalizedFilePath = path.normalize(filePath);
+        const relativePath = path.relative(issueDir, filePath);
 
-        return normalizedFilePath.startsWith(normalizedIssueDir + path.sep) || 
-               normalizedFilePath === normalizedIssueDir;
+        // 如果 filePath 在 issueDir 内部，relativePath 将是一个相对路径（例如 'foo/bar.md' 或 ''）。
+        // 如果在外部，它将以 '..' 开头，或者在 Windows 上跨驱动器时是绝对路径。
+        return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
     }
 
     public dispose(): void {

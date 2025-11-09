@@ -56,12 +56,11 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             // 如果有 issueId，直接添加到关注视图
             await addFocus([issueId]);
             vscode.commands.executeCommand('issueManager.refreshAllViews');
-            vscode.window.showInformationMessage('已添加到关注问题。');
         } else {
             // 如果没有 issueId（孤立问题），先添加到问题总览再添加到关注视图
             await addIssueToTree([uri], null, true);
-            vscode.window.showInformationMessage('已添加到关注问题。');
         }
+        vscode.window.showInformationMessage('已添加到关注问题。');
     });
     context.subscriptions.push(addToFocusedViewFromEditorCommand);
 
