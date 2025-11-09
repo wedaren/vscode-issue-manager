@@ -91,23 +91,39 @@ export const writeFocused = async (data: FocusedData): Promise<void> => {
 
 /**
  * 添加关注节点
- * 优化：使用 Set 提高查找效率，仅在有新增时写入文件。
+ * 如果节点已存在于关注列表，则将其移动到最前面。
+ * 如果节点不存在，则添加到最前面。
+ * 处理顺序：使用 reverse() 使得输入数组中靠后的元素在结果列表中更靠前。
  */
 export async function addFocus(nodeIds: string[]): Promise<void> {
   const data = await readFocused();
-  const originalSize = data.focusList.length;
-  const allIds = new Set(data.focusList);
+  let hasChanges = false;
 
   // 使用 reverse() 简化逆序插入，保证批量添加后顺序与输入一致（新关注的排在最前）
   for (const nodeId of [...nodeIds].reverse()) {
-    if (!allIds.has(nodeId)) {
+    const existingIndex = data.focusList.indexOf(nodeId);
+    
+    if (existingIndex !== -1) {
+      // 如果已存在且不在第一位，移动到最前面
+      if (existingIndex > 0) {
+        data.focusList.splice(existingIndex, 1);
+        data.focusList.unshift(nodeId);
+        hasChanges = true;
+      }
+      // 如果已经在第一位，不需要做任何操作，但视为有变更（用户希望确保在最前）
+      else if (existingIndex === 0 && nodeIds.length > 1) {
+        // 在批量操作中，即使已在第一位，后续节点可能改变它的位置
+        // 暂时不标记为hasChanges，让后续节点处理
+      }
+    } else {
+      // 新节点，添加到最前面
       data.focusList.unshift(nodeId);
-      allIds.add(nodeId);
+      hasChanges = true;
     }
   }
 
-  // 只有在有新增时才写入文件，避免无效 I/O
-  if (data.focusList.length > originalSize) {
+  // 只有在有变更时才写入文件，避免无效 I/O
+  if (hasChanges) {
     await writeFocused(data);
   }
 }
