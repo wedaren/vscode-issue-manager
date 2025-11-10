@@ -178,4 +178,60 @@ suite('FocusedManager Test Suite', () => {
         // 顺序应该保持不变
         assert.deepStrictEqual(data.focusList, ['node1', 'node2', 'node3']);
     });
+
+    test('添加超过最大限制时应移除最旧的项目', async () => {
+        // 设置测试配置 - 最大10项
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const originalMaxItems = config.get<number>('focused.maxItems');
+        await config.update('focused.maxItems', 5, vscode.ConfigurationTarget.Workspace);
+
+        try {
+            // 添加5个节点
+            await addFocus(['node1', 'node2', 'node3', 'node4', 'node5']);
+            let data = await readFocused();
+            assert.strictEqual(data.focusList.length, 5);
+            assert.deepStrictEqual(data.focusList, ['node1', 'node2', 'node3', 'node4', 'node5']);
+
+            // 再添加一个新节点，应该移除最后一个
+            await addFocus(['node6']);
+            data = await readFocused();
+            assert.strictEqual(data.focusList.length, 5);
+            assert.strictEqual(data.focusList[0], 'node6');
+            assert.strictEqual(data.focusList[4], 'node4');
+            assert.strictEqual(data.focusList.indexOf('node5'), -1); // node5应该被移除
+
+            // 再添加两个新节点，应该移除最后两个
+            await addFocus(['node7', 'node8']);
+            data = await readFocused();
+            assert.strictEqual(data.focusList.length, 5);
+            assert.deepStrictEqual(data.focusList, ['node7', 'node8', 'node6', 'node1', 'node2']);
+        } finally {
+            // 恢复原始配置
+            await config.update('focused.maxItems', originalMaxItems, vscode.ConfigurationTarget.Workspace);
+        }
+    });
+
+    test('重复添加不应触发移除旧项目（列表未超限）', async () => {
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const originalMaxItems = config.get<number>('focused.maxItems');
+        await config.update('focused.maxItems', 5, vscode.ConfigurationTarget.Workspace);
+
+        try {
+            // 添加5个节点
+            await addFocus(['node1', 'node2', 'node3', 'node4', 'node5']);
+            let data = await readFocused();
+            assert.strictEqual(data.focusList.length, 5);
+
+            // 重复添加一个已存在的节点（移到最前）
+            await addFocus(['node3']);
+            data = await readFocused();
+            
+            // 列表长度不变，node3移到最前
+            assert.strictEqual(data.focusList.length, 5);
+            assert.deepStrictEqual(data.focusList, ['node3', 'node1', 'node2', 'node4', 'node5']);
+        } finally {
+            // 恢复原始配置
+            await config.update('focused.maxItems', originalMaxItems, vscode.ConfigurationTarget.Workspace);
+        }
+    });
 });

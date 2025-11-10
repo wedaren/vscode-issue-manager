@@ -11,7 +11,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getUri } from '../utils/fileUtils';
-import { getIssueDir } from '../config';
+import { getIssueDir, getFocusedMaxItems } from '../config';
 import { FocusedData } from './treeManager';
 import { getCategoryIcon, ParaCategory } from './paraManager';
 
@@ -94,6 +94,7 @@ export const writeFocused = async (data: FocusedData): Promise<void> => {
  * 如果节点已存在于关注列表，则将其移动到最前面。
  * 如果节点不存在，则添加到最前面。
  * 处理顺序：使用 reverse() 使得输入数组中靠后的元素在结果列表中更靠前。
+ * 添加后会自动限制列表长度，超过配置的最大数量时移除最旧的项目。
  */
 export async function addFocus(nodeIds: string[]): Promise<void> {
   const data = await readFocused();
@@ -120,6 +121,13 @@ export async function addFocus(nodeIds: string[]): Promise<void> {
       data.focusList.unshift(nodeId);
       hasChanges = true;
     }
+  }
+
+  // 限制列表长度，移除超出配置的最大数量的项目
+  const maxItems = getFocusedMaxItems();
+  if (data.focusList.length > maxItems) {
+    data.focusList.splice(maxItems);
+    hasChanges = true;
   }
 
   // 只有在有变更时才写入文件，避免无效 I/O

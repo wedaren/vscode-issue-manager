@@ -768,6 +768,12 @@
           ],
           "description": "设置最近问题视图的默认显示模式，可选值为 'grouped'（分组模式）或 'list'（列表模式）。"
         },
+        "issueManager.focused.maxItems": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "关注列表中保留的最大问题数量。当添加新问题导致超过此数量时，最旧的（列表末尾的）问题会被自动移除。"
+        },
         "issueManager.sync.enableAutosync": {
           "type": "boolean",
           "default": false,
