@@ -102,25 +102,19 @@ export async function addFocus(nodeIds: string[]): Promise<void> {
 
   // 使用 reverse() 简化逆序插入，保证批量添加后顺序与输入一致（新关注的排在最前）
   for (const nodeId of [...nodeIds].reverse()) {
-    const existingIndex = data.focusList.indexOf(nodeId);
-    
-    if (existingIndex !== -1) {
-      // 如果已存在且不在第一位，移动到最前面
-      if (existingIndex > 0) {
-        data.focusList.splice(existingIndex, 1);
-        data.focusList.unshift(nodeId);
-        hasChanges = true;
-      }
-      // 如果已经在第一位，不需要做任何操作，但视为有变更（用户希望确保在最前）
-      else if (existingIndex === 0 && nodeIds.length > 1) {
-        // 在批量操作中，即使已在第一位，后续节点可能改变它的位置
-        // 暂时不标记为hasChanges，让后续节点处理
-      }
-    } else {
-      // 新节点，添加到最前面
-      data.focusList.unshift(nodeId);
-      hasChanges = true;
-    }
+    const existingIndex = data.focusList.indexOf(nodeId);  
+
+    if (existingIndex === -1) {  
+      // 新节点，添加到最前面  
+      data.focusList.unshift(nodeId);  
+      hasChanges = true;  
+    } else if (existingIndex > 0) {  
+      // 已存在但不在首位，移动到最前面  
+      data.focusList.splice(existingIndex, 1);  
+      data.focusList.unshift(nodeId);  
+      hasChanges = true;  
+    }  
+    // 如果 existingIndex === 0 (已在首位)，则不执行任何操作
   }
 
   // 限制列表长度，移除超出配置的最大数量的项目
