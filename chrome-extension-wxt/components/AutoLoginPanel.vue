@@ -12,7 +12,6 @@
         </h2>
       </div>
       <button class="add-btn" @click="showAddForm = true" title="添加账号">
-        <span class="btn-icon">➕</span>
         添加账号
       </button>
     </div>
