@@ -11,7 +11,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getUri } from '../utils/fileUtils';
-import { getIssueDir } from '../config';
+import { getIssueDir, getFocusedMaxItems } from '../config';
 import { FocusedData } from './treeManager';
 import { getCategoryIcon, ParaCategory } from './paraManager';
 
@@ -91,23 +91,41 @@ export const writeFocused = async (data: FocusedData): Promise<void> => {
 
 /**
  * 添加关注节点
- * 优化：使用 Set 提高查找效率，仅在有新增时写入文件。
+ * 如果节点已存在于关注列表，则将其移动到最前面。
+ * 如果节点不存在，则添加到最前面。
+ * 处理顺序：使用 reverse() 使得输入数组中靠后的元素在结果列表中更靠前。
+ * 添加后会自动限制列表长度，超过配置的最大数量时移除最旧的项目。
  */
 export async function addFocus(nodeIds: string[]): Promise<void> {
   const data = await readFocused();
-  const originalSize = data.focusList.length;
-  const allIds = new Set(data.focusList);
+  let hasChanges = false;
 
   // 使用 reverse() 简化逆序插入，保证批量添加后顺序与输入一致（新关注的排在最前）
   for (const nodeId of [...nodeIds].reverse()) {
-    if (!allIds.has(nodeId)) {
-      data.focusList.unshift(nodeId);
-      allIds.add(nodeId);
-    }
+    const existingIndex = data.focusList.indexOf(nodeId);  
+
+    if (existingIndex === -1) {  
+      // 新节点，添加到最前面  
+      data.focusList.unshift(nodeId);  
+      hasChanges = true;  
+    } else if (existingIndex > 0) {  
+      // 已存在但不在首位，移动到最前面  
+      data.focusList.splice(existingIndex, 1);  
+      data.focusList.unshift(nodeId);  
+      hasChanges = true;  
+    }  
+    // 如果 existingIndex === 0 (已在首位)，则不执行任何操作
   }
 
-  // 只有在有新增时才写入文件，避免无效 I/O
-  if (data.focusList.length > originalSize) {
+  // 限制列表长度，移除超出配置的最大数量的项目
+  const maxItems = getFocusedMaxItems();
+  if (data.focusList.length > maxItems) {
+    data.focusList.splice(maxItems);
+    hasChanges = true;
+  }
+
+  // 只有在有变更时才写入文件，避免无效 I/O
+  if (hasChanges) {
     await writeFocused(data);
   }
 }
@@ -136,6 +154,25 @@ export async function pinFocus(nodeId: string): Promise<void> {
     data.focusList.unshift(item);
     await writeFocused(data);
   }
+}
+
+/**
+ * 裁剪关注列表到配置的最大数量
+ * 当用户修改 maxItems 配置时调用，确保列表符合新的限制
+ * @returns 返回被移除的节点数量，如果没有超限则返回 0
+ */
+export async function trimFocusedToMaxItems(): Promise<number> {
+  const data = await readFocused();
+  const maxItems = getFocusedMaxItems();
+  
+  if (data.focusList.length > maxItems) {
+    const removedCount = data.focusList.length - maxItems;
+    data.focusList.splice(maxItems);
+    await writeFocused(data);
+    return removedCount;
+  }
+  
+  return 0;
 }
 
 /**

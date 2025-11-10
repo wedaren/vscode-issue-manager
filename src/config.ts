@@ -139,3 +139,17 @@ export function isSyncNotificationEnabled(): boolean {
     const config = vscode.workspace.getConfiguration('issueManager');
     return config.get<boolean>('sync.enableNotifications', true);
 }
+
+/**
+ * 获取关注列表的最大项目数
+ * @returns 关注列表中保留的最大问题数量，默认为 10
+ */
+export function getFocusedMaxItems(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const maxItems = config.get<number>('focused.maxItems', 10);
+    // 防御性：确保返回值至少为 1
+    if (typeof maxItems !== 'number' || !isFinite(maxItems) || maxItems < 1) {
+        return 10;
+    }
+    return Math.floor(maxItems);
+}
