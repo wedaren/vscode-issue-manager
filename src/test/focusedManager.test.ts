@@ -234,4 +234,66 @@ suite('FocusedManager Test Suite', () => {
             await config.update('focused.maxItems', originalMaxItems, vscode.ConfigurationTarget.Workspace);
         }
     });
+
+    test('trimFocusedToMaxItems 应按配置裁剪列表', async () => {
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const originalMaxItems = config.get<number>('focused.maxItems');
+
+        try {
+            // 添加8个节点
+            await addFocus(['node1', 'node2', 'node3', 'node4', 'node5', 'node6', 'node7', 'node8']);
+            let data = await readFocused();
+            assert.strictEqual(data.focusList.length, 8);
+
+            // 设置maxItems为5
+            await config.update('focused.maxItems', 5, vscode.ConfigurationTarget.Workspace);
+            
+            // 调用trim函数
+            const { trimFocusedToMaxItems } = await import('../data/focusedManager');
+            const removedCount = await trimFocusedToMaxItems();
+            
+            // 应该移除3个节点
+            assert.strictEqual(removedCount, 3);
+            
+            // 验证列表长度
+            data = await readFocused();
+            assert.strictEqual(data.focusList.length, 5);
+            
+            // 验证保留的是前5个（最新的）
+            assert.deepStrictEqual(data.focusList, ['node1', 'node2', 'node3', 'node4', 'node5']);
+        } finally {
+            // 恢复原始配置
+            await config.update('focused.maxItems', originalMaxItems, vscode.ConfigurationTarget.Workspace);
+        }
+    });
+
+    test('trimFocusedToMaxItems 在未超限时不应修改列表', async () => {
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const originalMaxItems = config.get<number>('focused.maxItems');
+
+        try {
+            // 添加3个节点
+            await addFocus(['node1', 'node2', 'node3']);
+            let data = await readFocused();
+            assert.strictEqual(data.focusList.length, 3);
+
+            // 设置maxItems为5（大于当前数量）
+            await config.update('focused.maxItems', 5, vscode.ConfigurationTarget.Workspace);
+            
+            // 调用trim函数
+            const { trimFocusedToMaxItems } = await import('../data/focusedManager');
+            const removedCount = await trimFocusedToMaxItems();
+            
+            // 不应移除任何节点
+            assert.strictEqual(removedCount, 0);
+            
+            // 验证列表未变
+            data = await readFocused();
+            assert.strictEqual(data.focusList.length, 3);
+            assert.deepStrictEqual(data.focusList, ['node1', 'node2', 'node3']);
+        } finally {
+            // 恢复原始配置
+            await config.update('focused.maxItems', originalMaxItems, vscode.ConfigurationTarget.Workspace);
+        }
+    });
 });

@@ -163,6 +163,25 @@ export async function pinFocus(nodeId: string): Promise<void> {
 }
 
 /**
+ * 裁剪关注列表到配置的最大数量
+ * 当用户修改 maxItems 配置时调用，确保列表符合新的限制
+ * @returns 返回被移除的节点数量，如果没有超限则返回 0
+ */
+export async function trimFocusedToMaxItems(): Promise<number> {
+  const data = await readFocused();
+  const maxItems = getFocusedMaxItems();
+  
+  if (data.focusList.length > maxItems) {
+    const removedCount = data.focusList.length - maxItems;
+    data.focusList.splice(maxItems);
+    await writeFocused(data);
+    return removedCount;
+  }
+  
+  return 0;
+}
+
+/**
  * 根据关注索引返回对应的图标
  * @param focusIndex 关注列表中的索引
  */

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById } from '../data/treeManager';
-import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
+import { getIssueNodeIconPath, readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
@@ -29,6 +29,15 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     this.paraCategoryCache.onDidChangeCache(() => {
       this._onDidChangeTreeData.fire();
     });
+
+    // 监听配置变更，当 maxItems 改变时裁剪列表并刷新视图
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration(async e => {
+        if (e.affectsConfiguration('issueManager.focused.maxItems')) {
+          await this.handleMaxItemsChange();
+        }
+      })
+    );
   }
 
   /** 刷新视图 */
@@ -41,6 +50,19 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     this.treeData = await readTree();
     this.focusedData = await readFocused();
     this._onDidChangeTreeData.fire();
+  }
+
+  /** 处理 maxItems 配置变更 */
+  private async handleMaxItemsChange() {
+    const removedCount = await trimFocusedToMaxItems();
+    if (removedCount > 0) {
+      // 有节点被移除，显示通知
+      vscode.window.showInformationMessage(
+        `关注列表已裁剪，移除了 ${removedCount} 个最旧的问题以符合新的配置限制。`
+      );
+    }
+    // 刷新视图以反映变更
+    await this.refresh();
   }
 
 
