@@ -169,6 +169,11 @@
         "category": "Issue Manager"
       },
       {
+        "command": "issueManager.openRecentView",
+        "title": "打开最近问题视图",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.synchronizeNow",
         "title": "立即同步",
         "category": "Issue Manager",
@@ -712,6 +717,12 @@
         "command": "issueManager.openFocusedView",
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.openRecentView",
+        "key": "ctrl+j ctrl+r",
+        "mac": "cmd+j cmd+r",
         "when": "issueManager.isDirConfigured"
       },
       {

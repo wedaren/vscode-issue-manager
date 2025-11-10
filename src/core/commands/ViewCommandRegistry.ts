@@ -178,6 +178,16 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
             '打开关注视图'
         );
 
+        this.registerCommand(
+            'issueManager.openRecentView',
+            async () => {
+                await vscode.commands.executeCommand('workbench.view.extension.issue-manager');
+                await vscode.commands.executeCommand('issueManager.views.recent.focus');
+                vscode.window.showInformationMessage('已打开最近问题视图');
+            },
+            '打开最近问题视图'
+        );
+
         // 切换视图焦点
         this.registerCommand(
             'issueManager.toggleViewFocus',
