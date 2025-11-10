@@ -16,6 +16,7 @@
 - 🔄 通过 WebSocket 与 VSCode Issue Manager 无缝集成
 - 📱 Side Panel 界面，不干扰浏览
 - ⭐ 显示和管理关注问题列表
+- 🔐 自动登录工具，快速填充账号密码（新功能）
 
 ## 📁 项目结构
 
@@ -31,7 +32,9 @@ chrome-extension-wxt/
 │       ├── main.ts        # Vue 应用入口
 │       └── style.css      # 基础样式
 ├── components/            # Vue 组件
-│   └── SidePanel.vue      # Side Panel 主组件
+│   ├── SidePanel.vue      # Side Panel 主组件
+│   ├── TreeNode.vue       # 问题树节点组件
+│   └── AutoLoginPanel.vue # 自动登录工具组件（新增）
 ├── public/                # 静态资源
 │   └── icon.png           # 扩展图标
 └── README.md             # 本文档
@@ -292,6 +295,8 @@ chrome.storage.sync.set({
 
 ### 基本流程
 
+#### 创建笔记
+
 1. **打开 Side Panel**
    - 点击 Chrome 工具栏中的扩展图标
 
@@ -316,6 +321,38 @@ chrome.storage.sync.set({
    - 选中的内容会自动发送到 VSCode
    - VSCode 将 HTML 转换为 Markdown
    - 自动创建并打开新笔记文件
+
+#### 自动登录工具 🔐（新功能）
+
+1. **打开自动登录工具**
+   - 点击 Side Panel 顶部的 🔐 图标
+   - 进入自动登录工具页面
+
+2. **添加账号**
+   - 点击"添加账号"按钮
+   - 填写账号信息（名称、用户名、密码）
+   - 可选填写 URL（限制账号只在特定页面显示）
+   - 点击"保存"
+
+3. **使用账号登录**
+   - 打开需要登录的网页
+   - 在自动登录工具中找到对应账号
+   - 点击"使用"按钮
+   - 扩展会自动填充账号密码并点击登录
+
+4. **管理账号**
+   - 删除不需要的账号（点击 🗑 图标）
+   - 账号信息本地存储，安全可靠
+
+**支持的登录表单类型**:
+- 标准 HTML 表单（`name="username"`, `name="password"`）
+- Yotta 框架表单（`yotta-test` 属性）
+- 自定义占位符表单
+
+**详细文档**: 
+- [功能文档](../docs/auto-login-feature.md)
+- [快速开始](../docs/auto-login-quickstart.md)
+- [实现总结](../docs/auto-login-implementation-summary.md)
 
 ## 🏗️ 架构说明
 
