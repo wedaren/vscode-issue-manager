@@ -74,6 +74,10 @@
         "title": "添加关注"
       },
       {
+        "command": "issueManager.addToFocusedViewFromEditor",
+        "title": "添加关注"
+      },
+      {
         "command": "issueManager.removeFocus",
         "title": "移除关注"
       },
@@ -292,6 +296,11 @@
         "command": "issueManager.para.removeFromCategory",
         "title": "从分类中移除",
         "icon": "$(close)"
+      },
+      {
+        "command": "issueManager.para.addToFocused",
+        "title": "添加到关注",
+        "icon": "$(star)"
       },
       {
         "command": "issueManager.para.moveToProjects",
@@ -610,6 +619,11 @@
           "group": "modification@1"
         },
         {
+          "command": "issueManager.para.addToFocused",
+          "when": "view == 'issueManager.views.para' && viewItem =~ /^paraIssue-/",
+          "group": "inline"
+        },
+        {
           "command": "issueManager.para.moveToAreas",
           "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-projects'",
           "group": "para@1"
@@ -672,22 +686,24 @@
       ],
       "editor/context": [
         {
+          "command": "issueManager.addToFocusedViewFromEditor",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorInIssueDir",
+          "group": "0_issueManager@1"
+        },
+        {
           "command": "issueManager.viewRelatedIssues",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
-          "group": "navigation@0",
-          "title": "查看相关联问题"
+          "group": "0_issueManager@2"
         },
         {
           "command": "issueManager.copyFilename",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
-          "group": "navigation@0",
-          "title": "复制文件名"
+          "group": "0_issueManager@3"
         },
         {
           "command": "issueManager.copyIssueId",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
-          "group": "navigation@0",
-          "title": "复制问题 ID"
+          "group": "0_issueManager@4"
         }
       ]
     },
