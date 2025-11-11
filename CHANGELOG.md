@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.9]
+
+### ✨ 新功能
+- **feat: 同步 Chrome 扩展关注视图** (#103)
+  - `createIssueFromHtml` 命令创建的问题自动添加到关注列表
+  - 实时推送关注视图更新到 Chrome 扩展
+  - 使用 Logger 替换 console.error，增强错误记录功能
+
+
 ## [0.2.8]
 
 ### ✨ 新功能
