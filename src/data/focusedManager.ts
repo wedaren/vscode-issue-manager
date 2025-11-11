@@ -15,6 +15,7 @@ import { getIssueDir, getFocusedMaxItems } from '../config';
 import { FocusedData } from './treeManager';
 import { getCategoryIcon, ParaCategory } from './paraManager';
 import { ChromeIntegrationServer } from '../integration/ChromeIntegrationServer';
+import { Logger } from '../core/utils/Logger';
 
 const FOCUSED_VERSION = '1.0.0';
 const FOCUSED_FILE = 'focused.json';
@@ -94,7 +95,7 @@ export const writeFocused = async (data: FocusedData): Promise<void> => {
       });
     } catch (e) {
       // 静默处理广播错误，不影响主流程
-      console.error('通知 Chrome 扩展失败:', e);
+      Logger.getInstance().error('通知 Chrome 扩展失败:', e);
     }
   } catch (error) {
     vscode.window.showErrorMessage(`写入 focused.json 失败: ${error}`);

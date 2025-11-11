@@ -47,7 +47,7 @@ export class ChromeIntegrationServer {
    * 向所有连接的 WebSocket 客户端广播消息
    * @param message 要广播的消息
    */
-  public broadcastToClients(message: any): void {
+  public broadcastToClients(message: Record<string, unknown>): void {
     if (!this.wss) {
       this.logger.debug('[ChromeIntegration] WebSocket 服务未启动，无法广播消息');
       return;
