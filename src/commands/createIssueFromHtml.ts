@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { HtmlToMarkdownService } from '../services/converters/HtmlToMarkdownService';
 import { LLMService } from '../llm/LLMService';
 import { createIssueFile } from './issueFileUtils';
+import { addIssueToTree } from './issueFileUtils';
+import { Logger } from '../core/utils/Logger';
 
 /**
  * 从 HTML 内容创建问题的参数
@@ -124,13 +126,21 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
         const uri = await createIssueFile(filenameTitle, finalContent);
         
         if (uri) {
+            // 将新创建的问题添加到树和关注列表
+            try {
+                await addIssueToTree([uri], null, true);
+            } catch (e) {
+                Logger.getInstance().error('添加问题到关注列表失败:', e);
+                // 不影响主流程，仅记录错误
+            }
+            
             vscode.window.showInformationMessage(`已从 HTML 创建问题: ${filenameTitle}`);
         }
 
         return uri;
 
     } catch (error) {
-        console.error('createIssueFromHtml error:', error);
+        Logger.getInstance().error('createIssueFromHtml error:', error);
         vscode.window.showErrorMessage('从 HTML 创建问题失败。');
         return null;
     }

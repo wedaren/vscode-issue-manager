@@ -43,6 +43,33 @@ export class ChromeIntegrationServer {
     return this.instance;
   }
 
+  /**
+   * 向所有连接的 WebSocket 客户端广播消息
+   * @param message 要广播的消息
+   */
+  public broadcastToClients(message: Record<string, unknown>): void {
+    if (!this.wss) {
+      this.logger.debug('[ChromeIntegration] WebSocket 服务未启动，无法广播消息');
+      return;
+    }
+
+    const messageStr = JSON.stringify(message);
+    let sentCount = 0;
+
+    this.wss.clients.forEach((client: WebSocket) => {
+      if (client.readyState === WebSocket.OPEN) {
+        try {
+          client.send(messageStr);
+          sentCount++;
+        } catch (e) {
+          this.logger.warn('[ChromeIntegration] 向客户端发送消息失败', e);
+        }
+      }
+    });
+
+    this.logger.debug(`[ChromeIntegration] 广播消息到 ${sentCount} 个客户端`, message);
+  }
+
   public async start(context: vscode.ExtensionContext): Promise<void> {
     if (this.httpServer) {
       return; // 已启动
