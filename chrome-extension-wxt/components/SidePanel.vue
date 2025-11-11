@@ -94,7 +94,7 @@ interface Message {
 }
 
 interface BackgroundMessage {
-  type: 'CREATION_SUCCESS' | 'CREATION_ERROR' | 'WS_CONNECTED' | 'WS_DISCONNECTED';
+  type: 'CREATION_SUCCESS' | 'CREATION_ERROR' | 'WS_CONNECTED' | 'WS_DISCONNECTED' | 'FOCUSED_LIST_UPDATED';
   error?: string;
 }
 
@@ -217,6 +217,12 @@ function handleBackgroundMessage(msg: BackgroundMessage) {
       
     case 'WS_DISCONNECTED':
       wsStatus.value = 'disconnected';
+      break;
+      
+    case 'FOCUSED_LIST_UPDATED':
+      // 关注列表已更新，自动刷新
+      console.log('[SidePanel] 收到关注列表更新通知，刷新列表');
+      loadFocusedIssues();
       break;
   }
 }

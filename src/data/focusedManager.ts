@@ -14,6 +14,7 @@ import { getUri } from '../utils/fileUtils';
 import { getIssueDir, getFocusedMaxItems } from '../config';
 import { FocusedData } from './treeManager';
 import { getCategoryIcon, ParaCategory } from './paraManager';
+import { ChromeIntegrationServer } from '../integration/ChromeIntegrationServer';
 
 const FOCUSED_VERSION = '1.0.0';
 const FOCUSED_FILE = 'focused.json';
@@ -83,6 +84,18 @@ export const writeFocused = async (data: FocusedData): Promise<void> => {
   const content = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
   try {
     await vscode.workspace.fs.writeFile(vscode.Uri.file(focusedPath), content);
+    
+    // 通知 Chrome 扩展关注列表已更新
+    try {
+      const chromeServer = ChromeIntegrationServer.getInstance();
+      chromeServer.broadcastToClients({
+        type: 'focused-list-updated',
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      // 静默处理广播错误，不影响主流程
+      console.error('通知 Chrome 扩展失败:', e);
+    }
   } catch (error) {
     vscode.window.showErrorMessage(`写入 focused.json 失败: ${error}`);
   }

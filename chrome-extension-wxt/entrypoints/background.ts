@@ -36,7 +36,7 @@ interface ChromeMessage {
 }
 
 interface SidePanelNotification {
-  type: 'WS_CONNECTED' | 'WS_DISCONNECTED' | 'CREATION_SUCCESS' | 'CREATION_ERROR';
+  type: 'WS_CONNECTED' | 'WS_DISCONNECTED' | 'CREATION_SUCCESS' | 'CREATION_ERROR' | 'FOCUSED_LIST_UPDATED';
   error?: string;
 }
 
@@ -164,6 +164,10 @@ export default defineBackground(() => {
                 console.error('[WebSocket] 保存配置失败:', err);
               });
             }
+          } else if (message.type === 'focused-list-updated') {
+            // 关注列表已更新，通知 Side Panel 刷新
+            console.log('[WebSocket] 关注列表已更新');
+            notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
           }
         } catch (e: unknown) {
           console.error('[WebSocket] 消息解析失败:', e);
