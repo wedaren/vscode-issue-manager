@@ -96,7 +96,7 @@ function parseMarkdown(markdown: string): string {
     // 使用 marked 解析 Markdown
     const rawHtml = marked.parse(markdown, { async: false }) as string;
     
-    // 使用 DOMPurify 净化 HTML，防止 XSS 攻击
+    // 使用 DOMPurify 净化 HTML,防止 XSS 攻击
     const cleanHtml = DOMPurify.sanitize(rawHtml, {
       ALLOWED_TAGS: [
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -105,9 +105,15 @@ function parseMarkdown(markdown: string): string {
         'ul', 'ol', 'li',
         'blockquote',
         'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span'
+        'hr', 'div', 'span',
+        'img', 'input', // 添加图片和复选框支持
       ],
-      ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+      ALLOWED_ATTR: [
+        'href', 'target', 'rel', 'class',
+        'src', 'alt', 'title', 'width', 'height', // 图片属性
+        'type', 'checked', 'disabled', // 复选框属性
+        'align', // 表格对齐
+      ],
       ALLOW_DATA_ATTR: false,
     });
     
@@ -190,97 +196,262 @@ function parseMarkdown(markdown: string): string {
 }
 
 .markdown-body {
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.8;
   color: #d4d4d4;
+  word-wrap: break-word;
 }
 
-.markdown-body h1 {
-  font-size: 18px;
+/* 使用深度选择器确保样式应用到 v-html 渲染的内容 */
+.markdown-body :deep(> :first-child) {
+  margin-top: 0;
+}
+
+.markdown-body :deep(> :last-child) {
+  margin-bottom: 0;
+}
+
+/* 标题样式 - 使用深度选择器 */
+.markdown-body :deep(h1) {
+  font-size: 24px;
   font-weight: 600;
-  margin: 16px 0 12px;
+  margin: 20px 0 16px;
+  color: #ffffff;
+  border-bottom: 2px solid #3c3c3c;
+  padding-bottom: 10px;
+  line-height: 1.3;
+}
+
+.markdown-body :deep(h2) {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 18px 0 14px;
   color: #ffffff;
   border-bottom: 1px solid #3c3c3c;
   padding-bottom: 8px;
+  line-height: 1.3;
 }
 
-.markdown-body h2 {
+.markdown-body :deep(h3) {
   font-size: 16px;
   font-weight: 600;
-  margin: 14px 0 10px;
-  color: #ffffff;
+  margin: 16px 0 12px;
+  color: #e8e8e8;
+  line-height: 1.3;
 }
 
-.markdown-body h3 {
+.markdown-body :deep(h4) {
   font-size: 14px;
   font-weight: 600;
-  margin: 12px 0 8px;
+  margin: 14px 0 10px;
   color: #cccccc;
+  line-height: 1.3;
 }
 
-.markdown-body p {
-  margin: 8px 0;
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 12px 0 8px;
+  color: #b4b4b4;
+  line-height: 1.3;
 }
 
-.markdown-body code {
+/* 段落样式 */
+.markdown-body :deep(p) {
+  margin: 12px 0;
+  line-height: 1.8;
+}
+
+/* 代码样式 */
+.markdown-body :deep(code) {
   background: #1e1e1e;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
   color: #ce9178;
+  border: 1px solid #2d2d30;
 }
 
-.markdown-body pre {
+.markdown-body :deep(pre) {
   background: #1e1e1e;
   border: 1px solid #3c3c3c;
-  border-radius: 4px;
-  padding: 12px;
+  border-radius: 6px;
+  padding: 16px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 16px 0;
+  line-height: 1.6;
 }
 
-.markdown-body pre code {
+.markdown-body :deep(pre code) {
   background: none;
   padding: 0;
   color: #d4d4d4;
+  border: none;
+  font-size: 13px;
 }
 
-.markdown-body ul,
-.markdown-body ol {
-  margin: 8px 0;
-  padding-left: 24px;
+/* 列表样式 */
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 12px 0;
+  padding-left: 28px;
+  line-height: 1.8;
 }
 
-.markdown-body li {
+.markdown-body :deep(li) {
+  margin: 6px 0;
+}
+
+.markdown-body :deep(li > p) {
   margin: 4px 0;
 }
 
-.markdown-body blockquote {
-  border-left: 3px solid #0e639c;
-  padding-left: 12px;
-  margin: 8px 0;
-  color: #858585;
+.markdown-body :deep(ul ul),
+.markdown-body :deep(ol ul),
+.markdown-body :deep(ul ol),
+.markdown-body :deep(ol ol) {
+  margin: 4px 0;
+}
+
+/* 任务列表样式 */
+.markdown-body :deep(input[type="checkbox"]) {
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.markdown-body :deep(li input[type="checkbox"]) {
+  margin-right: 8px;
+  margin-top: 0;
+}
+
+/* 引用块样式 */
+.markdown-body :deep(blockquote) {
+  border-left: 4px solid #0e639c;
+  padding: 12px 16px;
+  margin: 16px 0;
+  background: #1e1e1e;
+  border-radius: 0 4px 4px 0;
+  color: #b4b4b4;
   font-style: italic;
 }
 
-.markdown-body a {
-  color: #569cd6;
+.markdown-body :deep(blockquote p) {
+  margin: 8px 0;
+}
+
+.markdown-body :deep(blockquote > :first-child) {
+  margin-top: 0;
+}
+
+.markdown-body :deep(blockquote > :last-child) {
+  margin-bottom: 0;
+}
+
+/* 链接样式 */
+.markdown-body :deep(a) {
+  color: #4fc3f7;
   text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s;
 }
 
-.markdown-body a:hover {
-  text-decoration: underline;
+.markdown-body :deep(a:hover) {
+  color: #81d4fa;
+  border-bottom-color: #4fc3f7;
 }
 
-.markdown-body strong {
+/* 表格样式 */
+.markdown-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.markdown-body :deep(table th),
+.markdown-body :deep(table td) {
+  padding: 10px 14px;
+  border: 1px solid #3c3c3c;
+  text-align: left;
+}
+
+.markdown-body :deep(table th) {
+  background: #2d2d30;
   font-weight: 600;
   color: #ffffff;
 }
 
-.markdown-body em {
+.markdown-body :deep(table tr:nth-child(even)) {
+  background: #252526;
+}
+
+.markdown-body :deep(table tr:hover) {
+  background: #2d2d30;
+}
+
+/* 水平分割线 */
+.markdown-body :deep(hr) {
+  border: none;
+  border-top: 2px solid #3c3c3c;
+  margin: 24px 0;
+}
+
+/* 强调和斜体 */
+.markdown-body :deep(strong) {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.markdown-body :deep(em) {
   font-style: italic;
-  color: #cccccc;
+  color: #e8e8e8;
+}
+
+.markdown-body :deep(strong em),
+.markdown-body :deep(em strong) {
+  font-weight: 600;
+  font-style: italic;
+  color: #ffffff;
+}
+
+/* 删除线 */
+.markdown-body :deep(del),
+.markdown-body :deep(s) {
+  text-decoration: line-through;
+  color: #858585;
+}
+
+/* 图片样式 */
+.markdown-body :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 16px 0;
+  border: 1px solid #3c3c3c;
+}
+
+/* 改善滚动条样式 */
+.markdown-body :deep(pre::-webkit-scrollbar) {
+  height: 8px;
+}
+
+.markdown-body :deep(pre::-webkit-scrollbar-track) {
+  background: #1e1e1e;
+  border-radius: 4px;
+}
+
+.markdown-body :deep(pre::-webkit-scrollbar-thumb) {
+  background: #424242;
+  border-radius: 4px;
+}
+
+.markdown-body :deep(pre::-webkit-scrollbar-thumb:hover) {
+  background: #4e4e4e;
 }
 
 .no-content {
