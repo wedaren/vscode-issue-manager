@@ -27,6 +27,14 @@
           >
             <span class="btn-icon">✨</span>
           </button>
+          <button
+            id="open-issue-dir-btn"
+            class="action-btn"
+            title="在 VS Code 中打开问题目录"
+            @click="handleOpenIssueDir"
+          >
+            <span class="btn-icon">📁</span>
+          </button>
           <button 
             id="refresh-focused-btn" 
             class="action-btn" 
@@ -191,6 +199,21 @@ async function handleStartSelection() {
     console.error('Failed to start selection:', error);
     const errorMessage = error instanceof Error ? error.message : '未知错误';
     showMessage('启动选取模式失败: ' + errorMessage, 'error');
+  }
+}
+
+function handleOpenIssueDir() {
+  console.log('Open issue directory clicked');
+
+  try {
+    const vscodeUri = 'vscode://wedaren.issue-manager/open-issue-dir';
+    // 使用浏览器打开 vscode URI，会触发系统去打开 VS Code
+    window.open(vscodeUri, '_blank');
+    showMessage('正在打开 VSCode 问题目录...', 'success');
+  } catch (error: unknown) {
+    console.error('Failed to open issue directory:', error);
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    showMessage('打开问题目录失败: ' + errorMessage, 'error');
   }
 }
 
