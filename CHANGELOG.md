@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.10]
+
+### ✨ 新功能
+- **feat: 在 Chrome SidePanel 添加打开问题目录按钮**
+  - 点击按钮会调用 vscode://wedaren.issue-manager/open-issue-dir
+
+### 🔧 改进
+- **Chrome 改进 Markdown 渲染样式，提升文档可读性 (#105)**
+  - 优化标题样式：增强字体大小层次感，添加边框和间距
+  - 改善段落排版：优化行高和段落间距
+
 ## [0.2.9]
 
 ### ✨ 新功能
