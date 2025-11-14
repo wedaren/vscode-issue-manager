@@ -101,9 +101,11 @@
             <input
               v-model="newAccount.name"
               type="text"
-              placeholder="例如:公司账号、测试账号"
+              placeholder="例如:公司账号 或 admin/password123"
+              @input="parseAccountName"
               required
             />
+            <small class="hint-text">💡 支持快速格式: 用户名/密码 (如: admin/rzy@Security2025)</small>
           </div>
           <div class="form-group">
             <label>用户名</label>
@@ -242,6 +244,25 @@ function closeAddForm() {
     password: '',
     url: '',
   };
+}
+
+// 自动解析账号名称格式: 用户名/密码
+function parseAccountName() {
+  const nameValue = newAccount.value.name.trim();
+  
+  // 检查是否包含 / 分隔符
+  const slashIndex = nameValue.indexOf('/');
+  if (slashIndex > 0 && slashIndex < nameValue.length - 1) {
+    const username = nameValue.substring(0, slashIndex);
+    const password = nameValue.substring(slashIndex + 1);
+    
+    // 只在用户名和密码字段为空时才自动填充
+    if (!newAccount.value.username && !newAccount.value.password) {
+      newAccount.value.username = username;
+      newAccount.value.password = password;
+      console.log('[AutoLogin] 自动解析账号:', { username, password: '***' });
+    }
+  }
 }
 
 function togglePasswordVisibility(accountId: string) {
@@ -982,6 +1003,11 @@ onMounted(() => {
   margin-top: 4px;
   font-size: 12px;
   color: #858585;
+}
+
+.form-group .hint-text {
+  color: #569cd6;
+  font-style: italic;
 }
 
 .form-actions {
