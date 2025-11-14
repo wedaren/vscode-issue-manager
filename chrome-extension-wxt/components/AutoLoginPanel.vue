@@ -302,9 +302,9 @@ async function saveAccounts() {
     console.log('[AutoLogin] 开始保存账号,数量:', accounts.value.length,JSON.stringify(accounts.value, null, 2));
     await chrome.storage.local.set({ autoLoginAccounts: [...accounts.value] });
     console.log('[AutoLogin] 账号保存成功');
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AutoLogin] 保存账号失败:', error);
-    const errorMsg = error?.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     throw new Error('保存账号失败: ' + errorMsg);
   }
 }
@@ -360,9 +360,9 @@ async function addAccount() {
     console.log('[AutoLogin] 账号添加成功');
     closeAddForm();
     showMessage('✓ 账号添加成功', 'success');
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AutoLogin] 添加账号失败:', error);
-    const errorMsg = error?.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('添加账号失败: ' + errorMsg, 'error');
   }
 }
@@ -409,9 +409,9 @@ async function updateAccount() {
     } else {
       showMessage('未找到要编辑的账号', 'error');
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AutoLogin] 更新账号失败:', error);
-    const errorMsg = error?.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('更新账号失败: ' + errorMsg, 'error');
   }
 }
@@ -433,7 +433,7 @@ async function deleteAccount(id: string) {
     accounts.value = accounts.value.filter(acc => acc.id !== id);
     await saveAccounts();
     showMessage('账号已删除', 'success');
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to delete account:', error);
     showMessage('删除账号失败', 'error');
   }
@@ -468,10 +468,10 @@ async function useAccount(account: Account) {
       } else {
         showMessage(response?.error || '自动登录失败', 'error');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // 如果是"接收端不存在"错误,尝试注入 content script
-      if (error.message?.includes('Receiving end does not exist') || 
-          error.message?.includes('Could not establish connection')) {
+      if ((error instanceof Error && error.message?.includes('Receiving end does not exist')) ||
+          (error instanceof Error && error.message?.includes('Could not establish connection'))) {
         console.log('Content script not found, injecting...');
         
         try {
@@ -496,17 +496,18 @@ async function useAccount(account: Account) {
           } else {
             showMessage(retryResponse?.error || '自动登录失败', 'error');
           }
-        } catch (injectError: any) {
+        } catch (injectError: unknown) {
           console.error('Failed to inject content script:', injectError);
-          showMessage('无法在此页面执行自动登录: ' + injectError.message, 'error');
+          const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
+          showMessage('无法在此页面执行自动登录: ' + injectMsg, 'error');
         }
       } else {
         throw error;
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to use account:', error);
-    const errorMsg = error.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('自动登录失败: ' + errorMsg, 'error');
   }
 }
@@ -517,7 +518,7 @@ async function getCurrentUrl() {
     if (tab?.url) {
       currentUrl.value = tab.url;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to get current URL:', error);
   }
 }
@@ -552,10 +553,11 @@ function exportAccounts() {
     URL.revokeObjectURL(url);
 
     showMessage(`✓ 成功导出 ${accounts.value.length} 个账号`, 'success');
-  } catch (error: any) {
-    console.error('[AutoLogin] 导出账号失败:', error);
-    showMessage('导出失败: ' + (error?.message || '未知错误'), 'error');
-  }
+  } catch (error: unknown) {  
+    console.error('[AutoLogin] 导出账号失败:', error);  
+    const message = (error instanceof Error && error.message) || '未知错误';  
+    showMessage('导出失败: ' + message, 'error');  
+  }  
 }
 
 // 触发文件选择
@@ -586,9 +588,14 @@ async function importAccounts(event: Event) {
     }
 
     // 验证每个账号的数据结构
-    const validAccounts = importData.accounts.filter((account: any) => {
-      return account.name && account.username && account.password;
-    });
+    const validAccounts = (importData.accounts as any[]).filter(  
+      (account): account is { name: string; username: string; password: string; url?: string } => {  
+        return account &&  
+          typeof account.name === 'string' && account.name &&  
+          typeof account.username === 'string' && account.username &&  
+          typeof account.password === 'string' && account.password;  
+      }  
+    );  
 
     if (validAccounts.length === 0) {
       showMessage('文件中没有有效的账号数据', 'error');
@@ -603,7 +610,7 @@ async function importAccounts(event: Event) {
     let addedCount = 0;
     let skippedCount = 0;
 
-    validAccounts.forEach((account: any) => {
+    validAccounts.forEach((account) => {
       const key = `${account.username}::${account.url || ''}`;
       
       if (!existingKeys.has(key)) {
@@ -636,10 +643,11 @@ async function importAccounts(event: Event) {
     if (input) {
       input.value = '';
     }
-  } catch (error: any) {
-    console.error('[AutoLogin] 导入账号失败:', error);
-    showMessage('导入失败: ' + (error?.message || '文件格式错误'), 'error');
-  }
+  } catch (error: unknown) {  
+    console.error('[AutoLogin] 导入账号失败:', error);  
+    const message = (error instanceof Error && error.message) || '文件格式错误';  
+    showMessage('导入失败: ' + message, 'error');  
+  }  
 }
 
 onMounted(() => {
