@@ -11,9 +11,24 @@
           自动登录工具
         </h2>
       </div>
-      <button class="add-btn" @click="showAddForm = true" title="添加账号">
-        添加账号
-      </button>
+      <div class="header-actions">
+        <button class="header-btn export-btn" @click="exportAccounts" title="导出账号">
+          📤 导出
+        </button>
+        <button class="header-btn import-btn" @click="triggerImport" title="导入账号">
+          📥 导入
+        </button>
+        <button class="add-btn" @click="showAddForm = true" title="添加账号">
+          添加账号
+        </button>
+        <input 
+          ref="fileInput" 
+          type="file" 
+          accept=".json" 
+          @change="importAccounts" 
+          style="display: none;"
+        />
+      </div>
     </div>
 
     <!-- 账号列表 -->
@@ -175,6 +190,7 @@ const showAddForm = ref(false);
 const showPassword = ref(false);
 const editingAccount = ref<Account | null>(null);
 const visiblePasswords = ref<Record<string, boolean>>({});
+const fileInput = ref<HTMLInputElement | null>(null);
 const newAccount = ref({
   name: '',
   username: '',
@@ -485,6 +501,126 @@ async function getCurrentUrl() {
   }
 }
 
+// 导出账号到 JSON 文件
+function exportAccounts() {
+  try {
+    if (accounts.value.length === 0) {
+      showMessage('没有账号可导出', 'error');
+      return;
+    }
+
+    // 创建导出数据
+    const exportData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      accounts: accounts.value,
+    };
+
+    // 转换为 JSON 字符串
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    // 创建下载链接
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `auto-login-accounts-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showMessage(`✓ 成功导出 ${accounts.value.length} 个账号`, 'success');
+  } catch (error: any) {
+    console.error('[AutoLogin] 导出账号失败:', error);
+    showMessage('导出失败: ' + (error?.message || '未知错误'), 'error');
+  }
+}
+
+// 触发文件选择
+function triggerImport() {
+  if (fileInput.value) {
+    fileInput.value.click();
+  }
+}
+
+// 导入账号从 JSON 文件
+async function importAccounts(event: Event) {
+  try {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    
+    if (!file) {
+      return;
+    }
+
+    // 读取文件内容
+    const text = await file.text();
+    const importData = JSON.parse(text);
+
+    // 验证数据格式
+    if (!importData.accounts || !Array.isArray(importData.accounts)) {
+      showMessage('文件格式不正确', 'error');
+      return;
+    }
+
+    // 验证每个账号的数据结构
+    const validAccounts = importData.accounts.filter((account: any) => {
+      return account.name && account.username && account.password;
+    });
+
+    if (validAccounts.length === 0) {
+      showMessage('文件中没有有效的账号数据', 'error');
+      return;
+    }
+
+    // 去重处理 - 基于 username 和 url 组合
+    const existingKeys = new Set(
+      accounts.value.map(acc => `${acc.username}::${acc.url || ''}`)
+    );
+
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    validAccounts.forEach((account: any) => {
+      const key = `${account.username}::${account.url || ''}`;
+      
+      if (!existingKeys.has(key)) {
+        // 添加新账号,生成新的 ID
+        accounts.value.push({
+          id: crypto.randomUUID(),
+          name: account.name,
+          username: account.username,
+          password: account.password,
+          url: account.url || undefined,
+        });
+        existingKeys.add(key);
+        addedCount++;
+      } else {
+        skippedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      await saveAccounts();
+      showMessage(
+        `✓ 成功导入 ${addedCount} 个账号${skippedCount > 0 ? `, 跳过 ${skippedCount} 个重复账号` : ''}`,
+        'success'
+      );
+    } else {
+      showMessage('没有新账号需要导入(全部重复)', 'info');
+    }
+
+    // 清空文件选择
+    if (input) {
+      input.value = '';
+    }
+  } catch (error: any) {
+    console.error('[AutoLogin] 导入账号失败:', error);
+    showMessage('导入失败: ' + (error?.message || '文件格式错误'), 'error');
+  }
+}
+
 onMounted(() => {
   loadAccounts();
   getCurrentUrl();
@@ -517,6 +653,40 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-btn {
+  background-color: #3c3c3c;
+  color: #d4d4d4;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background-color 0.2s;
+}
+
+.header-btn:hover {
+  background-color: #4e4e4e;
+}
+
+.export-btn:hover {
+  background-color: #2d5a2d;
+  color: #8dd68d;
+}
+
+.import-btn:hover {
+  background-color: #5a4a2d;
+  color: #d4a853;
 }
 
 .back-btn {
