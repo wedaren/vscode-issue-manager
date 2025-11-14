@@ -16,7 +16,6 @@
 	},
 	"exclude": [
 		"chrome-extension-wxt",
-		"chrome-extension",
 		".output",
 		"node_modules",
 		"wxt.config.ts"
