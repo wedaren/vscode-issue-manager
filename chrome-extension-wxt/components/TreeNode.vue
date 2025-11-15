@@ -76,11 +76,20 @@ const parsedMarkdown = computed(() => {
   if (!props.node.content) {
     return '';
   }
-  return parseMarkdown(props.node.content);
+  const contentWithoutH1 = removeFirstH1Title(props.node.content);
+  return parseMarkdown(contentWithoutH1);
 });
 
 function toggleExpand() {
   isExpanded.value = !isExpanded.value;
+}
+
+/**
+ * 移除 Markdown 内容中的第一个 H1 标题
+ * 避免与节点头部标题重复显示
+ */
+function removeFirstH1Title(markdown: string): string {
+  return markdown.replace(/^#\s+.+$/m, '').trim();
 }
 
 /**
