@@ -11,9 +11,24 @@
           自动登录工具
         </h2>
       </div>
-      <button class="add-btn" @click="showAddForm = true" title="添加账号">
-        添加账号
-      </button>
+      <div class="header-actions">
+        <button class="header-btn export-btn" @click="exportAccounts" title="导出账号">
+          📤 导出
+        </button>
+        <button class="header-btn import-btn" @click="triggerImport" title="导入账号">
+          📥 导入
+        </button>
+        <button class="add-btn" @click="showAddForm = true" title="添加账号">
+          添加账号
+        </button>
+        <input 
+          ref="fileInput" 
+          type="file" 
+          accept=".json" 
+          @change="importAccounts" 
+          style="display: none;"
+        />
+      </div>
     </div>
 
     <!-- 账号列表 -->
@@ -86,9 +101,11 @@
             <input
               v-model="newAccount.name"
               type="text"
-              placeholder="例如:公司账号、测试账号"
+              placeholder="例如:公司账号 或 admin/password123"
+              @input="parseAccountName"
               required
             />
+            <small class="hint-text">💡 支持快速格式: 用户名/密码 (如: admin/rzy@Security2025)</small>
           </div>
           <div class="form-group">
             <label>用户名</label>
@@ -175,6 +192,7 @@ const showAddForm = ref(false);
 const showPassword = ref(false);
 const editingAccount = ref<Account | null>(null);
 const visiblePasswords = ref<Record<string, boolean>>({});
+const fileInput = ref<HTMLInputElement | null>(null);
 const newAccount = ref({
   name: '',
   username: '',
@@ -228,6 +246,25 @@ function closeAddForm() {
   };
 }
 
+// 自动解析账号名称格式: 用户名/密码
+function parseAccountName() {
+  const nameValue = newAccount.value.name.trim();
+  
+  // 检查是否包含 / 分隔符
+  const slashIndex = nameValue.indexOf('/');
+  if (slashIndex > 0 && slashIndex < nameValue.length - 1) {
+    const username = nameValue.substring(0, slashIndex);
+    const password = nameValue.substring(slashIndex + 1);
+    
+    // 只在用户名和密码字段为空时才自动填充
+    if (!newAccount.value.username && !newAccount.value.password) {
+      newAccount.value.username = username;
+      newAccount.value.password = password;
+      console.log('[AutoLogin] 自动解析账号:', { username, password: '***' });
+    }
+  }
+}
+
 function togglePasswordVisibility(accountId: string) {
   visiblePasswords.value[accountId] = !visiblePasswords.value[accountId];
 }
@@ -265,9 +302,9 @@ async function saveAccounts() {
     console.log('[AutoLogin] 开始保存账号,数量:', accounts.value.length,JSON.stringify(accounts.value, null, 2));
     await chrome.storage.local.set({ autoLoginAccounts: [...accounts.value] });
     console.log('[AutoLogin] 账号保存成功');
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AutoLogin] 保存账号失败:', error);
-    const errorMsg = error?.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     throw new Error('保存账号失败: ' + errorMsg);
   }
 }
@@ -323,9 +360,9 @@ async function addAccount() {
     console.log('[AutoLogin] 账号添加成功');
     closeAddForm();
     showMessage('✓ 账号添加成功', 'success');
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AutoLogin] 添加账号失败:', error);
-    const errorMsg = error?.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('添加账号失败: ' + errorMsg, 'error');
   }
 }
@@ -372,9 +409,9 @@ async function updateAccount() {
     } else {
       showMessage('未找到要编辑的账号', 'error');
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AutoLogin] 更新账号失败:', error);
-    const errorMsg = error?.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('更新账号失败: ' + errorMsg, 'error');
   }
 }
@@ -396,7 +433,7 @@ async function deleteAccount(id: string) {
     accounts.value = accounts.value.filter(acc => acc.id !== id);
     await saveAccounts();
     showMessage('账号已删除', 'success');
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to delete account:', error);
     showMessage('删除账号失败', 'error');
   }
@@ -431,10 +468,10 @@ async function useAccount(account: Account) {
       } else {
         showMessage(response?.error || '自动登录失败', 'error');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // 如果是"接收端不存在"错误,尝试注入 content script
-      if (error.message?.includes('Receiving end does not exist') || 
-          error.message?.includes('Could not establish connection')) {
+      if ((error instanceof Error && error.message?.includes('Receiving end does not exist')) ||
+          (error instanceof Error && error.message?.includes('Could not establish connection'))) {
         console.log('Content script not found, injecting...');
         
         try {
@@ -459,17 +496,18 @@ async function useAccount(account: Account) {
           } else {
             showMessage(retryResponse?.error || '自动登录失败', 'error');
           }
-        } catch (injectError: any) {
+        } catch (injectError: unknown) {
           console.error('Failed to inject content script:', injectError);
-          showMessage('无法在此页面执行自动登录: ' + injectError.message, 'error');
+          const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
+          showMessage('无法在此页面执行自动登录: ' + injectMsg, 'error');
         }
       } else {
         throw error;
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to use account:', error);
-    const errorMsg = error.message || '未知错误';
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('自动登录失败: ' + errorMsg, 'error');
   }
 }
@@ -480,9 +518,136 @@ async function getCurrentUrl() {
     if (tab?.url) {
       currentUrl.value = tab.url;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to get current URL:', error);
   }
+}
+
+// 导出账号到 JSON 文件
+function exportAccounts() {
+  try {
+    if (accounts.value.length === 0) {
+      showMessage('没有账号可导出', 'error');
+      return;
+    }
+
+    // 创建导出数据
+    const exportData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      accounts: accounts.value,
+    };
+
+    // 转换为 JSON 字符串
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    // 创建下载链接
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `auto-login-accounts-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showMessage(`✓ 成功导出 ${accounts.value.length} 个账号`, 'success');
+  } catch (error: unknown) {  
+    console.error('[AutoLogin] 导出账号失败:', error);  
+    const message = (error instanceof Error && error.message) || '未知错误';  
+    showMessage('导出失败: ' + message, 'error');  
+  }  
+}
+
+// 触发文件选择
+function triggerImport() {
+  if (fileInput.value) {
+    fileInput.value.click();
+  }
+}
+
+// 导入账号从 JSON 文件
+async function importAccounts(event: Event) {
+  try {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    
+    if (!file) {
+      return;
+    }
+
+    // 读取文件内容
+    const text = await file.text();
+    const importData = JSON.parse(text);
+
+    // 验证数据格式
+    if (!importData.accounts || !Array.isArray(importData.accounts)) {
+      showMessage('文件格式不正确', 'error');
+      return;
+    }
+
+    // 验证每个账号的数据结构
+    const validAccounts = (importData.accounts as any[]).filter(  
+      (account): account is { name: string; username: string; password: string; url?: string } => {  
+        return account &&  
+          typeof account.name === 'string' && account.name &&  
+          typeof account.username === 'string' && account.username &&  
+          typeof account.password === 'string' && account.password;  
+      }  
+    );  
+
+    if (validAccounts.length === 0) {
+      showMessage('文件中没有有效的账号数据', 'error');
+      return;
+    }
+
+    // 去重处理 - 基于 username 和 url 组合
+    const existingKeys = new Set(
+      accounts.value.map(acc => `${acc.username}::${acc.url || ''}`)
+    );
+
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    validAccounts.forEach((account) => {
+      const key = `${account.username}::${account.url || ''}`;
+      
+      if (!existingKeys.has(key)) {
+        // 添加新账号,生成新的 ID
+        accounts.value.push({
+          id: crypto.randomUUID(),
+          name: account.name,
+          username: account.username,
+          password: account.password,
+          url: account.url || undefined,
+        });
+        existingKeys.add(key);
+        addedCount++;
+      } else {
+        skippedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      await saveAccounts();
+      showMessage(
+        `✓ 成功导入 ${addedCount} 个账号${skippedCount > 0 ? `, 跳过 ${skippedCount} 个重复账号` : ''}`,
+        'success'
+      );
+    } else {
+      showMessage('没有新账号需要导入(全部重复)', 'info');
+    }
+
+    // 清空文件选择
+    if (input) {
+      input.value = '';
+    }
+  } catch (error: unknown) {  
+    console.error('[AutoLogin] 导入账号失败:', error);  
+    const message = (error instanceof Error && error.message) || '文件格式错误';  
+    showMessage('导入失败: ' + message, 'error');  
+  }  
 }
 
 onMounted(() => {
@@ -517,6 +682,40 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-btn {
+  background-color: #3c3c3c;
+  color: #d4d4d4;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background-color 0.2s;
+}
+
+.header-btn:hover {
+  background-color: #4e4e4e;
+}
+
+.export-btn:hover {
+  background-color: #2d5a2d;
+  color: #8dd68d;
+}
+
+.import-btn:hover {
+  background-color: #5a4a2d;
+  color: #d4a853;
 }
 
 .back-btn {
@@ -812,6 +1011,11 @@ onMounted(() => {
   margin-top: 4px;
   font-size: 12px;
   color: #858585;
+}
+
+.form-group .hint-text {
+  color: #569cd6;
+  font-style: italic;
 }
 
 .form-actions {
