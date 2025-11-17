@@ -66,7 +66,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
             const treeData = await readTree();
             
             // 扁平化树节点（复用 searchIssues 的逻辑）
-            const flatNodes = await this.flattenTree(treeData.rootNodes || []);
+            const flatNodes = this.flattenTree(treeData.rootNodes || [], [], { index: 0 });
             
             // 保持树中的原始顺序（不按 mtime 排序）
             // flatNodes 已经按照遍历顺序（即 tree.json 中的顺序）排列
@@ -100,21 +100,19 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
      * 递归扁平化树节点（与 searchIssues 一致）
      * 保持树中的原始顺序
      */
-    private async flattenTree(nodes: IssueTreeNode[], parentNodes: IssueTreeNode[] = [], startIndex: number = 0): Promise<FlatNode[]> {
+    private flattenTree(nodes: IssueTreeNode[], parentNodes: IssueTreeNode[] = [], currentIndexRef: { index: number }): FlatNode[] {
         const result: FlatNode[] = [];
-        let currentIndex = startIndex;
         
         for (const node of nodes) {
             result.push({
                 ...node,
                 parentPath: [...parentNodes],
-                treeIndex: currentIndex++
+                treeIndex: currentIndexRef.index++
             });
             
             if (node.children && node.children.length > 0) {
-                const childNodes = await this.flattenTree(node.children, [...parentNodes, node], currentIndex);
+                const childNodes = this.flattenTree(node.children, [...parentNodes, node], currentIndexRef);
                 result.push(...childNodes);
-                currentIndex += childNodes.length;
             }
         }
         
