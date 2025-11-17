@@ -172,6 +172,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { isReceiverNotExistError } from '../utils/chromeErrorUtils';
 
 interface Account {
   id: string;
@@ -477,8 +478,7 @@ async function useAccount(account: Account) {
       }
     } catch (error: unknown) {
       // 如果是"接收端不存在"错误,尝试注入 content script
-      if ((error instanceof Error && error.message?.includes('Receiving end does not exist')) ||
-          (error instanceof Error && error.message?.includes('Could not establish connection'))) {
+      if (isReceiverNotExistError(error)) {
         console.log('Content script not found, injecting...');
         
         try {
@@ -557,8 +557,7 @@ async function switchAccount(account: Account) {
       }
     } catch (error: unknown) {
       // 如果是"接收端不存在"错误,尝试注入 content script
-      if ((error instanceof Error && error.message?.includes('Receiving end does not exist')) ||
-          (error instanceof Error && error.message?.includes('Could not establish connection'))) {
+      if (isReceiverNotExistError(error)) {
         console.log('Content script not found, injecting...');
         
         try {
