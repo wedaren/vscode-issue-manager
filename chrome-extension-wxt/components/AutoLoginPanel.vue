@@ -680,7 +680,8 @@ async function importAccounts(event: Event) {
         return account &&  
           typeof account.name === 'string' && account.name &&  
           typeof account.username === 'string' && account.username &&  
-          typeof account.password === 'string' && account.password;  
+          typeof account.password === 'string' && account.password &&  
+          (account.url === undefined || typeof account.url === 'string');  
       }  
     );  
 
