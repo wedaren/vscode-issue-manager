@@ -135,15 +135,31 @@ async function submitForm(input: HTMLInputElement): Promise<void> {
   const form = input.closest('form');
   if (form) {
     console.log('[Auto Login] 未找到登录按钮,提交表单...');
+    
+    // 先触发 submit 事件,让页面的事件监听器有机会执行
+    // 这对于使用前端框架(如 Vue、React)的页面很重要,因为它们可能:
+    // 1. 在 submit 事件中执行表单验证
+    // 2. 阻止默认提交行为并使用 AJAX 提交
+    // 3. 更新内部状态
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     
+    // 延迟执行 form.submit() 的原因:
+    // 1. 给页面的 submit 事件监听器足够的时间来执行(可能包含异步验证)
+    // 2. 如果页面监听器调用了 preventDefault(),则 form.submit() 会被忽略
+    // 3. 确保在事件循环的下一个 tick 执行,避免与框架的状态更新冲突
+    // 4. 100ms 的延迟是一个经验值,在大多数情况下足够处理同步验证和状态更新
+    //
+    // 注意:如果表单验证失败(checkValidity() 返回 false),则不会提交表单
     setTimeout(() => {
       if (form.checkValidity()) {
         console.log('[Auto Login] 调用 form.submit()');
         form.submit();
+      } else {
+        console.warn('[Auto Login] 表单验证失败,跳过提交');
       }
     }, 100);
-    console.log('[Auto Login] 表单已提交');
+    
+    console.log('[Auto Login] 表单提交事件已触发,等待验证...');
   } else {
     console.warn('[Auto Login] 未找到登录按钮或表单,但已填充账号密码');
   }
