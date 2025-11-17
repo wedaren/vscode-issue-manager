@@ -13,6 +13,8 @@ export const TIMEOUTS = {
   inputDelay: 500,
   /** Toast 显示时长(毫秒) */
   toastDuration: 3000,
+  /** Toast 防抖延迟(毫秒) */
+  toastDebounce: 500,
   /** 恢复账号替换延迟(毫秒) */
   resumeDelay: 500,
   /** 路径检查间隔(毫秒) */

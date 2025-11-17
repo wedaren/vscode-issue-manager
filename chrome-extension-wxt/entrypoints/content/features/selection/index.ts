@@ -2,7 +2,7 @@
  * DOM 选取模式主模块
  */
 
-import { UI_CLASSES, MOUSE_SWITCH_THRESHOLD } from '../../config/constants';
+import { UI_CLASSES, MOUSE_SWITCH_THRESHOLD, TIMEOUTS } from '../../config/constants';
 import { createOverlay, removeOverlay } from './ui/overlay';
 import { createHighlightBox, removeHighlightBox, updateHighlight } from './ui/highlight';
 import { showToast, removeToast, debounce } from './ui/toast';
@@ -23,7 +23,7 @@ export interface SelectionModeState {
   lastMouseY: number;
 }
 
-const debouncedShowToast = debounce(showToast, 500);
+const debouncedShowToast = debounce(showToast, TIMEOUTS.toastDebounce);
 
 /**
  * 创建选取模式状态
