@@ -193,6 +193,53 @@ const emit = defineEmits<{
 }>();
 const MESSAGE_DISPLAY_DURATION_MS = 3000;
 
+/**
+ * 向 Content Script 发送消息,如果失败则自动注入并重试
+ * 
+ * 封装了完整的"尝试-失败-注入-重试"流程:
+ * 1. 尝试向目标标签页发送消息
+ * 2. 如果失败且是"接收端不存在"错误,则注入 content script
+ * 3. 等待脚本初始化后重试发送消息
+ * 
+ * @param tabId - 目标标签页 ID
+ * @param message - 要发送的消息对象
+ * @returns Promise<响应对象>
+ * @throws 如果不是"接收端不存在"错误,则重新抛出原始错误
+ */
+async function sendMessageToContentScript(tabId: number, message: object): Promise<any> {
+  try {
+    // 第一次尝试:直接发送消息
+    const response = await chrome.tabs.sendMessage(tabId, message);
+    return response;
+  } catch (error: unknown) {
+    // 如果是"接收端不存在"错误,尝试注入 content script
+    if (isReceiverNotExistError(error)) {
+      console.log('[sendMessage] Content script not found, injecting...');
+      
+      try {
+        // 注入 content script
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content-scripts/content.js']
+        });
+
+        // 等待一下让 script 初始化
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // 第二次尝试:重试发送消息
+        const retryResponse = await chrome.tabs.sendMessage(tabId, message);
+        return retryResponse;
+      } catch (injectError: unknown) {
+        console.error('[sendMessage] Failed to inject content script:', injectError);
+        const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
+        throw new Error('无法在此页面执行操作: ' + injectMsg);
+      }
+    } else {
+      // 不是"接收端不存在"错误,直接抛出
+      throw error;
+    }
+  }
+}
 
 const accounts = ref<Account[]>([]);
 const currentUrl = ref('');
@@ -464,8 +511,8 @@ async function useAccount(account: Account) {
     }
 
     try {
-      // 先尝试发送消息,如果失败则注入 content script
-      const response = await chrome.tabs.sendMessage(tab.id, {
+      // 发送自动登录消息(自动处理注入逻辑)
+      const response = await sendMessageToContentScript(tab.id, {
         type: 'AUTO_LOGIN',
         username: account.username,
         password: account.password,
@@ -477,43 +524,12 @@ async function useAccount(account: Account) {
         showMessage(response?.error || '自动登录失败', 'error');
       }
     } catch (error: unknown) {
-      // 如果是"接收端不存在"错误,尝试注入 content script
-      if (isReceiverNotExistError(error)) {
-        console.log('Content script not found, injecting...');
-        
-        try {
-          // 注入 content script
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ['content-scripts/content.js']
-          });
-
-          // 等待一下让 script 初始化
-          await new Promise(resolve => setTimeout(resolve, 300));
-
-          // 重试发送消息
-          const retryResponse = await chrome.tabs.sendMessage(tab.id, {
-            type: 'AUTO_LOGIN',
-            username: account.username,
-            password: account.password,
-          });
-
-          if (retryResponse?.success) {
-            showMessage('✓ 自动登录成功', 'success');
-          } else {
-            showMessage(retryResponse?.error || '自动登录失败', 'error');
-          }
-        } catch (injectError: unknown) {
-          console.error('Failed to inject content script:', injectError);
-          const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
-          showMessage('无法在此页面执行自动登录: ' + injectMsg, 'error');
-        }
-      } else {
-        throw error;
-      }
+      console.error('[useAccount] Failed:', error);
+      const errorMsg = (error instanceof Error && error.message) || '未知错误';
+      showMessage('自动登录失败: ' + errorMsg, 'error');
     }
   } catch (error: unknown) {
-    console.error('Failed to use account:', error);
+    console.error('[useAccount] Failed to get tab:', error);
     const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('自动登录失败: ' + errorMsg, 'error');
   }
@@ -543,8 +559,8 @@ async function switchAccount(account: Account) {
     showMessage('正在替换账号...', 'info');
 
     try {
-      // 先尝试发送消息,如果失败则注入 content script
-      const response = await chrome.tabs.sendMessage(tab.id, {
+      // 发送账号替换消息(自动处理注入逻辑)
+      const response = await sendMessageToContentScript(tab.id, {
         type: 'ACCOUNT_SWITCH',
         username: account.username,
         password: account.password,
@@ -556,43 +572,12 @@ async function switchAccount(account: Account) {
         showMessage(response?.error || '账号替换失败', 'error');
       }
     } catch (error: unknown) {
-      // 如果是"接收端不存在"错误,尝试注入 content script
-      if (isReceiverNotExistError(error)) {
-        console.log('Content script not found, injecting...');
-        
-        try {
-          // 注入 content script
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ['content-scripts/content.js']
-          });
-
-          // 等待一下让 script 初始化
-          await new Promise(resolve => setTimeout(resolve, 300));
-
-          // 重试发送消息
-          const retryResponse = await chrome.tabs.sendMessage(tab.id, {
-            type: 'ACCOUNT_SWITCH',
-            username: account.username,
-            password: account.password,
-          });
-
-          if (retryResponse?.success) {
-            showMessage('✓ 账号替换成功', 'success');
-          } else {
-            showMessage(retryResponse?.error || '账号替换失败', 'error');
-          }
-        } catch (injectError: unknown) {
-          console.error('Failed to inject content script:', injectError);
-          const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
-          showMessage('无法在此页面执行账号替换: ' + injectMsg, 'error');
-        }
-      } else {
-        throw error;
-      }
+      console.error('[switchAccount] Failed:', error);
+      const errorMsg = (error instanceof Error && error.message) || '未知错误';
+      showMessage('账号替换失败: ' + errorMsg, 'error');
     }
   } catch (error: unknown) {
-    console.error('Failed to switch account:', error);
+    console.error('[switchAccount] Failed to get tab:', error);
     const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('账号替换失败: ' + errorMsg, 'error');
   }
