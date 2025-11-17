@@ -84,9 +84,14 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
                 filteredNodes = filteredNodes.slice(0, maxItems);
             }
             
+            // 只获取一次配置和聚焦数据，避免在循环中重复读取
+            const completionConfig = vscode.workspace.getConfiguration('issueManager.completion');
+            const insertMode = completionConfig.get<string>('insertMode', 'relativePath');
+            const focusedData = await readFocused();
+            
             // 转换为补全项
             const items = await Promise.all(
-                filteredNodes.map(node => this.createCompletionItem(node, document, filterResult.hasTrigger))
+                filteredNodes.map(node => this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData))
             );
             
             return items;
@@ -173,17 +178,15 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
     private async createCompletionItem(
         node: FlatNode,
         document: vscode.TextDocument,
-        hasTrigger: boolean
+        hasTrigger: boolean,
+        insertMode: string,
+        focusedData: import('../data/treeManager').FocusedData
     ): Promise<CompletionItemWithNode> {
-        const config = vscode.workspace.getConfiguration('issueManager.completion');
-        const insertMode = config.get<string>('insertMode', 'relativePath');
-
         // 获取节点标题
         const cachedTitle = await TitleCacheService.getInstance().get(node.filePath);
         const title = cachedTitle || path.basename(node.filePath, '.md');
         
         // 获取图标（与问题总览一致）
-        const focusedData = await readFocused();
         const focusIndex = focusedData.focusList.indexOf(node.id);
         const { paraCategory } = this.paraCategoryCache.getParaMetadata(node.id);
         const iconPath = getIssueNodeIconPath(focusIndex !== -1 ? focusIndex : undefined, paraCategory);
