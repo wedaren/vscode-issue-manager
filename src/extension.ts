@@ -4,8 +4,9 @@ import { GitSyncService } from './services/GitSyncService';
 import { TitleCacheService } from './services/TitleCacheService';
 import { ChromeIntegrationServer } from './integration/ChromeIntegrationServer';
 import { SharedConfig } from './config/SharedConfig';
+import { IssueFileCompletionProvider } from './providers/IssueFileCompletionProvider';
 
-// 当您的扩展被激活时，将调用此方法
+// 当您的扩展被激活时,将调用此方法
 export function activate(context: vscode.ExtensionContext) {
 	// 初始化共享配置（必须在其他服务之前）
 	SharedConfig.initialize(context);
@@ -15,6 +16,16 @@ export function activate(context: vscode.ExtensionContext) {
 	void TitleCacheService.getInstance().preload();
 	// 启动 Chrome 集成本地服务与 URI Handler（不阻塞激活流程）
 	void ChromeIntegrationServer.getInstance().start(context);
+	
+	// 注册 Issue 文件补全提供器
+	const completionProvider = new IssueFileCompletionProvider(context);
+	const completionDisposable = vscode.languages.registerCompletionItemProvider(
+		'markdown',
+		completionProvider,
+		'[' // 触发字符（可选）
+	);
+	context.subscriptions.push(completionDisposable);
+	
 	return initializer.initialize();
 }
 
