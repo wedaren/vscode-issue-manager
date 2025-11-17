@@ -6,6 +6,7 @@
 import './style.css';
 import { resumeAccountSwitch, switchAccount } from './features/auth/accountSwitch';
 import { autoLogin } from './features/auth/autoLogin';
+import { type AccountSwitchState } from './features/auth/storage';
 import { createSelectionState, startSelectionMode, cancelSelectionMode } from './features/selection';
 import { TIMEOUTS, STORAGE_KEYS, LOGIN_PATH } from './config/constants';
 
@@ -35,7 +36,7 @@ export default defineContentScript({
     (async () => {
       try {
         const result = await chrome.storage.local.get(STORAGE_KEYS.accountSwitchState);
-        const state = result.accountSwitchState;
+        const state: AccountSwitchState | undefined = result.accountSwitchState;
         
         if (!state || !state.inProgress) {
           return;
