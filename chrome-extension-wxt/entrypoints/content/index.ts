@@ -7,6 +7,7 @@ import './style.css';
 import { resumeAccountSwitch, switchAccount } from './features/auth/accountSwitch';
 import { autoLogin } from './features/auth/autoLogin';
 import { createSelectionState, startSelectionMode, cancelSelectionMode } from './features/selection';
+import { TIMEOUTS, STORAGE_KEYS, LOGIN_PATH } from './config/constants';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -31,39 +32,47 @@ export default defineContentScript({
     }
 
     // ===== 账号替换恢复检查 =====
-    chrome.storage.local.get('accountSwitchState').then(result => {
-      const state = result.accountSwitchState;
-      if (state && state.inProgress) {
-        // 检查状态是否过期(超过5分钟)
-        const isExpired = Date.now() - state.timestamp > 5 * 60 * 1000;
+    (async () => {
+      try {
+        const result = await chrome.storage.local.get(STORAGE_KEYS.accountSwitchState);
+        const state = result.accountSwitchState;
+        
+        if (!state || !state.inProgress) {
+          return;
+        }
+
+        // 检查状态是否过期
+        const isExpired = Date.now() - state.timestamp > TIMEOUTS.stateExpiry;
         if (isExpired) {
           console.log('[Account Switch] 恢复状态已过期,清除');
-          chrome.storage.local.remove('accountSwitchState');
+          await chrome.storage.local.remove(STORAGE_KEYS.accountSwitchState);
           return;
         }
 
         // 检查是否在登录页
-        if (window.location.pathname.includes('/auth/login/')) {
-          console.log('[Account Switch] 检测到待恢复的账号替换操作');
-          console.log('[Account Switch] 原始路径:', state.originalPath);
-          
-          // 等待页面加载完成后执行自动登录
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-              setTimeout(() => {
-                resumeAccountSwitch(state);
-              }, 500);
-            });
-          } else {
-            setTimeout(() => {
-              resumeAccountSwitch(state);
-            }, 500);
-          }
+        if (!window.location.pathname.includes(LOGIN_PATH)) {
+          return;
         }
+
+        console.log('[Account Switch] 检测到待恢复的账号替换操作');
+        console.log('[Account Switch] 原始路径:', state.originalPath);
+        
+        // 等待页面加载完成后执行自动登录
+        const executeResume = () => {
+          setTimeout(() => {
+            resumeAccountSwitch(state);
+          }, TIMEOUTS.resumeDelay);
+        };
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', executeResume);
+        } else {
+          executeResume();
+        }
+      } catch (err) {
+        console.error('[Account Switch] 检查恢复状态失败:', err);
       }
-    }).catch(err => {
-      console.error('[Account Switch] 检查恢复状态失败:', err);
-    });
+    })();
 
     // ===== 选取模式状态管理 =====
     const selectionState = createSelectionState();
