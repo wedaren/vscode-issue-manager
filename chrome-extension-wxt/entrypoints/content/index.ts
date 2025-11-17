@@ -4,7 +4,8 @@
  */
 
 import './style.css';
-import { resumeAccountSwitch } from './features/auth/accountSwitch';
+import { resumeAccountSwitch, switchAccount } from './features/auth/accountSwitch';
+import { autoLogin } from './features/auth/autoLogin';
 import { createSelectionState, startSelectionMode, cancelSelectionMode } from './features/selection';
 
 export default defineContentScript({
@@ -83,6 +84,36 @@ export default defineContentScript({
         cancelSelectionMode(selectionState);
         sendResponse({ success: true });
         return true;
+      }
+
+      if (message.type === 'AUTO_LOGIN') {
+        console.log('Processing AUTO_LOGIN request');
+        // 异步处理,需要返回 true 保持消息通道开启
+        autoLogin(message.username, message.password)
+          .then(() => {
+            console.log('[Auto Login] 发送成功响应');
+            sendResponse({ success: true });
+          })
+          .catch((error: Error) => {
+            console.error('[Auto Login] 发送失败响应:', error.message);
+            sendResponse({ success: false, error: error.message });
+          });
+        return true; // 重要:保持消息通道开启以支持异步响应
+      }
+
+      if (message.type === 'ACCOUNT_SWITCH') {
+        console.log('Processing ACCOUNT_SWITCH request');
+        // 账号替换功能 - 异步处理
+        switchAccount(message.username, message.password)
+          .then(() => {
+            console.log('[Account Switch] 发送成功响应');
+            sendResponse({ success: true });
+          })
+          .catch((error: Error) => {
+            console.error('[Account Switch] 发送失败响应:', error.message);
+            sendResponse({ success: false, error: error.message });
+          });
+        return true; // 保持消息通道开启
       }
 
       return false;
