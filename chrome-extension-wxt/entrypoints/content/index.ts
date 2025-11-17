@@ -27,6 +27,41 @@ export default defineContentScript({
       }
     }
 
+    // 检查是否有待恢复的账号替换操作
+    chrome.storage.local.get('accountSwitchState').then(result => {
+      const state = result.accountSwitchState;
+      if (state && state.inProgress) {
+        // 检查状态是否过期(超过5分钟)
+        const isExpired = Date.now() - state.timestamp > 5 * 60 * 1000;
+        if (isExpired) {
+          console.log('[Account Switch] 恢复状态已过期,清除');
+          chrome.storage.local.remove('accountSwitchState');
+          return;
+        }
+
+        // 检查是否在登录页
+        if (window.location.pathname.includes('/auth/login/')) {
+          console.log('[Account Switch] 检测到待恢复的账号替换操作');
+          console.log('[Account Switch] 原始路径:', state.originalPath);
+          
+          // 等待页面加载完成后执行自动登录
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+              setTimeout(() => {
+                resumeAccountSwitch(state);
+              }, 500);
+            });
+          } else {
+            setTimeout(() => {
+              resumeAccountSwitch(state);
+            }, 500);
+          }
+        }
+      }
+    }).catch(err => {
+      console.error('[Account Switch] 检查恢复状态失败:', err);
+    });
+
     // 状态管理
     let isSelectionMode = false;
     let overlay: HTMLElement | null = null;
@@ -59,12 +94,94 @@ export default defineContentScript({
     const debouncedShowToast = debounce(showToast, 500);
 
     /**
+     * 恢复账号替换操作
+     * 在页面重新加载后,从 Storage 中恢复状态并继续执行
+     */
+    async function resumeAccountSwitch(state: any): Promise<void> {
+      try {
+        console.log('[Account Switch] 恢复账号替换操作...');
+        console.log('[Account Switch] 用户名:', state.username);
+        console.log('[Account Switch] 原始路径:', state.originalPath);
+
+        // 执行自动登录
+        await handleAutoLogin(state.username, state.password);
+
+        console.log('[Account Switch] 登录操作已执行,等待页面响应...');
+
+        // 等待登录成功后跳转
+        if (state.originalPath && state.originalPath !== '/auth/login/') {
+          console.log('[Account Switch] 等待登录完成...');
+          
+          // 等待页面跳转(登录成功会自动跳转)
+          const waitForRedirect = new Promise<boolean>((resolve) => {
+            let redirected = false;
+            const checkInterval = setInterval(() => {
+              const currentPath = window.location.pathname;
+              console.log('[Account Switch] 当前路径:', currentPath);
+              
+              // 如果已经离开登录页,说明登录成功了
+              if (!currentPath.includes('/auth/login/')) {
+                clearInterval(checkInterval);
+                clearTimeout(timeout);
+                redirected = true;
+                console.log('[Account Switch] 检测到页面已跳转,登录成功');
+                resolve(true);
+              }
+            }, 500);
+
+            // 10秒超时
+            const timeout = setTimeout(() => {
+              clearInterval(checkInterval);
+              if (!redirected) {
+                console.warn('[Account Switch] 等待跳转超时,可能登录失败或页面未自动跳转');
+                resolve(false);
+              }
+            }, 10000);
+          });
+
+          const loginSuccess = await waitForRedirect;
+          
+          if (!loginSuccess) {
+            // 如果没有自动跳转,检查是否需要手动跳转
+            console.log('[Account Switch] 未检测到自动跳转,尝试手动跳转回原路径');
+            // 检查 URL 中的 RefererUrl 参数
+            const urlParams = new URLSearchParams(window.location.search);
+            const refererUrl = urlParams.get('RefererUrl');
+            
+            if (refererUrl) {
+              console.log('[Account Switch] 使用 RefererUrl 跳转:', refererUrl);
+              window.location.href = window.location.origin + refererUrl;
+            } else if (state.originalPath) {
+              console.log('[Account Switch] 跳转回原始路径:', state.originalPath);
+              window.location.href = window.location.origin + state.originalPath;
+            }
+          } else {
+            console.log('[Account Switch] 页面已自动跳转,无需手动操作');
+          }
+        }
+
+        console.log('[Account Switch] 账号替换完成');
+        
+        // 清除保存的状态
+        await chrome.storage.local.remove('accountSwitchState');
+        console.log('[Account Switch] 已清除替换状态');
+
+      } catch (error) {
+        console.error('[Account Switch] 恢复账号替换失败:', error);
+        // 清除保存的状态
+        await chrome.storage.local.remove('accountSwitchState');
+        throw error;
+      }
+    }
+
+    /**
      * 自动登录功能
      * 根据页面表单结构自动填充用户名和密码,并点击登录按钮
      */
     async function handleAutoLogin(username: string, password: string): Promise<void> {
       try {
         console.log('[Auto Login] 开始自动登录...');
+        console.log('[Auto Login] 当前 URL:', window.location.href);
         
         // 等待页面加载完成
         if (document.readyState !== 'complete') {
@@ -104,6 +221,7 @@ export default defineContentScript({
         }
         
         if (!usernameInput) {
+          console.error('[Auto Login] 未找到用户名输入框,尝试的选择器:', usernameSelectors);
           throw new Error('未找到用户名输入框');
         }
 
@@ -128,6 +246,7 @@ export default defineContentScript({
         }
         
         if (!passwordInput) {
+          console.error('[Auto Login] 未找到密码输入框,尝试的选择器:', passwordSelectors);
           throw new Error('未找到密码输入框');
         }
 
@@ -140,6 +259,8 @@ export default defineContentScript({
         usernameInput.dispatchEvent(new Event('change', { bubbles: true }));
         usernameInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
 
+        console.log('[Auto Login] 用户名已填充');
+
         // 填充密码
         passwordInput.focus();
         passwordInput.value = password;
@@ -147,7 +268,7 @@ export default defineContentScript({
         passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
         passwordInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
 
-        console.log('[Auto Login] 表单填充完成,等待...');
+        console.log('[Auto Login] 密码已填充,等待...');
 
         // 等待一小段时间,确保输入事件被处理
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -177,6 +298,7 @@ export default defineContentScript({
         // 如果没找到按钮,尝试查找包含"登录"文字的按钮
         if (!loginButton) {
           const allButtons = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="submit"]'));
+          console.log('[Auto Login] 页面上的所有按钮数量:', allButtons.length);
           loginButton = allButtons.find(btn => 
             btn.textContent?.includes('登录') || 
             btn.textContent?.includes('Login') ||
@@ -191,7 +313,7 @@ export default defineContentScript({
         if (loginButton) {
           console.log('[Auto Login] 点击登录按钮...');
           loginButton.click();
-          console.log('[Auto Login] 自动登录完成');
+          console.log('[Auto Login] 登录按钮已点击,等待页面响应');
         } else {
           // 如果没有找到登录按钮,尝试提交表单
           const form = usernameInput.closest('form');
@@ -201,6 +323,7 @@ export default defineContentScript({
             // 如果 submit 事件没被阻止,直接调用 submit
             setTimeout(() => {
               if (form.checkValidity()) {
+                console.log('[Auto Login] 调用 form.submit()');
                 form.submit();
               }
             }, 100);
@@ -212,6 +335,91 @@ export default defineContentScript({
 
       } catch (error) {
         console.error('[Auto Login] 自动登录失败:', error);
+        throw error;
+      }
+    }
+
+    /**
+     * 账号替换功能
+     * 1. 如果当前路径不是登录页,先记住路径
+     * 2. 发送退出登录请求
+     * 3. 等待跳转到登录页
+     * 4. 执行自动登录
+     * 5. 登录成功后跳转回原路径
+     * 
+     * 注意: 由于单页面应用在跳转时会重新加载页面,我们使用 Chrome Storage 保存状态
+     */
+    async function handleAccountSwitch(username: string, password: string): Promise<void> {
+      try {
+        console.log('[Account Switch] 开始账号替换...');
+        
+        const currentUrl = window.location.href;
+        const currentPath = window.location.pathname;
+        
+        // 检查是否在登录页
+        const isLoginPage = currentPath.includes('/auth/login/');
+        
+        // 记住原始路径(如果不是登录页)
+        let originalPath = '';
+        if (!isLoginPage) {
+          originalPath = currentPath;
+          console.log('[Account Switch] 记住原始路径:', originalPath);
+        }
+
+        // 如果不在登录页,先退出当前账号
+        if (!isLoginPage) {
+          console.log('[Account Switch] 不在登录页,执行退出操作...');
+          
+          // 保存账号替换状态到 Chrome Storage (页面重新加载后可以恢复)
+          await chrome.storage.local.set({
+            accountSwitchState: {
+              inProgress: true,
+              username,
+              password,
+              originalPath,
+              timestamp: Date.now()
+            }
+          });
+          console.log('[Account Switch] 已保存替换状态到 Storage');
+          
+          try {
+            // 构建退出登录的 URL
+            const origin = window.location.origin;
+            const logoutUrl = `${origin}/auth/logout/`;
+            
+            console.log('[Account Switch] 发送退出请求到:', logoutUrl);
+
+            // 使用 fetch 发送退出请求
+            const response = await fetch(logoutUrl, {
+              method: 'GET',
+              headers: {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Referer': currentUrl,
+              },
+              credentials: 'include', // 包含 cookies
+            });
+
+            console.log('[Account Switch] 退出请求响应状态:', response.status);
+            console.log('[Account Switch] 页面即将重新加载,状态已保存到 Storage');
+            
+            // 页面会自动跳转并重新加载,不需要在这里等待
+            // resumeAccountSwitch 会在页面重新加载后自动执行
+
+          } catch (error) {
+            console.error('[Account Switch] 退出登录失败:', error);
+            // 清除保存的状态
+            await chrome.storage.local.remove('accountSwitchState');
+            throw new Error('退出登录失败: ' + (error as Error).message);
+          }
+        } else {
+          // 如果已经在登录页,直接执行登录(可能是手动触发或者其他场景)
+          console.log('[Account Switch] 已在登录页,直接执行登录');
+          await handleAutoLogin(username, password);
+          console.log('[Account Switch] 账号替换完成');
+        }
+
+      } catch (error) {
+        console.error('[Account Switch] 账号替换失败:', error);
         throw error;
       }
     }
@@ -242,6 +450,19 @@ export default defineContentScript({
               sendResponse({ success: false, error: error.message });
             });
           return true; // 重要:保持消息通道开启以支持异步响应
+
+        case 'ACCOUNT_SWITCH':
+          // 账号替换功能 - 异步处理
+          handleAccountSwitch(message.username, message.password)
+            .then(() => {
+              console.log('[Account Switch] 发送成功响应');
+              sendResponse({ success: true });
+            })
+            .catch((error: Error) => {
+              console.error('[Account Switch] 发送失败响应:', error.message);
+              sendResponse({ success: false, error: error.message });
+            });
+          return true; // 保持消息通道开启
 
         default:
           console.warn('Unknown message type:', message.type);

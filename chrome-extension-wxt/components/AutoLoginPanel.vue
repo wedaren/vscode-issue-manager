@@ -71,6 +71,13 @@
             使用
           </button>
           <button
+            class="action-btn switch-btn"
+            @click="switchAccount(account)"
+            title="替换当前账号(退出后重新登录)"
+          >
+            替换
+          </button>
+          <button
             class="action-btn edit-btn"
             @click="editAccount(account)"
             title="编辑账号"
@@ -512,6 +519,86 @@ async function useAccount(account: Account) {
   }
 }
 
+async function switchAccount(account: Account) {
+  try {
+    // 获取当前活动标签页
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!tab?.id) {
+      showMessage('无法获取当前标签页', 'error');
+      return;
+    }
+
+    // 检查页面 URL 是否支持
+    if (tab.url && /^(chrome|chrome-extension|edge|about):/i.test(tab.url)) {
+      showMessage('该页面不支持账号替换功能', 'error');
+      return;
+    }
+
+    // 确认操作
+    if (!confirm(`确定要替换为账号 "${account.name}" 吗?\n\n此操作将:\n1. 退出当前账号\n2. 跳转到登录页\n3. 自动登录新账号\n4. 返回当前页面`)) {
+      return;
+    }
+
+    showMessage('正在替换账号...', 'info');
+
+    try {
+      // 先尝试发送消息,如果失败则注入 content script
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: 'ACCOUNT_SWITCH',
+        username: account.username,
+        password: account.password,
+      });
+
+      if (response?.success) {
+        showMessage('✓ 账号替换成功', 'success');
+      } else {
+        showMessage(response?.error || '账号替换失败', 'error');
+      }
+    } catch (error: unknown) {
+      // 如果是"接收端不存在"错误,尝试注入 content script
+      if ((error instanceof Error && error.message?.includes('Receiving end does not exist')) ||
+          (error instanceof Error && error.message?.includes('Could not establish connection'))) {
+        console.log('Content script not found, injecting...');
+        
+        try {
+          // 注入 content script
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content-scripts/content.js']
+          });
+
+          // 等待一下让 script 初始化
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+          // 重试发送消息
+          const retryResponse = await chrome.tabs.sendMessage(tab.id, {
+            type: 'ACCOUNT_SWITCH',
+            username: account.username,
+            password: account.password,
+          });
+
+          if (retryResponse?.success) {
+            showMessage('✓ 账号替换成功', 'success');
+          } else {
+            showMessage(retryResponse?.error || '账号替换失败', 'error');
+          }
+        } catch (injectError: unknown) {
+          console.error('Failed to inject content script:', injectError);
+          const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
+          showMessage('无法在此页面执行账号替换: ' + injectMsg, 'error');
+        }
+      } else {
+        throw error;
+      }
+    }
+  } catch (error: unknown) {
+    console.error('Failed to switch account:', error);
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
+    showMessage('账号替换失败: ' + errorMsg, 'error');
+  }
+}
+
 async function getCurrentUrl() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -872,6 +959,15 @@ onMounted(() => {
 
 .use-btn:hover {
   background-color: #1177bb;
+}
+
+.switch-btn {
+  background-color: #5a4a2d;
+  color: #d4a853;
+}
+
+.switch-btn:hover {
+  background-color: #6e5a36;
 }
 
 .edit-btn {
