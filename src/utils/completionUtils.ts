@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 /**
  * 过滤关键字提取结果
@@ -95,8 +96,7 @@ export function isDocumentInDirectory(
         return false;
     }
 
-    const docPath = document.uri.fsPath;
-    const normalizedDir = directory.endsWith('/') ? directory : directory + '/';
+    const relativePath = path.relative(directory, document.uri.fsPath);
     
-    return docPath.startsWith(normalizedDir) || docPath.startsWith(directory);
+    return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 }
