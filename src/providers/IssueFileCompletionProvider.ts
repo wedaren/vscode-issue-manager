@@ -121,20 +121,35 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
 
     /**
      * 过滤节点（包含匹配）
+     * 优化：预先批量获取所有标题，减少函数调用次数
      */
     private async filterNodes(nodes: FlatNode[], query: string): Promise<FlatNode[]> {
         const queryLower = query.toLowerCase();
         const results: FlatNode[] = [];
         
+        // 预先收集所有需要的文件路径（包括节点自身和所有父节点）
+        const allPaths = new Set<string>();
         for (const node of nodes) {
-            // 获取节点标题
-            const cachedTitle = await TitleCacheService.getInstance().get(node.filePath);
-            const title = cachedTitle || path.basename(node.filePath, '.md');
+            allPaths.add(node.filePath);
+            for (const parent of node.parentPath) {
+                allPaths.add(parent.filePath);
+            }
+        }
+        
+        // 一次性批量获取所有标题
+        const pathArray = Array.from(allPaths);
+        const titles = await TitleCacheService.getInstance().getMany(pathArray);
+        const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
+        
+        // 遍历节点进行过滤（现在是同步操作）
+        for (const node of nodes) {
+            // 从预获取的 Map 中获取标题
+            const title = titleMap.get(node.filePath) || path.basename(node.filePath, '.md');
             const titleLower = title.toLowerCase();
             
-            // 获取父级路径
-            const parentTitles = await TitleCacheService.getInstance().getMany(
-                node.parentPath.map(n => n.filePath)
+            // 获取父级路径标题
+            const parentTitles = node.parentPath.map(n => 
+                titleMap.get(n.filePath) || path.basename(n.filePath, '.md')
             );
             const fullPath = [...parentTitles, title].join(' ').toLowerCase();
             
