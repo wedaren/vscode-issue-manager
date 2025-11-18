@@ -3,6 +3,7 @@ import { GitSyncService } from '../services/GitSyncService';
 import { FileAccessTracker } from '../services/FileAccessTracker';
 import { EditorEventManager } from '../services/EditorEventManager';
 import { RecordContentTool } from '../llm/RecordContentTool';
+import { IssueChatParticipant } from '../chat/IssueChatParticipant';
 import { Logger } from './utils/Logger';
 
 /**
@@ -57,6 +58,9 @@ export class ServiceRegistry {
             
             // 3. 注册Language Model Tool（增强功能）
             this.registerLanguageModelTool();
+            
+            // 4. 注册Chat Participant（AI 聊天集成）
+            this.registerChatParticipant();
             
             this.logger.info('    ✓ 所有服务初始化完成');
         } catch (error) {
@@ -138,6 +142,23 @@ export class ServiceRegistry {
         } catch (error) {
             this.logger.error('      ✗ Language Model工具注册失败:', error);
             // AI功能是可选的，失败不影响核心功能
+        }
+    }
+
+    /**
+     * 注册Chat Participant
+     * 
+     * 如果VS Code支持Chat API，注册问题管理器聊天参与者，
+     * 允许用户通过 @issueManager 在聊天中管理问题。
+     */
+    private registerChatParticipant(): void {
+        try {
+            const chatParticipant = new IssueChatParticipant();
+            chatParticipant.register(this.context);
+            this.logger.info('      ✓ Chat Participant已注册');
+        } catch (error) {
+            // IssueChatParticipant.register 内部已经做了 API 检查
+            this.logger.error('      ✗ Chat Participant注册失败:', error);
         }
     }
 }

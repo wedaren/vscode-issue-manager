@@ -360,6 +360,33 @@
         "when": "issueManager.isDirConfigured"
       }
     ],
+    "chatParticipants": [
+      {
+        "id": "issueManager.chat",
+        "name": "issueManager",
+        "fullName": "问题管理器",
+        "description": "管理问题、笔记和文档",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "新建",
+            "description": "创建新问题"
+          },
+          {
+            "name": "搜索",
+            "description": "搜索现有问题"
+          },
+          {
+            "name": "关注",
+            "description": "添加问题到关注列表"
+          },
+          {
+            "name": "帮助",
+            "description": "显示帮助信息"
+          }
+        ]
+      }
+    ],
     "menus": {
       "view/title": [
         {
