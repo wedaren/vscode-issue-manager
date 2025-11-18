@@ -4,6 +4,7 @@
  */
 
 import { ChromeConfigManager } from '../utils/ChromeConfigManager';
+import { isReceiverNotExistError } from '../utils/chromeErrorUtils';
 
 // 类型定义
 interface WebSocketMessage {
@@ -540,7 +541,7 @@ export default defineBackground(() => {
     try {  
       await chrome.runtime.sendMessage(message);  
     } catch (error: unknown) {  
-      if (error instanceof Error && error.message.includes('Could not establish connection. Receiving end does not exist.')) {  
+      if (isReceiverNotExistError(error)) {  
         console.log('Side Panel is not open, skipping notification.');  
       } else {  
         console.error('Failed to notify side panel:', error);  

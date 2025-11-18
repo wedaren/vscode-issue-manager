@@ -71,6 +71,13 @@
             使用
           </button>
           <button
+            class="action-btn switch-btn"
+            @click="switchAccount(account)"
+            title="替换当前账号(退出后重新登录)"
+          >
+            替换
+          </button>
+          <button
             class="action-btn edit-btn"
             @click="editAccount(account)"
             title="编辑账号"
@@ -165,6 +172,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { isReceiverNotExistError } from '../utils/chromeErrorUtils';
 
 interface Account {
   id: string;
@@ -185,6 +193,53 @@ const emit = defineEmits<{
 }>();
 const MESSAGE_DISPLAY_DURATION_MS = 3000;
 
+/**
+ * 向 Content Script 发送消息,如果失败则自动注入并重试
+ * 
+ * 封装了完整的"尝试-失败-注入-重试"流程:
+ * 1. 尝试向目标标签页发送消息
+ * 2. 如果失败且是"接收端不存在"错误,则注入 content script
+ * 3. 等待脚本初始化后重试发送消息
+ * 
+ * @param tabId - 目标标签页 ID
+ * @param message - 要发送的消息对象
+ * @returns Promise<响应对象>
+ * @throws 如果不是"接收端不存在"错误,则重新抛出原始错误
+ */
+async function sendMessageToContentScript(tabId: number, message: object): Promise<any> {
+  try {
+    // 第一次尝试:直接发送消息
+    const response = await chrome.tabs.sendMessage(tabId, message);
+    return response;
+  } catch (error: unknown) {
+    // 如果是"接收端不存在"错误,尝试注入 content script
+    if (isReceiverNotExistError(error)) {
+      console.log('[sendMessage] Content script not found, injecting...');
+      
+      try {
+        // 注入 content script
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content-scripts/content.js']
+        });
+
+        // 等待一下让 script 初始化
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // 第二次尝试:重试发送消息
+        const retryResponse = await chrome.tabs.sendMessage(tabId, message);
+        return retryResponse;
+      } catch (injectError: unknown) {
+        console.error('[sendMessage] Failed to inject content script:', injectError);
+        const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
+        throw new Error('无法在此页面执行操作: ' + injectMsg);
+      }
+    } else {
+      // 不是"接收端不存在"错误,直接抛出
+      throw error;
+    }
+  }
+}
 
 const accounts = ref<Account[]>([]);
 const currentUrl = ref('');
@@ -456,8 +511,8 @@ async function useAccount(account: Account) {
     }
 
     try {
-      // 先尝试发送消息,如果失败则注入 content script
-      const response = await chrome.tabs.sendMessage(tab.id, {
+      // 发送自动登录消息(自动处理注入逻辑)
+      const response = await sendMessageToContentScript(tab.id, {
         type: 'AUTO_LOGIN',
         username: account.username,
         password: account.password,
@@ -469,46 +524,62 @@ async function useAccount(account: Account) {
         showMessage(response?.error || '自动登录失败', 'error');
       }
     } catch (error: unknown) {
-      // 如果是"接收端不存在"错误,尝试注入 content script
-      if ((error instanceof Error && error.message?.includes('Receiving end does not exist')) ||
-          (error instanceof Error && error.message?.includes('Could not establish connection'))) {
-        console.log('Content script not found, injecting...');
-        
-        try {
-          // 注入 content script
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ['content-scripts/content.js']
-          });
-
-          // 等待一下让 script 初始化
-          await new Promise(resolve => setTimeout(resolve, 300));
-
-          // 重试发送消息
-          const retryResponse = await chrome.tabs.sendMessage(tab.id, {
-            type: 'AUTO_LOGIN',
-            username: account.username,
-            password: account.password,
-          });
-
-          if (retryResponse?.success) {
-            showMessage('✓ 自动登录成功', 'success');
-          } else {
-            showMessage(retryResponse?.error || '自动登录失败', 'error');
-          }
-        } catch (injectError: unknown) {
-          console.error('Failed to inject content script:', injectError);
-          const injectMsg = (injectError instanceof Error && injectError.message) || '未知错误';
-          showMessage('无法在此页面执行自动登录: ' + injectMsg, 'error');
-        }
-      } else {
-        throw error;
-      }
+      console.error('[useAccount] Failed:', error);
+      const errorMsg = (error instanceof Error && error.message) || '未知错误';
+      showMessage('自动登录失败: ' + errorMsg, 'error');
     }
   } catch (error: unknown) {
-    console.error('Failed to use account:', error);
+    console.error('[useAccount] Failed to get tab:', error);
     const errorMsg = (error instanceof Error && error.message) || '未知错误';
     showMessage('自动登录失败: ' + errorMsg, 'error');
+  }
+}
+
+async function switchAccount(account: Account) {
+  try {
+    // 获取当前活动标签页
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!tab?.id) {
+      showMessage('无法获取当前标签页', 'error');
+      return;
+    }
+
+    // 检查页面 URL 是否支持
+    if (tab.url && /^(chrome|chrome-extension|edge|about):/i.test(tab.url)) {
+      showMessage('该页面不支持账号替换功能', 'error');
+      return;
+    }
+
+    // 确认操作
+    if (!confirm(`确定要替换为账号 "${account.name}" 吗?\n\n此操作将:\n1. 退出当前账号\n2. 跳转到登录页\n3. 自动登录新账号\n4. 返回当前页面`)) {
+      return;
+    }
+
+    showMessage('正在替换账号...', 'info');
+
+    try {
+      // 发送账号替换消息(自动处理注入逻辑)
+      const response = await sendMessageToContentScript(tab.id, {
+        type: 'ACCOUNT_SWITCH',
+        username: account.username,
+        password: account.password,
+      });
+
+      if (response?.success) {
+        showMessage('✓ 账号替换成功', 'success');
+      } else {
+        showMessage(response?.error || '账号替换失败', 'error');
+      }
+    } catch (error: unknown) {
+      console.error('[switchAccount] Failed:', error);
+      const errorMsg = (error instanceof Error && error.message) || '未知错误';
+      showMessage('账号替换失败: ' + errorMsg, 'error');
+    }
+  } catch (error: unknown) {
+    console.error('[switchAccount] Failed to get tab:', error);
+    const errorMsg = (error instanceof Error && error.message) || '未知错误';
+    showMessage('账号替换失败: ' + errorMsg, 'error');
   }
 }
 
@@ -593,7 +664,8 @@ async function importAccounts(event: Event) {
         return account &&  
           typeof account.name === 'string' && account.name &&  
           typeof account.username === 'string' && account.username &&  
-          typeof account.password === 'string' && account.password;  
+          typeof account.password === 'string' && account.password &&  
+          (account.url === undefined || typeof account.url === 'string');  
       }  
     );  
 
@@ -872,6 +944,15 @@ onMounted(() => {
 
 .use-btn:hover {
   background-color: #1177bb;
+}
+
+.switch-btn {
+  background-color: #5a4a2d;
+  color: #d4a853;
+}
+
+.switch-btn:hover {
+  background-color: #6e5a36;
 }
 
 .edit-btn {
