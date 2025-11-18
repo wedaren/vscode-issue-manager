@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { readTree, IssueTreeNode } from '../data/treeManager';
+import { getFlatTree, FlatTreeNode } from '../data/treeManager';
 import { TitleCacheService } from '../services/TitleCacheService';
 import * as path from 'path';
 
@@ -17,29 +17,11 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
         quickPick.matchOnDetail = false;
         quickPick.show();
 
-        const treeData =  await readTree();
-
-        // 递归扁平化 tree.json 节点
-        interface FlatNode extends IssueTreeNode {
-            parentPath: IssueTreeNode[];
-        };
-        function flatten(nodes: IssueTreeNode[], parentNodes: IssueTreeNode[] = []): FlatNode[] {
-            let result: FlatNode[] = [];
-            for (const node of nodes) {
-                result.push({
-                    ...node,
-                    parentPath: [...parentNodes]
-                });
-                if (node.children && node.children.length > 0) {
-                    result = result.concat(flatten(node.children, [...parentNodes, node]));
-                }
-            }
-            return result;
-        }
-        const flatNodes = flatten(treeData.rootNodes || []);
+        // 获取扁平化的树结构
+        const flatNodes = await getFlatTree();
 
         // 获取每个节点的 mtime
-        async function getMtime(node: FlatNode): Promise<number> {
+        async function getMtime(node: FlatTreeNode): Promise<number> {
             try {
                 const uri = node.resourceUri || vscode.Uri.file(node.filePath);
                 const stat = await vscode.workspace.fs.stat(uri);

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
+import { TitleCacheService } from '../services/TitleCacheService';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -29,6 +30,14 @@ export interface TreeData {
 }
 
 /**
+ * 扁平化树节点接口，包含父节点路径和标题
+ */
+export interface FlatTreeNode extends IssueTreeNode {
+  parentPath: IssueTreeNode[];
+  title: string; // 节点标题（已加载）
+}
+
+/**
  * 遍历树并对每个节点执行回调。
  * @param nodes 节点数组。
  * @param callback 回调函数。
@@ -40,6 +49,62 @@ function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => voi
       walkTree(node.children, callback);
     }
   }
+}
+
+/**
+ * 递归扁平化树节点，保留父节点路径。
+ * @param nodes 要扁平化的节点数组
+ * @param parentNodes 父节点路径
+ * @returns 扁平化后的节点数组（不含 title），每个节点包含 parentPath 属性
+ */
+function flattenTree(
+  nodes: IssueTreeNode[], 
+  parentNodes: IssueTreeNode[] = []
+): Omit<FlatTreeNode, 'title'>[] {
+  let result: Omit<FlatTreeNode, 'title'>[] = [];
+  for (const node of nodes) {
+    result.push({
+      ...node,
+      parentPath: [...parentNodes]
+    });
+    
+    if (node.children && node.children.length > 0) {
+      result = result.concat(
+        flattenTree(node.children, [...parentNodes, node])
+      );
+    }
+  }
+  return result;
+}
+
+/**
+ * 获取扁平化的树结构，并自动加载所有节点的标题。
+ * 这是一个便捷函数，自动读取树、扁平化并批量加载标题。
+ * @returns 扁平化后的节点数组，每个节点包含 title 属性
+ */
+export async function getFlatTree(): Promise<FlatTreeNode[]> {
+  const tree = await readTree();
+  const flatNodes = flattenTree(tree.rootNodes);
+  
+  // 收集所有需要的文件路径（包括节点自身和所有父节点）
+  const allPaths = new Set<string>();
+  for (const node of flatNodes) {
+    allPaths.add(node.filePath);
+    for (const parent of node.parentPath) {
+      allPaths.add(parent.filePath);
+    }
+  }
+  
+  // 批量获取所有标题
+  const pathArray = Array.from(allPaths);
+  const titles = await TitleCacheService.getInstance().getMany(pathArray);
+  const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
+  
+  // 为每个节点添加标题
+  return flatNodes.map(node => ({
+    ...node,
+    title: titleMap.get(node.filePath) || path.basename(node.filePath, '.md')
+  }));
 }
 
 /**

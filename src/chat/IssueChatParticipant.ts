@@ -4,6 +4,7 @@ import { createIssueFile } from '../commands/issueFileUtils';
 import { LLMService } from '../llm/LLMService';
 import { addFocus } from '../data/focusedManager';
 import { getAllMarkdownIssues } from '../utils/markdown';
+import { getFlatTree, FlatTreeNode } from '../data/treeManager';
 import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 
@@ -223,15 +224,45 @@ export class IssueChatParticipant {
 
         stream.progress('正在搜索问题...');
 
-        // 获取所有问题
+        // 获取所有问题和树结构
         const allIssues = await getAllMarkdownIssues();
+        const issueDir = getIssueDir();
         
-        // 简单的关键词匹配搜索
+        // 扁平化树节点（已包含标题）
+        let flatNodes: FlatTreeNode[] = [];
+        if (issueDir) {
+            try {
+                flatNodes = await getFlatTree();
+            } catch (error) {
+                console.log('[IssueChatParticipant] 读取树结构失败:', error);
+            }
+        }
+        
+        // 关键词匹配搜索：标题、文件路径、父节点标题
         const keyword = prompt.toLowerCase();
-        const matchedIssues = allIssues.filter(issue => 
-            issue.title.toLowerCase().includes(keyword) ||
-            issue.filePath.toLowerCase().includes(keyword)
-        );
+        const matchedIssues = allIssues.filter(issue => {
+            // 匹配标题
+            if (issue.title.toLowerCase().includes(keyword)) {
+                return true;
+            }
+            // 匹配文件路径
+            if (issue.filePath.toLowerCase().includes(keyword)) {
+                return true;
+            }
+            // 匹配父节点标题（分组标题）
+            const flatNode = flatNodes.find(n => 
+                issueDir && path.join(issueDir, n.filePath) === issue.filePath
+            );
+            if (flatNode && flatNode.parentPath.length > 0) {
+                // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
+                const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
+                const parentTitle = path.basename(parentNode.filePath, '.md');
+                if (parentTitle.toLowerCase().includes(keyword)) {
+                    return true;
+                }
+            }
+            return false;
+        });
 
         if (matchedIssues.length === 0) {
             stream.markdown(`🔍 没有找到包含 "${prompt}" 的问题\n`);
@@ -271,21 +302,89 @@ export class IssueChatParticipant {
             return;
         }
 
-        stream.progress('正在添加到关注列表...');
+        stream.progress('正在搜索匹配的问题...');
 
-        // 搜索匹配的问题
+        // 搜索所有匹配的问题
         const allIssues = await getAllMarkdownIssues();
-        const matchedIssue = allIssues.find(issue => 
-            path.basename(issue.filePath).includes(prompt) ||
-            issue.title.includes(prompt)
-        );
+        const issueDir = getIssueDir();
+        
+        // 扁平化树节点（已包含标题）
+        let flatNodes: FlatTreeNode[] = [];
+        if (issueDir) {
+            try {
+                flatNodes = await getFlatTree();
+            } catch (error) {
+                console.log('[IssueChatParticipant] 读取树结构失败:', error);
+            }
+        }
+        
+        const matchedIssues = allIssues.filter(issue => {
+            // 匹配文件名
+            if (path.basename(issue.filePath).includes(prompt)) {
+                return true;
+            }
+            // 匹配标题
+            if (issue.title.includes(prompt)) {
+                return true;
+            }
+            // 匹配父节点标题（分组标题）
+            const flatNode = flatNodes.find(n => 
+                issueDir && path.join(issueDir, n.filePath) === issue.filePath
+            );
+            if (flatNode && flatNode.parentPath.length > 0) {
+                const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
+                // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
+                const parentTitle = path.basename(parentNode.filePath, '.md');
+                if (parentTitle.includes(prompt)) {
+                    return true;
+                }
+            }
+            return false;
+        });
 
-        if (!matchedIssue) {
-            stream.markdown(`❌ 未找到问题: "${prompt}"\n`);
+        // 没有找到匹配项
+        if (matchedIssues.length === 0) {
+            stream.markdown(`❌ 未找到包含 "${prompt}" 的问题\n\n`);
+            stream.markdown('💡 提示: 可以使用 `/搜索` 命令查找问题\n');
             return;
         }
 
+        // 找到多个匹配项 - 需要用户确认
+        if (matchedIssues.length > 1) {
+            stream.markdown(`🔍 找到 **${matchedIssues.length}** 个匹配的问题:\n\n`);
+            
+            matchedIssues.slice(0, 10).forEach((issue, index) => {
+                const flatNode = flatNodes.find(n => 
+                    issueDir && path.join(issueDir, n.filePath) === issue.filePath
+                );
+                
+                stream.markdown(`${index + 1}. **${issue.title}**\n`);
+                stream.markdown(`   📁 \`${path.basename(issue.filePath)}\`\n`);
+                
+                if (flatNode && flatNode.parentPath.length > 0) {
+                    const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
+                    // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
+                    const parentTitle = path.basename(parentNode.filePath, '.md');
+                    stream.markdown(`   📂 分组: ${parentTitle}\n`);
+                }
+                stream.markdown('\n');
+            });
+
+            if (matchedIssues.length > 10) {
+                stream.markdown(`\n_...还有 ${matchedIssues.length - 10} 个结果_\n\n`);
+            }
+
+            stream.markdown('⚠️ 请使用更精确的文件名或标题重试，例如:\n');
+            stream.markdown(`- \`/关注 ${path.basename(matchedIssues[0].filePath)}\`\n`);
+            return;
+        }
+
+        // 找到唯一匹配项 - 直接添加关注
+        const matchedIssue = matchedIssues[0];
+
         try {
+            stream.progress('正在添加到关注列表...');
+
             // 添加到关注列表
             const issueDir = getIssueDir();
             if (!issueDir) {
@@ -296,6 +395,19 @@ export class IssueChatParticipant {
             await addFocus([issueId]);
 
             stream.markdown(`✅ 已将 **${matchedIssue.title}** 添加到关注列表\n\n`);
+            stream.markdown(`📁 \`${path.basename(matchedIssue.filePath)}\`\n`);
+            
+            // 显示分组信息
+            const flatNode = flatNodes.find(n => 
+                path.join(issueDir, n.filePath) === matchedIssue.filePath
+            );
+            if (flatNode && flatNode.parentPath.length > 0) {
+                const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
+                // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
+                const parentTitle = path.basename(parentNode.filePath, '.md');
+                stream.markdown(`📂 分组: ${parentTitle}\n`);
+            }
+            stream.markdown('\n');
             
             // 刷新视图
             await vscode.commands.executeCommand('issueManager.refreshAllViews');

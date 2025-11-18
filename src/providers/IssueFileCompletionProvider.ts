@@ -1,25 +1,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, IssueTreeNode, FocusedData } from '../data/treeManager';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { getFlatTree, FlatTreeNode, FocusedData } from '../data/treeManager';
 import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completionUtils';
 import { getIssueDir } from '../config';
 import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 /**
- * 扁平化的树节点（带父节点路径）
- */
-interface FlatNode extends IssueTreeNode {
-    parentPath: IssueTreeNode[];
-    treeIndex: number; // 添加树中的原始顺序索引
-}
-
-/**
  * 带节点信息的补全项
  */
 interface CompletionItemWithNode extends vscode.CompletionItem {
-    node: FlatNode;
+    node: FlatTreeNode;
     iconPath?: vscode.ThemeIcon;
 }
 
@@ -62,21 +53,13 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         const filterResult = extractFilterKeyword(document, position, triggers, maxFilterLength);
 
         try {
-            // 读取问题树
-            const treeData = await readTree();
+            // 获取扁平化的树结构（已包含标题）
+            const flatNodes = await getFlatTree();
             
-            // 扁平化树节点（复用 searchIssues 的逻辑）
-            const flatNodes = this.flattenTree(treeData.rootNodes || [], [], { index: 0 });
-            
-            // 保持树中的原始顺序（不按 mtime 排序）
-            // flatNodes 已经按照遍历顺序（即 tree.json 中的顺序）排列
-            
-            // 过滤节点
+            // 过滤节点（过滤后自动保持原始数组顺序）
             let filteredNodes = flatNodes;
             if (filterResult.keyword) {
                 filteredNodes = await this.filterNodes(flatNodes, filterResult.keyword);
-                // 过滤后按 treeIndex 排序，保持树的原始顺序
-                filteredNodes.sort((a, b) => a.treeIndex - b.treeIndex);
             }
             
             // 限制数量
@@ -90,7 +73,9 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
             
             // 转换为补全项
             const items = await Promise.all(
-                filteredNodes.map(node => this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData))
+                filteredNodes.map((node, index) => 
+                    this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index)
+                )
             );
             
             return items;
@@ -101,61 +86,23 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
     }
 
     /**
-     * 递归扁平化树节点（与 searchIssues 一致）
-     * 保持树中的原始顺序
-     */
-    private flattenTree(nodes: IssueTreeNode[], parentNodes: IssueTreeNode[] = [], currentIndexRef: { index: number }): FlatNode[] {
-        const result: FlatNode[] = [];
-        
-        for (const node of nodes) {
-            result.push({
-                ...node,
-                parentPath: [...parentNodes],
-                treeIndex: currentIndexRef.index++
-            });
-            
-            if (node.children && node.children.length > 0) {
-                const childNodes = this.flattenTree(node.children, [...parentNodes, node], currentIndexRef);
-                result.push(...childNodes);
-            }
-        }
-        
-        return result;
-    }
-
-    /**
      * 过滤节点（包含匹配）
-     * 优化：预先批量获取所有标题，减少函数调用次数
+     * 直接使用节点的 title 属性进行过滤
      */
-    private async filterNodes(nodes: FlatNode[], query: string): Promise<FlatNode[]> {
+    private async filterNodes(nodes: FlatTreeNode[], query: string): Promise<FlatTreeNode[]> {
         const queryLower = query.toLowerCase();
-        const results: FlatNode[] = [];
-        
-        // 预先收集所有需要的文件路径（包括节点自身和所有父节点）
-        const allPaths = new Set<string>();
-        for (const node of nodes) {
-            allPaths.add(node.filePath);
-            for (const parent of node.parentPath) {
-                allPaths.add(parent.filePath);
-            }
-        }
-        
-        // 一次性批量获取所有标题
-        const pathArray = Array.from(allPaths);
-        const titles = await TitleCacheService.getInstance().getMany(pathArray);
-        const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
+        const results: FlatTreeNode[] = [];
         
         // 遍历节点进行过滤（现在是同步操作）
         for (const node of nodes) {
-            // 从预获取的 Map 中获取标题
-            const title = titleMap.get(node.filePath) || path.basename(node.filePath, '.md');
-            const titleLower = title.toLowerCase();
+            // 直接使用节点的标题属性
+            const titleLower = node.title.toLowerCase();
             
-            // 获取父级路径标题
+            // 获取父级路径标题（从 parentPath 中直接取 title）
             const parentTitles = node.parentPath.map(n => 
-                titleMap.get(n.filePath) || path.basename(n.filePath, '.md')
+                (n as FlatTreeNode).title || path.basename(n.filePath, '.md')
             );
-            const fullPath = [...parentTitles, title].join(' ').toLowerCase();
+            const fullPath = [...parentTitles, node.title].join(' ').toLowerCase();
             
             // 文件名
             const filename = path.basename(node.filePath).toLowerCase();
@@ -175,15 +122,15 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
      * 创建补全项（与 searchIssues 的显示格式一致）
      */
     private async createCompletionItem(
-        node: FlatNode,
+        node: FlatTreeNode,
         document: vscode.TextDocument,
         hasTrigger: boolean,
         insertMode: string,
-        focusedData: FocusedData
+        focusedData: FocusedData,
+        sortIndex: number
     ): Promise<CompletionItemWithNode> {
-        // 获取节点标题
-        const cachedTitle = await TitleCacheService.getInstance().get(node.filePath);
-        const title = cachedTitle || path.basename(node.filePath, '.md');
+        // 直接使用节点的 title 属性
+        const title = node.title;
         
         // 获取图标（与问题总览一致）
         const focusIndex = focusedData.focusList.indexOf(node.id);
@@ -195,8 +142,9 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         // 一级节点直接显示：test -> test
         let displayTitle: string;
         if (node.parentPath.length > 0) {
-            const parentTitles = await TitleCacheService.getInstance().getMany(
-                node.parentPath.map(n => n.filePath)
+            // 由于 parentPath 中的节点可能没有 title 属性，这里使用文件名
+            const parentTitles = node.parentPath.map(n => 
+                path.basename(n.filePath, '.md')
             );
             // 反序：当前节点在前，父节点在后
             const reversedPath = [title, ...parentTitles.reverse()].join('/');
@@ -221,15 +169,15 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         // 保存节点信息，用于后续操作
         item.node = node;
 
-        // 设置排序键（基于树的顺序，而不是字母顺序）
-        // 使用 treeIndex 生成排序键，确保按照树的原始顺序显示
-        item.sortText = node.treeIndex.toString().padStart(6, '0');
+        // 设置排序键（基于 filteredNodes 的数组顺序）
+        item.sortText = sortIndex.toString().padStart(6, '0');
         
         // 设置过滤文本（包含完整路径，支持通过任意层级路径过滤）
         // 包含：文件名、节点标题、完整路径（正序和反序）
         if (node.parentPath.length > 0) {
-            const parentTitles = await TitleCacheService.getInstance().getMany(
-                node.parentPath.map(n => n.filePath)
+            // 由于 parentPath 中的节点可能没有 title 属性，这里使用文件名
+            const parentTitles = node.parentPath.map(n => 
+                path.basename(n.filePath, '.md')
             );
             // 包含正序路径（学习/node/vue）和反序路径（vue/node/学习），以及各个部分
             const forwardPath = [...parentTitles, title].join('/');
@@ -245,8 +193,9 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         // 设置文档说明
         const docParts = [`**${title}**`];
         if (node.parentPath.length > 0) {
-            const parentTitles = await TitleCacheService.getInstance().getMany(
-                node.parentPath.map(n => n.filePath)
+            // 由于 parentPath 中的节点可能没有 title 属性，这里使用文件名
+            const parentTitles = node.parentPath.map(n => 
+                path.basename(n.filePath, '.md')
             );
             docParts.push(`路径: ${parentTitles.join(' → ')} → ${title}`);
         }
