@@ -5,6 +5,33 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.11]
+
+### ✨ 新功能
+- **feat: 添加 Markdown 文件补全功能 (#108)**
+  - 实现 IssueFileCompletionProvider，支持 `Ctrl+Space` 触发补全
+  - 从 `tree.json` 读取数据，与问题总览树保持一致
+  - 支持路径反序显示（vue/node/学习），最具体节点在前
+  - 显示图标（关注星标 + PARA 分类图标）
+  - 按树的原始顺序排序，使用 `sortText` 控制
+  - 支持多层级路径过滤（可通过任意父节点名称搜索）
+  - 支持多种插入模式（`relativePath`/`markdownLink`/`filename`）
+  - 支持触发前缀（如 `[[` 触发 wiki 风格链接）
+  - 新增配置项：`completion.insertMode` / `completion.maxItems` / `completion.triggers` / `completion.maxFilterLength`
+- **feat(chrome-extension): 添加自动登录账号导出/导入功能 (#106)**
+  - 支持一键导出/导入账号配置，便于备份与迁移
+  - 集成至侧边栏登录工具，操作简便
+- **feat(chrome-extension): 实现账号替换功能，支持单页面应用 (#109)**
+  - 支持在 SPA 场景下无刷新替换账号
+  - 优化登录流程与错误提示
+
+### ♻️ 重构优化
+- **refactor(chrome-extension): 移除 关注视图 中重复显示的 H1 标题 (#107)**
+  - 抽取 `removeFirstH1Title` 辅助函数，移除 Markdown 内容中的第一个 H1
+  - 避免节点头部与内容区域重复标题
+  - 职责更清晰，代码可读性提升
+
+
 ## [0.2.10]
 
 ### ✨ 新功能
