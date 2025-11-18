@@ -98,10 +98,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
             // 直接使用节点的标题属性
             const titleLower = node.title.toLowerCase();
             
-            // 获取父级路径标题（从 parentPath 中直接取 title）
-            const parentTitles = node.parentPath.map(n => 
-                (n as FlatTreeNode).title || path.basename(n.filePath, '.md')
-            );
+            const parentTitles = node.parentPath.map(n => n.title);
             const fullPath = [...parentTitles, node.title].join(' ').toLowerCase();
             
             // 文件名
@@ -142,10 +139,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         // 一级节点直接显示：test -> test
         let displayTitle: string;
         if (node.parentPath.length > 0) {
-            // 由于 parentPath 中的节点可能没有 title 属性，这里使用文件名
-            const parentTitles = node.parentPath.map(n => 
-                path.basename(n.filePath, '.md')
-            );
+            const parentTitles = node.parentPath.map(n => n.title);
             // 反序：当前节点在前，父节点在后
             const reversedPath = [title, ...parentTitles.reverse()].join('/');
             displayTitle = iconPath ? `$(${iconPath.id}) ${reversedPath}` : reversedPath;
@@ -175,10 +169,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         // 设置过滤文本（包含完整路径，支持通过任意层级路径过滤）
         // 包含：文件名、节点标题、完整路径（正序和反序）
         if (node.parentPath.length > 0) {
-            // 由于 parentPath 中的节点可能没有 title 属性，这里使用文件名
-            const parentTitles = node.parentPath.map(n => 
-                path.basename(n.filePath, '.md')
-            );
+            const parentTitles = node.parentPath.map(n => n.title);
             // 包含正序路径（学习/node/vue）和反序路径（vue/node/学习），以及各个部分
             const forwardPath = [...parentTitles, title].join('/');
             const reversedPath = [title, ...parentTitles.reverse()].join('/');
@@ -193,10 +184,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         // 设置文档说明
         const docParts = [`**${title}**`];
         if (node.parentPath.length > 0) {
-            // 由于 parentPath 中的节点可能没有 title 属性，这里使用文件名
-            const parentTitles = node.parentPath.map(n => 
-                path.basename(n.filePath, '.md')
-            );
+            const parentTitles = node.parentPath.map(n => n.title);
             docParts.push(`路径: ${parentTitles.join(' → ')} → ${title}`);
         }
         item.documentation = new vscode.MarkdownString(docParts.join('\n\n'));

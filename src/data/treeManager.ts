@@ -29,12 +29,15 @@ export interface TreeData {
   rootNodes: IssueTreeNode[];
 }
 
+interface FlatIssueTreeNode extends IssueTreeNode {
+  parentPath: IssueTreeNode[];
+}
 /**
  * 扁平化树节点接口，包含父节点路径和标题
  */
-export interface FlatTreeNode extends IssueTreeNode {
-  parentPath: IssueTreeNode[];
-  title: string; // 节点标题（已加载）
+export interface FlatTreeNode extends FlatIssueTreeNode {
+  parentPath: FlatTreeNode[];
+  title: string;
 }
 
 /**
@@ -60,8 +63,8 @@ function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => voi
 function flattenTree(
   nodes: IssueTreeNode[], 
   parentNodes: IssueTreeNode[] = []
-): Omit<FlatTreeNode, 'title'>[] {
-  let result: Omit<FlatTreeNode, 'title'>[] = [];
+): FlatIssueTreeNode[] {
+  let result: FlatIssueTreeNode[] = [];
   for (const node of nodes) {
     result.push({
       ...node,
@@ -86,14 +89,7 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   const tree = await readTree();
   const flatNodes = flattenTree(tree.rootNodes);
   
-  // 收集所有需要的文件路径（包括节点自身和所有父节点）
-  const allPaths = new Set<string>();
-  for (const node of flatNodes) {
-    allPaths.add(node.filePath);
-    for (const parent of node.parentPath) {
-      allPaths.add(parent.filePath);
-    }
-  }
+  const allPaths = new Set<string>(flatNodes.map(node => node.filePath));
   
   // 批量获取所有标题
   const pathArray = Array.from(allPaths);
@@ -103,6 +99,10 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   // 为每个节点添加标题
   return flatNodes.map(node => ({
     ...node,
+    parentPath: node.parentPath.map(parentNode => ({
+      ...parentNode,
+      title: titleMap.get(parentNode.filePath) || path.basename(parentNode.filePath, '.md')
+    }) as FlatTreeNode),
     title: titleMap.get(node.filePath) || path.basename(node.filePath, '.md')
   }));
 }

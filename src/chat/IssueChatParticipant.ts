@@ -2,9 +2,7 @@ import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { createIssueFile } from '../commands/issueFileUtils';
 import { LLMService } from '../llm/LLMService';
-import { addFocus } from '../data/focusedManager';
-import { getAllMarkdownIssues } from '../utils/markdown';
-import { getFlatTree, FlatTreeNode } from '../data/treeManager';
+import { getFlatTree } from '../data/treeManager';
 import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 
@@ -13,7 +11,6 @@ import { Logger } from '../core/utils/Logger';
  */
 const CREATE_COMMANDS = ['新建', 'new', 'create'] as const;
 const SEARCH_COMMANDS = ['搜索', 'search', 'find'] as const;
-const FOCUS_COMMANDS = ['关注', 'focus', 'watch'] as const;
 const HELP_COMMANDS = ['帮助', 'help'] as const;
 
 /**
@@ -34,10 +31,6 @@ const INTENT_CONFIG = {
             'look for', 'search', 'find',
             '帮我找找', '帮我找', '帮我搜索', '帮我查找', '相关的问题', '相关问题', '相关的', '相关', '找找', '搜索', '查找', '找'
         ]
-    },
-    focus: {
-        keywords: ['关注', 'watch', 'follow'],
-        noiseWords: [] // 关注命令暂不需要文本清理
     }
 } as const;
 
@@ -147,8 +140,6 @@ export class IssueChatParticipant {
                 await this.handleCreateCommand(prompt, stream, token);
             } else if (SEARCH_COMMANDS.includes(command as any)) {
                 await this.handleSearchCommand(prompt, stream, token);
-            } else if (FOCUS_COMMANDS.includes(command as any)) {
-                await this.handleFocusCommand(prompt, stream, token);
             } else if (HELP_COMMANDS.includes(command as any)) {
                 this.handleHelpCommand(stream);
             } else {
@@ -224,62 +215,48 @@ export class IssueChatParticipant {
 
         stream.progress('正在搜索问题...');
 
-        // 获取所有问题和树结构
-        const allIssues = await getAllMarkdownIssues();
-        const issueDir = getIssueDir();
-        
         // 扁平化树节点（已包含标题）
-        let flatNodes: FlatTreeNode[] = [];
-        if (issueDir) {
-            try {
-                flatNodes = await getFlatTree();
-            } catch (error) {
-                console.log('[IssueChatParticipant] 读取树结构失败:', error);
-            }
-        }
+        const flatNodes =  await getFlatTree();
         
         // 关键词匹配搜索：标题、文件路径、父节点标题
         const keyword = prompt.toLowerCase();
-        const matchedIssues = allIssues.filter(issue => {
+        const matchedIssueNodes = flatNodes.filter(node => {
             // 匹配标题
-            if (issue.title.toLowerCase().includes(keyword)) {
+            if (node.title.toLowerCase().includes(keyword)) {
                 return true;
             }
             // 匹配文件路径
-            if (issue.filePath.toLowerCase().includes(keyword)) {
+            if (node.filePath.toLowerCase().includes(keyword)) {
                 return true;
             }
             // 匹配父节点标题（分组标题）
-            const flatNode = flatNodes.find(n => 
-                issueDir && path.join(issueDir, n.filePath) === issue.filePath
-            );
-            if (flatNode && flatNode.parentPath.length > 0) {
-                // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
-                const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
-                const parentTitle = path.basename(parentNode.filePath, '.md');
-                if (parentTitle.toLowerCase().includes(keyword)) {
-                    return true;
-                }
+            if (node.parentPath.some(parent => parent.title.toLowerCase().includes(keyword))) {
+                return true;
             }
             return false;
         });
 
-        if (matchedIssues.length === 0) {
+        if (matchedIssueNodes.length === 0) {
             stream.markdown(`🔍 没有找到包含 "${prompt}" 的问题\n`);
             return;
         }
 
-        stream.markdown(`🔍 找到 **${matchedIssues.length}** 个相关问题:\n\n`);
+        stream.markdown(`🔍 找到 **${matchedIssueNodes.length}** 个相关问题:\n\n`);
 
         // 显示前10个结果
-        const displayIssues = matchedIssues.slice(0, 10);
+        const displayIssues = matchedIssueNodes.slice(0, 10);
         displayIssues.forEach((issue, index) => {
             stream.markdown(`${index + 1}. **${issue.title}**\n`);
-            stream.markdown(`   📁 \`${path.basename(issue.filePath)}\`\n\n`);
+            
+            // 显示父节点信息
+            if (issue.parentPath.length > 0) {
+            const parentTitles = issue.parentPath.map(parent => parent.title).join(' > ');
+            stream.markdown(`${parentTitles}\n`);
+            }
         });
 
-        if (matchedIssues.length > 10) {
-            stream.markdown(`\n_...还有 ${matchedIssues.length - 10} 个结果_\n\n`);
+        if (matchedIssueNodes.length > 10) {
+            stream.markdown(`\n_...还有 ${matchedIssueNodes.length - 10} 个结果_\n\n`);
         }
 
         // 添加搜索按钮
@@ -289,139 +266,6 @@ export class IssueChatParticipant {
         });
     }
 
-    /**
-     * 处理添加关注命令
-     */
-    private async handleFocusCommand(
-        prompt: string,
-        stream: vscode.ChatResponseStream,
-        token: vscode.CancellationToken
-    ): Promise<void> {
-        if (!prompt) {
-            stream.markdown('❓ 请提供问题文件名或 ID。例如: `/关注 20241118-123456-789.md`\n');
-            return;
-        }
-
-        stream.progress('正在搜索匹配的问题...');
-
-        // 搜索所有匹配的问题
-        const allIssues = await getAllMarkdownIssues();
-        const issueDir = getIssueDir();
-        
-        // 扁平化树节点（已包含标题）
-        let flatNodes: FlatTreeNode[] = [];
-        if (issueDir) {
-            try {
-                flatNodes = await getFlatTree();
-            } catch (error) {
-                console.log('[IssueChatParticipant] 读取树结构失败:', error);
-            }
-        }
-        
-        const matchedIssues = allIssues.filter(issue => {
-            // 匹配文件名
-            if (path.basename(issue.filePath).includes(prompt)) {
-                return true;
-            }
-            // 匹配标题
-            if (issue.title.includes(prompt)) {
-                return true;
-            }
-            // 匹配父节点标题（分组标题）
-            const flatNode = flatNodes.find(n => 
-                issueDir && path.join(issueDir, n.filePath) === issue.filePath
-            );
-            if (flatNode && flatNode.parentPath.length > 0) {
-                const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
-                // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
-                const parentTitle = path.basename(parentNode.filePath, '.md');
-                if (parentTitle.includes(prompt)) {
-                    return true;
-                }
-            }
-            return false;
-        });
-
-        // 没有找到匹配项
-        if (matchedIssues.length === 0) {
-            stream.markdown(`❌ 未找到包含 "${prompt}" 的问题\n\n`);
-            stream.markdown('💡 提示: 可以使用 `/搜索` 命令查找问题\n');
-            return;
-        }
-
-        // 找到多个匹配项 - 需要用户确认
-        if (matchedIssues.length > 1) {
-            stream.markdown(`🔍 找到 **${matchedIssues.length}** 个匹配的问题:\n\n`);
-            
-            matchedIssues.slice(0, 10).forEach((issue, index) => {
-                const flatNode = flatNodes.find(n => 
-                    issueDir && path.join(issueDir, n.filePath) === issue.filePath
-                );
-                
-                stream.markdown(`${index + 1}. **${issue.title}**\n`);
-                stream.markdown(`   📁 \`${path.basename(issue.filePath)}\`\n`);
-                
-                if (flatNode && flatNode.parentPath.length > 0) {
-                    const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
-                    // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
-                    const parentTitle = path.basename(parentNode.filePath, '.md');
-                    stream.markdown(`   📂 分组: ${parentTitle}\n`);
-                }
-                stream.markdown('\n');
-            });
-
-            if (matchedIssues.length > 10) {
-                stream.markdown(`\n_...还有 ${matchedIssues.length - 10} 个结果_\n\n`);
-            }
-
-            stream.markdown('⚠️ 请使用更精确的文件名或标题重试，例如:\n');
-            stream.markdown(`- \`/关注 ${path.basename(matchedIssues[0].filePath)}\`\n`);
-            return;
-        }
-
-        // 找到唯一匹配项 - 直接添加关注
-        const matchedIssue = matchedIssues[0];
-
-        try {
-            stream.progress('正在添加到关注列表...');
-
-            // 添加到关注列表
-            const issueDir = getIssueDir();
-            if (!issueDir) {
-                throw new Error('问题目录未配置');
-            }
-
-            const issueId = path.relative(issueDir, matchedIssue.filePath);
-            await addFocus([issueId]);
-
-            stream.markdown(`✅ 已将 **${matchedIssue.title}** 添加到关注列表\n\n`);
-            stream.markdown(`📁 \`${path.basename(matchedIssue.filePath)}\`\n`);
-            
-            // 显示分组信息
-            const flatNode = flatNodes.find(n => 
-                path.join(issueDir, n.filePath) === matchedIssue.filePath
-            );
-            if (flatNode && flatNode.parentPath.length > 0) {
-                const parentNode = flatNode.parentPath[flatNode.parentPath.length - 1];
-                // 由于 parentPath 中的节点可能没有 title 属性，这里暂时使用文件名
-                const parentTitle = path.basename(parentNode.filePath, '.md');
-                stream.markdown(`📂 分组: ${parentTitle}\n`);
-            }
-            stream.markdown('\n');
-            
-            // 刷新视图
-            await vscode.commands.executeCommand('issueManager.refreshAllViews');
-
-            // 添加操作按钮
-            stream.button({
-                command: 'issueManager.openFocusedView',
-                title: '👀 查看关注列表'
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            stream.markdown(`❌ 添加关注失败: ${errorMessage}\n`);
-        }
-    }
 
     /**
      * 处理帮助命令
@@ -442,12 +286,6 @@ export class IssueChatParticipant {
         stream.markdown('**示例:**\n');
         stream.markdown('- `@issueManager /搜索 登录`\n');
         stream.markdown('- `@issueManager /搜索 性能`\n\n');
-
-        stream.markdown('### `/关注` - 添加到关注列表\n');
-        stream.markdown('将问题添加到关注列表。\n\n');
-        stream.markdown('**示例:**\n');
-        stream.markdown('- `@issueManager /关注 20241118-123456-789.md`\n');
-        stream.markdown('- `@issueManager /关注 修复登录bug`\n\n');
 
         stream.markdown('### `/帮助` - 显示此帮助\n\n');
 
@@ -482,9 +320,6 @@ export class IssueChatParticipant {
             return;
         }
 
-        // 简单的意图识别
-        const lowerPrompt = prompt.toLowerCase();
-
         // 检测创建意图
         const createTitle = detectIntent(prompt, INTENT_CONFIG.create.keywords, INTENT_CONFIG.create.noiseWords);
         if (createTitle) {
@@ -498,13 +333,6 @@ export class IssueChatParticipant {
         if (searchKeyword) {
             stream.markdown(`💡 检测到搜索意图...\n\n`);
             await this.handleSearchCommand(searchKeyword, stream, token);
-            return;
-        }
-
-        // 检测关注意图
-        if (INTENT_CONFIG.focus.keywords.some(keyword => lowerPrompt.includes(keyword))) {
-            stream.markdown(`💡 检测到关注意图...\n\n`);
-            stream.markdown('请使用命令: `/关注 [问题名称或文件名]`\n\n');
             return;
         }
 
