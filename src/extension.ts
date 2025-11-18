@@ -19,10 +19,15 @@ export function activate(context: vscode.ExtensionContext) {
 	
 	// 注册 Issue 文件补全提供器
 	const completionProvider = new IssueFileCompletionProvider(context);
+	// 从配置读取触发器并提取首字符，避免硬编码
+	const completionConfig = vscode.workspace.getConfiguration('issueManager.completion');
+	const triggers = completionConfig.get<string[]>('triggers', ['[[']);
+	// 提取每个触发器的首字符并去重，过滤掉空字符串
+	const triggerCharacters = [...new Set(triggers.map(t => (t || '').charAt(0)).filter(c => !!c))];
 	const completionDisposable = vscode.languages.registerCompletionItemProvider(
 		'markdown',
 		completionProvider,
-		'[' // 触发字符（可选）
+		...triggerCharacters
 	);
 	context.subscriptions.push(completionDisposable);
 	
