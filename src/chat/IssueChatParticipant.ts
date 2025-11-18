@@ -136,11 +136,11 @@ export class IssueChatParticipant {
 
         try {
             // 根据命令路由到不同的处理器
-            if (CREATE_COMMANDS.includes(command as any)) {
+            if ((CREATE_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleCreateCommand(prompt, stream, token);
-            } else if (SEARCH_COMMANDS.includes(command as any)) {
+            } else if ((SEARCH_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleSearchCommand(prompt, stream, token);
-            } else if (HELP_COMMANDS.includes(command as any)) {
+            } else if ((HELP_COMMANDS as readonly string[]).includes(command)) {
                 this.handleHelpCommand(stream);
             } else {
                 // 无命令时,尝试智能理解用户意图
@@ -179,7 +179,7 @@ export class IssueChatParticipant {
             }
         } catch (error) {
             // LLM 失败时使用原始输入
-            console.log('[IssueChatParticipant] LLM 生成标题失败,使用原始输入', error);
+            Logger.getInstance().warn('[IssueChatParticipant] LLM 生成标题失败,使用原始输入', error);
         }
 
         // 创建问题文件

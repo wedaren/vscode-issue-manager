@@ -96,15 +96,26 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   const titles = await TitleCacheService.getInstance().getMany(pathArray);
   const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
   
-  // 为每个节点添加标题
-  return flatNodes.map(node => ({
-    ...node,
-    parentPath: node.parentPath.map(parentNode => ({
-      ...parentNode,
-      title: titleMap.get(parentNode.filePath) || path.basename(parentNode.filePath, '.md')
-    }) as FlatTreeNode),
-    title: titleMap.get(node.filePath) || path.basename(node.filePath, '.md')
-  }));
+  const flatTreeNodeMap = new Map<string, FlatTreeNode>();  
+
+  // 第一步：创建所有 FlatTreeNode，但不填充 parentPath  
+  flatNodes.forEach(node => {  
+    const treeNode: FlatTreeNode = {  
+      ...node,  
+      title: titleMap.get(node.filePath) || path.basename(node.filePath, '.md'),  
+      parentPath: [], // 临时占位  
+    };  
+    flatTreeNodeMap.set(node.id, treeNode);  
+  });  
+
+  // 第二步：填充 parentPath  
+  flatNodes.forEach(node => {  
+    const treeNode = flatTreeNodeMap.get(node.id)!;  
+    treeNode.parentPath = node.parentPath.map(p => flatTreeNodeMap.get(p.id)!);  
+  });  
+
+  // 保持原始顺序  
+  return flatNodes.map(node => flatTreeNodeMap.get(node.id)!);  
 }
 
 /**
