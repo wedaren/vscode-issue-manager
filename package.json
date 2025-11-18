@@ -978,6 +978,45 @@
           "type": "number",
           "default": 37892,
           "description": "Chrome 集成 WebSocket 服务监听端口(ws://127.0.0.1:端口/ws)。修改后需要重新加载窗口以生效。"
+        },
+        "issueManager.completion.insertMode": {
+          "type": "string",
+          "default": "markdownLink",
+          "enum": [
+            "relativePath",
+            "markdownLink",
+            "filename"
+          ],
+          "enumDescriptions": [
+            "插入相对于当前文件的路径",
+            "插入 Markdown 链接格式 [标题](路径)",
+            "仅插入文件名"
+          ],
+          "description": "在补全时插入的文本格式。"
+        },
+        "issueManager.completion.maxItems": {
+          "type": "number",
+          "default": 200,
+          "minimum": 10,
+          "maximum": 1000,
+          "description": "补全提示列表中显示的最大文件数量。"
+        },
+        "issueManager.completion.triggers": {
+          "type": "array",
+          "default": [
+            "[["
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "触发补全的前缀字符串列表。当输入这些前缀时，会自动触发文件补全。"
+        },
+        "issueManager.completion.maxFilterLength": {
+          "type": "number",
+          "default": 200,
+          "minimum": 10,
+          "maximum": 500,
+          "description": "过滤关键字的最大长度限制（字符数）。"
         }
       }
     },
