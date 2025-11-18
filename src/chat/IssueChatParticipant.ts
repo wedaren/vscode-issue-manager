@@ -5,6 +5,81 @@ import { LLMService } from '../llm/LLMService';
 import { addFocus } from '../data/focusedManager';
 import { getAllMarkdownIssues } from '../utils/markdown';
 import * as path from 'path';
+import { Logger } from '../core/utils/Logger';
+
+/**
+ * 命令别名常量定义
+ */
+const CREATE_COMMANDS = ['新建', 'new', 'create'] as const;
+const SEARCH_COMMANDS = ['搜索', 'search', 'find'] as const;
+const FOCUS_COMMANDS = ['关注', 'focus', 'watch'] as const;
+const HELP_COMMANDS = ['帮助', 'help'] as const;
+
+/**
+ * 意图配置 - 定义每种意图的检测关键词和噪音词
+ * 按从长到短排序，确保优先匹配较长的短语
+ */
+const INTENT_CONFIG = {
+    create: {
+        keywords: ['创建', '新建', 'create', 'new'],
+        noiseWords: [
+            'look for', 'document', 'create', 'issue', 'note', 'new',
+            '帮我创建', '帮我新建', '一个关于', '关于', '问题', '笔记', '文档', '创建', '新建'
+        ]
+    },
+    search: {
+        keywords: ['搜索', '查找', '找', 'search', 'find'],
+        noiseWords: [
+            'look for', 'search', 'find',
+            '帮我找找', '帮我找', '帮我搜索', '帮我查找', '相关的问题', '相关问题', '相关的', '相关', '找找', '搜索', '查找', '找'
+        ]
+    },
+    focus: {
+        keywords: ['关注', 'watch', 'follow'],
+        noiseWords: [] // 关注命令暂不需要文本清理
+    }
+} as const;
+
+/**
+ * 从文本中移除噪音词，提取核心内容
+ * @param text 原始文本
+ * @param noiseWords 要移除的噪音词数组（应按从长到短排序）
+ * @returns 清理后的文本
+ */
+function cleanText(text: string, noiseWords: string[]): string {
+    let result = text;
+    
+    // 按从长到短的顺序替换，避免部分匹配问题
+    for (const noise of noiseWords) {
+        // 转义正则特殊字符，避免注入问题
+        const escaped = noise.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = new RegExp(escaped, 'gi');
+        result = result.replace(pattern, ' ');
+    }
+    
+    // 清理多余空格
+    return result.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 检测用户意图并提取核心内容
+ * @param prompt 用户输入的原始文本
+ * @param intentKeywords 意图检测关键词数组
+ * @param noiseWords 要移除的噪音词数组
+ * @returns 如果检测到意图，返回清理后的文本；否则返回 null
+ */
+function detectIntent(prompt: string, intentKeywords: readonly string[], noiseWords: readonly string[]): string | null {
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // 检查是否包含任何意图关键词
+    if (!intentKeywords.some(keyword => lowerPrompt.includes(keyword))) {
+        return null;
+    }
+    
+    // 提取并清理文本
+    const cleaned = cleanText(prompt, noiseWords as string[]);
+    return cleaned || null;
+}
 
 /**
  * Issue Manager Chat Participant
@@ -21,7 +96,7 @@ export class IssueChatParticipant {
     public register(context: vscode.ExtensionContext): void {
         // 检查是否支持 Chat API
         if (!vscode.chat || !vscode.chat.createChatParticipant) {
-            console.log('[IssueChatParticipant] Chat API 不可用');
+            Logger.getInstance().warn('[IssueChatParticipant] Chat API 不可用');
             return;
         }
 
@@ -37,7 +112,7 @@ export class IssueChatParticipant {
         );
 
         context.subscriptions.push(this.participant);
-        console.log('[IssueChatParticipant] Chat Participant 已注册');
+        Logger.getInstance().info('[IssueChatParticipant] Chat Participant 已注册');
     }
 
     /**
@@ -67,34 +142,17 @@ export class IssueChatParticipant {
 
         try {
             // 根据命令路由到不同的处理器
-            switch (command) {
-                case '新建':
-                case 'new':
-                case 'create':
-                    await this.handleCreateCommand(prompt, stream, token);
-                    break;
-
-                case '搜索':
-                case 'search':
-                case 'find':
-                    await this.handleSearchCommand(prompt, stream, token);
-                    break;
-
-                case '关注':
-                case 'focus':
-                case 'watch':
-                    await this.handleFocusCommand(prompt, stream, token);
-                    break;
-
-                case '帮助':
-                case 'help':
-                    this.handleHelpCommand(stream);
-                    break;
-
-                default:
-                    // 无命令时,尝试智能理解用户意图
-                    await this.handleDefaultCommand(prompt, stream, token);
-                    break;
+            if (CREATE_COMMANDS.includes(command as any)) {
+                await this.handleCreateCommand(prompt, stream, token);
+            } else if (SEARCH_COMMANDS.includes(command as any)) {
+                await this.handleSearchCommand(prompt, stream, token);
+            } else if (FOCUS_COMMANDS.includes(command as any)) {
+                await this.handleFocusCommand(prompt, stream, token);
+            } else if (HELP_COMMANDS.includes(command as any)) {
+                this.handleHelpCommand(stream);
+            } else {
+                // 无命令时,尝试智能理解用户意图
+                await this.handleDefaultCommand(prompt, stream, token);
             }
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -138,13 +196,6 @@ export class IssueChatParticipant {
         if (uri) {
             const filename = path.basename(uri.fsPath);
             stream.markdown(`✅ 已创建问题: \`${filename}\`\n\n`);
-            
-            // 添加操作按钮
-            stream.button({
-                command: 'vscode.open',
-                arguments: [uri],
-                title: '📝 打开问题'
-            });
             
             // 创建一个包含 resourceUri 的对象,符合 focusIssueFromIssueFile 命令的要求
             stream.button({
@@ -323,42 +374,23 @@ export class IssueChatParticipant {
         const lowerPrompt = prompt.toLowerCase();
 
         // 检测创建意图
-        if (lowerPrompt.includes('创建') || lowerPrompt.includes('新建') || 
-            lowerPrompt.includes('create') || lowerPrompt.includes('new')) {
-            // 提取标题(移除意图关键词)
-            const title = prompt
-                .replace(/创建|新建|问题|笔记|文档/gi, '')
-                .replace(/create|new|issue|note/gi, '')
-                .trim();
-            
-            if (title) {
-                stream.markdown(`💡 检测到创建意图...\n\n`);
-                await this.handleCreateCommand(title, stream, token);
-                return;
-            }
+        const createTitle = detectIntent(prompt, INTENT_CONFIG.create.keywords, INTENT_CONFIG.create.noiseWords);
+        if (createTitle) {
+            stream.markdown(`💡 检测到创建意图...\n\n`);
+            await this.handleCreateCommand(createTitle, stream, token);
+            return;
         }
 
         // 检测搜索意图
-        if (lowerPrompt.includes('搜索') || lowerPrompt.includes('查找') || 
-            lowerPrompt.includes('找') || lowerPrompt.includes('search') || 
-            lowerPrompt.includes('find')) {
-            // 提取关键词
-            const keyword = prompt
-                .replace(/搜索|查找|找找|帮我找/gi, '')
-                .replace(/相关的?问题/gi, '')
-                .replace(/search|find/gi, '')
-                .trim();
-            
-            if (keyword) {
-                stream.markdown(`💡 检测到搜索意图...\n\n`);
-                await this.handleSearchCommand(keyword, stream, token);
-                return;
-            }
+        const searchKeyword = detectIntent(prompt, INTENT_CONFIG.search.keywords, INTENT_CONFIG.search.noiseWords);
+        if (searchKeyword) {
+            stream.markdown(`💡 检测到搜索意图...\n\n`);
+            await this.handleSearchCommand(searchKeyword, stream, token);
+            return;
         }
 
         // 检测关注意图
-        if (lowerPrompt.includes('关注') || lowerPrompt.includes('watch') || 
-            lowerPrompt.includes('follow')) {
+        if (INTENT_CONFIG.focus.keywords.some(keyword => lowerPrompt.includes(keyword))) {
             stream.markdown(`💡 检测到关注意图...\n\n`);
             stream.markdown('请使用命令: `/关注 [问题名称或文件名]`\n\n');
             return;

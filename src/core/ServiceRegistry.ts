@@ -148,13 +148,15 @@ export class ServiceRegistry {
     /**
      * 注册Chat Participant
      * 
-     * 如果VS Code支持Chat API，注册问题管理器聊天参与者，
+     * 如果VS Code支持Chat API,注册问题管理器聊天参与者,
      * 允许用户通过 @issueManager 在聊天中管理问题。
      */
     private registerChatParticipant(): void {
         try {
             const chatParticipant = new IssueChatParticipant();
             chatParticipant.register(this.context);
+            // 将实例添加到 subscriptions,确保在扩展停用时调用 dispose
+            this.context.subscriptions.push(chatParticipant);
             this.logger.info('      ✓ Chat Participant已注册');
         } catch (error) {
             // IssueChatParticipant.register 内部已经做了 API 检查
