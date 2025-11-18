@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, IssueTreeNode } from '../data/treeManager';
+import { readTree, IssueTreeNode, FocusedData } from '../data/treeManager';
 import { TitleCacheService } from '../services/TitleCacheService';
 import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completionUtils';
 import { getIssueDir } from '../config';
@@ -85,8 +85,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
             }
             
             // 只获取一次配置和聚焦数据，避免在循环中重复读取
-            const completionConfig = vscode.workspace.getConfiguration('issueManager.completion');
-            const insertMode = completionConfig.get<string>('insertMode', 'relativePath');
+            const insertMode = config.get<string>('insertMode', 'relativePath');
             const focusedData = await readFocused();
             
             // 转换为补全项
@@ -180,7 +179,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         document: vscode.TextDocument,
         hasTrigger: boolean,
         insertMode: string,
-        focusedData: import('../data/treeManager').FocusedData
+        focusedData: FocusedData
     ): Promise<CompletionItemWithNode> {
         // 获取节点标题
         const cachedTitle = await TitleCacheService.getInstance().get(node.filePath);
