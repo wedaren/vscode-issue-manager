@@ -212,6 +212,52 @@ export class GitSyncService implements vscode.Disposable {
     }
 
     /**
+     * 触发同步操作（用于程序化调用）
+     * 
+     * 当执行某些重要操作（如新建问题、新增关注）时，可以调用此方法触发同步。
+     * 此方法会：
+     * 1. 检查自动同步是否启用
+     * 2. 如果启用，使用防抖机制触发同步（避免频繁同步）
+     * 3. 如果未启用，静默返回（不会显示错误或警告）
+     * 
+     * 与 performManualSync() 的区别：
+     * - 此方法是静默的，不会显示用户通知
+     * - 使用防抖机制，与文件监听器的同步策略一致
+     * - 只在自动同步启用时才执行
+     * 
+     * @example
+     * ```typescript
+     * // 在创建问题后触发同步
+     * const syncService = GitSyncService.getInstance();
+     * syncService.triggerSync();
+     * ```
+     */
+    public triggerSync(): void {
+        // 仅在自动同步启用时触发
+        if (!isAutoSyncEnabled()) {
+            return;
+        }
+
+        const issueDir = getIssueDir();
+        if (!issueDir || !GitOperations.isGitRepository(issueDir)) {
+            return;
+        }
+
+        if (this.isConflictMode) {
+            return;
+        }
+        
+        // 更新状态
+        this.setStatus({ 
+            status: SyncStatus.HasLocalChanges, 
+            message: '有本地更改待同步' 
+        });
+
+        // 使用防抖机制触发同步，避免频繁同步
+        this.debouncedAutoCommitAndPush();
+    }
+
+    /**
      * 清理文件监听器
      */
     private cleanupFileWatcher(): void {

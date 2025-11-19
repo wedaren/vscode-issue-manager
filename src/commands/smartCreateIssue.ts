@@ -4,6 +4,7 @@ import { LLMService } from '../llm/LLMService';
 import { createIssueFile, addIssueToTree } from './issueFileUtils';
 import { readQuickPickData, writeQuickPickData, QuickPickPersistedData } from '../data/treeManager';
 import { debounce } from '../utils/debounce';
+import { GitSyncService } from '../services/git-sync';
 import * as path from 'path';
 
 // 在模块作用域内维护缓存和历史记录
@@ -274,6 +275,7 @@ async function handleBatchSelection(
     isAddToFocused: boolean
 ): Promise<vscode.Uri[]> {
     let uris: vscode.Uri[] = [];
+    let hasCreatedIssue = false;
 
     // 使用扩展后的 HistoryQuickPickItem，直接根据 action 字段判断操作类型
     for (const item of selectedItems as readonly HistoryQuickPickItem[]) {
@@ -282,6 +284,7 @@ async function handleBatchSelection(
             const uri = await createIssueFile(item.payload);
             if (uri) {
                 uris.push(uri);
+                hasCreatedIssue = true;
             }
         } else if (item.action === 'open' && item.payload) {
             // 打开已有笔记
@@ -311,6 +314,12 @@ async function handleBatchSelection(
     if (uris.length > 0 && isAddToTree) {
         await addIssueToTree(uris, parentId, isAddToFocused);
     }
+    
+    // 如果创建了新问题，触发同步
+    if (hasCreatedIssue) {
+        GitSyncService.getInstance().triggerSync();
+    }
+    
     return uris;
 }
 
@@ -331,6 +340,8 @@ async function handleDefaultCreation(
         }
         if (uri) {
             await vscode.window.showTextDocument(uri);
+            // 触发同步
+            GitSyncService.getInstance().triggerSync();
         }
         return uri;
     }
