@@ -548,6 +548,44 @@ export class GitSyncService implements vscode.Disposable {
     }
 
     /**
+     * 触发立即同步
+     * 
+     * 在创建新问题或添加关注时立即触发同步，不受防抖限制。
+     * 此方法会：
+     * 1. 检查自动同步是否启用
+     * 2. 检查是否处于冲突模式
+     * 3. 取消待处理的防抖调用
+     * 4. 立即执行同步操作
+     * 
+     * 这个方法是公开的，可以在创建问题或添加关注后调用。
+     * 
+     * @returns Promise，在同步完成后解决
+     * 
+     * @example
+     * ```typescript
+     * const syncService = GitSyncService.getInstance();
+     * await syncService.triggerImmediateSync();
+     * ```
+     */
+    public async triggerImmediateSync(): Promise<void> {
+        // 只在自动同步启用且不在冲突模式时执行
+        if (!isAutoSyncEnabled() || this.isConflictMode) {
+            return;
+        }
+
+        const issueDir = getIssueDir();
+        if (!issueDir || !GitOperations.isGitRepository(issueDir)) {
+            return;
+        }
+
+        // 取消待处理的防抖调用，避免重复同步
+        this.debouncedAutoCommitAndPush.cancel();
+
+        // 立即执行同步
+        await this.performAutoCommitAndPush();
+    }
+
+    /**
      * 执行VS Code关闭前的最终同步
      * 
      * 在扩展停用前尝试同步任何未保存的本地更改，确保工作不会丢失。

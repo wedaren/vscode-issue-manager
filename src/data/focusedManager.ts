@@ -16,6 +16,7 @@ import { FocusedData } from './treeManager';
 import { getCategoryIcon, ParaCategory } from './paraManager';
 import { ChromeIntegrationServer } from '../integration/ChromeIntegrationServer';
 import { Logger } from '../core/utils/Logger';
+import { GitSyncService } from '../services/git-sync/GitSyncService';
 
 const FOCUSED_VERSION = '1.0.0';
 const FOCUSED_FILE = 'focused.json';
@@ -141,6 +142,10 @@ export async function addFocus(nodeIds: string[]): Promise<void> {
   // 只有在有变更时才写入文件，避免无效 I/O
   if (hasChanges) {
     await writeFocused(data);
+    
+    // 添加关注后立即触发同步
+    const syncService = GitSyncService.getInstance();
+    void syncService.triggerImmediateSync();
   }
 }
 

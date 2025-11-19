@@ -4,6 +4,7 @@ import { getIssueDir } from '../config';
 import { generateFileName } from '../utils/fileUtils';
 import { readTree, addNode, writeTree } from '../data/treeManager';
 import { addFocus } from '../data/focusedManager';
+import { GitSyncService } from '../services/git-sync/GitSyncService';
 
 /**
  * 仅负责在磁盘上创建新的问题文件。
@@ -26,6 +27,10 @@ export async function createIssueFile(title: string, content?: string): Promise<
 
 	await vscode.workspace.fs.writeFile(filePath, contentBytes);
 	await vscode.window.showTextDocument(filePath);
+
+	// 新建问题后立即触发同步
+	const syncService = GitSyncService.getInstance();
+	void syncService.triggerImmediateSync();
 
 	return filePath;
 }
