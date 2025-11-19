@@ -34,6 +34,7 @@ import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
+import { selectLLMModel } from '../commands/llmCommands';
 
 /**
  * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
@@ -180,6 +181,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 8. 注册 PARA 视图命令
             this.registerParaCommands();
+
+            // 9. 注册 LLM 相关命令
+            this.registerLLMCommands();
 
             this.logger.info('✅ 所有命令注册完成');
 
@@ -672,5 +676,20 @@ export class CommandRegistry extends BaseCommandRegistry {
             this.logger.error('移动 PARA 问题失败:', error);
             vscode.window.showErrorMessage(`移动失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+    }
+
+    /**
+     * 注册 LLM 相关命令
+     */
+    private registerLLMCommands(): void {
+        this.logger.info('🤖 注册 LLM 相关命令...');
+
+        this.registerCommand(
+            'issueManager.selectLLMModel',
+            async () => {
+                await selectLLMModel();
+            },
+            '选择 LLM 模型'
+        );
     }
 }

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
+import { TitleCacheService } from '../services/TitleCacheService';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -29,6 +30,14 @@ export interface TreeData {
 }
 
 /**
+ * 扁平化树节点接口，包含父节点路径和标题
+ */
+export interface FlatTreeNode extends IssueTreeNode {
+  parentPath: FlatTreeNode[];
+  title: string;
+}
+
+/**
  * 遍历树并对每个节点执行回调。
  * @param nodes 节点数组。
  * @param callback 回调函数。
@@ -40,6 +49,49 @@ function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => voi
       walkTree(node.children, callback);
     }
   }
+}
+
+/**
+ * 获取扁平化的树结构，并自动加载所有节点的标题。
+ * 这是一个便捷函数，自动读取树、扁平化并批量加载标题。
+ * @returns 扁平化后的节点数组，每个节点包含 title 属性
+ */
+export async function getFlatTree(): Promise<FlatTreeNode[]> {
+  const tree = await readTree();
+  
+  // 1. 收集所有路径以批量获取标题
+  const paths = new Set<string>();
+  walkTree(tree.rootNodes, node => paths.add(node.filePath));
+  
+  // 2. 批量获取标题
+  const pathArray = Array.from(paths);
+  const titles = await TitleCacheService.getInstance().getMany(pathArray);
+  const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
+  
+  // 3. 递归构建扁平化节点
+  const result: FlatTreeNode[] = [];
+  
+  function buildFlatNodes(nodes: IssueTreeNode[], parents: FlatTreeNode[]) {
+    for (const node of nodes) {
+      const title = titleMap.get(node.filePath) || path.basename(node.filePath, '.md');
+      
+      // 创建 FlatTreeNode，parentPath 指向已创建的父节点（即 FlatTreeNode 类型）
+      const flatNode: FlatTreeNode = {
+        ...node,
+        title,
+        parentPath: [...parents]
+      };
+      
+      result.push(flatNode);
+      
+      if (node.children && node.children.length > 0) {
+        buildFlatNodes(node.children, [...parents, flatNode]);
+      }
+    }
+  }
+  
+  buildFlatNodes(tree.rootNodes, []);
+  return result;
 }
 
 /**

@@ -1,5 +1,5 @@
 ---
-mode: 'agent'
+agent: 'agent'
 ---
 
 // 目标：审查暂存区的代码变更，提供反馈，并生成符合规范的 commit message。

@@ -1,9 +1,6 @@
 import * as vscode from 'vscode';
 
-import { readTree, IssueTreeNode } from '../data/treeManager';
-import { TitleCacheService } from '../services/TitleCacheService';
-import * as path from 'path';
-
+import { getFlatTree, FlatTreeNode } from '../data/treeManager';
 /**
  * 关注问题视图与问题总览视图搜索命令实现
  */
@@ -17,29 +14,11 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
         quickPick.matchOnDetail = false;
         quickPick.show();
 
-        const treeData =  await readTree();
-
-        // 递归扁平化 tree.json 节点
-        interface FlatNode extends IssueTreeNode {
-            parentPath: IssueTreeNode[];
-        };
-        function flatten(nodes: IssueTreeNode[], parentNodes: IssueTreeNode[] = []): FlatNode[] {
-            let result: FlatNode[] = [];
-            for (const node of nodes) {
-                result.push({
-                    ...node,
-                    parentPath: [...parentNodes]
-                });
-                if (node.children && node.children.length > 0) {
-                    result = result.concat(flatten(node.children, [...parentNodes, node]));
-                }
-            }
-            return result;
-        }
-        const flatNodes = flatten(treeData.rootNodes || []);
+        // 获取扁平化的树结构
+        const flatNodes = await getFlatTree();
 
         // 获取每个节点的 mtime
-        async function getMtime(node: FlatNode): Promise<number> {
+        async function getMtime(node: FlatTreeNode): Promise<number> {
             try {
                 const uri = node.resourceUri || vscode.Uri.file(node.filePath);
                 const stat = await vscode.workspace.fs.stat(uri);
@@ -62,12 +41,11 @@ export function registerSearchIssuesCommand(context: vscode.ExtensionContext) {
         type QuickPickItemWithId = vscode.QuickPickItem & { id: string };
 
         const items = await Promise.all(nodesWithMtime.map(async node => {
-            const cachedTitle = await TitleCacheService.getInstance().get(node.filePath);
-            const title = cachedTitle || path.basename(node.filePath, '.md');
+            const title = node.title;
             let description = '';
             // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
             if (node.parentPath.length > 0) {
-                const parentTitles = await TitleCacheService.getInstance().getMany(node.parentPath.map(n => n.filePath));
+                const parentTitles = node.parentPath.map(n => n.title);
                 description = ['', ...parentTitles].join(' / ');
             }
             return {
