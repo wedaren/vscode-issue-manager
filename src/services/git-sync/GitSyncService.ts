@@ -174,7 +174,7 @@ export class GitSyncService implements vscode.Disposable {
         const fileWatcher = UnifiedFileWatcher.getInstance();
 
         const onFileChange = () => {
-            this.handleFileChange();
+            this.triggerSync();
         };
 
         // 订阅 Markdown 文件变更（文件监听资源，setupAutoSync 时重建）
@@ -186,29 +186,6 @@ export class GitSyncService implements vscode.Disposable {
         this.fileWatcherDisposables.push(
             fileWatcher.onIssueManagerChange(onFileChange)
         );
-    }
-
-    /**
-     * 处理文件变更事件
-     * 
-     * 当文件发生变化时：
-     * 1. 检查是否处于冲突模式，如果是则忽略
-     * 2. 更新状态为"有本地更改待同步"
-     * 3. 触发防抖的自动同步操作
-     */
-    private handleFileChange(): void {
-        if (this.isConflictMode) {
-            return;
-        }
-        
-        // 立即更新状态，提供即时反馈
-        this.setStatus({ 
-            status: SyncStatus.HasLocalChanges, 
-            message: '有本地更改待同步' 
-        });
-
-        // 触发防抖的同步操作
-        this.debouncedAutoCommitAndPush();
     }
 
     /**
