@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { getAllMarkdownIssues } from '../utils/markdown';
+import { Logger } from '../core/utils/Logger';
 
 export class LLMService {
     private static async selectModel(options?: { signal?: AbortSignal }): Promise<vscode.LanguageModelChat | undefined> {
@@ -97,7 +98,7 @@ ${JSON.stringify(allIssues, null, 2)}
             }
             const fullResponse = fragments.join('');
 
-            console.log('LLM Raw Response:', fullResponse); // 打印原始响应
+            Logger.getInstance().info('LLM Raw Response:', fullResponse); // 打印原始响应
 
             // 尝试从响应中提取 JSON 部分
             const jsonMatch = fullResponse.match(/```json\n([\s\S]*?)\n```/);
@@ -127,7 +128,7 @@ ${JSON.stringify(allIssues, null, 2)}
                 return { optimized: [], similar: [] };
             }
             vscode.window.showErrorMessage(`调用 Copilot API 失败: ${error}`);
-            console.error('Copilot API error:', error);
+            Logger.getInstance().error('Copilot API error:', error);
             return { optimized: [], similar: [] };
         }
     }
@@ -172,7 +173,7 @@ ${JSON.stringify(allIssues, null, 2)}
             }
 
             const fullResponse = fragments.join('');
-            console.log('LLM generateTitle Raw Response:', fullResponse);
+            Logger.getInstance().info('LLM generateTitle Raw Response:', fullResponse);
 
             // 1) 优先尝试提取 ```json``` 区块中的 JSON
             const jsonBlockMatch = fullResponse.match(/```json\s*([\s\S]*?)\s*```/i);
@@ -195,7 +196,7 @@ ${JSON.stringify(allIssues, null, 2)}
                         return parsed.title.trim();
                     }
                 } catch (err) {
-                    console.warn('解析 LLM 返回的 JSON 失败，回退到文本解析', err);
+                    Logger.getInstance().warn('解析 LLM 返回的 JSON 失败，回退到文本解析', err);
                     // 继续进行文本解析
                 }
             }
@@ -212,7 +213,7 @@ ${JSON.stringify(allIssues, null, 2)}
             if (options?.signal?.aborted) {
                 return '';
             }
-            console.error('generateTitle error:', error);
+            Logger.getInstance().error('generateTitle error:', error);
             // 不弹过多错误弹窗以免干扰用户，但显示一次性错误
             vscode.window.showErrorMessage('调用 Copilot 自动生成标题失败。');
             return '';
@@ -275,7 +276,7 @@ ${JSON.stringify(allIssues, null, 2)}
             }
 
             const fullResponse = fragments.join('');
-            console.log('LLM generateDocument Raw Response:', fullResponse);
+            Logger.getInstance().debug('LLM generateDocument Raw Response:', fullResponse);
 
             // 清理可能存在的 Markdown 代码块标记
             let cleanContent = fullResponse;
@@ -309,9 +310,8 @@ ${JSON.stringify(allIssues, null, 2)}
             if (options?.signal?.aborted) {
                 return { title: '', content: '' };
             }
-            console.error('generateDocument error:', error);
-            vscode.window.showErrorMessage('生成文档失败: ' + error);
-            return { title: '', content: '' };
+            Logger.getInstance().error('generateDocument error:', error);
+            throw error; // 重新抛出异常  
         }
     }
 }

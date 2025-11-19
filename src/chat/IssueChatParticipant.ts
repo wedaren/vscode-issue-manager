@@ -306,9 +306,15 @@ export class IssueChatParticipant {
 
         stream.progress('正在进行深度研究并撰写文档...');
 
+        // 创建 AbortController 以处理取消请求
+        const controller = new AbortController();
+        const cancellationListener = token.onCancellationRequested(() => {
+            controller.abort();
+        });
+
         try {
             // 调用 LLM 生成文档内容
-            const { title, content, modelFamily } = await LLMService.generateDocument(prompt, { signal: token as any });
+            const { title, content, modelFamily } = await LLMService.generateDocument(prompt, { signal: controller.signal });
             
             if (!title || !content) {
                 stream.markdown('❌ 生成文档失败，请稍后重试。\n');
@@ -340,8 +346,15 @@ export class IssueChatParticipant {
             }
 
         } catch (error) {
+            // 检查是否是取消错误
+            if (token.isCancellationRequested || (error instanceof Error && error.message === '请求已取消')) {
+                stream.markdown('❌ 操作已取消\n');
+                return;
+            }
             Logger.getInstance().error('[IssueChatParticipant] Research failed', error);
             stream.markdown('❌ 研究过程中发生错误\n');
+        } finally {
+            cancellationListener.dispose();
         }
     }
 

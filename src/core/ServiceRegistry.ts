@@ -155,8 +155,6 @@ export class ServiceRegistry {
         try {
             const chatParticipant = new IssueChatParticipant();
             chatParticipant.register(this.context);
-            // 将实例添加到 subscriptions,确保在扩展停用时调用 dispose
-            this.context.subscriptions.push(chatParticipant);
             this.logger.info('      ✓ Chat Participant已注册');
         } catch (error) {
             // IssueChatParticipant.register 内部已经做了 API 检查
