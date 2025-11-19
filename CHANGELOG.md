@@ -12,6 +12,11 @@
   - 添加 IssueChatParticipant 类，支持通过 `@issueManager` 在 Copilot Chat 中管理问题
   - 实现 4 个斜杠命令：`/新建`、`/搜索`、`/调研`、`/帮助`
   - 支持智能模式，无需命令即可自动识别用户意图
+- **feat: 添加 `/保存` 命令到 Chat Participant**
+  - 新增 `issueManager.createIssueFromText` 命令，支持从文本创建问题
+  - 在 Chat 中使用 `/保存 [内容]` 可将任意内容保存为问题文件
+  - 自动使用 LLM 生成标题，支持 Markdown 格式内容
+  - 提供"添加到关注"和"打开文件"按钮，方便后续操作
 
 
 ## [0.2.11]
