@@ -327,6 +327,12 @@
         "command": "issueManager.reloadTitleCache",
         "title": "重载标题缓存",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.selectLLMModel",
+        "title": "选择 AI 模型",
+        "category": "Issue Manager",
+        "icon": "$(hubot)"
       }
     ],
     "submenus": [
@@ -375,6 +381,10 @@
           {
             "name": "搜索",
             "description": "搜索现有问题"
+          },
+          {
+            "name": "研究",
+            "description": "深度研究并生成文档"
           },
           {
             "name": "帮助",
@@ -1040,6 +1050,11 @@
           "minimum": 10,
           "maximum": 500,
           "description": "过滤关键字的最大长度限制（字符数）。"
+        },
+        "issueManager.llm.modelFamily": {
+          "type": "string",
+          "default": "gpt-4.1",
+          "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
         }
       }
     },

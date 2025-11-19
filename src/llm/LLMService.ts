@@ -2,6 +2,35 @@ import * as vscode from 'vscode';
 import { getAllMarkdownIssues } from '../utils/markdown';
 
 export class LLMService {
+    private static async selectModel(options?: { signal?: AbortSignal }): Promise<vscode.LanguageModelChat | undefined> {
+        const config = vscode.workspace.getConfiguration('issueManager');
+        const preferredFamily = config.get<string>('llm.modelFamily') || 'gpt-4.1';
+
+        // 1. 尝试使用配置的模型
+        let models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: preferredFamily });
+        
+        // 2. 如果没找到，尝试使用 gpt-4o (通常更强)
+        if (models.length === 0 && preferredFamily !== 'gpt-4o') {
+            models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
+        }
+
+        // 3. 如果还没找到，尝试使用 gpt-4.1
+        if (models.length === 0 && preferredFamily !== 'gpt-4.1') {
+            models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4.1' });
+        }
+
+        // 4. 如果还没找到，尝试任意 Copilot 模型
+        if (models.length === 0) {
+            models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+        }
+
+        if (models.length > 0) {
+            return models[0];
+        }
+        
+        return undefined;
+    }
+
     public static async getSuggestions(
         text: string,
         options?: { signal?: AbortSignal }
@@ -38,7 +67,7 @@ ${JSON.stringify(allIssues, null, 2)}
 `;
 
         try {
-            const [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4.1' });
+            const model = await this.selectModel(options);
 
             if (!model) {
                 vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
@@ -116,7 +145,7 @@ ${JSON.stringify(allIssues, null, 2)}
     const prompt = `请为以下文本生成一个简洁、精确的 Markdown 一级标题。仅返回 JSON 格式，内容如下：{ "title": "生成的标题文本" }。不要添加任何额外说明或标记。文本内容：『${text}』`;
 
         try {
-            const [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4.1' });
+            const model = await this.selectModel(options);
             if (!model) {
                 vscode.window.showErrorMessage('未找到可用的 Copilot 模型，无法自动生成标题。');
                 return '';
@@ -187,6 +216,102 @@ ${JSON.stringify(allIssues, null, 2)}
             // 不弹过多错误弹窗以免干扰用户，但显示一次性错误
             vscode.window.showErrorMessage('调用 Copilot 自动生成标题失败。');
             return '';
+        }
+    }
+
+    /**
+     * 根据用户输入生成一篇完整的 Markdown 文档。
+     * @param prompt 用户的主题或问题
+     * @param options 可选参数
+     */
+    public static async generateDocument(
+        prompt: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<{ title: string, content: string, modelFamily?: string }> {
+        if (!prompt || prompt.trim().length === 0) { 
+            return { title: '', content: '' }; 
+        }
+
+        const systemPrompt = `
+你是一个专业的深度研究助手和技术文档撰写专家。
+请根据用户的主题或问题，进行深入分析，并撰写一篇结构清晰、内容详实的 Markdown 文档。
+
+要求：
+1. 直接返回 Markdown 格式的内容，不要使用 JSON。
+2. 文档的第一行必须是文档的一级标题（# 标题）。
+3. 从第二行开始是正文内容。
+4. 内容应包含引言、核心分析/解决方案、结论等部分。
+5. 适当使用二级标题、列表、代码块等 Markdown 语法来增强可读性。
+6. 语气专业、客观。
+7. 如果是技术问题，请提供代码示例或具体步骤。
+`;
+
+        try {
+            const model = await this.selectModel(options);
+            if (!model) {
+                vscode.window.showErrorMessage('未找到可用的 Copilot 模型。');
+                return { title: '', content: '' };
+            }
+
+            if (options?.signal?.aborted) {
+                throw new Error('请求已取消');
+            }
+
+            const response = await model.sendRequest([
+                vscode.LanguageModelChatMessage.User(systemPrompt),
+                vscode.LanguageModelChatMessage.User(`用户主题：${prompt}`)
+            ]);
+
+            const fragments: string[] = [];
+            for await (const fragment of response.stream) {
+                if (options?.signal?.aborted) {
+                    throw new Error('请求已取消');
+                }
+                if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
+                    fragments.push(fragment.value as string);
+                } else {
+                    fragments.push(fragment as string);
+                }
+            }
+
+            const fullResponse = fragments.join('');
+            console.log('LLM generateDocument Raw Response:', fullResponse);
+
+            // 清理可能存在的 Markdown 代码块标记
+            let cleanContent = fullResponse;
+            const codeBlockMatch = fullResponse.match(/^```markdown\s*([\s\S]*?)\s*```$/i) || fullResponse.match(/^```\s*([\s\S]*?)\s*```$/i);
+            if (codeBlockMatch && codeBlockMatch[1]) {
+                cleanContent = codeBlockMatch[1];
+            }
+
+            // 提取标题和内容
+            const lines = cleanContent.split('\n');
+            let title = '未命名文档';
+            let content = cleanContent;
+            
+            // 查找第一个非空行作为标题
+            const firstLineIndex = lines.findIndex(l => l.trim().length > 0);
+            if (firstLineIndex !== -1) {
+                const firstLine = lines[firstLineIndex].trim();
+                if (firstLine.startsWith('# ')) {
+                    title = firstLine.replace(/^#\s+/, '').trim();
+                    // 如果第一行是标题，内容可以保留原样，或者去掉标题行（取决于需求，通常保留标题在文档中更好）
+                    // 这里我们保留完整内容，因为 createIssueFile 可能会使用 content 作为文件内容
+                } else {
+                    // 如果第一行不是 # 开头，尝试把它当做标题
+                    title = firstLine.replace(/^#+\s*/, '').trim();
+                }
+            }
+
+            return { title, content, modelFamily: model.family };
+
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return { title: '', content: '' };
+            }
+            console.error('generateDocument error:', error);
+            vscode.window.showErrorMessage('生成文档失败: ' + error);
+            return { title: '', content: '' };
         }
     }
 }

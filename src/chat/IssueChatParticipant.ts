@@ -11,6 +11,7 @@ import { Logger } from '../core/utils/Logger';
  */
 const CREATE_COMMANDS = ['新建', 'new', 'create'] as const;
 const SEARCH_COMMANDS = ['搜索', 'search', 'find'] as const;
+const RESEARCH_COMMANDS = ['研究', 'research', 'deep', 'doc', '文档'] as const;
 const HELP_COMMANDS = ['帮助', 'help'] as const;
 
 /**
@@ -30,6 +31,12 @@ const INTENT_CONFIG = {
         noiseWords: [
             'look for', 'search', 'find',
             '帮我找找', '帮我找', '帮我搜索', '帮我查找', '相关的问题', '相关问题', '相关的', '相关', '找找', '搜索', '查找', '找'
+        ]
+    },
+    research: {
+        keywords: ['研究', 'research', 'deep', '撰写', '生成文档'],
+        noiseWords: [
+            '帮我研究', '帮我撰写', '帮我生成', '关于', '文档', '研究', '撰写'
         ]
     }
 } as const;
@@ -140,6 +147,8 @@ export class IssueChatParticipant {
                 await this.handleCreateCommand(prompt, stream, token);
             } else if ((SEARCH_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleSearchCommand(prompt, stream, token);
+            } else if ((RESEARCH_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleResearchCommand(prompt, stream, token);
             } else if ((HELP_COMMANDS as readonly string[]).includes(command)) {
                 this.handleHelpCommand(stream);
             } else {
@@ -283,6 +292,60 @@ export class IssueChatParticipant {
 
 
     /**
+     * 处理深度研究/文档生成命令
+     */
+    private async handleResearchCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (!prompt) {
+            stream.markdown('❓ 请提供研究主题。例如: `/研究 如何优化 React 性能`\n');
+            return;
+        }
+
+        stream.progress('正在进行深度研究并撰写文档...');
+
+        try {
+            // 调用 LLM 生成文档内容
+            const { title, content, modelFamily } = await LLMService.generateDocument(prompt, { signal: token as any });
+            
+            if (!title || !content) {
+                stream.markdown('❌ 生成文档失败，请稍后重试。\n');
+                return;
+            }
+
+            stream.markdown(`💡 已生成文档: **${title}** (使用模型: ${modelFamily || '未知'})\n\n`);
+            
+            // 创建问题文件
+            const uri = await createIssueFile(title, content);
+            
+            if (uri) {
+                const filename = path.basename(uri.fsPath);
+                stream.markdown(`✅ 文档已保存: \`${filename}\`\n\n`);
+                
+                stream.button({
+                    command: 'issueManager.focusIssueFromIssueFile',
+                    arguments: [{ resourceUri: uri }],
+                    title: '⭐ 添加到关注'
+                });
+                
+                stream.button({
+                    command: 'vscode.open',
+                    arguments: [uri],
+                    title: '📄 打开文档'
+                });
+            } else {
+                stream.markdown('❌ 保存文件失败\n');
+            }
+
+        } catch (error) {
+            Logger.getInstance().error('[IssueChatParticipant] Research failed', error);
+            stream.markdown('❌ 研究过程中发生错误\n');
+        }
+    }
+
+    /**
      * 处理帮助命令
      */
     private handleHelpCommand(stream: vscode.ChatResponseStream): void {
@@ -302,12 +365,19 @@ export class IssueChatParticipant {
         stream.markdown('- `@issueManager /搜索 登录`\n');
         stream.markdown('- `@issueManager /搜索 性能`\n\n');
 
+        stream.markdown('### `/研究` - 深度研究并生成文档\n');
+        stream.markdown('利用 AI 进行深度分析并生成详细文档。\n\n');
+        stream.markdown('**示例:**\n');
+        stream.markdown('- `@issueManager /研究 如何优化 React 性能`\n');
+        stream.markdown('- `@issueManager /研究 微服务架构设计模式`\n\n');
+
         stream.markdown('### `/帮助` - 显示此帮助\n\n');
 
         stream.markdown('## 💡 智能模式\n\n');
         stream.markdown('不使用命令时,AI 会理解您的意图:\n');
         stream.markdown('- `@issueManager 创建一个关于性能优化的问题`\n');
-        stream.markdown('- `@issueManager 帮我找找登录相关的问题`\n\n');
+        stream.markdown('- `@issueManager 帮我找找登录相关的问题`\n');
+        stream.markdown('- `@issueManager 帮我研究一下分布式事务`\n\n');
 
         // 添加快捷按钮
         stream.button({
@@ -351,20 +421,20 @@ export class IssueChatParticipant {
             return;
         }
 
+        // 检测研究意图
+        const researchTopic = detectIntent(prompt, INTENT_CONFIG.research.keywords, INTENT_CONFIG.research.noiseWords);
+        if (researchTopic) {
+            stream.markdown(`💡 检测到研究意图...\n\n`);
+            await this.handleResearchCommand(researchTopic, stream, token);
+            return;
+        }
+
         // 默认显示帮助
         stream.markdown('💡 我可以帮您管理问题。\n\n');
         stream.markdown('试试:\n');
         stream.markdown('- `/新建 [标题]` - 创建新问题\n');
         stream.markdown('- `/搜索 [关键词]` - 搜索问题\n');
+        stream.markdown('- `/研究 [主题]` - 深度研究并生成文档\n');
         stream.markdown('- `/帮助` - 查看所有命令\n\n');
-    }
-
-    /**
-     * 清理资源
-     */
-    public dispose(): void {
-        if (this.participant) {
-            this.participant.dispose();
-        }
     }
 }
