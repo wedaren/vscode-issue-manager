@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.12]
+
+### ✨ 新功能
+- **feat: 实现 Chat Participant 功能 (#110)**
+  - 添加 IssueChatParticipant 类，支持通过 `@issueManager` 在 Copilot Chat 中管理问题
+  - 实现 4 个斜杠命令：`/新建`、`/搜索`、`/调研`、`/帮助`
+  - 支持智能模式，无需命令即可自动识别用户意图
+
+
 ## [0.2.11]
 
 ### ✨ 新功能
