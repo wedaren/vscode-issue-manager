@@ -52,6 +52,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createIssueFromText",
+        "title": "从文本创建问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.deleteIssue",
         "icon": "$(trash)",
         "title": "删除"
@@ -385,6 +390,10 @@
           {
             "name": "研究",
             "description": "深度研究并生成文档"
+          },
+          {
+            "name": "保存",
+            "description": "保存内容为问题"
           },
           {
             "name": "帮助",

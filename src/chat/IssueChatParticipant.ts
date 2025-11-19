@@ -12,6 +12,7 @@ import { Logger } from '../core/utils/Logger';
 const CREATE_COMMANDS = ['新建', 'new', 'create'] as const;
 const SEARCH_COMMANDS = ['搜索', 'search', 'find'] as const;
 const RESEARCH_COMMANDS = ['研究', 'research', 'deep', 'doc', '文档'] as const;
+const SAVE_COMMANDS = ['保存', 'save'] as const;
 const HELP_COMMANDS = ['帮助', 'help'] as const;
 
 /**
@@ -149,6 +150,8 @@ export class IssueChatParticipant {
                 await this.handleSearchCommand(prompt, stream, token);
             } else if ((RESEARCH_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleResearchCommand(prompt, stream, token);
+            } else if ((SAVE_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleSaveCommand(prompt, stream, token);
             } else if ((HELP_COMMANDS as readonly string[]).includes(command)) {
                 this.handleHelpCommand(stream);
             } else {
@@ -359,6 +362,68 @@ export class IssueChatParticipant {
     }
 
     /**
+     * 处理保存命令
+     * 将用户提供的内容保存为问题文件
+     */
+    private async handleSaveCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (!prompt || prompt.trim().length === 0) {
+            stream.markdown('❓ 请提供要保存的内容。例如: `/保存 这是要保存的内容`\n');
+            stream.markdown('\n💡 提示: 您可以在内容中使用 Markdown 格式\n');
+            return;
+        }
+
+        stream.progress('正在保存内容...');
+
+        // 使用 LLM 生成标题
+        let title = '新建问题';
+        try {
+            const controller = new AbortController();
+            const cancellationListener = token.onCancellationRequested(() => {
+                controller.abort();
+            });
+
+            try {
+                const generated = await LLMService.generateTitle(prompt, { signal: controller.signal });
+                if (generated && !token.isCancellationRequested) {
+                    title = generated;
+                    stream.markdown(`💡 AI 生成标题: **${title}**\n\n`);
+                }
+            } finally {
+                cancellationListener.dispose();
+            }
+        } catch (error) {
+            // LLM 失败时使用默认标题
+            Logger.getInstance().warn('[IssueChatParticipant] LLM 生成标题失败,使用默认标题', error);
+        }
+
+        // 创建问题文件
+        const uri = await createIssueFile(title, prompt);
+        
+        if (uri) {
+            const filename = path.basename(uri.fsPath);
+            stream.markdown(`✅ 已保存问题: \`${filename}\`\n\n`);
+            
+            stream.button({
+                command: 'issueManager.focusIssueFromIssueFile',
+                arguments: [{ resourceUri: uri }],
+                title: '⭐ 添加到关注'
+            });
+            
+            stream.button({
+                command: 'vscode.open',
+                arguments: [uri],
+                title: '📄 打开文件'
+            });
+        } else {
+            stream.markdown('❌ 保存问题失败\n');
+        }
+    }
+
+    /**
      * 处理帮助命令
      */
     private handleHelpCommand(stream: vscode.ChatResponseStream): void {
@@ -383,6 +448,12 @@ export class IssueChatParticipant {
         stream.markdown('**示例:**\n');
         stream.markdown('- `@issueManager /研究 如何优化 React 性能`\n');
         stream.markdown('- `@issueManager /研究 微服务架构设计模式`\n\n');
+
+        stream.markdown('### `/保存` - 保存内容为问题\n');
+        stream.markdown('将指定的内容保存为问题文件,支持 Markdown 格式。\n\n');
+        stream.markdown('**示例:**\n');
+        stream.markdown('- `@issueManager /保存 这是要保存的内容`\n');
+        stream.markdown('- `@issueManager /保存 # 标题\\n\\n内容`\n\n');
 
         stream.markdown('### `/帮助` - 显示此帮助\n\n');
 
