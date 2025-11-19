@@ -98,17 +98,16 @@ export class GitOperations {
     }
 
     /**
-     * 提交并推送更改
+     * 提交更改（不推送）
      * 
      * 执行以下操作：
      * 1. 添加所有更改到暂存区
      * 2. 使用自动生成的提交消息提交
-     * 3. 推送到远程仓库的当前分支
      * 
      * @param cwd Git仓库目录
-     * @throws 如果提交或推送失败则抛出错误
+     * @throws 如果提交失败则抛出错误
      */
-    public static async commitAndPushChanges(cwd: string): Promise<void> {
+    public static async commitChanges(cwd: string): Promise<void> {
         const git = this.getGit(cwd);
         
         try {
@@ -121,7 +120,23 @@ export class GitOperations {
             
             // 提交
             await git.commit(commitMessage);
-            
+        } catch (error) {
+            this.handleGitError(error, '提交更改失败');
+        }
+    }
+
+    /**
+     * 推送更改
+     * 
+     * 推送到远程仓库的当前分支
+     * 
+     * @param cwd Git仓库目录
+     * @throws 如果推送失败则抛出错误
+     */
+    public static async pushChanges(cwd: string): Promise<void> {
+        const git = this.getGit(cwd);
+        
+        try {
             // 获取当前分支并推送
             const branchSummary = await git.branch();
             const currentBranch = branchSummary.current;
@@ -132,8 +147,24 @@ export class GitOperations {
             
             await git.push('origin', currentBranch);
         } catch (error) {
-            this.handleGitError(error, '提交并推送更改失败');
+            this.handleGitError(error, '推送更改失败');
         }
+    }
+
+    /**
+     * 提交并推送更改
+     * 
+     * 执行以下操作：
+     * 1. 添加所有更改到暂存区
+     * 2. 使用自动生成的提交消息提交
+     * 3. 推送到远程仓库的当前分支
+     * 
+     * @param cwd Git仓库目录
+     * @throws 如果提交或推送失败则抛出错误
+     */
+    public static async commitAndPushChanges(cwd: string): Promise<void> {
+        await this.commitChanges(cwd);
+        await this.pushChanges(cwd);
     }
 
     /**
