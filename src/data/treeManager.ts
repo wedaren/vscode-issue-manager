@@ -29,13 +29,10 @@ export interface TreeData {
   rootNodes: IssueTreeNode[];
 }
 
-interface FlatIssueTreeNode extends IssueTreeNode {
-  parentPath: IssueTreeNode[];
-}
 /**
  * 扁平化树节点接口，包含父节点路径和标题
  */
-export interface FlatTreeNode extends FlatIssueTreeNode {
+export interface FlatTreeNode extends IssueTreeNode {
   parentPath: FlatTreeNode[];
   title: string;
 }
@@ -55,67 +52,46 @@ function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => voi
 }
 
 /**
- * 递归扁平化树节点，保留父节点路径。
- * @param nodes 要扁平化的节点数组
- * @param parentNodes 父节点路径
- * @returns 扁平化后的节点数组（不含 title），每个节点包含 parentPath 属性
- */
-function flattenTree(
-  nodes: IssueTreeNode[], 
-  parentNodes: IssueTreeNode[] = []
-): FlatIssueTreeNode[] {
-  let result: FlatIssueTreeNode[] = [];
-  for (const node of nodes) {
-    result.push({
-      ...node,
-      parentPath: [...parentNodes]
-    });
-    
-    if (node.children && node.children.length > 0) {
-      result = result.concat(
-        flattenTree(node.children, [...parentNodes, node])
-      );
-    }
-  }
-  return result;
-}
-
-/**
  * 获取扁平化的树结构，并自动加载所有节点的标题。
  * 这是一个便捷函数，自动读取树、扁平化并批量加载标题。
  * @returns 扁平化后的节点数组，每个节点包含 title 属性
  */
 export async function getFlatTree(): Promise<FlatTreeNode[]> {
   const tree = await readTree();
-  const flatNodes = flattenTree(tree.rootNodes);
   
-  const allPaths = new Set<string>(flatNodes.map(node => node.filePath));
+  // 1. 收集所有路径以批量获取标题
+  const paths = new Set<string>();
+  walkTree(tree.rootNodes, node => paths.add(node.filePath));
   
-  // 批量获取所有标题
-  const pathArray = Array.from(allPaths);
+  // 2. 批量获取标题
+  const pathArray = Array.from(paths);
   const titles = await TitleCacheService.getInstance().getMany(pathArray);
   const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
   
-  const flatTreeNodeMap = new Map<string, FlatTreeNode>();  
-
-  // 第一步：创建所有 FlatTreeNode，但不填充 parentPath  
-  flatNodes.forEach(node => {  
-    const treeNode: FlatTreeNode = {  
-      ...node,  
-      title: titleMap.get(node.filePath) || path.basename(node.filePath, '.md'),  
-      parentPath: [], // 临时占位  
-    };  
-    flatTreeNodeMap.set(node.id, treeNode);  
-  });  
-
-  // 第二步：填充 parentPath  
-  flatNodes.forEach(node => {  
-    const treeNode = flatTreeNodeMap.get(node.id)!;  
-    treeNode.parentPath = node.parentPath.map(p => flatTreeNodeMap.get(p.id)!);  
-  });  
-
-  // 保持原始顺序  
-  return flatNodes.map(node => flatTreeNodeMap.get(node.id)!);  
+  // 3. 递归构建扁平化节点
+  const result: FlatTreeNode[] = [];
+  
+  function buildFlatNodes(nodes: IssueTreeNode[], parents: FlatTreeNode[]) {
+    for (const node of nodes) {
+      const title = titleMap.get(node.filePath) || path.basename(node.filePath, '.md');
+      
+      // 创建 FlatTreeNode，parentPath 指向已创建的父节点（即 FlatTreeNode 类型）
+      const flatNode: FlatTreeNode = {
+        ...node,
+        title,
+        parentPath: [...parents]
+      };
+      
+      result.push(flatNode);
+      
+      if (node.children && node.children.length > 0) {
+        buildFlatNodes(node.children, [...parents, flatNode]);
+      }
+    }
+  }
+  
+  buildFlatNodes(tree.rootNodes, []);
+  return result;
 }
 
 /**

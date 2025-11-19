@@ -377,10 +377,6 @@
             "description": "搜索现有问题"
           },
           {
-            "name": "关注",
-            "description": "添加问题到关注列表"
-          },
-          {
             "name": "帮助",
             "description": "显示帮助信息"
           }

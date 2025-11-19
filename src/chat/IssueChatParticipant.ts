@@ -245,13 +245,28 @@ export class IssueChatParticipant {
 
         // 显示前10个结果
         const displayIssues = matchedIssueNodes.slice(0, 10);
+        const issueDir = getIssueDir() || '';
+
         displayIssues.forEach((issue, index) => {
-            stream.markdown(`${index + 1}. **${issue.title}**\n`);
+            // 构建完整路径并生成 URI，使标题可点击
+            const fullPath = path.isAbsolute(issue.filePath) 
+                ? issue.filePath 
+                : path.join(issueDir, issue.filePath);
+            const uri = vscode.Uri.file(fullPath);
+
+            stream.markdown(`${index + 1}. [**${issue.title}**](${uri})\n`);
             
             // 显示父节点信息
             if (issue.parentPath.length > 0) {
-            const parentTitles = issue.parentPath.map(parent => parent.title).join(' > ');
-            stream.markdown(`${parentTitles}\n`);
+                const parentLinks = issue.parentPath.map(parent => {
+                    const fullPath = path.isAbsolute(parent.filePath) 
+                        ? parent.filePath 
+                        : path.join(issueDir, parent.filePath);
+                    const uri = vscode.Uri.file(fullPath);
+                    // 使用代码样式 [`标题`](链接) 可以改变链接颜色（通常随主题变为非蓝色），同时保持可点击
+                    return `[\`${parent.title}\`](${uri})`;
+                }).join(' > ');
+                stream.markdown(`   > ${parentLinks}\n`);
             }
         });
 
