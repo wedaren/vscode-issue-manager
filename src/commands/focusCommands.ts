@@ -4,6 +4,7 @@ import { IssueTreeNode, stripFocusedId } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { addIssueToTree } from './issueFileUtils';
 import { getIssueIdFromUri } from '../utils/uriUtils';
+import { GitSyncService } from '../services/git-sync';
 
 /**
  * 注册与"关注问题"相关的命令，包括添加、移除、置顶关注等。
@@ -22,6 +23,8 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
         await addFocus([realId]);
         vscode.commands.executeCommand('issueManager.refreshAllViews');
         vscode.window.showInformationMessage('已添加到关注问题。');
+        // 触发同步
+        GitSyncService.getInstance().triggerSync();
     });
     context.subscriptions.push(focusIssueCommand);
 
@@ -32,6 +35,8 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
         }
         await addIssueToTree([node.resourceUri], null, true);
         vscode.window.showInformationMessage('已添加到关注问题。');
+        // 触发同步
+        GitSyncService.getInstance().triggerSync();
     });
     context.subscriptions.push(focusIssueFromIssueFileCommand);
 
@@ -61,6 +66,8 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             await addIssueToTree([uri], null, true);
         }
         vscode.window.showInformationMessage('已添加到关注问题。');
+        // 触发同步
+        GitSyncService.getInstance().triggerSync();
     });
     context.subscriptions.push(addToFocusedViewFromEditorCommand);
 

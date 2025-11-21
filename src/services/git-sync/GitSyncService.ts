@@ -174,7 +174,7 @@ export class GitSyncService implements vscode.Disposable {
         const fileWatcher = UnifiedFileWatcher.getInstance();
 
         const onFileChange = () => {
-            this.handleFileChange();
+            this.triggerSync();
         };
 
         // 订阅 Markdown 文件变更（文件监听资源，setupAutoSync 时重建）
@@ -189,25 +189,48 @@ export class GitSyncService implements vscode.Disposable {
     }
 
     /**
-     * 处理文件变更事件
+     * 触发同步操作（用于程序化调用）
      * 
-     * 当文件发生变化时：
-     * 1. 检查是否处于冲突模式，如果是则忽略
-     * 2. 更新状态为"有本地更改待同步"
-     * 3. 触发防抖的自动同步操作
+     * 当执行某些重要操作（如新建问题、新增关注）时，可以调用此方法触发同步。
+     * 此方法会：
+     * 1. 检查自动同步是否启用
+     * 2. 如果启用，使用防抖机制触发同步（避免频繁同步）
+     * 3. 如果未启用，静默返回（不会显示错误或警告）
+     * 
+     * 与 performManualSync() 的区别：
+     * - 此方法是静默的，不会显示用户通知
+     * - 使用防抖机制，与文件监听器的同步策略一致
+     * - 只在自动同步启用时才执行
+     * 
+     * @example
+     * ```typescript
+     * // 在创建问题后触发同步
+     * const syncService = GitSyncService.getInstance();
+     * syncService.triggerSync();
+     * ```
      */
-    private handleFileChange(): void {
+    public triggerSync(): void {
+        // 仅在自动同步启用时触发
+        if (!isAutoSyncEnabled()) {
+            return;
+        }
+
+        const issueDir = getIssueDir();
+        if (!issueDir || !GitOperations.isGitRepository(issueDir)) {
+            return;
+        }
+
         if (this.isConflictMode) {
             return;
         }
         
-        // 立即更新状态，提供即时反馈
+        // 更新状态
         this.setStatus({ 
             status: SyncStatus.HasLocalChanges, 
             message: '有本地更改待同步' 
         });
 
-        // 触发防抖的同步操作
+        // 使用防抖机制触发同步，避免频繁同步
         this.debouncedAutoCommitAndPush();
     }
 

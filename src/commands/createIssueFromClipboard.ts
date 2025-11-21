@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
 import { createIssueFile } from './issueFileUtils';
+import { GitSyncService } from '../services/git-sync';
 
 /**
  * 判断文本中是否存在 Markdown 一级标题（第一行非空行以 `# ` 开头）
@@ -93,6 +94,9 @@ export async function createIssueFromClipboard(): Promise<void> {
             // createIssueFile 已经会弹错信息
             return;
         }
+
+        // 触发同步
+        GitSyncService.getInstance().triggerSync();
 
     } catch (error) {
         console.error('createIssueFromClipboard error:', error);

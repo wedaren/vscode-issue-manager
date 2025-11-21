@@ -4,6 +4,7 @@ import { LLMService } from '../llm/LLMService';
 import { createIssueFile } from './issueFileUtils';
 import { addIssueToTree } from './issueFileUtils';
 import { Logger } from '../core/utils/Logger';
+import { GitSyncService } from '../services/git-sync';
 
 /**
  * 从 HTML 内容创建问题的参数
@@ -135,6 +136,9 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
             }
             
             vscode.window.showInformationMessage(`已从 HTML 创建问题: ${filenameTitle}`);
+            
+            // 触发同步
+            GitSyncService.getInstance().triggerSync();
         }
 
         return uri;
