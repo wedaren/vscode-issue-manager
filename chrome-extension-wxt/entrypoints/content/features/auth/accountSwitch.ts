@@ -30,7 +30,8 @@ export async function switchAccount(username: string, password: string): Promise
       // 发送退出登录请求
       await logout(currentUrl);
       
-      // 页面会自动跳转并重新加载
+      window.location.replace(`${window.location.origin}${LOGIN_PATH}?RefererUrl=${encodeURIComponent(currentPath)}`);
+
       // resumeAccountSwitch 会在重新加载后自动执行
     } else {
       // 如果已经在登录页,直接执行登录
