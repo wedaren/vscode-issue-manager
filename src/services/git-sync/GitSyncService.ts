@@ -284,6 +284,33 @@ export class GitSyncService implements vscode.Disposable {
     }
 
     /**
+     * 执行核心同步逻辑：提交 -> 拉取 -> 推送
+     * 
+     * @param issueDir 问题目录路径
+     * @returns 如果执行了推送操作返回 true，否则返回 false
+     */
+    private async performCoreSync(issueDir: string): Promise<boolean> {
+        let performedCommit = false;
+
+        // 1. 检查并提交本地更改
+        if (await GitOperations.hasLocalChanges(issueDir)) {
+            await GitOperations.commitChanges(issueDir);
+            performedCommit = true;
+        }
+
+        // 2. 拉取远程更新 (如果刚才 commit 了，这里可能会触发 merge)
+        await GitOperations.pullChanges(issueDir);
+        
+        // 3. 如果进行了提交，或者 pull 导致了 merge（本地领先远程），则推送
+        // 简单判断：只要刚才 commit 了，就尝试 push
+        if (performedCommit) {
+            await GitOperations.pushChanges(issueDir);
+            return true; // 表示执行了推送
+        }
+        return false; // 表示没有变更需要同步
+    }
+
+    /**
      * 执行自动提交和推送
      * 
      * 当检测到文件变化时自动触发的同步操作。
@@ -301,26 +328,7 @@ export class GitSyncService implements vscode.Disposable {
             // 使用重试机制执行同步操作，并获取是否执行了推送
             const pushed = await this.retryManager.executeWithRetry(
                 'auto-sync',
-                async () => {
-                    let performedCommit = false;
-
-                    // 1. 检查并提交本地更改
-                    if (await GitOperations.hasLocalChanges(issueDir)) {
-                        await GitOperations.commitChanges(issueDir);
-                        performedCommit = true;
-                    }
-
-                    // 2. 拉取远程更新 (如果刚才 commit 了，这里可能会触发 merge)
-                    await GitOperations.pullChanges(issueDir);
-                    
-                    // 3. 如果进行了提交，或者 pull 导致了 merge（本地领先远程），则推送
-                    // 简单判断：只要刚才 commit 了，就尝试 push
-                    if (performedCommit) {
-                        await GitOperations.pushChanges(issueDir);
-                        return true; // 表示执行了推送
-                    }
-                    return false; // 表示没有变更需要同步
-                },
+                () => this.performCoreSync(issueDir),
                 (attempt, nextDelay) => {
                     // 重试回调
                     this.notificationManager.notifyRetry(
@@ -364,25 +372,9 @@ export class GitSyncService implements vscode.Disposable {
 
         try {
             // 使用重试机制执行拉取操作
-            await this.retryManager.executeWithRetry(
+            const pushed = await this.retryManager.executeWithRetry(
                 'periodic-pull',
-                async () => {
-                    let performedCommit = false;
-
-                    // 1. 检查并提交本地更改 (避免 "local changes would be overwritten" 错误)
-                    if (await GitOperations.hasLocalChanges(issueDir)) {
-                        await GitOperations.commitChanges(issueDir);
-                        performedCommit = true;
-                    }
-
-                    // 2. 拉取
-                    await GitOperations.pullChanges(issueDir);
-
-                    // 3. 如果刚才提交了，需要推送
-                    if (performedCommit) {
-                        await GitOperations.pushChanges(issueDir);
-                    }
-                },
+                () => this.performCoreSync(issueDir),
                 (attempt, nextDelay) => {
                     // 周期性拉取失败时的重试，不需要显示通知
                     this.notificationManager.info(
@@ -394,7 +386,7 @@ export class GitSyncService implements vscode.Disposable {
             if (this.currentStatus.status !== SyncStatus.HasLocalChanges) {
                 this.setStatus({ 
                     status: SyncStatus.Synced, 
-                    message: '已是最新状态', 
+                    message: pushed ? '自动同步完成' : '已是最新状态', 
                     lastSync: new Date() 
                 });
             }
@@ -456,28 +448,14 @@ export class GitSyncService implements vscode.Disposable {
         this.setStatus({ status: SyncStatus.Syncing, message: '正在手动同步...' });
 
         try {
-            let performedCommit = false;
-
-            // 1. 检查并提交本地更改
-            if (await GitOperations.hasLocalChanges(issueDir)) {
-                await GitOperations.commitChanges(issueDir);
-                performedCommit = true;
-            }
-
-            // 2. 拉取
-            await GitOperations.pullChanges(issueDir);
-            
-            // 3. 如果刚才提交了，需要推送
-            if (performedCommit) {
-                await GitOperations.pushChanges(issueDir);
-            }
+            const pushed = await this.performCoreSync(issueDir);
             
             this.setStatus({ 
                 status: SyncStatus.Synced, 
-                message: '手动同步完成', 
+                message: pushed ? '手动同步完成' : '已是最新状态', 
                 lastSync: new Date() 
             });
-            vscode.window.showInformationMessage('同步完成');
+            vscode.window.showInformationMessage(pushed ? '同步完成' : '已是最新状态');
         } catch (error) {
             this.handleSyncError(error);
             vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : '未知错误'}`);
