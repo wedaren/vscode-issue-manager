@@ -35,6 +35,7 @@ import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
+import { TitleCacheService } from '../services/TitleCacheService';
 
 /**
  * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
@@ -256,6 +257,15 @@ export class CommandRegistry extends BaseCommandRegistry {
                 await createIssueFromHtml(params as CreateIssueFromHtmlParams);
             },
             '从 HTML 创建问题'
+        );
+
+
+        this.registerCommand(
+            'issueManager.refreshTitle',
+            async () => {
+                TitleCacheService.getInstance().forceRebuild();
+            },
+            '重新渲染标题'
         );
     }
 

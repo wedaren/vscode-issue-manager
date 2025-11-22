@@ -91,6 +91,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "issueManager.refreshTitle",
+        "title": "重新渲染标题",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "issueManager.setRecentIssuesViewMode.group",
         "title": "切换为分组视图",
         "icon": "$(list-flat)"
@@ -426,7 +431,7 @@
           "group": "navigation@1"
         },
         {
-          "command": "issueManager.refreshAllViews",
+          "command": "issueManager.refreshTitle",
           "when": "view == issueManager.views.recent || view == issueManager.views.focused",
           "group": "navigation@2"
         },
