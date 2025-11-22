@@ -307,9 +307,37 @@ export class GitSyncService implements vscode.Disposable {
     }
 
     /**
+     * 执行核心同步逻辑：提交 -> 拉取 -> 推送
+     * 
+     * @param issueDir 问题目录路径
+     * @returns 如果执行了推送操作返回 true，否则返回 false
+     */
+    private async performCoreSync(issueDir: string): Promise<boolean> {
+        let performedCommit = false;
+
+        // 1. 检查并提交本地更改
+        if (await GitOperations.hasLocalChanges(issueDir)) {
+            await GitOperations.commitChanges(issueDir);
+            performedCommit = true;
+        }
+
+        // 2. 拉取远程更新 (如果刚才 commit 了，这里可能会触发 merge)
+        await GitOperations.pullChanges(issueDir);
+        
+        // 3. 如果进行了提交，或者 pull 导致了 merge（本地领先远程），则推送
+        // 简单判断：只要刚才 commit 了，就尝试 push
+        if (performedCommit) {
+            await GitOperations.pushChanges(issueDir);
+            return true; // 表示执行了推送
+        }
+        return false; // 表示没有变更需要同步
+    }
+
+    /**
      * 执行自动提交和推送
      * 
      * 当检测到文件变化时自动触发的同步操作。
+     * 采用 Commit -> Pull -> Push 的流程，以避免本地更改被覆盖的错误。
      */
     private async performAutoCommitAndPush(): Promise<void> {
         const issueDir = getIssueDir();
@@ -323,18 +351,7 @@ export class GitSyncService implements vscode.Disposable {
             // 使用重试机制执行同步操作，并获取是否执行了推送
             const pushed = await this.retryManager.executeWithRetry(
                 'auto-sync',
-                async () => {
-                    // 先拉取
-                    await GitOperations.pullChanges(issueDir);
-                    
-                    // 检查是否有本地更改
-                    if (await GitOperations.hasLocalChanges(issueDir)) {
-                        // 提交并推送
-                        await GitOperations.commitAndPushChanges(issueDir);
-                        return true; // 表示执行了推送
-                    }
-                    return false; // 表示没有变更需要同步
-                },
+                () => this.performCoreSync(issueDir),
                 (attempt, nextDelay) => {
                     // 重试回调
                     this.notificationManager.notifyRetry(
@@ -348,7 +365,7 @@ export class GitSyncService implements vscode.Disposable {
             // 根据是否推送了变更来设置不同的成功消息
             this.setStatus({ 
                 status: SyncStatus.Synced, 
-                message: pushed ? '自动同步完成' : '没有变更需要同步', 
+                message: pushed ? '自动同步完成' : '已是最新状态', 
                 lastSync: new Date() 
             });
         } catch (error) {
@@ -368,6 +385,7 @@ export class GitSyncService implements vscode.Disposable {
      * 执行周期性拉取
      * 
      * 定期从远程仓库拉取更新，确保本地仓库保持最新状态。
+     * 如果本地有未提交的更改，会先尝试提交，以避免拉取失败。
      */
     private async performPull(): Promise<void> {
         const issueDir = getIssueDir();
@@ -377,11 +395,9 @@ export class GitSyncService implements vscode.Disposable {
 
         try {
             // 使用重试机制执行拉取操作
-            await this.retryManager.executeWithRetry(
+            const pushed = await this.retryManager.executeWithRetry(
                 'periodic-pull',
-                async () => {
-                    await GitOperations.pullChanges(issueDir);
-                },
+                () => this.performCoreSync(issueDir),
                 (attempt, nextDelay) => {
                     // 周期性拉取失败时的重试，不需要显示通知
                     this.notificationManager.info(
@@ -393,7 +409,7 @@ export class GitSyncService implements vscode.Disposable {
             if (this.currentStatus.status !== SyncStatus.HasLocalChanges) {
                 this.setStatus({ 
                     status: SyncStatus.Synced, 
-                    message: '已是最新状态', 
+                    message: pushed ? '自动同步完成' : '已是最新状态', 
                     lastSync: new Date() 
                 });
             }
@@ -410,9 +426,10 @@ export class GitSyncService implements vscode.Disposable {
      * 用户手动触发的同步操作，执行以下步骤：
      * 1. 验证问题目录配置和Git仓库状态
      * 2. 检查并处理任何现有的合并冲突
-     * 3. 从远程仓库拉取最新更改
-     * 4. 提交并推送本地更改（如果有）
-     * 5. 更新同步状态并显示结果消息
+     * 3. 提交本地更改（如果有）
+     * 4. 从远程仓库拉取最新更改
+     * 5. 推送更改
+     * 6. 更新同步状态并显示结果消息
      * 
      * 此方法通过VS Code命令"issueManager.synchronizeNow"调用，
      * 也可以通过点击状态栏的同步按钮触发。
@@ -454,20 +471,14 @@ export class GitSyncService implements vscode.Disposable {
         this.setStatus({ status: SyncStatus.Syncing, message: '正在手动同步...' });
 
         try {
-            // 拉取
-            await GitOperations.pullChanges(issueDir);
-            
-            // 提交并推送（如果有更改）
-            if (await GitOperations.hasLocalChanges(issueDir)) {
-                await GitOperations.commitAndPushChanges(issueDir);
-            }
+            const pushed = await this.performCoreSync(issueDir);
             
             this.setStatus({ 
                 status: SyncStatus.Synced, 
-                message: '手动同步完成', 
+                message: pushed ? '手动同步完成' : '已是最新状态', 
                 lastSync: new Date() 
             });
-            vscode.window.showInformationMessage('同步完成');
+            vscode.window.showInformationMessage(pushed ? '同步完成' : '已是最新状态');
         } catch (error) {
             this.handleSyncError(error);
             vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : '未知错误'}`);
