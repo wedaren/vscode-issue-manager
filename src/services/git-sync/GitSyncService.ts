@@ -300,6 +300,8 @@ export class GitSyncService implements vscode.Disposable {
                 lastSync: new Date() 
             });
             this.notificationManager.info('初始化同步完成');
+            // 初始化同步成功后刷新问题标题
+            await this.refreshIssueTitles();
         } catch (error) {
             this.notificationManager.error('初始化同步失败', error);
             this.handleSyncError(error);
@@ -351,6 +353,8 @@ export class GitSyncService implements vscode.Disposable {
                 message: pushed ? '自动同步完成' : '没有变更需要同步', 
                 lastSync: new Date() 
             });
+            // 自动同步成功后刷新问题标题
+            await this.refreshIssueTitles();
         } catch (error) {
             // 所有重试都失败了
             const maxRetries = this.retryManager.getRetryCount('auto-sync');
@@ -396,6 +400,8 @@ export class GitSyncService implements vscode.Disposable {
                     message: '已是最新状态', 
                     lastSync: new Date() 
                 });
+                // 周期性拉取后若是最新状态也刷新标题
+                await this.refreshIssueTitles();
             }
         } catch (error) {
             // 周期性拉取失败不应该触发冲突模式，只记录错误
@@ -468,6 +474,8 @@ export class GitSyncService implements vscode.Disposable {
                 lastSync: new Date() 
             });
             vscode.window.showInformationMessage('同步完成');
+            // 手动同步成功后刷新问题标题
+            await this.refreshIssueTitles();
         } catch (error) {
             this.handleSyncError(error);
             vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -512,6 +520,20 @@ export class GitSyncService implements vscode.Disposable {
         this.currentStatus = statusInfo;
         this.statusBarManager.updateStatusBar(this.currentStatus);
         this.notificationManager.notifyStatusChange(this.currentStatus);
+    }
+
+    /**
+     * 刷新问题标题显示。
+     * 
+     * 成功同步后调用 VS Code 命令 `issueManager.refreshTitle` 以更新标题相关 UI。
+     * 使用 try/catch 避免命令执行失败影响主流程。
+     */
+    private async refreshIssueTitles(): Promise<void> {
+        try {
+            await vscode.commands.executeCommand('issueManager.refreshTitle');
+        } catch (err) {
+            Logger.getInstance().debug('刷新问题标题命令调用失败', err);
+        }
     }
 
     /**
@@ -607,6 +629,8 @@ export class GitSyncService implements vscode.Disposable {
             if (await GitOperations.hasLocalChanges(issueDir)) {
                 await GitOperations.commitAndPushChanges(issueDir);
             }
+            // 关闭前的最终同步（如果有提交或推送）也刷新标题
+            await this.refreshIssueTitles();
         } catch (error) {
             console.error('Final sync failed:', error);
             // 关闭前的同步失败不显示错误，避免阻塞关闭流程
