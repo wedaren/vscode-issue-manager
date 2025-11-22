@@ -29,6 +29,7 @@ import { registerFocusCommands } from '../commands/focusCommands';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
+import { createIssueFromText, CreateIssueFromTextParams } from '../commands/createIssueFromText';
 import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
@@ -256,6 +257,15 @@ export class CommandRegistry extends BaseCommandRegistry {
                 await createIssueFromHtml(params as CreateIssueFromHtmlParams);
             },
             '从 HTML 创建问题'
+        );
+
+        // 从文本创建问题命令
+        this.registerCommand(
+            'issueManager.createIssueFromText',
+            async (params?: unknown) => {
+                await createIssueFromText(params as CreateIssueFromTextParams);
+            },
+            '从文本创建问题'
         );
     }
 
