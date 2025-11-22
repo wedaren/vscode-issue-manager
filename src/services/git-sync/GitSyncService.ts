@@ -629,8 +629,6 @@ export class GitSyncService implements vscode.Disposable {
             if (await GitOperations.hasLocalChanges(issueDir)) {
                 await GitOperations.commitAndPushChanges(issueDir);
             }
-            // 关闭前的最终同步（如果有提交或推送）也刷新标题
-            await this.refreshIssueTitles();
         } catch (error) {
             console.error('Final sync failed:', error);
             // 关闭前的同步失败不显示错误，避免阻塞关闭流程
