@@ -5,6 +5,7 @@ import { TitleCacheService } from './services/TitleCacheService';
 import { ChromeIntegrationServer } from './integration/ChromeIntegrationServer';
 import { SharedConfig } from './config/SharedConfig';
 import { IssueFileCompletionProvider } from './providers/IssueFileCompletionProvider';
+import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
 
 // 当您的扩展被激活时,将调用此方法
 export function activate(context: vscode.ExtensionContext) {
@@ -30,6 +31,14 @@ export function activate(context: vscode.ExtensionContext) {
 		...triggerCharacters
 	);
 	context.subscriptions.push(completionDisposable);
+	
+	// 注册 Issue 文档链接提供器
+	const linkProvider = new IssueDocumentLinkProvider();
+	const linkProviderDisposable = vscode.languages.registerDocumentLinkProvider(
+		'markdown',
+		linkProvider
+	);
+	context.subscriptions.push(linkProviderDisposable);
 	
 	return initializer.initialize();
 }
