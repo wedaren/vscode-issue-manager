@@ -32,7 +32,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
         
         // 使用 matchAll 来匹配所有链接，避免正则状态问题
         // 注意：此正则不处理转义字符，VSCode 的内置 markdown 引擎会处理这些情况
-        const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+        const linkPattern = /\x5B([^\]]+)\x5D\(([^\s)]+)\)/g;
         const matches = text.matchAll(linkPattern);
         
         for (const match of matches) {
@@ -41,7 +41,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             }
 
             const linkPath = match[2]; // 链接路径（可能包含查询参数）
-            const startIndex = match.index! + match[0].indexOf('(') + 1; // ( 之后的位置
+            const startIndex = match.index! + match[1].length + 3; // ( 之后的位置, 等于 "[" + match[1] + "](".length
             const endIndex = startIndex + linkPath.length;
 
             // 解析路径和查询参数
