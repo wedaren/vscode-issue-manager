@@ -31,6 +31,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
         const text = document.getText();
         
         // 使用 matchAll 来匹配所有链接，避免正则状态问题
+        // 注意：此正则不处理转义字符，VSCode 的内置 markdown 引擎会处理这些情况
         const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
         const matches = text.matchAll(linkPattern);
         
@@ -39,7 +40,6 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
                 return [];
             }
 
-            const linkText = match[1]; // 链接文本
             const linkPath = match[2]; // 链接路径（可能包含查询参数）
             const startIndex = match.index! + match[0].indexOf('(') + 1; // ( 之后的位置
             const endIndex = startIndex + linkPath.length;
@@ -102,17 +102,22 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
                 absolutePath = path.resolve(currentDir, filePath);
             }
 
-            // 确保路径在 issueDir 内
+            // 确保路径在 issueDir 内，使用 path.relative 进行更健壮的验证
             const normalizedIssuePath = path.normalize(issueDir);
             let normalizedAbsPath = path.normalize(absolutePath);
             
-            if (!normalizedAbsPath.startsWith(normalizedIssuePath)) {
+            // 使用 path.relative 检查路径关系
+            let relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
+            
+            // 如果相对路径以 .. 开头，说明不在 issueDir 内
+            if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
                 // 路径不在 issueDir 内，尝试将其作为相对于 issueDir 的路径
                 absolutePath = path.join(issueDir, filePath);
                 normalizedAbsPath = path.normalize(absolutePath);
+                relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
                 
                 // 再次验证路径在 issueDir 内，防止 ../ 逃逸
-                if (!normalizedAbsPath.startsWith(normalizedIssuePath)) {
+                if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
                     return null;
                 }
             }

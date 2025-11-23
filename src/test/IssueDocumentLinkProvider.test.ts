@@ -15,11 +15,6 @@ suite('IssueDocumentLinkProvider 测试', () => {
         assert.ok(provider.provideDocumentLinks, 'provideDocumentLinks 方法应该存在');
     });
 
-    test('应该能够导入 IssueDocumentLinkProvider', () => {
-        const { IssueDocumentLinkProvider: ImportedProvider } = require('../providers/IssueDocumentLinkProvider');
-        assert.ok(ImportedProvider, 'IssueDocumentLinkProvider 应该能够导入');
-    });
-
     test('对于非 markdown 文档应返回空数组', async () => {
         // 创建一个简单的文本文档
         const doc = await vscode.workspace.openTextDocument({
