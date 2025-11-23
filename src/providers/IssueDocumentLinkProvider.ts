@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
+import { Logger } from '../core/utils/Logger';
 
 /**
  * Issue 文档链接提供器
@@ -9,12 +10,6 @@ import { getIssueDir } from '../config';
  * 使得点击链接时能够正确导航到文件并保留 issueId 上下文
  */
 export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
-    /**
-     * 匹配 markdown 链接的正则表达式
-     * 支持格式: [text](path?issueId=xxx) 或 [text](path?issueId=xxx&other=value)
-     */
-    private readonly linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
-
     /**
      * 提供文档中的链接
      */
@@ -35,18 +30,18 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
         const links: vscode.DocumentLink[] = [];
         const text = document.getText();
         
-        // 重置正则表达式的 lastIndex
-        this.linkPattern.lastIndex = 0;
+        // 使用 matchAll 来匹配所有链接，避免正则状态问题
+        const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+        const matches = text.matchAll(linkPattern);
         
-        let match;
-        while ((match = this.linkPattern.exec(text)) !== null) {
+        for (const match of matches) {
             if (token.isCancellationRequested) {
                 return [];
             }
 
             const linkText = match[1]; // 链接文本
             const linkPath = match[2]; // 链接路径（可能包含查询参数）
-            const startIndex = match.index + match[0].indexOf('(') + 1; // ( 之后的位置
+            const startIndex = match.index! + match[0].indexOf('(') + 1; // ( 之后的位置
             const endIndex = startIndex + linkPath.length;
 
             // 解析路径和查询参数
@@ -109,11 +104,17 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
 
             // 确保路径在 issueDir 内
             const normalizedIssuePath = path.normalize(issueDir);
-            const normalizedAbsPath = path.normalize(absolutePath);
+            let normalizedAbsPath = path.normalize(absolutePath);
             
             if (!normalizedAbsPath.startsWith(normalizedIssuePath)) {
                 // 路径不在 issueDir 内，尝试将其作为相对于 issueDir 的路径
                 absolutePath = path.join(issueDir, filePath);
+                normalizedAbsPath = path.normalize(absolutePath);
+                
+                // 再次验证路径在 issueDir 内，防止 ../ 逃逸
+                if (!normalizedAbsPath.startsWith(normalizedIssuePath)) {
+                    return null;
+                }
             }
 
             // 创建 URI
@@ -136,8 +137,8 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
 
             return { uri };
         } catch (error) {
-            // 解析失败，忽略此链接
-            console.error('解析链接失败:', linkPath, error);
+            // 解析失败，使用 Logger 记录
+            Logger.getInstance().error(`解析链接失败: ${linkPath}`, error);
             return null;
         }
     }
