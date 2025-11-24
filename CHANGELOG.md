@@ -5,6 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.15]
+
+### ✨ 新功能
+- **feat(git-sync): 同步成功后自动执行 issueManager.refreshTitle** (#116)
+- **feat: 实现 DocumentLinkProvider 支持解析 markdown 链接中的 issueId 查询参数** (#117)
+  - 支持在 markdown 文件中自动识别带有 `issueId` 查询参数的链接
+
 ## [0.2.14]
 
 ### ✨ 新功能
