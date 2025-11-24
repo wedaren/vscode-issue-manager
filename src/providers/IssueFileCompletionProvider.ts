@@ -197,7 +197,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
                     item.insertText = `${title}]]`;
                 } else {
                     // 普通 markdown 链接
-                    item.insertText = `[${title}](${relativePath})`;
+                    item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`
                 }
                 break;
             
