@@ -181,8 +181,6 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         // 设置详情（显示相对路径）
         item.detail = relativePath;
 
-        const pathWithQuery = relativePath + `?issueId=${encodeURIComponent(node.id)}`;
-
         // 设置文档说明
         const docParts = [`**${title}**`];
         if (node.parentPath.length > 0) {
@@ -199,7 +197,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
                     item.insertText = `${title}]]`;
                 } else {
                     // 普通 markdown 链接
-                    item.insertText = `[${title}](${pathWithQuery})`;
+                    item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`
                 }
                 break;
             
