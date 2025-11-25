@@ -17,9 +17,9 @@ const PARA_CATEGORY_CONFIGS = [
 ] as const;
 
 // 等待视图切换和渲染完成的延迟时间  
-const VIEW_REVEAL_DELAY_MS = 300;  
+const VIEW_REVEAL_DELAY_MS = 300;
 // 等待分类节点展开动画完成的延迟时间  
-const EXPAND_ANIMATION_DELAY_MS = 100;  
+const EXPAND_ANIMATION_DELAY_MS = 100;
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand } from '../commands/openIssueDir';
@@ -156,7 +156,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
                     const uri = node.resourceUri;
-                    if(node.id && uri){
+                    if (node.id && uri) {
                         const id = stripFocusedId(node.id);
                         await vscode.window.showTextDocument(uri.with({ query: `issueId=${encodeURIComponent(id)}` }), { preview: false });
                     } else {
@@ -186,6 +186,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 9. 注册 LLM 相关命令
             this.registerLLMCommands();
 
+            // 10. 注册思维导图命令
+            this.registerMindMapCommands();
+
             this.logger.info('✅ 所有命令注册完成');
 
         } catch (error) {
@@ -213,7 +216,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.moveTo',
             async (...args: unknown[]) => {
-                const [node,nodes] = args;
+                const [node, nodes] = args;
                 if (nodes && Array.isArray(nodes) && nodes.length > 0) {
                     const validNodes = nodes.filter(isIssueTreeNode);
                     await moveIssuesTo(validNodes);
@@ -353,7 +356,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 // 类型守卫，确保 node 是一个有效的 IssueTreeNode
                 const node = (Array.isArray(args) && args.length > 0) ? args[0] : null;
-                
+
                 if (!node || !isIssueTreeNode(node) || node.id === 'placeholder-no-issues') {
                     return;
                 }
@@ -433,30 +436,30 @@ export class CommandRegistry extends BaseCommandRegistry {
             }
         );
 
-            // 复制问题 ID 命令（用于编辑器右键菜单）
-            this.registerCommand(
-                'issueManager.copyIssueId',
-                async () => {
-                    const editor = vscode.window.activeTextEditor;
-                    if (!editor) {
-                        vscode.window.showWarningMessage('没有激活的编辑器可复制问题 ID。');
-                        return;
-                    }
-                    const id = getIssueIdFromUri(editor.document.uri);
-                    if (!id) {
-                        vscode.window.showWarningMessage('当前文档不包含问题 ID。');
-                        return;
-                    }
-                    try {
-                        await vscode.env.clipboard.writeText(id);
-                        vscode.window.showInformationMessage('已复制问题 ID');
-                    } catch (e) {
-                        this.logger.error('复制问题 ID 到剪贴板失败', e);
-                        vscode.window.showErrorMessage('复制问题 ID 失败');
-                    }
-                },
-                '复制问题 ID'
-            );
+        // 复制问题 ID 命令（用于编辑器右键菜单）
+        this.registerCommand(
+            'issueManager.copyIssueId',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showWarningMessage('没有激活的编辑器可复制问题 ID。');
+                    return;
+                }
+                const id = getIssueIdFromUri(editor.document.uri);
+                if (!id) {
+                    vscode.window.showWarningMessage('当前文档不包含问题 ID。');
+                    return;
+                }
+                try {
+                    await vscode.env.clipboard.writeText(id);
+                    vscode.window.showInformationMessage('已复制问题 ID');
+                } catch (e) {
+                    this.logger.error('复制问题 ID 到剪贴板失败', e);
+                    vscode.window.showErrorMessage('复制问题 ID 失败');
+                }
+            },
+            '复制问题 ID'
+        );
 
         this.registerParaCategoryCommands(
             'issueManager.para.viewIn',
@@ -557,7 +560,7 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             const nodeId = stripFocusedId(treeNode.id);
             this.logger.info(`尝试在 PARA 视图中定位节点: ${nodeId}, 分类: ${category}`);
-            
+
             // 构造目标节点
             const targetNode = {
                 type: 'issue' as const,
@@ -565,39 +568,39 @@ export class CommandRegistry extends BaseCommandRegistry {
                 category: category,
                 treeNode: treeNode
             };
-            
+
             // 先切换到 PARA 视图
             await vscode.commands.executeCommand('issueManager.views.para.focus');
-            
+
             // 等待视图完全加载
             await new Promise(resolve => setTimeout(resolve, VIEW_REVEAL_DELAY_MS));
-            
+
             // 先展开分类节点
             const categoryNode = { type: 'category' as const, category: category };
             try {
-                await this.paraView.reveal(categoryNode, { 
-                    select: false, 
-                    focus: false, 
-                    expand: true 
+                await this.paraView.reveal(categoryNode, {
+                    select: false,
+                    focus: false,
+                    expand: true
                 });
                 // 等待展开完成
                 await new Promise(resolve => setTimeout(resolve, EXPAND_ANIMATION_DELAY_MS));
             } catch (error) {
                 this.logger.warn('展开分类节点失败,继续尝试定位目标节点', error);
             }
-            
+
             // 定位到目标节点并高亮
-            await this.paraView.reveal(targetNode, { 
+            await this.paraView.reveal(targetNode, {
                 select: true,  // 选中节点
                 focus: true,   // 聚焦节点
                 expand: 1      // 展开一层子节点
             });
-            
+
             this.logger.info(`成功在 PARA 视图中定位节点: ${nodeId}`);
-            
+
             // 可选:短暂显示成功提示
             vscode.window.setStatusBarMessage(`✓ 已在 ${getCategoryLabel(category)} 中定位到该问题`, 2000);
-            
+
         } catch (error) {
             this.logger.error('在 PARA 视图中定位节点失败:', error);
             // 降级方案：只切换到 PARA 视图
@@ -620,17 +623,17 @@ export class CommandRegistry extends BaseCommandRegistry {
                 { modal: false },
                 '确定'
             );
-            
+
             if (confirm !== '确定') {
                 return;
             }
-            
+
             await removeIssueFromCategory(category, issueId);
             await vscode.commands.executeCommand('issueManager.refreshAllViews');
-            
+
             vscode.window.showInformationMessage(`已从 ${categoryLabel} 中移除`);
             this.logger.info(`从 ${category} 中移除问题: ${issueId}`);
-            
+
         } catch (error) {
             this.logger.error('从 PARA 分类中移除问题失败:', error);
             vscode.window.showErrorMessage(`移除失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -648,10 +651,10 @@ export class CommandRegistry extends BaseCommandRegistry {
             await Promise.all([
                 vscode.commands.executeCommand('issueManager.focused.refresh'),
                 vscode.commands.executeCommand('issueManager.para.refresh')
-            ]);            
+            ]);
             vscode.window.showInformationMessage('已添加到关注问题');
             this.logger.info(`从 PARA 视图添加到关注: ${issueId}`);
-            
+
         } catch (error) {
             this.logger.error('从 PARA 视图添加到关注失败:', error);
             vscode.window.showErrorMessage(`添加失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -673,15 +676,15 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             const fromLabel = getCategoryLabel(fromCategory);
             const toLabel = getCategoryLabel(toCategory);
-            
+
             // addIssueToCategory 会自动处理从旧分类中移除的逻辑
             await addIssueToCategory(toCategory, issueId);
-            
+
             await vscode.commands.executeCommand('issueManager.refreshAllViews');
-            
+
             vscode.window.showInformationMessage(`已从 ${fromLabel} 移动到 ${toLabel}`);
             this.logger.info(`移动问题: ${issueId} 从 ${fromCategory} 到 ${toCategory}`);
-            
+
         } catch (error) {
             this.logger.error('移动 PARA 问题失败:', error);
             vscode.window.showErrorMessage(`移动失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -700,6 +703,129 @@ export class CommandRegistry extends BaseCommandRegistry {
                 await selectLLMModel();
             },
             '选择 LLM 模型'
+        );
+    }
+
+    /**
+     * 注册思维导图命令
+     */
+    private registerMindMapCommands(): void {
+        this.logger.info('🧠 注册思维导图命令...');
+
+        this.registerCommand(
+            'issueManager.openMindMap',
+            async () => {
+                const { MindMapPanel } = await import('../webview/MindMapPanel');
+
+                // 获取当前激活的编辑器
+                const activeEditor = vscode.window.activeTextEditor;
+                if (!activeEditor) {
+                    vscode.window.showInformationMessage('请先打开一个问题文件');
+                    return;
+                }
+
+                // 检查是否是问题目录中的文件
+                const issueDir = (await import('../config')).getIssueDir();
+                if (!issueDir) {
+                    vscode.window.showErrorMessage('问题目录未配置');
+                    return;
+                }
+
+                const currentFilePath = activeEditor.document.uri.fsPath;
+                if (!currentFilePath.startsWith(issueDir)) {
+                    vscode.window.showWarningMessage('当前文件不在问题目录中');
+                    return;
+                }
+
+                // 获取当前文件的 frontmatter
+                const { getFrontmatter } = await import('../utils/markdown');
+                const frontmatter = await getFrontmatter(activeEditor.document.uri);
+
+                if (!frontmatter || !frontmatter.root_file) {
+                    vscode.window.showWarningMessage('当前文件没有有效的问题结构信息（缺少 root_file）');
+                    return;
+                }
+
+                // 从 IssueStructureProvider 获取结构数据
+                const { IssueStructureProvider } = await import('../views/IssueStructureProvider');
+                const path = await import('path');
+
+                // 构建根节点
+                const rootFileName = frontmatter.root_file;
+                const rootFilePath = path.join(issueDir, rootFileName);
+                const rootUri = vscode.Uri.file(rootFilePath);
+
+                try {
+                    // 检查根文件是否存在
+                    await vscode.workspace.fs.stat(rootUri);
+
+                    // 递归构建节点树
+                    const buildNode = async (fileName: string, visited = new Set<string>()): Promise<any> => {
+                        if (visited.has(fileName)) {
+                            return {
+                                id: fileName,
+                                title: '循环引用: ' + fileName,
+                                hasError: true,
+                                errorMessage: '检测到循环引用',
+                                children: []
+                            };
+                        }
+
+                        visited.add(fileName);
+
+                        const filePath = path.join(issueDir, fileName);
+                        const fileUri = vscode.Uri.file(filePath);
+
+                        try {
+                            await vscode.workspace.fs.stat(fileUri);
+
+                            // 获取标题
+                            const { TitleCacheService } = await import('../services/TitleCacheService');
+                            const cachedTitle = await TitleCacheService.getInstance().get(fileName);
+                            const title = cachedTitle || path.basename(fileName, '.md');
+
+                            // 获取子节点
+                            const fm = await getFrontmatter(fileUri);
+                            const childrenFiles = fm?.children_files || [];
+
+                            const children = [];
+                            for (const childFileName of childrenFiles) {
+                                const childNode = await buildNode(childFileName, new Set(visited));
+                                if (childNode) {
+                                    children.push(childNode);
+                                }
+                            }
+
+                            return {
+                                id: fileName,
+                                title,
+                                filePath: fileName,
+                                children,
+                                hasError: false
+                            };
+                        } catch (error) {
+                            return {
+                                id: fileName,
+                                title: '文件未找到: ' + fileName,
+                                filePath: fileName,
+                                hasError: true,
+                                errorMessage: '文件不存在',
+                                children: []
+                            };
+                        }
+                    };
+
+                    const rootNode = await buildNode(rootFileName);
+
+                    // 打开思维导图
+                    MindMapPanel.createOrShow(this.context.extensionUri, rootNode);
+
+                } catch (error) {
+                    this.logger.error('打开思维导图失败:', error);
+                    vscode.window.showErrorMessage(`无法打开思维导图: ${error}`);
+                }
+            },
+            '打开思维导图'
         );
     }
 }
