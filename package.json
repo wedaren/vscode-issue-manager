@@ -344,6 +344,12 @@
         "title": "显示问题关系图",
         "category": "Issue Manager",
         "icon": "$(graph)"
+      },
+      {
+        "command": "issueManager.showMindMap",
+        "title": "显示思维导图",
+        "category": "Issue Manager",
+        "icon": "$(type-hierarchy)"
       }
     ],
     "submenus": [
