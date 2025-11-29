@@ -643,7 +643,8 @@ export class CommandRegistry extends BaseCommandRegistry {
      */
     private async addParaNodeToFocused(issueId: string): Promise<void> {
         try {
-            const { addFocus } = await import('../data/focusedManager.js');
+            // @ts-ignore - 动态导入路径特意省略了扩展名，以便 webpack 可以解析 TS 模块
+            const { addFocus } = await import('../data/focusedManager') as { addFocus: (nodeIds: string[]) => Promise<void> };
             await addFocus([issueId]);
             await Promise.all([
                 vscode.commands.executeCommand('issueManager.focused.refresh'),
