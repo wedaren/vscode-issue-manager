@@ -1,4 +1,8 @@
-import { Graph } from '@antv/g6';
+import { Graph, register, ExtensionCategory, Circle, Line } from '@antv/g6';
+
+// 注册节点和边类型 (G6 v5 要求)
+register(ExtensionCategory.NODE, 'circle', Circle);
+register(ExtensionCategory.EDGE, 'line', Line);
 
 // VS Code API
 declare const acquireVsCodeApi: any;
@@ -32,6 +36,7 @@ function initGraph() {
             autoFit: 'view',
             data: { nodes: [], edges: [] },
             node: {
+                type: 'circle', // 使用已注册的节点类型
                 style: {
                     size: 40,
                     fill: currentTheme === 'light' ? '#5B8FF9' : '#69c0ff',
@@ -43,6 +48,7 @@ function initGraph() {
                 },
             },
             edge: {
+                type: 'line', // 使用已注册的边类型
                 style: {
                     stroke: currentTheme === 'light' ? '#999999' : '#666666',
                     lineWidth: 1,
