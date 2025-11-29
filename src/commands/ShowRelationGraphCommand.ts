@@ -18,8 +18,10 @@ export class ShowRelationGraphCommand {
      */
     public async execute(uri?: vscode.Uri): Promise<void> {
         try {
+            console.log('[ShowRelationGraph] 命令开始执行');
             // 获取当前文件路径
             const filePath = uri?.fsPath || vscode.window.activeTextEditor?.document.uri.fsPath;
+            console.log('[ShowRelationGraph] 文件路径:', filePath);
 
             if (!filePath) {
                 vscode.window.showWarningMessage('请先打开一个问题文件');
@@ -37,9 +39,11 @@ export class ShowRelationGraphCommand {
 
             // 监听 Webview 消息
             this.webviewManager.onMessage(panel, (message) => {
+                console.log('[ShowRelationGraph] 收到消息:', message.type);
                 switch (message.type) {
                     case 'READY':
                         // Webview 就绪后发送数据
+                        console.log('[ShowRelationGraph] Webview 已就绪');
                         this.sendGraphData(panel, filePath);
                         break;
                     case 'NODE_CLICKED':
@@ -77,8 +81,10 @@ export class ShowRelationGraphCommand {
      */
     private async sendGraphData(panel: vscode.WebviewPanel, filePath: string): Promise<void> {
         try {
+            console.log('[ShowRelationGraph] 开始获取图数据');
             // 从 GraphDataService 获取图数据
             const graphData: G6GraphData = await this.graphDataService.getGraphData(filePath);
+            console.log('[ShowRelationGraph] 节点数:', graphData.nodes.length, '边数:', graphData.edges.length);
 
             // 发送数据到 Webview
             this.webviewManager.postMessage(panel, {
