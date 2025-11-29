@@ -8,71 +8,124 @@ import Hierarchy from '@antv/hierarchy';
 declare const acquireVsCodeApi: any;
 const vscode = acquireVsCodeApi();
 
+// 全局错误处理
+window.onerror = function(message, source, lineno, colno, error) {
+    console.error('[Webview Error]', message, source, lineno, colno, error);
+    vscode.postMessage({
+        type: 'ERROR',
+        payload: {
+            message: `[Webview Error] ${message} (${source}:${lineno}:${colno})`
+        }
+    });
+};
+
 let graph: Graph | null = null;
 
 // 初始化图表
 function initGraph() {
-    console.log('[X6] 开始初始化思维导图...');
-    const container = document.getElementById('container');
-    if (!container) {
-        console.error('[X6] Container not found');
-        return;
-    }
-
-    graph = new Graph({
-        container: container,
-        background: {
-            color: 'var(--vscode-editor-background)',
-        },
-        connecting: {
-            connectionPoint: 'anchor',
-        },
-        interacting: false, // 默认禁止节点移动
-    });
-
-    // 注册插件
-    graph.use(
-        new Scroller({
-            enabled: true,
-            pannable: true,
-            pageVisible: false,
-            pageBreak: false,
-        })
-    );
-    graph.use(new Keyboard());
-    graph.use(new Selection());
-
-    // 快捷键
-    graph.bindKey(['meta+plus', 'ctrl+plus'], () => {
-        const zoom = graph?.zoom();
-        if (zoom) {
-            graph?.zoom(0.1);
+    try {
+        console.log('[X6] 开始初始化思维导图...');
+        const container = document.getElementById('container');
+        if (!container) {
+            throw new Error('Container not found');
         }
-        return false;
-    });
-    graph.bindKey(['meta+minus', 'ctrl+minus'], () => {
-        const zoom = graph?.zoom();
-        if (zoom) {
-            graph?.zoom(-0.1);
-        }
-        return false;
-    });
 
-    // 事件监听
-    graph.on('node:click', ({ node }) => {
-        const data = node.getData();
-        console.log('[X6] 节点点击:', data);
+        graph = new Graph({
+            container: container,
+            background: {
+                color: 'var(--vscode-editor-background)',
+            },
+            connecting: {
+                connectionPoint: 'anchor',
+            },
+            interacting: false, // 默认禁止节点移动
+        });
+
+        // 注册插件
+        graph.use(
+            new Scroller({
+                enabled: true,
+                pannable: true,
+                pageVisible: false,
+                pageBreak: false,
+            })
+        );
+        graph.use(new Keyboard());
+        graph.use(new Selection());
+
+        // 快捷键
+        graph.bindKey(['meta+plus', 'ctrl+plus'], () => {
+            const zoom = graph?.zoom();
+            if (zoom) {
+                graph?.zoom(0.1);
+            }
+            return false;
+        });
+        graph.bindKey(['meta+minus', 'ctrl+minus'], () => {
+            const zoom = graph?.zoom();
+            if (zoom) {
+                graph?.zoom(-0.1);
+            }
+            return false;
+        });
+
+        // 绑定工具栏按钮事件
+        const bindToolbarEvents = () => {
+            const zoomInBtn = document.getElementById('zoom-in');
+            const zoomOutBtn = document.getElementById('zoom-out');
+            const fitViewBtn = document.getElementById('fit-view');
+            const centerContentBtn = document.getElementById('center-content');
+
+            if (zoomInBtn) {
+                zoomInBtn.addEventListener('click', () => {
+                    graph?.zoom(0.1);
+                });
+            }
+
+            if (zoomOutBtn) {
+                zoomOutBtn.addEventListener('click', () => {
+                    graph?.zoom(-0.1);
+                });
+            }
+
+            if (fitViewBtn) {
+                fitViewBtn.addEventListener('click', () => {
+                    graph?.zoomToFit({ padding: 20 });
+                });
+            }
+
+            if (centerContentBtn) {
+                centerContentBtn.addEventListener('click', () => {
+                    graph?.centerContent();
+                });
+            }
+        };
+        bindToolbarEvents();
+
+        // 事件监听
+        graph.on('node:click', ({ node }) => {
+            const data = node.getData();
+            console.log('[X6] 节点点击:', data);
+            vscode.postMessage({
+                type: 'NODE_CLICKED',
+                payload: {
+                    nodeId: node.id,
+                    label: data.label
+                }
+            });
+        });
+
+        console.log('[X6] 初始化完成');
+        vscode.postMessage({ type: 'READY' });
+    } catch (error) {
+        console.error('[X6] 初始化失败:', error);
         vscode.postMessage({
-            type: 'NODE_CLICKED',
+            type: 'ERROR',
             payload: {
-                nodeId: node.id,
-                label: data.label
+                message: `X6 初始化失败: ${error}`
             }
         });
-    });
-
-    console.log('[X6] 初始化完成');
-    vscode.postMessage({ type: 'READY' });
+    }
 }
 
 // 渲染思维导图

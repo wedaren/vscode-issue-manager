@@ -31,6 +31,13 @@ export interface ThemeConfig {
     textColor: string;
 }
 
+export interface MindMapNode {
+    id: string;
+    label: string;
+    children?: MindMapNode[];
+    data?: any;
+}
+
 // 消息协议 - 从扩展宿主发送到 Webview
 export type HostToWebviewMessage =
     | { type: 'INIT_GRAPH'; payload: G6GraphData }

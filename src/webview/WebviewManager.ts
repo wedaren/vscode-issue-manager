@@ -200,9 +200,60 @@ export class WebviewManager {
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: var(--vscode-editor-background); }
         #container { width: 100vw; height: 100vh; }
+        #toolbar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 4px;
+            padding: 4px;
+            display: flex;
+            gap: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        .toolbar-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--vscode-editor-foreground);
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+        }
+        .toolbar-btn:hover {
+            background: var(--vscode-toolbar-hoverBackground);
+        }
+        .toolbar-btn:active {
+            background: var(--vscode-toolbar-activeBackground);
+        }
+        .toolbar-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
     </style>
 </head>
 <body>
+    <div id="toolbar">
+        <button class="toolbar-btn" id="zoom-in" title="放大">
+            <svg viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+        </button>
+        <button class="toolbar-btn" id="zoom-out" title="缩小">
+            <svg viewBox="0 0 16 16"><path d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8z"/></svg>
+        </button>
+        <button class="toolbar-btn" id="fit-view" title="适应画布">
+            <svg viewBox="0 0 16 16"><path d="M2 2a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2zm1 0v12h10V2H3z"/></svg>
+        </button>
+        <button class="toolbar-btn" id="center-content" title="居中">
+            <svg viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zm0 1a5 5 0 1 0 0 10A5 5 0 0 0 8 3zM8 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>
+        </button>
+    </div>
     <div id="container"></div>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
