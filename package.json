@@ -338,6 +338,12 @@
         "title": "选择 AI 模型",
         "category": "Issue Manager",
         "icon": "$(hubot)"
+      },
+      {
+        "command": "issueManager.showRelationGraph",
+        "title": "显示问题关系图",
+        "category": "Issue Manager",
+        "icon": "$(graph)"
       }
     ],
     "submenus": [
@@ -1185,6 +1191,9 @@
     "wxt": "^0.20.11"
   },
   "dependencies": {
+    "@antv/g2": "^5.4.6",
+    "@antv/g6": "^5.0.50",
+    "@antv/x6": "^3.0.1",
     "cheerio": "^1.1.2",
     "dompurify": "^3.3.0",
     "js-yaml": "^4.1.0",
