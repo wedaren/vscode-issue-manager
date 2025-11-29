@@ -159,4 +159,46 @@ export class GraphDataService {
             return false;
         }
     }
+
+    /**
+     * 获取思维导图数据 (树形结构)
+     */
+    public async getMindMapData(filePath: string): Promise<any> {
+        const content = await fs.readFile(filePath, 'utf-8');
+        const fileName = path.basename(filePath, '.md');
+
+        // 解析 Markdown 标题
+        const lines = content.split('\n');
+        const root = {
+            id: 'root',
+            label: fileName,
+            children: [] as any[]
+        };
+
+        const stack: { level: number; node: any }[] = [{ level: 0, node: root }];
+
+        for (const line of lines) {
+            const match = line.match(/^(#+)\s+(.*)/);
+            if (match) {
+                const level = match[1].length;
+                const text = match[2].trim();
+                const node = {
+                    id: `node-${Math.random().toString(36).substr(2, 9)}`,
+                    label: text,
+                    children: []
+                };
+
+                // 找到父节点
+                while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+                    stack.pop();
+                }
+
+                const parent = stack[stack.length - 1].node;
+                parent.children.push(node);
+                stack.push({ level, node });
+            }
+        }
+
+        return root;
+    }
 }

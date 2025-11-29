@@ -150,6 +150,66 @@ export class WebviewManager {
     }
 
     /**
+     * 创建 X6 思维导图 Webview Panel
+     */
+    public createMindMapPanel(title: string): vscode.WebviewPanel {
+        const panelId = `x6-mindmap-${Date.now()}`;
+        const panel = vscode.window.createWebviewPanel(
+            'issueManagerX6MindMap',
+            title,
+            vscode.ViewColumn.One,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [
+                    vscode.Uri.file(path.join(this.context.extensionPath, 'dist', 'webview'))
+                ]
+            }
+        );
+
+        panel.webview.html = this.getMindMapHtml(panel.webview);
+
+        panel.onDidDispose(() => {
+            this.panels.delete(panelId);
+        });
+
+        this.panels.set(panelId, panel);
+        return panel;
+    }
+
+    /**
+     * 生成 X6 MindMap 的 HTML 内容
+     */
+    private getMindMapHtml(webview: vscode.Webview): string {
+        const scriptUri = webview.asWebviewUri(
+            vscode.Uri.file(path.join(this.context.extensionPath, 'dist', 'webview', 'x6-mindmap.js'))
+        );
+        const nonce = this.getNonce();
+
+        return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" 
+          content="default-src 'none'; 
+                   img-src ${webview.cspSource} https:; 
+                   script-src 'nonce-${nonce}'; 
+                   style-src ${webview.cspSource} 'unsafe-inline';">
+    <title>思维导图</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: var(--vscode-editor-background); }
+        #container { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
+    }
+
+    /**
      * 清理所有面板
      */
     public dispose(): void {

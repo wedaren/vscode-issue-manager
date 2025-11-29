@@ -36,7 +36,8 @@ export type HostToWebviewMessage =
     | { type: 'INIT_GRAPH'; payload: G6GraphData }
     | { type: 'UPDATE_DATA'; payload: G6GraphData }
     | { type: 'THEME_CHANGED'; payload: ThemeConfig }
-    | { type: 'RESIZE'; payload: { width: number; height: number } };
+    | { type: 'RESIZE'; payload: { width: number; height: number } }
+    | { type: 'INIT_MINDMAP'; payload: MindMapNode };
 
 // 消息协议 - 从 Webview 发送到扩展宿主
 export type WebviewToHostMessage =

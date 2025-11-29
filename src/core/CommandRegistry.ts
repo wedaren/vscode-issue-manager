@@ -276,14 +276,25 @@ export class CommandRegistry extends BaseCommandRegistry {
                 const { WebviewManager } = await import('../webview/WebviewManager');
                 const { ShowRelationGraphCommand } = await import('../commands/ShowRelationGraphCommand');
                 const { GraphDataService } = await import('../services/GraphDataService');
+                const { ShowMindMapCommand } = await import('../commands/ShowMindMapCommand'); // Added import for ShowMindMapCommand
 
                 const webviewManager = WebviewManager.getInstance(this.context);
                 const graphDataService = GraphDataService.getInstance();
-                const command = new ShowRelationGraphCommand(this.context, webviewManager, graphDataService);
+                // 注册显示关系图命令
+                const showRelationGraphCommand = new ShowRelationGraphCommand(this.context, webviewManager, graphDataService);
+                this.registerCommand('issueManager.showRelationGraph', (...args: any[]) => {
+                    const uri = args[0] instanceof vscode.Uri ? args[0] : undefined;
+                    return showRelationGraphCommand.execute(uri);
+                });
 
-                await command.execute(uri);
+                // 注册显示思维导图命令
+                const showMindMapCommand = new ShowMindMapCommand(this.context, webviewManager, graphDataService);
+                this.registerCommand('issueManager.showMindMap', (...args: any[]) => {
+                    const uri = args[0] instanceof vscode.Uri ? args[0] : undefined;
+                    return showMindMapCommand.execute(uri);
+                });
             },
-            '显示问题关系图'
+            '显示问题可视化'
         );
     }
 

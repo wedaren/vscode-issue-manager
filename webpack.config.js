@@ -54,10 +54,13 @@ const webviewConfig = {
   target: 'web', // Webview runs in browser context
   mode: 'none',
 
-  entry: './webview-src/g6/index.ts',
+  entry: {
+    'g6-graph': './webview-src/g6/index.ts',
+    'x6-mindmap': './webview-src/x6/index.ts'
+  },
   output: {
     path: path.resolve(__dirname, 'dist', 'webview'),
-    filename: 'g6-graph.js',
+    filename: '[name].js',
     libraryTarget: 'umd'
   },
   resolve: {
@@ -65,6 +68,12 @@ const webviewConfig = {
   },
   module: {
     rules: [
+      {
+        test: /\.m?js/,
+        resolve: {
+          fullySpecified: false
+        }
+      },
       {
         test: /\.ts$/,
         exclude: /node_modules/,

@@ -1193,7 +1193,11 @@
   "dependencies": {
     "@antv/g2": "^5.4.6",
     "@antv/g6": "^5.0.50",
+    "@antv/hierarchy": "^0.6.14",
     "@antv/x6": "^3.0.1",
+    "@antv/x6-plugin-keyboard": "^2.2.3",
+    "@antv/x6-plugin-scroller": "^2.0.10",
+    "@antv/x6-plugin-selection": "^2.2.2",
     "cheerio": "^1.1.2",
     "dompurify": "^3.3.0",
     "js-yaml": "^4.1.0",
