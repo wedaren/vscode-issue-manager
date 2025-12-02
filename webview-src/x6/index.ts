@@ -21,6 +21,9 @@ window.onerror = function(message, source, lineno, colno, error) {
 
 let graph: Graph | null = null;
 
+// 全局数据
+let rawData: any = null;
+
 // 初始化图表
 function initGraph() {
     try {
@@ -29,6 +32,37 @@ function initGraph() {
         if (!container) {
             throw new Error('Container not found');
         }
+
+        // 注册自定义事件
+        Graph.registerNodeTool('collapse-expand', {
+            inherit: 'button',
+            markup: [
+                {
+                    tagName: 'circle',
+                    selector: 'button',
+                    attrs: {
+                        r: 6,
+                        fill: 'var(--vscode-editor-background)',
+                        stroke: 'var(--vscode-textLink-foreground)',
+                        cursor: 'pointer',
+                    },
+                },
+                {
+                    tagName: 'path',
+                    selector: 'icon',
+                    attrs: {
+                        fill: 'none',
+                        stroke: 'var(--vscode-editor-foreground)',
+                        'stroke-width': 1,
+                        pointerEvents: 'none',
+                    },
+                },
+            ],
+            onClick({ cell }: { cell: any }) {
+                const data = cell.getData();
+                toggleNodeCollapse(data.id);
+            },
+        });
 
         graph = new Graph({
             container: container,
@@ -128,17 +162,82 @@ function initGraph() {
     }
 }
 
+// 切换节点折叠状态
+function toggleNodeCollapse(nodeId: string) {
+    if (!rawData) return;
+
+    const findAndToggle = (node: any) => {
+        if (node.id === nodeId) {
+            node.collapsed = !node.collapsed;
+            return true;
+        }
+        if (node.children) {
+            for (const child of node.children) {
+                if (findAndToggle(child)) return true;
+            }
+        }
+        return false;
+    };
+
+    if (findAndToggle(rawData)) {
+        renderMindMap(rawData);
+    }
+}
+
+// 查找节点
+function findNodeById(root: any, id: string): any {
+    if (root.id === id) return root;
+    if (root.children) {
+        for (const child of root.children) {
+            const found = findNodeById(child, id);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+// 获取用于布局的数据（处理折叠）
+function getLayoutData(data: any) {
+    const traverse = (node: any) => {
+        const newNode = { ...node };
+        if (node.collapsed) {
+            newNode.children = [];
+        } else if (node.children) {
+            newNode.children = node.children.map(traverse);
+        }
+        return newNode;
+    };
+    return traverse(data);
+}
+
 // 渲染思维导图
 function renderMindMap(data: any) {
     if (!graph) {
         return;
     }
-
-    console.log('[X6] 渲染数据:', data);
+    
+    // 更新全局数据
+    if (rawData !== data) {
+        // 如果是新数据（非折叠操作触发），保留之前的折叠状态？
+        // 简单起见，这里假设外部传入的 data 是全量的
+        // 如果 data 对象引用变了，说明是初始化或刷新。
+        // 如果是内部重绘，我们传入的还是 rawData（但内容可能变了）
+        if (!rawData || rawData.id !== data.id) {
+            rawData = JSON.parse(JSON.stringify(data)); // 深拷贝一份
+        }
+    }
+    
+    // 使用当前 rawData 进行布局计算（因为 toggle 修改的是 rawData）
+    // 但这里 renderMindMap 接收的 data 参数可能是来自 init 的
+    // 如果是 init，我们已经赋值给了 rawData。
+    // 如果是 toggle 调用的 renderMindMap(rawData)，也是对的。
+    
+    console.log('[X6] 渲染数据:', rawData);
+    const layoutData = getLayoutData(rawData);
 
     // 使用 hierarchy 计算布局
     // @ts-ignore
-    const result = Hierarchy.mindmap(data, {
+    const result = Hierarchy.mindmap(layoutData, {
         direction: 'H',
         getHeight: () => 30,
         getWidth: (d: any) => {
@@ -158,30 +257,50 @@ function renderMindMap(data: any) {
         }
 
         const data = node.data;
+        const originalNode = rawData ? findNodeById(rawData, data.id) : null;
 
         // 创建节点
-        cells.push(
-            graph!.createNode({
-                id: data.id,
-                x: node.x,
-                y: node.y,
-                width: data.label.length * 12 + 20,
-                height: 30,
-                label: data.label,
-                data: { label: data.label }, // 存储原始数据
-                attrs: {
-                    body: {
-                        fill: 'var(--vscode-editor-background)',
-                        stroke: 'var(--vscode-textLink-foreground)',
-                        rx: 4,
-                        ry: 4,
-                    },
-                    label: {
-                        fill: 'var(--vscode-editor-foreground)',
-                    },
+        const x6Node = graph!.createNode({
+            id: data.id,
+            x: node.x,
+            y: node.y,
+            width: data.label.length * 12 + 20,
+            height: 30,
+            label: data.label,
+            data: { label: data.label, id: data.id, collapsed: !!originalNode?.collapsed },
+            attrs: {
+                body: {
+                    fill: 'var(--vscode-editor-background)',
+                    stroke: 'var(--vscode-textLink-foreground)',
+                    rx: 4,
+                    ry: 4,
                 },
-            })
-        );
+                label: {
+                    fill: 'var(--vscode-editor-foreground)',
+                },
+            },
+        });
+
+        // 添加折叠工具
+        if (originalNode && originalNode.children && originalNode.children.length > 0) {
+             x6Node.addTools({
+                name: 'collapse-expand',
+                args: {
+                    x: '100%',
+                    y: '50%',
+                    offset: { x: 10, y: 0 },
+                    attrs: {
+                        icon: {
+                            d: originalNode.collapsed 
+                                ? 'M -3 0 3 0 M 0 -3 0 3' // +
+                                : 'M -3 0 3 0' // -
+                        }
+                    }
+                },
+            });
+        }
+
+        cells.push(x6Node);
 
         // 创建边
         if (node.children) {
