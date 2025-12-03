@@ -21,7 +21,7 @@ export function registerCreateSubIssueFromEditorCommand(context: vscode.Extensio
 
             try {
                 const parentId = stripFocusedId(id);
-                await smartCreateIssue(parentId, true);
+                await smartCreateIssue(parentId, { addToTree: true, open: true, reveal: true });
             } catch (error) {
                 // 使用统一 Logger 记录错误
                 Logger.getInstance().error('通过编辑器创建子问题失败:', error);

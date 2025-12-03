@@ -291,10 +291,10 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 子问题创建命令由外部模块注册（createSubIssue / createSubIssueFromEditor）
 
         // 从关注问题视图创建新问题
-        this.registerCommand(
+                this.registerCommand(
             'issueManager.createIssueFromFocused',
             async () => {
-                await smartCreateIssue(null, true, true);
+                await smartCreateIssue(null, { addToTree: true, addToFocused: true });
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从关注问题视图创建新问题'
@@ -304,7 +304,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.createIssueFromOverview',
             async () => {
-                await smartCreateIssue(null, true);
+                await smartCreateIssue(null, { addToTree: true });
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从问题总览创建新问题'
