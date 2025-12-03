@@ -358,10 +358,39 @@ export class CommandRegistry extends BaseCommandRegistry {
                     return;
                 }
 
-                const { success } = removeNode(treeData, stripFocusedId(node.id));
+                // 先计算裸 issueId（去掉 focused 前缀）以便后续对于打开的编辑器进行比对
+                const nodeId = stripFocusedId(node.id);
+
+                const { success } = removeNode(treeData, nodeId);
 
                 if (success) {
                     await writeTree(treeData);
+
+                    // 遍历所有已打开的编辑器，清除包含相同 issueId 的编辑器上下文（URI query）
+                    try {
+                        const editors = vscode.window.visibleTextEditors.slice();
+                        for (const editor of editors) {
+                            try {
+                                const openId = getIssueIdFromUri(editor.document.uri);
+                                if (openId && openId === nodeId) {
+                                    const oldUri = editor.document.uri;
+                                    const newUri = oldUri.with({ query: '' });
+
+                                    // 将旧编辑器聚焦，然后在同一视图列打开不带 query 的新 URI（保持新文档在同一列）
+                                    await vscode.window.showTextDocument(oldUri, { viewColumn: editor.viewColumn, preview: false });
+                                    // 打开新 URI，但保持焦点在旧编辑器（preserveFocus: true），随后关闭旧编辑器
+                                    await vscode.window.showTextDocument(newUri, { viewColumn: editor.viewColumn, preview: false, preserveFocus: true });
+                                    // 关闭当前活动编辑器（此时仍为旧编辑器），从而达到替换效果
+                                    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+                                }
+                            } catch (e) {
+                                this.logger.error('清除单个编辑器上下文时出错', e);
+                            }
+                        }
+                    } catch (e) {
+                        this.logger.error('遍历已打开编辑器以清除上下文时失败', e);
+                    }
+
                     vscode.commands.executeCommand('issueManager.refreshAllViews');
                 } else {
                     vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
