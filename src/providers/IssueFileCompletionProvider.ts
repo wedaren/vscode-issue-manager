@@ -20,6 +20,7 @@ interface CompletionItemWithNode extends vscode.CompletionItem {
  */
 export class IssueFileCompletionProvider implements vscode.CompletionItemProvider {
     private paraCategoryCache: ParaCategoryCache;
+    private readonly createAndInsertCommandId = 'issueManager.createIssueFromCompletionAndInsert';
 
     constructor(context: vscode.ExtensionContext) {
         this.paraCategoryCache = ParaCategoryCache.getInstance(context);
@@ -72,17 +73,56 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
             const focusedData = await readFocused();
             
             // 转换为补全项
-            const items = await Promise.all(
+            const items: vscode.CompletionItem[] = await Promise.all(
                 filteredNodes.map((node, index) => 
                     this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index)
                 )
             );
+
+            // 交互调整：仅当存在编辑器非空选区时，提供“新建笔记”选项
+            const editor = vscode.window.activeTextEditor;
+            if (editor && editor.document === document && !editor.selection.isEmpty) {
+                const selectedText = document.getText(editor.selection).trim();
+                if (selectedText.length > 0) {
+                    const newItem = this.createNewIssueItem(selectedText, insertMode, document, triggers);
+                    items.unshift(newItem);
+                }
+            }
             
             return items;
         } catch (error) {
             console.error('补全提供器错误:', error);
             return undefined;
         }
+    }
+
+    /**
+     * 创建“新建笔记”补全项（置顶）
+     */
+    private createNewIssueItem(
+        title: string,
+        insertMode: string,
+        document: vscode.TextDocument,
+        triggers: string[]
+    ): vscode.CompletionItem {
+        const label = `$(new-file) 新建笔记: ${title}`;
+        const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Text);
+        // 置顶排序
+        item.sortText = '000000';
+        // 预选中，提高选择概率
+        item.preselect = true;
+        // 让 VS Code 替换关键字（尽可能匹配）
+        item.filterText = title;
+        item.detail = '创建新的问题文件并插入链接';
+        item.documentation = new vscode.MarkdownString(`将以“${title}”为标题新建笔记，并插入相应链接。`);
+        // 实际插入/替换由命令完成
+        item.insertText = new vscode.SnippetString('');
+        item.command = {
+            command: this.createAndInsertCommandId,
+            title: '创建并插入链接',
+            arguments: [{ document, triggers, insertMode, selectedText: title }]
+        };
+        return item;
     }
 
     /**
@@ -197,7 +237,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
                     item.insertText = `${title}]]`;
                 } else {
                     // 普通 markdown 链接
-                    item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`
+                    item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`;
                 }
                 break;
             

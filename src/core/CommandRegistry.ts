@@ -31,6 +31,7 @@ import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
+import { createIssueFromCompletionAndInsert } from '../commands/createIssueFromCompletion';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
@@ -259,6 +260,14 @@ export class CommandRegistry extends BaseCommandRegistry {
             '从 HTML 创建问题'
         );
 
+        // 从补全创建问题并插入链接命令
+        this.registerCommand(
+            'issueManager.createIssueFromCompletionAndInsert',
+            async (args?: unknown) => {
+                await createIssueFromCompletionAndInsert(args as any);
+            },
+            '从补全创建问题并插入链接'
+        );
 
         this.registerCommand(
             'issueManager.refreshTitle',
