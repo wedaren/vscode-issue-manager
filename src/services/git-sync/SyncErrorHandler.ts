@@ -78,8 +78,8 @@ export class SyncErrorHandler {
     } {
         const response = error.git;
         if (response && typeof response === 'object') {
-            // 检查是否是合并相关的错误
-            if ('conflicts' in response || 'failed' in response) {
+            // 检查是否存在明确的冲突字段（由 simple-git/底层 Git 返回）
+            if ('conflicts' in response) {
                 return {
                     statusInfo: { 
                         status: SyncStatus.Conflict, 
@@ -90,18 +90,20 @@ export class SyncErrorHandler {
                 };
             }
         }
-        
-        // 检查错误消息是否包含冲突信息
-        if (error.message && (error.message.includes('conflict') || error.message.includes('merge') || 
-            error.message.includes('冲突') || error.message.includes('合并'))) {
-            return {
-                statusInfo: { 
-                    status: SyncStatus.Conflict, 
-                    message: '存在合并冲突，需要手动解决',
-                    shouldNotify: true
-                },
-                enterConflictMode: true
-            };
+
+        // 检查错误消息是否包含明确的冲突关键词（避免把一般的 "merge"/"合并" 误判）
+        if (error.message) {
+            const msgLower = error.message.toLowerCase();
+            if (msgLower.includes('conflict') || msgLower.includes('冲突')) {
+                return {
+                    statusInfo: { 
+                        status: SyncStatus.Conflict, 
+                        message: '存在合并冲突，需要手动解决',
+                        shouldNotify: true
+                    },
+                    enterConflictMode: true
+                };
+            }
         }
 
         return {
