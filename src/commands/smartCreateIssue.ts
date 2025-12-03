@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { LLMService } from '../llm/LLMService';
 import { createIssueFile, addIssueToTree } from './issueFileUtils';
-import { readQuickPickData, writeQuickPickData, QuickPickPersistedData } from '../data/treeManager';
+import { readQuickPickData, writeQuickPickData, QuickPickPersistedData, IssueTreeNode } from '../data/treeManager';
 import { debounce } from '../utils/debounce';
 import { GitSyncService } from '../services/git-sync';
 import * as path from 'path';
@@ -22,16 +22,7 @@ const createDefaultOption = (value: string): HistoryQuickPickItem => ({
 let quickPickLoaded = false;
 async function ensureQuickPickLoaded() {
     if (quickPickLoaded) { return; }
-    const data: QuickPickPersistedData = await readQuickPickData();
-    SEARCH_HISTORY.length = 0;
-    data.searchHistory.forEach(item => SEARCH_HISTORY.push(item));
-    QUERY_RESULT_CACHE.clear();
-    data.queryResultCache.forEach(([key, items]) => {
-        QUERY_RESULT_CACHE.set(key, items);
-    });
-    quickPickLoaded = true;
     try {
-        // 尝试读取持久化数据
         const data: QuickPickPersistedData = await readQuickPickData();
         SEARCH_HISTORY.length = 0;
         data.searchHistory.forEach(item => SEARCH_HISTORY.push(item));
@@ -39,12 +30,12 @@ async function ensureQuickPickLoaded() {
         data.queryResultCache.forEach(([key, items]) => {
             QUERY_RESULT_CACHE.set(key, items);
         });
-        quickPickLoaded = true;
     } catch (error) {
         console.error("加载 QuickPick 持久化数据失败:", error);
         // 回退到默认值，保证插件不会因数据损坏而崩溃
         SEARCH_HISTORY.length = 0;
         QUERY_RESULT_CACHE.clear();
+    } finally {
         quickPickLoaded = true;
     }
 }
@@ -55,6 +46,74 @@ interface HistoryQuickPickItem extends vscode.QuickPickItem {
     isClearCacheOption?: boolean;
     action?: 'create' | 'open';
     payload?: string; // 对于 'create' 是标题，对于 'open' 是文件路径  
+}
+
+// 辅助：创建历史记录 QuickPickItem 列表
+const createHistoryItems = (): HistoryQuickPickItem[] => {
+    return SEARCH_HISTORY.map(item => ({
+        label: `$(history) ${item}`,
+        description: '从历史记录中恢复',
+        isHistory: true
+    } as HistoryQuickPickItem));
+};
+
+// 辅助：根据 flags 打开或在资源管理器中定位 URI（仅处理打开，reveal 保持在外部统一调用以保留原始时序）
+async function openUriIfNeeded(uri: vscode.Uri, openFlag: boolean, issueId?: string | null) {
+    if (!openFlag) { return; }
+    try {
+        if (issueId) {
+            const query = `issueId=${encodeURIComponent(issueId)}`;
+            await vscode.window.showTextDocument(uri.with({ query }), { preview: false });
+        } else {
+            await vscode.window.showTextDocument(uri);
+        }
+    } catch (e) {
+        console.error('打开文件失败:', e);
+    }
+}
+
+// 通用处理：将一组 URI 添加到树（可选）、打开（可选）、在资源管理器中定位（可选），并在需要时触发 git 同步
+async function processUris(
+    uris: vscode.Uri[],
+    parentId: string | null,
+    addToTree: boolean,
+    addToFocused: boolean,
+    reveal: boolean,
+    openFlag: boolean,
+    hasCreatedIssue: boolean
+) {
+    if (uris.length === 0) { return; }
+
+    let lastAdded: IssueTreeNode | null = null;
+    if (addToTree) {
+        try {
+            const addedNodes = await addIssueToTree(uris, parentId, addToFocused);
+            if (addedNodes && addedNodes.length > 0) {
+                lastAdded = addedNodes[addedNodes.length - 1];
+
+                if (openFlag) {  
+                    for (let i = 0; i < uris.length; i++) {  
+                        const uri = uris[i];  
+                        const nodeId = (addedNodes && i < addedNodes.length) ? addedNodes[i].id : undefined;  
+                        await openUriIfNeeded(uri, true, nodeId);  
+                    }  
+                }  
+            }
+
+
+        } catch (e) {
+            console.error('添加到树失败:', e);
+        }
+    }
+
+
+    if (reveal && lastAdded) {
+        await vscode.commands.executeCommand('issueManager.views.overview.reveal', lastAdded, { select: true, focus: true, expand: true });
+    }
+
+    if (hasCreatedIssue) {
+        GitSyncService.getInstance().triggerSync();
+    }
 }
 
 /**
@@ -90,14 +149,21 @@ async function persistQuickPickData() {
  * @param parentId 父节点ID，可为null
  * @param isAddToTree 是否添加到树结构
  * @param isAddToFocused 是否添加到关注列表
+ * @param isReveal 是否在资源管理器中定位（reveal），默认 false
+ * @param isOpen 是否在编辑器中打开文件（showTextDocument），默认 false
  * @returns Promise<vscode.Uri[]> 用户最终选择的所有 item 对应的 URI 数组，没有则返回空数组
  */
 export async function smartCreateIssue(
     parentId: string | null | undefined = null,
-    isAddToTree: boolean = false,
-    isAddToFocused: boolean = false
+    options?: {
+        addToTree?: boolean;
+        addToFocused?: boolean;
+        reveal?: boolean;
+        open?: boolean;
+    }
 ): Promise<vscode.Uri[]> {
     await ensureQuickPickLoaded();
+    const { addToTree = false, addToFocused = false, reveal = false, open = false } = options || {};
     const issueDir = getIssueDir();
     if (!issueDir) {
         vscode.window.showErrorMessage('请先在设置中配置"issueManager.issueDir"');
@@ -195,11 +261,7 @@ export async function smartCreateIssue(
                 debounceFetchAndDisplaySuggestions(value);
             } else {
                 // 输入为空时，显示历史记录
-                quickPick.items = SEARCH_HISTORY.map(item => ({
-                    label: `$(history) ${item}`,
-                    description: '从历史记录中恢复',
-                    isHistory: true
-                } as HistoryQuickPickItem));
+                quickPick.items = createHistoryItems();
             }
         });
 
@@ -230,13 +292,13 @@ export async function smartCreateIssue(
             if (selectedItems.length > 0) {
                 // 用户勾选了至少一项并点击了"确定"
                 updateHistory(currentValue);
-                const uris = await handleBatchSelection(selectedItems, parentId || null, isAddToTree, isAddToFocused);
+                const uris = await handleBatchSelection(selectedItems, parentId || null, addToTree, addToFocused, reveal, open);
                 resolve(uris);
                 quickPick.dispose();
             } else if (currentValue) {
                 // 用户没有勾选任何项，但在输入框有值的情况下直接按 Enter
                 updateHistory(currentValue);
-                const uri = await handleDefaultCreation(currentValue, parentId || null, isAddToTree, isAddToFocused);
+                const uri = await handleDefaultCreation(currentValue, parentId || null, addToTree, addToFocused, reveal, open);
                 resolve(uri ? [uri] : []);
                 quickPick.dispose();
             }
@@ -255,11 +317,7 @@ export async function smartCreateIssue(
         });
 
         // 初始显示历史记录
-        quickPick.items = SEARCH_HISTORY.map(item => ({
-            label: `$(history) ${item}`,
-            description: '从历史记录中恢复',
-            isHistory: true
-        } as HistoryQuickPickItem));
+        quickPick.items = createHistoryItems();
         quickPick.show();
     });
 }
@@ -272,7 +330,9 @@ async function handleBatchSelection(
     selectedItems: readonly vscode.QuickPickItem[],
     parentId: string | null,
     isAddToTree: boolean,
-    isAddToFocused: boolean
+    isAddToFocused: boolean,
+    isReveal: boolean = false,
+    isOpen: boolean = false
 ): Promise<vscode.Uri[]> {
     let uris: vscode.Uri[] = [];
     let hasCreatedIssue = false;
@@ -287,7 +347,7 @@ async function handleBatchSelection(
                 hasCreatedIssue = true;
             }
         } else if (item.action === 'open' && item.payload) {
-            // 打开已有笔记
+            // 打开已有笔记（仅解析并加入列表，后续统一处理）
             try {
                 const issueDir = getIssueDir();
                 if (!issueDir) {
@@ -305,21 +365,15 @@ async function handleBatchSelection(
                 const uri = vscode.Uri.file(notePath);
                 await vscode.workspace.fs.stat(uri);
                 uris.push(uri);
-                await vscode.window.showTextDocument(uri);
             } catch (error) {
                 vscode.window.showErrorMessage(`无法打开文件: ${item.payload}`);
             }
         }
     }
-    if (uris.length > 0 && isAddToTree) {
-        await addIssueToTree(uris, parentId, isAddToFocused);
-    }
-    
-    // 如果创建了新问题，触发同步
-    if (hasCreatedIssue) {
-        GitSyncService.getInstance().triggerSync();
-    }
-    
+
+    // 统一处理添加到树、打开、reveal、以及触发同步
+    await processUris(uris, parentId, isAddToTree, isAddToFocused, isReveal, isOpen, hasCreatedIssue);
+
     return uris;
 }
 
@@ -331,17 +385,15 @@ async function handleDefaultCreation(
     title: string,
     parentId: string | null,
     isAddToTree: boolean,
-    isAddToFocused: boolean
+    isAddToFocused: boolean,
+    isReveal: boolean = false,
+    isOpen: boolean = false
 ): Promise<vscode.Uri | null> {
     if (title) {
         const uri = await createIssueFile(title);
-        if (uri && isAddToTree) {
-            await addIssueToTree([uri], parentId, isAddToFocused);
-        }
         if (uri) {
-            await vscode.window.showTextDocument(uri);
-            // 触发同步
-            GitSyncService.getInstance().triggerSync();
+            const uris = [uri];
+            await processUris(uris, parentId, isAddToTree, isAddToFocused, isReveal, isOpen, true);
         }
         return uri;
     }
