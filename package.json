@@ -66,6 +66,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createSubIssueFromEditor",
+        "title": "在编辑器中新建子问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.focusIssue",
         "title": "添加关注"
       },
@@ -747,6 +752,11 @@
           "command": "issueManager.copyIssueId",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@4"
+        },
+        {
+          "command": "issueManager.createSubIssueFromEditor",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
+          "group": "0_issueManager@5"
         }
       ]
     },
@@ -791,6 +801,12 @@
         "command": "workbench.action.togglePanel",
         "key": "ctrl+j ctrl+j",
         "mac": "cmd+j cmd+j",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "editor.action.showContextMenu",
+        "key": "ctrl+j ctrl+o",
+        "mac": "cmd+j cmd+o",
         "when": "issueManager.isDirConfigured"
       },
       {

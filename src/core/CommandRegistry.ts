@@ -26,6 +26,8 @@ import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand }
 import { registerSearchIssuesCommand } from '../commands/searchIssues';
 import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
+import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
+import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
@@ -281,6 +283,9 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerSearchIssuesCommand(this.context);
         registerDeleteIssueCommand(this.context);
         registerFocusCommands(this.context);
+        // 注册外部实现的子问题创建命令
+        registerCreateSubIssueCommand(this.context);
+        registerCreateSubIssueFromEditorCommand(this.context);
     }
 
     /**
@@ -289,24 +294,7 @@ export class CommandRegistry extends BaseCommandRegistry {
     private registerIssueOperationCommands(): void {
         this.logger.info('⚡ 注册问题操作命令...');
 
-        // 创建从当前关注问题的子问题
-        this.registerCommand(
-            'issueManager.createSubIssue',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                // 类型守卫，确保 node 是一个有效的 IssueTreeNode
-                if (node && isIssueTreeNode(node)) {
-                    // 使用智能创建问题功能，并指定父节点ID和添加到树
-                    const id = stripFocusedId(node.id);
-                    await smartCreateIssue(id, true);
-                    vscode.window.showInformationMessage('子问题创建成功');
-                } else {
-                    this.logger.warn('createSubIssue 命令需要一个有效的树节点参数。');
-                    vscode.window.showErrorMessage('请从视图中选择一个有效的问题节点来创建子问题。');
-                }
-            },
-            '创建子问题'
-        );
+        // 子问题创建命令由外部模块注册（createSubIssue / createSubIssueFromEditor）
 
         // 从关注问题视图创建新问题
         this.registerCommand(
