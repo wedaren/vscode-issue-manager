@@ -90,17 +90,22 @@ async function processUris(
             const addedNodes = await addIssueToTree(uris, parentId, addToFocused);
             if (addedNodes && addedNodes.length > 0) {
                 lastAdded = addedNodes[addedNodes.length - 1];
+
+                if (openFlag) {  
+                    for (let i = 0; i < uris.length; i++) {  
+                        const uri = uris[i];  
+                        const nodeId = (addedNodes && i < addedNodes.length) ? addedNodes[i].id : undefined;  
+                        await openUriIfNeeded(uri, true, nodeId);  
+                    }  
+                }  
             }
+
+
         } catch (e) {
             console.error('添加到树失败:', e);
         }
     }
 
-    if (openFlag) {
-        for (const u of uris) {
-            await openUriIfNeeded(u, true, lastAdded ? lastAdded.id : undefined);
-        }
-    }
 
     if (reveal && lastAdded) {
         await vscode.commands.executeCommand('issueManager.views.overview.reveal', lastAdded, { select: true, focus: true, expand: true });
