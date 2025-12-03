@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
 import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
+import { isIssueTreeNode } from '../utils/treeUtils';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -39,14 +40,7 @@ import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
 import { TitleCacheService } from '../services/TitleCacheService';
 
-/**
- * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
- * @param item 要检查的对象
- * @returns 如果是有效的 IssueTreeNode 则返回 true
- */
-function isIssueTreeNode(item: unknown): item is IssueTreeNode {
-    return !!item && typeof item === 'object' && 'id' in item && 'filePath' in item;
-}
+
 
 /**
  * 命令注册管理器

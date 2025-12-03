@@ -1,11 +1,8 @@
 import * as vscode from 'vscode';
 import { IssueTreeNode, stripFocusedId } from '../data/treeManager';
+import { isIssueTreeNode } from '../utils/treeUtils';
 import { smartCreateIssue } from './smartCreateIssue';
 import { Logger } from '../core/utils/Logger';
-
-function isIssueTreeNode(item: unknown): item is IssueTreeNode {
-    return !!item && typeof item === 'object' && 'id' in item && 'filePath' in item;
-}
 
 export function registerCreateSubIssueCommand(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
