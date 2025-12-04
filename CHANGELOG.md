@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.16]
+
+### ✨ 新功能
+- **feat(smartCreateIssue): 优化智能创建问题功能** (#124)
+  - 使用选项对象重构参数传递，提升代码可维护性
+  - 新增 reveal/open 标志，支持创建后自动定位和打开文件
+  - 提取 processUris 函数，优化 URI 处理逻辑
+  - addIssueToTree 现在返回已添加节点的 ID 列表
+- **feat(commands): 拆分创建子问题命令，新增编辑器命令** (#122)
+  - 将 createSubIssue 拆分为独立文件，提升代码组织性
+  - 新增 createSubIssueFromEditor 命令，支持从编辑器快速创建子问题
+  - 使用 Logger 替换 console.error，统一日志管理
+  - 提取 isIssueTreeNode 到共享工具模块，遵循 DRY 原则
+
+### 🐞 修复
+- **fix(build): 修复构建问题** (#120)
+  - 修复 focusedManager 动态导入，添加类型断言
+  - 将 ws 可选原生依赖标记为 externals
+  - 添加构建修复说明文档
+
+  
 ## [0.2.15]
 
 ### ✨ 新功能
