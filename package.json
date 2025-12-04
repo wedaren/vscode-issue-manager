@@ -343,6 +343,18 @@
         "title": "选择 AI 模型",
         "category": "Issue Manager",
         "icon": "$(hubot)"
+      },
+      {
+        "command": "issueManager.showRelationGraph",
+        "title": "显示问题关系图",
+        "category": "Issue Manager",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "issueManager.showMindMap",
+        "title": "显示思维导图",
+        "category": "Issue Manager",
+        "icon": "$(type-hierarchy)"
       }
     ],
     "submenus": [
@@ -1201,12 +1213,19 @@
     "wxt": "^0.20.11"
   },
   "dependencies": {
+    "@antv/g2": "^5.4.6",
+    "@antv/g6": "^5.0.50",
+    "@antv/hierarchy": "^0.6.14",
+    "@antv/x6": "^2.18.1",
+    "@antv/x6-plugin-keyboard": "^2.2.3",
+    "@antv/x6-plugin-scroller": "^2.0.10",
+    "@antv/x6-plugin-selection": "^2.2.2",
     "cheerio": "^1.1.2",
     "dompurify": "^3.3.0",
     "js-yaml": "^4.1.0",
     "marked": "^16.4.1",
     "simple-git": "^3.28.0",
-    "uuid": "^11.1.0",
+    "uuid": "^11.1.0",  
     "ws": "^8.18.0"
   },
   "repository": {

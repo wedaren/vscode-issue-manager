@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "lib": [
+            "ES2020",
+            "DOM"
+        ],
+        "module": "esnext",
+        "target": "es2020",
+        "moduleResolution": "node",
+        "skipLibCheck": true,
+        "strict": false,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true
+    },
+    "include": [
+        "./**/*"
+    ]
+}
