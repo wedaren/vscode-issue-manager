@@ -3,6 +3,7 @@ import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { getIssueDir } from '../config';
+import { readTree, getTreeNodeById } from '../data/treeManager.js';
 
 /**
  * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。
@@ -19,6 +20,10 @@ export class EditorContextService implements vscode.Disposable {
     private static instance: EditorContextService;
     private disposables: vscode.Disposable[] = [];
     private logger: Logger;
+    
+    /** 缓存树中存在的所有 issueId，避免每次都读取树文件 */
+    private validIssueIds: Set<string> = new Set();
+    private cacheInvalidated: boolean = true;
 
     private constructor(context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
@@ -49,16 +54,83 @@ export class EditorContextService implements vscode.Disposable {
     }
 
     /**
+     * 获取已初始化的单例实例
+     * @returns EditorContextService 实例，如果未初始化则返回 undefined
+     */
+    public static getInstance(): EditorContextService | undefined {
+        return EditorContextService.instance;
+    }
+
+    /**
      * 当活动编辑器改变时，更新相关的上下文键。
      * @param editor 激活的文本编辑器
      */
-    private updateEditorIssueContext(editor: vscode.TextEditor | undefined): void {
-        const issueId = getIssueIdFromUri(editor?.document?.uri);
+    private async updateEditorIssueContext(editor: vscode.TextEditor | undefined): Promise<void> {
+        let validIssueId: string | undefined = undefined;
+        const rawIssueId = getIssueIdFromUri(editor?.document?.uri);
+        
+        // 如果从 URI 中提取到了 issueId，需要验证它是否真的存在于树结构中
+        if (rawIssueId) {
+            // 使用缓存验证，避免频繁读取树文件
+            if (await this.isValidIssueId(rawIssueId)) {
+                validIssueId = rawIssueId;
+            } else {
+                this.logger.warn(`URI 中包含 issueId "${rawIssueId}"，但在树结构中未找到该节点`);
+            }
+        }
+        
         const isInIssueDir = this.isFileInIssueDir(editor?.document?.uri);
         
-        vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', !!issueId);
-        vscode.commands.executeCommand('setContext', 'issueManager.editorActiveIssueId', issueId);
+        vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', !!validIssueId);
+        vscode.commands.executeCommand('setContext', 'issueManager.editorActiveIssueId', validIssueId);
         vscode.commands.executeCommand('setContext', 'issueManager.editorInIssueDir', isInIssueDir);
+    }
+
+    /**
+     * 使用缓存验证 issueId 是否有效
+     * @param issueId 要验证的问题 ID
+     * @returns 是否有效
+     */
+    private async isValidIssueId(issueId: string): Promise<boolean> {
+        // 如果缓存失效，重新加载
+        if (this.cacheInvalidated) {
+            await this.rebuildCache();
+        }
+        
+        return this.validIssueIds.has(issueId);
+    }
+
+    /**
+     * 重新构建有效 issueId 的缓存
+     */
+    private async rebuildCache(): Promise<void> {
+        try {
+            const tree = await readTree();
+            this.validIssueIds.clear();
+            
+            // 递归收集所有节点的 ID
+            const collectIds = (nodes: any[]) => {
+                for (const node of nodes) {
+                    if (node.id) {
+                        this.validIssueIds.add(node.id);
+                    }
+                    if (node.children && node.children.length > 0) {
+                        collectIds(node.children);
+                    }
+                }
+            };
+            
+            collectIds(tree.rootNodes);
+            this.cacheInvalidated = false;
+            
+            // 计算缓存占用的内存（估算）
+            const cacheSize = this.validIssueIds.size;
+            const estimatedMemoryKB = Math.round(cacheSize * 0.1); // 每个 ID 约 100 字节
+            this.logger.info(`已重建 issueId 缓存，共 ${cacheSize} 个节点，每个 ID 约 100 字节，估计占用 ${estimatedMemoryKB}KB 内存`);
+        } catch (error) {
+            this.logger.error('重建 issueId 缓存失败:', error);
+            // 发生错误时保持缓存失效状态，下次会重试
+        }
     }
 
     /**
@@ -82,6 +154,28 @@ export class EditorContextService implements vscode.Disposable {
         // 如果 filePath 在 issueDir 内部，relativePath 将是一个相对路径（例如 'foo/bar.md' 或 ''）。
         // 如果在外部，它将以 '..' 开头，或者在 Windows 上跨驱动器时是绝对路径。
         return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+    }
+
+    /**
+     * 强制重新检查当前编辑器的上下文
+     * 用于在问题状态改变（如解除关联）后更新上下文
+     * @param invalidateCache 是否使缓存失效，默认为 true
+     */
+    public recheckCurrentEditor(invalidateCache: boolean = true): void {
+        if (invalidateCache) {
+            this.invalidateCache();
+        }
+        this.updateEditorIssueContext(vscode.window.activeTextEditor);
+        this.logger.info('已重新检查当前编辑器上下文');
+    }
+
+    /**
+     * 使缓存失效，下次验证时会重新从树文件加载
+     * 应在树结构发生变化时调用（如添加/删除/移动节点）
+     */
+    public invalidateCache(): void {
+        this.cacheInvalidated = true;
+        this.logger.debug('issueId 缓存已标记为失效');
     }
 
     public dispose(): void {
