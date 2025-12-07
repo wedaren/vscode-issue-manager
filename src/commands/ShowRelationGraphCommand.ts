@@ -57,21 +57,6 @@ export class ShowRelationGraphCommand {
                 }
             });
 
-            // 监听主题变化
-            vscode.window.onDidChangeActiveColorTheme(() => {
-                const theme = this.webviewManager.getCurrentTheme();
-                this.webviewManager.postMessage(panel, {
-                    type: 'THEME_CHANGED',
-                    payload: {
-                        mode: theme,
-                        backgroundColor: '',
-                        nodeColor: '',
-                        edgeColor: '',
-                        textColor: ''
-                    }
-                });
-            });
-
         } catch (error) {
             vscode.window.showErrorMessage(`显示关系图失败: ${error}`);
         }

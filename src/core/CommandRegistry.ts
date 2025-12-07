@@ -5,6 +5,8 @@ import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { Logger } from './utils/Logger';
+import type { WebviewManager } from '../webview/WebviewManager';
+import type { GraphDataService } from '../services/GraphDataService';
 import { ParaCategory, removeIssueFromCategory, addIssueToCategory, getCategoryLabel } from '../data/paraManager';
 import { addIssueToParaCategory } from '../commands/paraCommands';
 import { isParaIssueNode, ParaViewNode } from '../types';
@@ -78,10 +80,18 @@ export class CommandRegistry extends BaseCommandRegistry {
      * 
      * @param context VS Code 扩展上下文，用于命令生命周期管理
      */
-    constructor(context: vscode.ExtensionContext) {
+    private webviewManager?: WebviewManager;
+    private graphDataService?: GraphDataService;
+
+    constructor(context: vscode.ExtensionContext, deps?: { webviewManager?: WebviewManager; graphDataService?: GraphDataService }) {
         super(context);
         this.viewCommandRegistry = new ViewCommandRegistry(context);
         this.stateCommandRegistry = new StateCommandRegistry(context);
+        // 可选注入，保持向后兼容
+        if (deps) {
+            this.webviewManager = deps.webviewManager;
+            this.graphDataService = deps.graphDataService;
+        }
     }
 
     /**
@@ -273,12 +283,19 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.showRelationGraph',
             async (...args: unknown[]) => {
                 const uri = args[0] as vscode.Uri | undefined;
-                const { WebviewManager } = await import('../webview/WebviewManager');
                 const { ShowRelationGraphCommand } = await import('../commands/ShowRelationGraphCommand');
-                const { GraphDataService } = await import('../services/GraphDataService');
 
-                const webviewManager = WebviewManager.getInstance(this.context);
-                const graphDataService = GraphDataService.getInstance();
+                let webviewManager = this.webviewManager;
+                if (!webviewManager) {
+                    const { WebviewManager } = await import('../webview/WebviewManager');
+                    webviewManager = WebviewManager.getInstance(this.context);
+                }
+
+                let graphDataService = this.graphDataService;
+                if (!graphDataService) {
+                    const { GraphDataService } = await import('../services/GraphDataService');
+                    graphDataService = GraphDataService.getInstance();
+                }
 
                 const command = new ShowRelationGraphCommand(this.context, webviewManager, graphDataService);
                 await command.execute(uri);
@@ -291,12 +308,19 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.showMindMap',
             async (...args: unknown[]) => {
                 const uri = args[0] as vscode.Uri | undefined;
-                const { WebviewManager } = await import('../webview/WebviewManager');
                 const { ShowMindMapCommand } = await import('../commands/ShowMindMapCommand');
-                const { GraphDataService } = await import('../services/GraphDataService');
 
-                const webviewManager = WebviewManager.getInstance(this.context);
-                const graphDataService = GraphDataService.getInstance();
+                let webviewManager = this.webviewManager;
+                if (!webviewManager) {
+                    const { WebviewManager } = await import('../webview/WebviewManager');
+                    webviewManager = WebviewManager.getInstance(this.context);
+                }
+
+                let graphDataService = this.graphDataService;
+                if (!graphDataService) {
+                    const { GraphDataService } = await import('../services/GraphDataService');
+                    graphDataService = GraphDataService.getInstance();
+                }
 
                 const command = new ShowMindMapCommand(this.context, webviewManager, graphDataService);
                 await command.execute(uri);
