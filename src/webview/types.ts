@@ -49,7 +49,7 @@ export type HostToWebviewMessage =
 // 消息协议 - 从 Webview 发送到扩展宿主
 export type WebviewToHostMessage =
     | { type: 'READY' }
-    | { type: 'NODE_CLICKED'; payload: { nodeId: string; filePath: string } }
+    | { type: 'NODE_CLICKED'; payload: { nodeId: string; filePath?: string; [key: string]: any; } }
     | { type: 'ERROR'; payload: { message: string } };
 
 // 联合消息类型

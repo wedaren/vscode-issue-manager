@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { G6GraphData, G6Node, G6Edge } from '../webview/types';
+import { G6GraphData, G6Node, G6Edge, MindMapNode } from '../webview/types';
 
 /**
  * 图数据服务
@@ -163,7 +163,7 @@ export class GraphDataService {
     /**
      * 获取思维导图数据 (树形结构)
      */
-    public async getMindMapData(filePath: string): Promise<any> {
+    public async getMindMapData(filePath: string): Promise<MindMapNode> {
         const content = await fs.readFile(filePath, 'utf-8');
         const fileName = path.basename(filePath, '.md');
 
@@ -175,7 +175,7 @@ export class GraphDataService {
             children: [] as any[]
         };
 
-        const stack: { level: number; node: any }[] = [{ level: 0, node: root }];
+        const stack: { level: number; node: MindMapNode }[] = [{ level: 0, node: root }];
 
         for (const line of lines) {
             const match = line.match(/^(#+)\s+(.*)/);
@@ -183,7 +183,7 @@ export class GraphDataService {
                 const level = match[1].length;
                 const text = match[2].trim();
                 const node = {
-                    id: `node-${Math.random().toString(36).substr(2, 9)}`,
+                    id: `node-${level}-${text.slice(0, 10)}`, // 使用内容和层级生成一个更稳定的ID
                     label: text,
                     children: []
                 };

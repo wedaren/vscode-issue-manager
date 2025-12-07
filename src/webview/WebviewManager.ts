@@ -23,7 +23,7 @@ export class WebviewManager {
      * 创建 G6 关系图 Webview Panel
      */
     public createG6GraphPanel(title: string): vscode.WebviewPanel {
-        const panelId = `g6-graph-${Date.now()}`;
+        const panelId = `g6-graph`; // 使用固定的ID来复用面板  
 
         // 检查是否已存在面板
         const existingPanel = this.panels.get(panelId);
