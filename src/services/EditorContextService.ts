@@ -3,7 +3,7 @@ import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { getIssueDir } from '../config';
-import { readTree, getTreeNodeById } from '../data/treeManager.js';
+import { readTree, type IssueTreeNode } from '../data/treeManager.js';
 
 /**
  * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。
@@ -109,7 +109,7 @@ export class EditorContextService implements vscode.Disposable {
             this.validIssueIds.clear();
             
             // 递归收集所有节点的 ID
-            const collectIds = (nodes: any[]) => {
+            const collectIds = (nodes: IssueTreeNode[]) => {
                 for (const node of nodes) {
                     if (node.id) {
                         this.validIssueIds.add(node.id);
@@ -161,11 +161,11 @@ export class EditorContextService implements vscode.Disposable {
      * 用于在问题状态改变（如解除关联）后更新上下文
      * @param invalidateCache 是否使缓存失效，默认为 true
      */
-    public recheckCurrentEditor(invalidateCache: boolean = true): void {
+    public async recheckCurrentEditor(invalidateCache: boolean = true): Promise<void> {
         if (invalidateCache) {
             this.invalidateCache();
         }
-        this.updateEditorIssueContext(vscode.window.activeTextEditor);
+        await this.updateEditorIssueContext(vscode.window.activeTextEditor);
         this.logger.info('已重新检查当前编辑器上下文');
     }
 
