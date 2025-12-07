@@ -4,6 +4,10 @@ import { GraphDataService } from '../services/GraphDataService';
 
 /**
  * 显示思维导图命令
+* 创建 ShowMindMapCommand 实例  
+* @param context 扩展上下文  
+* @param webviewManager Webview 管理器  
+* @param graphDataService 图数据服务  
  */
 export class ShowMindMapCommand {
     constructor(
