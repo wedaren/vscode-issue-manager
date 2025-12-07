@@ -5,6 +5,29 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.17] - 2025-12-08
+
+### ✨ 新功能
+- **feat(visualization): 集成 AntV G6 v5 可视化库**
+  - 在 Webview 中渲染问题关系图，新增 `issueManager.showRelationGraph` 命令
+  - 增加 `WebviewManager` 管理 Webview 面板与消息通信协议
+  - 新增 `GraphDataService`，将 Markdown 文件解析为 G6 图数据
+- **feat(mindmap): 集成 AntV X6 思维导图**
+  - 新增 `issueManager.showMindMap` 命令与前端渲染（含缩放/适配/居中工具栏）
+  - 提供 MindMap 数据解析器（从 Markdown 标题生成树形结构）
+- **feat(commands): CommandRegistry 支持可选依赖注入**
+  - 允许注入 `WebviewManager` 与 `GraphDataService` 实例，便于管理与测试（保持向后兼容）
+
+### 🔧 改进
+- **perf(editor-context): 优化编辑器上下文验证与缓存机制**
+  - `EditorContextService` 增加 issueId 缓存与懒加载验证，显著提升切换编辑器性能
+
+
+### 🐞 修复
+
+- **fix(editor-context): 修复编辑器上下文 issueId 验证问题**
+  - `recheckCurrentEditor` 改为异步并在解除关联后触发重新验证，确保上下文状态准确
+
 ## [0.2.16]
 
 ### ✨ 新功能
