@@ -49,7 +49,17 @@ export class ExtensionInitializer {
         // 初始化统一文件监听器（全局单例）
         UnifiedFileWatcher.getInstance(context);
 
-        this.commandRegistry = new CommandRegistry(context);
+        // 构造 CommandRegistry 时注入常用服务实例，便于测试和管理
+        // 延迟导入 WebviewManager/GraphDataService 类型实例以避免循环依赖问题
+        // 使用运行时获取的单例实例传入 CommandRegistry
+        // 注意：WebviewManager.getInstance 需要 context
+        // GraphDataService 使用无参的单例获取
+        // 这样在 CommandRegistry 中可以直接使用注入的实例，也兼容未注入时的回退逻辑
+        const { WebviewManager } = require('../webview/WebviewManager');
+        const { GraphDataService } = require('../services/GraphDataService');
+        const webviewManager = WebviewManager.getInstance(context);
+        const graphDataService = GraphDataService.getInstance();
+        this.commandRegistry = new CommandRegistry(context, { webviewManager, graphDataService });
         this.viewRegistry = new ViewRegistry(context);
         this.serviceRegistry = new ServiceRegistry(context);
         this.configurationManager = new ConfigurationManager(context);
