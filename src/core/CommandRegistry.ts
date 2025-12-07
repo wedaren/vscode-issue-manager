@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
 import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
+import { isIssueTreeNode } from '../utils/treeUtils';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -28,6 +29,8 @@ import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand }
 import { registerSearchIssuesCommand } from '../commands/searchIssues';
 import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
+import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
+import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
@@ -39,14 +42,7 @@ import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
 import { TitleCacheService } from '../services/TitleCacheService';
 
-/**
- * 类型守卫函数：检查对象是否为有效的 IssueTreeNode
- * @param item 要检查的对象
- * @returns 如果是有效的 IssueTreeNode 则返回 true
- */
-function isIssueTreeNode(item: unknown): item is IssueTreeNode {
-    return !!item && typeof item === 'object' && 'id' in item && 'filePath' in item;
-}
+
 
 /**
  * 命令注册管理器
@@ -341,6 +337,9 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerSearchIssuesCommand(this.context);
         registerDeleteIssueCommand(this.context);
         registerFocusCommands(this.context);
+        // 注册外部实现的子问题创建命令
+        registerCreateSubIssueCommand(this.context);
+        registerCreateSubIssueFromEditorCommand(this.context);
     }
 
     /**
@@ -349,30 +348,13 @@ export class CommandRegistry extends BaseCommandRegistry {
     private registerIssueOperationCommands(): void {
         this.logger.info('⚡ 注册问题操作命令...');
 
-        // 创建从当前关注问题的子问题
-        this.registerCommand(
-            'issueManager.createSubIssue',
-            async (...args: unknown[]) => {
-                const node = args[0];
-                // 类型守卫，确保 node 是一个有效的 IssueTreeNode
-                if (node && isIssueTreeNode(node)) {
-                    // 使用智能创建问题功能，并指定父节点ID和添加到树
-                    const id = stripFocusedId(node.id);
-                    await smartCreateIssue(id, true);
-                    vscode.window.showInformationMessage('子问题创建成功');
-                } else {
-                    this.logger.warn('createSubIssue 命令需要一个有效的树节点参数。');
-                    vscode.window.showErrorMessage('请从视图中选择一个有效的问题节点来创建子问题。');
-                }
-            },
-            '创建子问题'
-        );
+        // 子问题创建命令由外部模块注册（createSubIssue / createSubIssueFromEditor）
 
         // 从关注问题视图创建新问题
-        this.registerCommand(
+                this.registerCommand(
             'issueManager.createIssueFromFocused',
             async () => {
-                await smartCreateIssue(null, true, true);
+                await smartCreateIssue(null, { addToTree: true, addToFocused: true });
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从关注问题视图创建新问题'
@@ -382,7 +364,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.createIssueFromOverview',
             async () => {
-                await smartCreateIssue(null, true);
+                await smartCreateIssue(null, { addToTree: true });
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从问题总览创建新问题'
@@ -441,6 +423,10 @@ export class CommandRegistry extends BaseCommandRegistry {
                 if (success) {
                     await writeTree(treeData);
                     vscode.commands.executeCommand('issueManager.refreshAllViews');
+                    
+                    // 重新检查当前编辑器的上下文，避免 issueId 仍然存在
+                    const { EditorContextService } = await import('../services/EditorContextService.js');
+                    await EditorContextService.getInstance()?.recheckCurrentEditor();
                 } else {
                     vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
                 }
