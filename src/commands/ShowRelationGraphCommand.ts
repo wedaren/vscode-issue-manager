@@ -45,11 +45,15 @@ export class ShowRelationGraphCommand {
                     case 'READY':
                         // Webview 就绪后发送数据
                         Logger.getInstance().info('[ShowRelationGraph] Webview 已就绪');
-                        this.sendGraphData(panel, filePath);
+                        this.sendGraphData(panel, filePath!);
                         break;
                     case 'NODE_CLICKED':
-                        // 处理节点点击
-                        this.handleNodeClick(message.payload.filePath);
+                        // 处理节点点击（payload.filePath 为可选）
+                        if (message.payload && message.payload.filePath) {
+                            this.handleNodeClick(message.payload.filePath);
+                        } else {
+                            Logger.getInstance().warn('[ShowRelationGraph] NODE_CLICKED 消息中未包含 filePath，忽略点击事件');
+                        }
                         break;
                     case 'ERROR':
                         vscode.window.showErrorMessage(`关系图错误: ${message.payload.message}`);

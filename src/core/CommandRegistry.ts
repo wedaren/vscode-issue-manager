@@ -425,7 +425,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                     vscode.commands.executeCommand('issueManager.refreshAllViews');
                     
                     // 重新检查当前编辑器的上下文，避免 issueId 仍然存在
-                    const { EditorContextService } = await import('../services/EditorContextService.js');
+                    const { EditorContextService } = await import('../services/EditorContextService');
                     await EditorContextService.getInstance()?.recheckCurrentEditor();
                 } else {
                     vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');

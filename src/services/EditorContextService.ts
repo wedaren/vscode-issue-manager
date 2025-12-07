@@ -3,7 +3,7 @@ import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { getIssueDir } from '../config';
-import { readTree, type IssueTreeNode } from '../data/treeManager.js';
+import { readTree, type IssueTreeNode } from '../data/treeManager';
 
 /**
  * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。

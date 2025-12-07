@@ -188,13 +188,17 @@ export class GraphDataService {
                     children: []
                 };
 
-                // 找到父节点
-                while (stack.length > 0 && stack[stack.length - 1].level >= level) {
-                    stack.pop();
-                }
+                        // 找到父节点
+                        // 保持根节点在栈底，避免栈为空导致 parent 未定义
+                        while (stack.length > 1 && stack[stack.length - 1].level >= level) {
+                            stack.pop();
+                        }
 
-                const parent = stack[stack.length - 1].node;
-                parent.children.push(node);
+                        const parent = stack[stack.length - 1]?.node ?? root;
+                        if (!parent.children) {
+                            parent.children = [];
+                        }
+                        parent.children.push(node);
                 stack.push({ level, node });
             }
         }
