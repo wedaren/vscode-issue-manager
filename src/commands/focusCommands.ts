@@ -95,7 +95,7 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
         }
     }));
 
-    // 注册"从编辑器在问题总览中查看"命令
+    // 注册从编辑器在问题总览中定位命令
     const revealInOverviewFromEditorCommand = vscode.commands.registerCommand('issueManager.revealInOverviewFromEditor', async () => {
         const issueDir = getIssueDir();
         if (!issueDir) {
@@ -122,11 +122,11 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             // 获取扁平化的树结构
             const flatNodes = await getFlatTree();
             
+            // 计算当前文件相对于问题目录的路径，避免在循环中重复计算
+            const relativePath = path.relative(issueDir, fsPath);
+            
             // 查找匹配当前文件的节点
-            const node = flatNodes.find(n => {
-                const nodeAbsPath = path.join(issueDir, n.filePath);
-                return fsPath === nodeAbsPath;
-            });
+            const node = flatNodes.find(n => n.filePath === relativePath);
 
             if (node) {
                 // 在问题总览中定位该节点
