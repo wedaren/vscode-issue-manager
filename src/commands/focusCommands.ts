@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { addFocus, pinFocus, removeFocus } from '../data/focusedManager';
-import { IssueTreeNode, stripFocusedId } from '../data/treeManager';
+import { IssueTreeNode, stripFocusedId, getFlatTree } from '../data/treeManager';
 import { getIssueDir } from '../config';
 import { addIssueToTree } from './issueFileUtils';
 import { getIssueIdFromUri } from '../utils/uriUtils';
@@ -93,4 +94,49 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             vscode.commands.executeCommand('issueManager.focusedIssues.refresh');
         }
     }));
+
+    // 注册"从编辑器在问题总览中查看"命令
+    const revealInOverviewFromEditorCommand = vscode.commands.registerCommand('issueManager.revealInOverviewFromEditor', async () => {
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            vscode.window.showErrorMessage('请先配置问题目录。');
+            return;
+        }
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('未找到活动的编辑器。');
+            return;
+        }
+
+        const uri = editor.document.uri;
+        const fsPath = uri.fsPath;
+
+        // 检查文件是否在问题目录中
+        if (!fsPath.startsWith(issueDir)) {
+            vscode.window.showErrorMessage('当前文件不在问题目录中。');
+            return;
+        }
+
+        try {
+            // 获取扁平化的树结构
+            const flatNodes = await getFlatTree();
+            
+            // 查找匹配当前文件的节点
+            const node = flatNodes.find(n => {
+                const nodeAbsPath = path.join(issueDir, n.filePath);
+                return fsPath === nodeAbsPath;
+            });
+
+            if (node) {
+                // 在问题总览中定位该节点
+                await vscode.commands.executeCommand('issueManager.openAndRevealIssue', node, 'overview');
+            } else {
+                vscode.window.showWarningMessage('未在问题总览中找到当前文件的节点。');
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`定位失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+    });
+    context.subscriptions.push(revealInOverviewFromEditorCommand);
 }

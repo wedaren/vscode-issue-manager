@@ -139,6 +139,12 @@
         "category": "Issue Manager"
       },
       {
+        "command": "issueManager.revealInOverviewFromEditor",
+        "title": "在问题总览中查看",
+        "icon": "$(eye)",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.viewRelatedIssues",
         "title": "查看相关联问题"
       },
@@ -766,9 +772,14 @@
           "group": "0_issueManager@4"
         },
         {
+          "command": "issueManager.revealInOverviewFromEditor",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorInIssueDir",
+          "group": "0_issueManager@5"
+        },
+        {
           "command": "issueManager.createSubIssueFromEditor",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
-          "group": "0_issueManager@5"
+          "group": "0_issueManager@6"
         }
       ]
     },
