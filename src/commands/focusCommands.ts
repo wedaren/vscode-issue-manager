@@ -109,7 +109,6 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
         }
 
         const uri = editor.document.uri;
-        
         // 从 URI 中获取 issueId
         const issueId = getIssueIdFromUri(uri);
         if (!issueId) {
