@@ -83,7 +83,7 @@ export class EditorContextService implements vscode.Disposable {
         
         vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', !!validIssueId);
         vscode.commands.executeCommand('setContext', 'issueManager.editorActiveIssueId', validIssueId);
-        vscode.commands.executeCommand('setContext', 'issueManager.editorInIssueDir', isInIssueDir);
+        vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', isInIssueDir);
     }
 
     /**

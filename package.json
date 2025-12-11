@@ -753,7 +753,7 @@
       "editor/context": [
         {
           "command": "issueManager.addToFocusedViewFromEditor",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorInIssueDir",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@1"
         },
         {
@@ -773,7 +773,7 @@
         },
         {
           "command": "issueManager.revealInOverviewFromEditor",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorInIssueDir",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@5"
         },
         {
