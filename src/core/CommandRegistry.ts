@@ -183,6 +183,16 @@ export class CommandRegistry extends BaseCommandRegistry {
                 })
             );
 
+            // 6a. 注册"在问题总览中显示"命令
+            this.context.subscriptions.push(
+                vscode.commands.registerCommand('issueManager.revealInOverview', async (node: IssueTreeNode) => {
+                    if (!node) { return; }
+                    
+                    // 在问题总览视图中显示该问题
+                    await vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
+                })
+            );
+
             // 7. 注册结构视图命令
             this.registerStructureViewCommands(issueStructureProvider);
 

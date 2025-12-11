@@ -139,6 +139,12 @@
         "category": "Issue Manager"
       },
       {
+        "command": "issueManager.revealInOverview",
+        "title": "在问题总览中显示",
+        "icon": "$(eye)",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.viewRelatedIssues",
         "title": "查看相关联问题"
       },
@@ -562,6 +568,11 @@
           "command": "issueManager.focusIssueFromIssueFile",
           "when": "(view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/)",
           "group": "modification@3"
+        },
+        {
+          "command": "issueManager.revealInOverview",
+          "when": "(view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/) || (view == 'issueManager.views.focused' && viewItem =~ /(issueNode|focusedNode|focusedNodeFirst)/)",
+          "group": "modification@4"
         },
         {
           "command": "issueManager.disassociateIssue",
