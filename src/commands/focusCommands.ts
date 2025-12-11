@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { addFocus, pinFocus, removeFocus } from '../data/focusedManager';
 import { IssueTreeNode, stripFocusedId, getFlatTree } from '../data/treeManager';
 import { getIssueDir } from '../config';
@@ -110,11 +109,11 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
         }
 
         const uri = editor.document.uri;
-        const fsPath = uri.fsPath;
-
-        // 检查文件是否在问题目录中
-        if (!fsPath.startsWith(issueDir)) {
-            vscode.window.showErrorMessage('当前文件不在问题目录中。');
+        
+        // 从 URI 中获取 issueId
+        const issueId = getIssueIdFromUri(uri);
+        if (!issueId) {
+            vscode.window.showWarningMessage('当前文档不包含问题 ID，无法在问题总览中定位。');
             return;
         }
 
@@ -122,17 +121,14 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             // 获取扁平化的树结构
             const flatNodes = await getFlatTree();
             
-            // 计算当前文件相对于问题目录的路径，避免在循环中重复计算
-            const relativePath = path.relative(issueDir, fsPath);
-            
-            // 查找匹配当前文件的节点
-            const node = flatNodes.find(n => n.filePath === relativePath);
+            // 使用 issueId 查找匹配的节点
+            const node = flatNodes.find(n => n.id === issueId);
 
             if (node) {
                 // 在问题总览中定位该节点
                 await vscode.commands.executeCommand('issueManager.openAndRevealIssue', node, 'overview');
             } else {
-                vscode.window.showWarningMessage('未在问题总览中找到当前文件的节点。');
+                vscode.window.showWarningMessage('未在问题总览中找到当前问题的节点。');
             }
         } catch (error) {
             vscode.window.showErrorMessage(`定位失败: ${error instanceof Error ? error.message : '未知错误'}`);
