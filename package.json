@@ -151,6 +151,12 @@
         "title": "在问题总览中查看"
       },
       {
+        "command": "issueManager.revealInOverview",
+        "title": "在问题总览中查看",
+        "icon": "$(preview)",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.pinRelatedView",
         "title": "锁定相关联问题视图",
         "icon": "$(pin)"
@@ -587,6 +593,11 @@
           "command": "issueManager.pinFocus",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /focusedNode/",
           "group": "modification@3"
+        },
+        {
+          "command": "issueManager.revealInOverview",
+          "when": "(view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /issueNode|focusedNode|focusedNodeFirst/",
+          "group": "navigation@5"
         },
         {
           "command": "issueManager.copyFilename",
