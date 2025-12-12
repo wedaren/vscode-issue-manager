@@ -353,8 +353,6 @@ export class GitSyncService implements vscode.Disposable {
                 message: pushed ? '自动同步完成' : '没有变更需要同步', 
                 lastSync: new Date() 
             });
-            // 自动同步成功后刷新问题标题
-            await this.refreshIssueTitles();
         } catch (error) {
             // 所有重试都失败了
             const maxRetries = this.retryManager.getRetryCount('auto-sync');
