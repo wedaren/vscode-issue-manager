@@ -786,8 +786,8 @@
     "keybindings": [
       {
         "command": "issueManager.openFocusedView",
-        "key": "ctrl+j ctrl+f",
-        "mac": "cmd+j cmd+f",
+        "key": "ctrl+j ctrl+i",
+        "mac": "cmd+j cmd+i",
         "when": "issueManager.isDirConfigured"
       },
       {
@@ -816,8 +816,8 @@
       },
       {
         "command": "issueManager.searchIssuesInFocused",
-        "key": "ctrl+j ctrl+s",
-        "mac": "cmd+j cmd+s",
+        "key": "ctrl+j ctrl+f",
+        "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured"
       },
       {
