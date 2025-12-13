@@ -164,7 +164,7 @@ export async function writeMappings(mappings: NoteMapping[]): Promise<void> {
  * 生成唯一 ID
  */
 export function generateMappingId(): string {
-  return `mapping-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `mapping-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
 /**
