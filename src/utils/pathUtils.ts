@@ -79,16 +79,18 @@ export function matchGlob(pattern: string, filePath: string): boolean {
   const normalizedPath = normalizePath(filePath);
   
   // 将 glob 模式转换为正则表达式
-  let regexPattern = normalizedPattern
-    .replace(/\./g, '\\.') // 转义点号
+  // 需要转义的特殊字符
+  const regexPattern = normalizedPattern
+    .replace(/\\/g, '\\\\')     // 先转义反斜杠
+    .replace(/\./g, '\\.')      // 转义点号
     .replace(/\*\*/g, '<<DOUBLESTAR>>') // 临时替换 **
-    .replace(/\*/g, '[^/]*') // * 匹配除 / 外的任意字符
+    .replace(/\*/g, '[^/]*')    // * 匹配除 / 外的任意字符
     .replace(/<<DOUBLESTAR>>/g, '.*'); // ** 匹配任意字符包括 /
   
   // 确保模式匹配整个路径
-  regexPattern = '^' + regexPattern + '$';
+  const fullPattern = '^' + regexPattern + '$';
   
-  const regex = new RegExp(regexPattern);
+  const regex = new RegExp(fullPattern);
   return regex.test(normalizedPath);
 }
 
