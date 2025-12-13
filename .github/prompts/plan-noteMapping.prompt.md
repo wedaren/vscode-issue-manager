@@ -1,5 +1,5 @@
 ---
-agent: 'agent'
+agent: agent
 ---
 
 // 目标：为笔记映射功能制定详细的实施计划
