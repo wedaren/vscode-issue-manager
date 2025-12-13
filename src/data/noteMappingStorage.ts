@@ -41,6 +41,13 @@ const MAPPINGS_VERSION = '1.0';
 let writeLock: Promise<void> | null = null;
 
 /**
+ * 获取映射文件的完整路径（公开接口）
+ */
+export function getMappingsFilePathPublic(): string | undefined {
+  return getMappingsFilePath();
+}
+
+/**
  * 获取映射文件的完整路径
  */
 function getMappingsFilePath(): string | undefined {
@@ -122,13 +129,10 @@ export async function writeMappings(mappings: NoteMapping[]): Promise<void> {
         throw new Error('无法确定映射文件路径');
       }
       
-      // 准备数据
+      // 准备数据（不修改 updatedAt，由调用方控制）
       const data: MappingsFile = {
         version: MAPPINGS_VERSION,
-        mappings: mappings.map(m => ({
-          ...m,
-          updatedAt: new Date().toISOString()
-        }))
+        mappings: mappings
       };
       
       // 转换为 YAML

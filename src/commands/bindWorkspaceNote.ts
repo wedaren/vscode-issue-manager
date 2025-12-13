@@ -5,6 +5,9 @@ import { getIssueDir } from '../config';
 import { getRelativeToNoteRoot } from '../utils/pathUtils';
 import { generateMappingId } from '../data/noteMappingStorage';
 
+// 工作区级别映射的默认模式
+const WORKSPACE_PATTERN = '**/*';
+
 /**
  * 绑定工作区级别的笔记映射
  */
@@ -87,7 +90,7 @@ async function createWorkspaceMapping(mappingService: NoteMappingService): Promi
   await mappingService.addOrUpdate({
     id: generateMappingId(),
     scope: 'workspace',
-    pattern: '**/*', // 工作区级别匹配所有文件
+    pattern: WORKSPACE_PATTERN, // 工作区级别匹配所有文件
     targets: targets,
     priority: priority,
     createdAt: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
+import { getMappingsFilePathPublic } from '../data/noteMappingStorage';
 
 /**
  * 编辑笔记映射（打开映射文件）
@@ -13,7 +14,12 @@ export async function editNoteMapping(): Promise<void> {
   }
 
   // 获取映射文件路径
-  const mappingsFilePath = `${issueDir}/.issueManager/mappings.yaml`;
+  const mappingsFilePath = getMappingsFilePathPublic();
+  if (!mappingsFilePath) {
+    vscode.window.showErrorMessage('无法确定映射文件路径。');
+    return;
+  }
+  
   const uri = vscode.Uri.file(mappingsFilePath);
 
   try {

@@ -115,13 +115,19 @@ export async function validatePath(
 ): Promise<{ valid: boolean; message?: string }> {
   // 检查是否为绝对路径
   if (!path.isAbsolute(filePath)) {
-    return { valid: false, message: '路径必须是绝对路径' };
+    return { 
+      valid: false, 
+      message: '路径必须是绝对路径。相对路径可能导致文件位置不明确，影响跨平台兼容性和安全性。' 
+    };
   }
   
   // 如果要求在笔记根目录内
   if (requireInNoteRoot) {
     if (!isPathInNoteRoot(filePath)) {
-      return { valid: false, message: '路径必须在笔记根目录内' };
+      return { 
+        valid: false, 
+        message: '路径必须在笔记根目录内。这是为了确保笔记数据的完整性和便于管理。' 
+      };
     }
   }
   
