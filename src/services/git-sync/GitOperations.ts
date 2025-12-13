@@ -50,9 +50,10 @@ export class GitOperations {
      * 3. 使用merge模式拉取当前分支的更新
      * 
      * @param cwd Git仓库目录
+     * @returns 如果有更新被拉取则返回true，否则返回false
      * @throws 如果拉取失败则抛出错误
      */
-    public static async pullChanges(cwd: string): Promise<void> {
+    public static async pullChanges(cwd: string): Promise<boolean> {
         const git = this.getGit(cwd);
         try {
             // 先检查当前分支
@@ -67,7 +68,14 @@ export class GitOperations {
             await git.fetch('origin');
             
             // 拉取当前分支的更新，使用merge而非rebase避免复杂情况
-            await git.pull('origin', currentBranch, { '--no-rebase': null });  
+            const pullResult = await git.pull('origin', currentBranch, { '--no-rebase': null });
+
+            // 判断是否有实际的更新：检查文件变更数量或摘要中的变更数
+            // 对 pullResult 做防御性检查，避免某些 simple-git 版本下字段为 undefined
+            const filesChanged = Array.isArray((pullResult as any).files) && (pullResult as any).files.length > 0;
+            const summary = (pullResult as any).summary;
+            const summaryChanges = summary && typeof summary.changes === 'number' ? summary.changes > 0 : false;
+            return filesChanged || summaryChanges;
         } catch (error) {
             this.handleGitError(error, '拉取远程更改失败');
         }
