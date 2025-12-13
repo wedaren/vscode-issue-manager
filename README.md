@@ -25,6 +25,23 @@
     - 在视图中点击问题，在编辑器中打开。
     - 在编辑器中打开问题文件，视图会自动高亮对应节点。
 
+### 🗺️ 笔记映射功能
+通过路径映射功能，可以为文件或整个工作区建立与笔记的关联关系：
+
+- **快速访问**: 在编辑器中右键点击，直接打开映射的笔记
+- **灵活映射**: 支持文件级别和工作区级别的映射规则
+- **智能匹配**: 使用 glob 模式或路径前缀进行灵活的路径匹配
+- **优先级控制**: 多个映射规则可以设置不同的优先级
+- **快捷键支持**: 
+  - `Ctrl+J Ctrl+W` (Mac: `Cmd+J Cmd+W`): 绑定工作区笔记
+  - `Ctrl+J Ctrl+P` (Mac: `Cmd+J Cmd+P`): 打开映射的笔记
+  - 右键菜单: 为当前文件创建映射或打开已映射的笔记
+
+使用场景：
+- 为代码文件关联设计文档或需求说明
+- 为项目文件夹关联项目笔记
+- 建立工作区全局的知识库入口
+
 ## 🚀 快速开始
 
 ### 1. 配置问题目录
@@ -90,6 +107,14 @@
 | `issueManager.sync.retryInitialDelay` | 数字 | `5` | 同步重试的初始延迟时间（秒），后续重试使用指数退避 |
 | `issueManager.sync.enableNotifications` | 布尔值 | `true` | 启用同步失败时的桌面通知，禁用后仅在状态栏显示 |
 
+### 笔记映射设置
+
+| 配置项 | 类型 | 默认值 | 描述 |
+|--------|------|--------|------|
+| `issueManager.noteMapping.fallbackBehavior` | 字符串 | `ask` | 当文件没有映射的笔记时的回退行为。可选值：`'none'`（不执行任何操作）、`'noteRoot'`（打开笔记根目录）、`'ask'`（询问用户） |
+| `issueManager.noteMapping.requireInNoteRoot` | 布尔值 | `true` | 是否要求映射的笔记路径必须在笔记根目录内，启用可增强安全性 |
+| `issueManager.noteMapping.autoUpdateContext` | 布尔值 | `true` | 是否在切换编辑器时自动更新笔记映射上下文（用于控制菜单显示） |
+
 ### 最近问题视图分组与展开说明
 
 最近问题视图支持“列表模式”和“分组模式”两种展示方式。
@@ -117,7 +142,12 @@
   "issueManager.sync.periodicPullInterval": 15,
   "issueManager.sync.maxRetries": 3,
   "issueManager.sync.retryInitialDelay": 5,
-  "issueManager.sync.enableNotifications": true
+  "issueManager.sync.enableNotifications": true,
+  
+  // 笔记映射配置
+  "issueManager.noteMapping.fallbackBehavior": "ask",
+  "issueManager.noteMapping.requireInNoteRoot": true,
+  "issueManager.noteMapping.autoUpdateContext": true
 }
 ```
 
@@ -131,6 +161,7 @@
 │   ├── tree.json          # 问题的树状结构和层级关系
 │   ├── focused.json       # 关注问题的状态信息
 │   ├── titleCache.json    # 问题标题缓存（提升性能）
+│   ├── mappings.yaml      # 笔记映射配置（文件与笔记的关联）
 │   └── .gitignore         # 版本控制配置
 ├── 20250101-120000-001.md # 问题文件（时间戳命名）
 ├── 20250102-143000-002.md
@@ -141,7 +172,7 @@
 
 - **自包含性**: 整个知识库可以轻松复制和移动
 - **可移植性**: 支持版本控制和多设备同步
-- **透明性**: 所有数据都是可读的 JSON 和 Markdown 文件
+- **透明性**: 所有数据都是可读的 JSON、YAML 和 Markdown 文件
 
 ## 🎯 核心优势
 
