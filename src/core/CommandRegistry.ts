@@ -41,6 +41,10 @@ import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
 import { TitleCacheService } from '../services/TitleCacheService';
+import { registerOpenMappedNoteCommand } from '../commands/openMappedNote';
+import { registerMapNoteForFileCommand } from '../commands/mapNoteForFile';
+import { registerBindWorkspaceNoteCommand } from '../commands/bindWorkspaceNote';
+import { registerEditNoteMappingCommand } from '../commands/editNoteMapping';
 
 
 
@@ -191,6 +195,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 9. 注册 LLM 相关命令
             this.registerLLMCommands();
+
+            // 10. 注册笔记映射命令
+            this.registerNoteMappingCommands();
 
             this.logger.info('✅ 所有命令注册完成');
 
@@ -748,5 +755,17 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '选择 LLM 模型'
         );
+    }
+
+    /**
+     * 注册笔记映射命令
+     */
+    private registerNoteMappingCommands(): void {
+        this.logger.info('🔗 注册笔记映射命令...');
+
+        registerOpenMappedNoteCommand(this.context);
+        registerMapNoteForFileCommand(this.context);
+        registerBindWorkspaceNoteCommand(this.context);
+        registerEditNoteMappingCommand(this.context);
     }
 }
