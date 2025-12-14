@@ -293,10 +293,7 @@ export class GitSyncService implements vscode.Disposable {
         this.setStatus({ status: SyncStatus.Syncing, message: '正在初始化同步...' });
 
         try {
-            const isPulled = await GitOperations.pullChanges(issueDir);
-            if (isPulled) {
-                await this.refreshIssueTitles();
-            }
+            await this.pullAndRefreshIfNeeded(issueDir);
 
             this.setStatus({ 
                 status: SyncStatus.Synced, 
@@ -329,10 +326,7 @@ export class GitSyncService implements vscode.Disposable {
                 'auto-sync',
                 async () => {
                     // 先拉取
-                    const isPulled = await GitOperations.pullChanges(issueDir);
-                    if (isPulled) {
-                        await this.refreshIssueTitles();
-                    }
+                    await this.pullAndRefreshIfNeeded(issueDir);
                     
                     // 检查是否有本地更改
                     if (await GitOperations.hasLocalChanges(issueDir)) {
@@ -387,10 +381,7 @@ export class GitSyncService implements vscode.Disposable {
             await this.retryManager.executeWithRetry(
                 'periodic-pull',
                 async () => {
-                    const isPulled = await GitOperations.pullChanges(issueDir);
-                    if (isPulled) {
-                        await this.refreshIssueTitles();
-                    }
+                    await this.pullAndRefreshIfNeeded(issueDir);
                 },
                 (attempt, nextDelay) => {
                     // 周期性拉取失败时的重试，不需要显示通知
@@ -465,10 +456,7 @@ export class GitSyncService implements vscode.Disposable {
 
         try {
             // 拉取
-            const isPulled = await GitOperations.pullChanges(issueDir);
-            if (isPulled) {
-                await this.refreshIssueTitles();
-            }
+            await this.pullAndRefreshIfNeeded(issueDir);
 
             // 提交并推送（如果有更改）
             if (await GitOperations.hasLocalChanges(issueDir)) {
@@ -540,6 +528,19 @@ export class GitSyncService implements vscode.Disposable {
         } catch (err) {
             Logger.getInstance().debug('刷新问题标题命令调用失败', err);
         }
+    }
+
+    /**
+     * 拉取远程更新并在拉取到更新时刷新问题标题
+     *
+     * @returns 是否拉取到更新
+     */
+    private async pullAndRefreshIfNeeded(issueDir: string): Promise<boolean> {
+        const isPulled = await GitOperations.pullChanges(issueDir);
+        if (isPulled) {
+            await this.refreshIssueTitles();
+        }
+        return isPulled;
     }
 
     /**
