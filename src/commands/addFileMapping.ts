@@ -10,6 +10,7 @@ const DEFAULT_FILE_PRIORITY = 100;
 
 /**
  * 为当前文件添加笔记映射
+ * 支持多次添加，不会覆盖已有映射
  */
 export async function addFileMapping(): Promise<void> {
   const issueDir = getIssueDir();
@@ -47,18 +48,35 @@ export async function addFileMapping(): Promise<void> {
     return;
   }
 
-  // 创建或更新映射
-  await mappingService.addOrUpdate({
-    id: generateMappingId(),
-    scope: 'file',
-    pattern: pattern,
-    targets: [issueId],
-    priority: DEFAULT_FILE_PRIORITY,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
+  // 查找是否已有针对该文件的映射
+  const allMappings = await mappingService.getAll();
+  const existingMapping = allMappings.find(
+    m => m.scope === 'file' && m.pattern === pattern
+  );
 
-  vscode.window.showInformationMessage(`已为当前文件添加笔记映射。`);
+  if (existingMapping) {
+    // 如果已存在映射，追加到 targets 列表（去重）
+    if (!existingMapping.targets.includes(issueId)) {
+      existingMapping.targets.push(issueId);
+      existingMapping.updatedAt = new Date().toISOString();
+      await mappingService.addOrUpdate(existingMapping);
+      vscode.window.showInformationMessage(`已为当前文件添加新的笔记映射。`);
+    } else {
+      vscode.window.showInformationMessage(`该映射已存在。`);
+    }
+  } else {
+    // 创建新映射
+    await mappingService.addOrUpdate({
+      id: generateMappingId(),
+      scope: 'file',
+      pattern: pattern,
+      targets: [issueId],
+      priority: DEFAULT_FILE_PRIORITY,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    vscode.window.showInformationMessage(`已为当前文件添加笔记映射。`);
+  }
   
   // 更新编辑器上下文
   await vscode.commands.executeCommand('issueManager.updateEditorMappingContext');

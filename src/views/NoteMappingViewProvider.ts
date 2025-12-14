@@ -189,17 +189,28 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
             label: '工作区映射'
         });
         
-        // 当前文件映射节点 - 只有当文件在工作区内时才显示
+        // 当前文件映射节点
         if (this.currentFilePath) {
             // 检查文件是否在工作区内
             const workspaceRoot = getWorkspaceRoot();
             if (workspaceRoot && this.currentFilePath.startsWith(workspaceRoot)) {
-                const relativePath = path.relative(workspaceRoot, this.currentFilePath);
+                // 文件在工作区内：显示编辑器标题，描述显示"当前文件映射"
+                const editor = vscode.window.activeTextEditor;
+                const editorTitle = editor ? path.basename(editor.document.fileName) : path.basename(this.currentFilePath);
+                nodes.push({
+                    id: 'file-mappings',
+                    type: 'file',
+                    label: editorTitle,
+                    description: '当前文件映射',
+                    filePath: this.currentFilePath
+                });
+            } else {
+                // 文件不在工作区内：仍然显示节点，但去掉描述
                 nodes.push({
                     id: 'file-mappings',
                     type: 'file',
                     label: '当前文件映射',
-                    description: relativePath || path.basename(this.currentFilePath),
+                    description: undefined,
                     filePath: this.currentFilePath
                 });
             }

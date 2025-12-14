@@ -365,22 +365,26 @@
       {
         "command": "issueManager.addWorkspaceMapping",
         "title": "添加工作区笔记映射",
-        "category": "Issue Manager"
+        "category": "Issue Manager",
+        "icon": "$(add)"
       },
       {
         "command": "issueManager.removeWorkspaceMapping",
         "title": "移除工作区笔记映射",
-        "category": "Issue Manager"
+        "category": "Issue Manager",
+        "icon": "$(trash)"
       },
       {
         "command": "issueManager.addFileMapping",
         "title": "添加文件笔记映射",
-        "category": "Issue Manager"
+        "category": "Issue Manager",
+        "icon": "$(add)"
       },
       {
         "command": "issueManager.removeFileMapping",
         "title": "移除文件笔记映射",
-        "category": "Issue Manager"
+        "category": "Issue Manager",
+        "icon": "$(trash)"
       },
       {
         "command": "issueManager.openMappedNote",
