@@ -47,6 +47,7 @@ import { registerAddWorkspaceMappingCommand } from '../commands/addWorkspaceMapp
 import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspaceMapping';
 import { registerAddFileMappingCommand } from '../commands/addFileMapping';
 import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
+import { registerOpenNoteByNodeIdCommand } from '../commands/openNoteByNodeId';
 
 
 
@@ -771,5 +772,6 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerRemoveWorkspaceMappingCommand(this.context);
         registerAddFileMappingCommand(this.context);
         registerRemoveFileMappingCommand(this.context);
+        registerOpenNoteByNodeIdCommand(this.context);
     }
 }

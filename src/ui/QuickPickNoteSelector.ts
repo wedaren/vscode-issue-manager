@@ -115,11 +115,12 @@ export class QuickPickNoteSelector {
   }
 
   /**
-   * 选择多个 issue（用于创建映射）
+   * 选择单个 issue（用于创建映射）
    * 参考 searchIssues.ts 的实现，提供更好的交互体验
-   * @returns issueId 列表
+   * 使用 node.id 作为 issueId
+   * @returns issueId（node.id）
    */
-  async selectMultiple(existingIds: string[] = []): Promise<string[] | undefined> {
+  async selectSingle(): Promise<string | undefined> {
     const issueDir = getIssueDir();
     if (!issueDir) {
       vscode.window.showErrorMessage('未配置笔记根目录');
@@ -129,10 +130,9 @@ export class QuickPickNoteSelector {
     // 创建 QuickPick
     const quickPick = vscode.window.createQuickPick<IssueQuickPickItem>();
     quickPick.busy = true;
-    quickPick.placeholder = '请搜索并选择要映射的问题（支持多选）...';
+    quickPick.placeholder = '请搜索并选择要映射的问题...';
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = false;
-    quickPick.canSelectMany = true;
     quickPick.show();
 
     // 获取扁平化的树结构
@@ -158,7 +158,7 @@ export class QuickPickNoteSelector {
     // 按 mtime 降序排序
     nodesWithMtime.sort((a, b) => b.mtime - a.mtime);
 
-    // 构建 QuickPickItem 列表
+    // 构建 QuickPickItem 列表，使用 node.id 作为 issueId
     const items: IssueQuickPickItem[] = nodesWithMtime.map(node => {
       const title = node.title;
       let description = '';
@@ -168,17 +168,11 @@ export class QuickPickNoteSelector {
         description = ['', ...parentTitles].join(' / ');
       }
       
-      // 从文件路径提取 issueId（相对于 issueDir 的路径，不含 .md）
-      const relativePath = path.relative(issueDir, node.filePath);
-      const issueId = relativePath.endsWith('.md') 
-        ? relativePath.substring(0, relativePath.length - 3)
-        : relativePath;
-      
       return {
         label: title,
         description,
-        detail: issueId,
-        issueId: issueId,
+        detail: node.id,
+        issueId: node.id,
         action: 'open'
       };
     });
@@ -186,17 +180,12 @@ export class QuickPickNoteSelector {
     quickPick.items = items;
     quickPick.busy = false;
 
-    // 预选已存在的 issueId
-    if (existingIds.length > 0) {
-      quickPick.selectedItems = items.filter(item => existingIds.includes(item.issueId));
-    }
-
-    return new Promise<string[] | undefined>((resolve) => {
+    return new Promise<string | undefined>((resolve) => {
       quickPick.onDidAccept(() => {
-        const selected = quickPick.selectedItems;
+        const selected = quickPick.selectedItems[0];
         quickPick.hide();
-        if (selected.length > 0) {
-          resolve(selected.map(item => item.issueId));
+        if (selected) {
+          resolve(selected.issueId);
         } else {
           resolve(undefined);
         }

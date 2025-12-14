@@ -48,9 +48,9 @@ export async function bindWorkspaceNote(): Promise<void> {
 async function createWorkspaceMapping(mappingService: NoteMappingService): Promise<void> {
   // 选择 issue 文件
   const selector = new QuickPickNoteSelector();
-  const issueIds = await selector.selectMultiple();
+  const issueId = await selector.selectSingle();
 
-  if (!issueIds || issueIds.length === 0) {
+  if (!issueId) {
     return;
   }
 
@@ -78,7 +78,7 @@ async function createWorkspaceMapping(mappingService: NoteMappingService): Promi
     id: generateMappingId(),
     scope: 'workspace',
     pattern: WORKSPACE_PATTERN, // 工作区级别匹配所有文件
-    targets: issueIds,
+    targets: [issueId],
     priority: priority,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

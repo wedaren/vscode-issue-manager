@@ -4,6 +4,7 @@ import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
 import { EditorEventManager } from '../services/EditorEventManager';
 import { getWorkspaceRoot } from '../utils/pathUtils';
+import { readTree, findNodeById } from '../data/treeManager';
 
 /**
  * 笔记映射节点类型
@@ -116,19 +117,13 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                     item.contextValue = 'mappedIssue';
                 }
                 
-                // 设置点击命令打开 issue
+                // 设置点击命令打开 issue，使用 node.id
                 if (element.issueId) {
-                    const issueDir = getIssueDir();
-                    if (issueDir) {
-                        const fileName = element.issueId.endsWith('.md') ? element.issueId : `${element.issueId}.md`;
-                        const issueUri = vscode.Uri.file(path.join(issueDir, fileName));
-                        item.command = {
-                            command: 'vscode.open',
-                            title: '打开笔记',
-                            arguments: [issueUri]
-                        };
-                        item.resourceUri = issueUri;
-                    }
+                    item.command = {
+                        command: 'issueManager.openNoteByNodeId',
+                        title: '打开笔记',
+                        arguments: [element.issueId]
+                    };
                 }
                 break;
                 

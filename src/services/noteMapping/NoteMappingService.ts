@@ -15,6 +15,7 @@ import {
 } from '../../utils/pathUtils';
 import { TitleCacheService } from '../TitleCacheService';
 import { getIssueDir } from '../../config';
+import { readTree, findNodeById } from '../../data/treeManager';
 
 /**
  * 笔记映射服务
@@ -226,23 +227,50 @@ export class NoteMappingService {
   }
 
   /**
+   * 通过 node.id 查找节点的文件路径
+   * @param nodeId node.id
+   * @returns 相对于 issueDir 的文件路径，找不到返回 undefined
+   */
+  private async getFilePathByNodeId(nodeId: string): Promise<string | undefined> {
+    try {
+      const tree = await readTree();
+      if (!tree) {
+        return undefined;
+      }
+      
+      const result = findNodeById(tree.rootNodes, nodeId);
+      if (result) {
+        return result.node.filePath;
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.error('查找节点失败:', error);
+      return undefined;
+    }
+  }
+
+  /**
    * 获取 issue 的显示标题
-   * @param issueId issueId（不含 .md 扩展名）
+   * @param issueId node.id（节点唯一标识符）
    */
   async getIssueTitle(issueId: string): Promise<string> {
-    // issueId 实际上就是相对于 issueDir 的相对路径（可能在子目录中）
-    // 如果 issueId 包含路径分隔符，说明在子目录中
-    const relativePath = issueId.endsWith('.md') ? issueId : `${issueId}.md`;
+    // issueId 是 node.id，需要查找对应的文件路径
+    const filePath = await this.getFilePathByNodeId(issueId);
+    if (!filePath) {
+      // 找不到节点，返回 issueId 本身
+      return issueId;
+    }
     
     // 确保缓存已加载
     await this.titleCache.preload();
-    const title = await this.titleCache.get(relativePath);
+    const title = await this.titleCache.get(filePath);
     if (title) {
       return title;
     }
     
     // 回退到文件名（不含扩展名）
-    return path.basename(issueId, '.md');
+    return path.basename(filePath, '.md');
   }
 
   /**

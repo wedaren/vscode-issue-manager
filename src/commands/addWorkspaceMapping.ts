@@ -22,9 +22,9 @@ export async function addWorkspaceMapping(): Promise<void> {
 
   // 选择 issue 文件
   const selector = new QuickPickNoteSelector();
-  const issueIds = await selector.selectMultiple();
+  const issueId = await selector.selectSingle();
 
-  if (!issueIds || issueIds.length === 0) {
+  if (!issueId) {
     return;
   }
 
@@ -33,13 +33,13 @@ export async function addWorkspaceMapping(): Promise<void> {
     id: generateMappingId(),
     scope: 'workspace',
     pattern: WORKSPACE_PATTERN,
-    targets: issueIds,
+    targets: [issueId],
     priority: DEFAULT_WORKSPACE_PRIORITY,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   });
 
-  vscode.window.showInformationMessage(`已添加 ${issueIds.length} 个工作区笔记映射。`);
+  vscode.window.showInformationMessage(`已添加工作区笔记映射。`);
 }
 
 /**

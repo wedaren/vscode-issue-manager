@@ -3,6 +3,7 @@ import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { QuickPickNoteSelector } from '../ui/QuickPickNoteSelector';
 import { getIssueDir } from '../config';
+import { readTree, findNodeById } from '../data/treeManager';
 
 /**
  * 打开当前文件映射的笔记
@@ -64,9 +65,20 @@ export async function openMappedNote(): Promise<void> {
     return;
   }
 
-  // 将 issueId 转换为文件路径
-  const fileName = selectedIssueId.endsWith('.md') ? selectedIssueId : `${selectedIssueId}.md`;
-  const filePath = path.join(issueDir, fileName);
+  // selectedIssueId 是 node.id，需要查找节点获取文件路径
+  const tree = await readTree();
+  if (!tree) {
+    vscode.window.showErrorMessage('无法加载问题树。');
+    return;
+  }
+
+  const result = findNodeById(tree.rootNodes, selectedIssueId);
+  if (!result) {
+    vscode.window.showErrorMessage(`找不到对应的笔记节点：${selectedIssueId}`);
+    return;
+  }
+
+  const filePath = path.join(issueDir, result.node.filePath);
   
   // 打开选中的笔记
   const uri = vscode.Uri.file(filePath);
@@ -74,7 +86,7 @@ export async function openMappedNote(): Promise<void> {
     const document = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(document);
   } catch (error) {
-    vscode.window.showErrorMessage(`无法打开笔记文件：${fileName}`);
+    vscode.window.showErrorMessage(`无法打开笔记文件：${result.node.filePath}`);
     console.error('打开笔记失败:', error);
   }
 }

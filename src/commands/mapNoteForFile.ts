@@ -39,9 +39,9 @@ export async function mapNoteForFile(): Promise<void> {
 
   // 选择 issue 文件
   const selector = new QuickPickNoteSelector();
-  const issueIds = await selector.selectMultiple();
+  const issueId = await selector.selectSingle();
 
-  if (!issueIds || issueIds.length === 0) {
+  if (!issueId) {
     return;
   }
 
@@ -50,7 +50,7 @@ export async function mapNoteForFile(): Promise<void> {
     id: generateMappingId(),
     scope: 'file',
     pattern: pattern,
-    targets: issueIds,
+    targets: [issueId],
     priority: 100, // 文件级映射默认高优先级
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

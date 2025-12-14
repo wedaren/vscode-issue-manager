@@ -41,9 +41,9 @@ export async function addFileMapping(): Promise<void> {
 
   // 选择 issue 文件
   const selector = new QuickPickNoteSelector();
-  const issueIds = await selector.selectMultiple();
+  const issueId = await selector.selectSingle();
 
-  if (!issueIds || issueIds.length === 0) {
+  if (!issueId) {
     return;
   }
 
@@ -52,13 +52,13 @@ export async function addFileMapping(): Promise<void> {
     id: generateMappingId(),
     scope: 'file',
     pattern: pattern,
-    targets: issueIds,
+    targets: [issueId],
     priority: DEFAULT_FILE_PRIORITY,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   });
 
-  vscode.window.showInformationMessage(`已为当前文件添加 ${issueIds.length} 个笔记映射。`);
+  vscode.window.showInformationMessage(`已为当前文件添加笔记映射。`);
   
   // 更新编辑器上下文
   await vscode.commands.executeCommand('issueManager.updateEditorMappingContext');
