@@ -29,6 +29,8 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
         this._onDidChangeTreeData.event;
 
     private currentFilePath: string | null = null;
+    private lastWorkspaceFilePath: string | null = null; // 记住最后一个工作区内的文件
+    private lastWorkspaceFileTitle: string | null = null; // 记住最后一个工作区内文件的标题
     private mappingService: NoteMappingService;
     private disposables: vscode.Disposable[] = [];
 
@@ -74,6 +76,15 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
      */
     private onEditorChanged(uri: vscode.Uri): void {
         this.currentFilePath = uri.fsPath;
+        
+        // 如果文件在工作区内，记住它
+        const workspaceRoot = getWorkspaceRoot();
+        if (workspaceRoot && this.currentFilePath.startsWith(workspaceRoot)) {
+            this.lastWorkspaceFilePath = this.currentFilePath;
+            const editor = vscode.window.activeTextEditor;
+            this.lastWorkspaceFileTitle = editor ? path.basename(editor.document.fileName) : path.basename(this.currentFilePath);
+        }
+        
         this._onDidChangeTreeData.fire();
     }
 
@@ -101,7 +112,10 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                 item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
                 item.iconPath = new vscode.ThemeIcon('file');
                 item.description = element.description;
-                item.contextValue = 'fileMapping';
+                // 检查文件是否在工作区内，如果不在则不支持添加
+                const workspaceRoot = getWorkspaceRoot();
+                const isInWorkspace = this.currentFilePath && workspaceRoot && this.currentFilePath.startsWith(workspaceRoot);
+                item.contextValue = isInWorkspace ? 'fileMapping' : 'fileMappingReadOnly';
                 break;
                 
             case 'issue':
@@ -204,16 +218,25 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                     description: '当前文件映射',
                     filePath: this.currentFilePath
                 });
-            } else {
-                // 文件不在工作区内：仍然显示节点，但去掉描述
+            } else if (this.lastWorkspaceFilePath) {
+                // 文件不在工作区内：显示之前工作区内文件的标题，展示其关联，不显示描述，不支持添加
                 nodes.push({
                     id: 'file-mappings',
                     type: 'file',
-                    label: '当前文件映射',
+                    label: this.lastWorkspaceFileTitle || '当前文件映射',
                     description: undefined,
-                    filePath: this.currentFilePath
+                    filePath: this.lastWorkspaceFilePath // 使用之前的文件路径来显示映射
                 });
             }
+        } else if (this.lastWorkspaceFilePath) {
+            // 没有当前文件，但有之前的工作区文件，显示其信息
+            nodes.push({
+                id: 'file-mappings',
+                type: 'file',
+                label: this.lastWorkspaceFileTitle || '当前文件映射',
+                description: undefined,
+                filePath: this.lastWorkspaceFilePath
+            });
         }
         
         return nodes;
@@ -258,11 +281,23 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
      * 获取当前文件映射的 issue 列表
      */
     private async getFileMappings(): Promise<NoteMappingNode[]> {
-        if (!this.currentFilePath) {
+        // 确定要查询映射的文件路径
+        let targetFilePath: string | null = null;
+        const workspaceRoot = getWorkspaceRoot();
+        
+        if (this.currentFilePath && workspaceRoot && this.currentFilePath.startsWith(workspaceRoot)) {
+            // 当前文件在工作区内，使用当前文件
+            targetFilePath = this.currentFilePath;
+        } else if (this.lastWorkspaceFilePath) {
+            // 当前文件不在工作区内，使用之前记住的工作区文件
+            targetFilePath = this.lastWorkspaceFilePath;
+        }
+        
+        if (!targetFilePath) {
             return [];
         }
         
-        const issueIds = await this.mappingService.resolveForFile(this.currentFilePath);
+        const issueIds = await this.mappingService.resolveForFile(targetFilePath);
         
         if (issueIds.length === 0) {
             return [
