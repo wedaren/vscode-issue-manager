@@ -351,6 +351,18 @@
         "icon": "$(hubot)"
       },
       {
+        "command": "issueManager.copilotDiffSend",
+        "title": "Copilot: 发送并展示 Diff",
+        "category": "Issue Manager",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "issueManager.copilotDiffCopyResult",
+        "title": "Copilot: 复制改写结果",
+        "category": "Issue Manager",
+        "icon": "$(copy)"
+      },
+      {
         "command": "issueManager.showRelationGraph",
         "title": "显示问题关系图",
         "category": "Issue Manager",
@@ -821,6 +833,12 @@
         "when": "issueManager.isDirConfigured"
       },
       {
+        "command": "issueManager.copilotDiffSend",
+        "key": "ctrl+j ctrl+d",
+        "mac": "cmd+j cmd+d",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
         "command": "workbench.action.togglePanel",
         "key": "ctrl+j ctrl+j",
         "mac": "cmd+j cmd+j",
@@ -1100,6 +1118,13 @@
           "default": "gpt-4.1",
           "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
         }
+        ,
+        "issueManager.copilotDiff.promptTemplate": {
+          "type": "string",
+          "default": "请将下列文本改写为更清晰、简洁的中文，保留原意。仅输出改写后的内容，最后单独一行以“结论：”开头给出一句简短结论，不要添加任何其他说明或格式化：\\n\\n{{content}}",
+          "description": "用于发送给模型的 prompt 模板，使用 {{content}} 占位要替换为用户编辑的文本。"
+        }
+        
       }
     },
     "viewsContainers": {
