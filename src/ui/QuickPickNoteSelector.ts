@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
+import { getFlatTree, FlatTreeNode } from '../data/treeManager';
 
 /**
  * QuickPick 项
@@ -115,43 +116,96 @@ export class QuickPickNoteSelector {
 
   /**
    * 选择多个 issue（用于创建映射）
+   * 参考 searchIssues.ts 的实现，提供更好的交互体验
    * @returns issueId 列表
    */
   async selectMultiple(existingIds: string[] = []): Promise<string[] | undefined> {
-    // 获取所有笔记文件
     const issueDir = getIssueDir();
     if (!issueDir) {
       vscode.window.showErrorMessage('未配置笔记根目录');
       return undefined;
     }
 
-    // 使用文件选择对话框
-    const uris = await vscode.window.showOpenDialog({
-      defaultUri: vscode.Uri.file(issueDir),
-      canSelectMany: true,
-      canSelectFiles: true,
-      canSelectFolders: false,
-      filters: {
-        'Markdown 文件': ['md', 'markdown']
-      },
-      title: '选择笔记文件'
-    });
+    // 创建 QuickPick
+    const quickPick = vscode.window.createQuickPick<IssueQuickPickItem>();
+    quickPick.busy = true;
+    quickPick.placeholder = '请搜索并选择要映射的问题（支持多选）...';
+    quickPick.matchOnDescription = true;
+    quickPick.matchOnDetail = false;
+    quickPick.canSelectMany = true;
+    quickPick.show();
 
-    if (!uris || uris.length === 0) {
-      return undefined;
+    // 获取扁平化的树结构
+    const flatNodes = await getFlatTree();
+
+    // 获取每个节点的 mtime
+    async function getMtime(node: FlatTreeNode): Promise<number> {
+      try {
+        const uri = node.resourceUri || vscode.Uri.file(node.filePath);
+        const stat = await vscode.workspace.fs.stat(uri);
+        return stat.mtime;
+      } catch {
+        return 0;
+      }
     }
 
-    // 转换为 issueId（相对于 issueDir 的路径，不含 .md 扩展名）
-    const issueIds: string[] = [];
-    for (const uri of uris) {
-      const relativePath = path.relative(issueDir, uri.fsPath);
-      // 移除 .md 扩展名
+    // 并发获取所有 mtime
+    const nodesWithMtime = await Promise.all(flatNodes.map(async node => {
+      const mtime = await getMtime(node);
+      return { ...node, mtime };
+    }));
+
+    // 按 mtime 降序排序
+    nodesWithMtime.sort((a, b) => b.mtime - a.mtime);
+
+    // 构建 QuickPickItem 列表
+    const items: IssueQuickPickItem[] = nodesWithMtime.map(node => {
+      const title = node.title;
+      let description = '';
+      // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
+      if (node.parentPath.length > 0) {
+        const parentTitles = node.parentPath.map(n => n.title);
+        description = ['', ...parentTitles].join(' / ');
+      }
+      
+      // 从文件路径提取 issueId（相对于 issueDir 的路径，不含 .md）
+      const relativePath = path.relative(issueDir, node.filePath);
       const issueId = relativePath.endsWith('.md') 
         ? relativePath.substring(0, relativePath.length - 3)
         : relativePath;
-      issueIds.push(issueId);
+      
+      return {
+        label: title,
+        description,
+        detail: issueId,
+        issueId: issueId,
+        action: 'open'
+      };
+    });
+
+    quickPick.items = items;
+    quickPick.busy = false;
+
+    // 预选已存在的 issueId
+    if (existingIds.length > 0) {
+      quickPick.selectedItems = items.filter(item => existingIds.includes(item.issueId));
     }
 
-    return issueIds;
+    return new Promise<string[] | undefined>((resolve) => {
+      quickPick.onDidAccept(() => {
+        const selected = quickPick.selectedItems;
+        quickPick.hide();
+        if (selected.length > 0) {
+          resolve(selected.map(item => item.issueId));
+        } else {
+          resolve(undefined);
+        }
+      });
+
+      quickPick.onDidHide(() => {
+        quickPick.dispose();
+        resolve(undefined);
+      });
+    });
   }
 }
