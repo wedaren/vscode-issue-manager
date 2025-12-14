@@ -106,7 +106,14 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                 item.collapsibleState = vscode.TreeItemCollapsibleState.None;
                 item.iconPath = new vscode.ThemeIcon('note');
                 item.description = element.description;
-                item.contextValue = 'mappedIssue';
+                // Set contextValue based on the element ID to distinguish workspace vs file issues
+                if (element.id.startsWith('workspace-issue-')) {
+                    item.contextValue = 'workspaceIssue';
+                } else if (element.id.startsWith('file-issue-')) {
+                    item.contextValue = 'fileIssue';
+                } else {
+                    item.contextValue = 'mappedIssue';
+                }
                 
                 // 设置点击命令打开 issue
                 if (element.issueId) {
@@ -186,16 +193,19 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
             label: '工作区映射'
         });
         
-        // 当前文件映射节点
+        // 当前文件映射节点 - 只有当文件在工作区内时才显示
         if (this.currentFilePath) {
-            const relativePath = this.getRelativePath(this.currentFilePath);
-            nodes.push({
-                id: 'file-mappings',
-                type: 'file',
-                label: '当前文件映射',
-                description: relativePath || path.basename(this.currentFilePath),
-                filePath: this.currentFilePath
-            });
+            // 检查文件是否在工作区内
+            if (this.currentFilePath.startsWith(issueDir)) {
+                const relativePath = this.getRelativePath(this.currentFilePath);
+                nodes.push({
+                    id: 'file-mappings',
+                    type: 'file',
+                    label: '当前文件映射',
+                    description: relativePath || path.basename(this.currentFilePath),
+                    filePath: this.currentFilePath
+                });
+            }
         }
         
         return nodes;
@@ -214,11 +224,6 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                     id: 'no-workspace-mapping',
                     type: 'message',
                     label: '暂无工作区映射'
-                },
-                {
-                    id: 'issueManager.bindWorkspaceNote',
-                    type: 'button',
-                    label: '点击创建工作区映射'
                 }
             ];
         }
@@ -252,37 +257,13 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
         const issueIds = await this.mappingService.resolveForFile(this.currentFilePath);
         
         if (issueIds.length === 0) {
-            // 检查当前文件是否在工作区内
-            const issueDir = getIssueDir();
-            const isInWorkspace = issueDir && this.currentFilePath.startsWith(issueDir);
-            
-            if (isInWorkspace) {
-                return [
-                    {
-                        id: 'no-file-mapping',
-                        type: 'message',
-                        label: '当前文件暂无映射'
-                    },
-                    {
-                        id: 'issueManager.mapNoteForFile',
-                        type: 'button',
-                        label: '点击创建文件映射'
-                    }
-                ];
-            } else {
-                return [
-                    {
-                        id: 'file-not-in-workspace',
-                        type: 'message',
-                        label: '当前文件不在工作区内'
-                    },
-                    {
-                        id: 'issueManager.mapNoteForFile',
-                        type: 'button',
-                        label: '点击创建文件映射'
-                    }
-                ];
-            }
+            return [
+                {
+                    id: 'no-file-mapping',
+                    type: 'message',
+                    label: '当前文件暂无映射'
+                }
+            ];
         }
         
         // 显示映射的 issue

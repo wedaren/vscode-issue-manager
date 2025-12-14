@@ -42,9 +42,11 @@ import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
 import { TitleCacheService } from '../services/TitleCacheService';
 import { registerOpenMappedNoteCommand } from '../commands/openMappedNote';
-import { registerMapNoteForFileCommand } from '../commands/mapNoteForFile';
-import { registerBindWorkspaceNoteCommand } from '../commands/bindWorkspaceNote';
 import { registerEditNoteMappingCommand } from '../commands/editNoteMapping';
+import { registerAddWorkspaceMappingCommand } from '../commands/addWorkspaceMapping';
+import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspaceMapping';
+import { registerAddFileMappingCommand } from '../commands/addFileMapping';
+import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
 
 
 
@@ -764,8 +766,10 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.logger.info('🔗 注册笔记映射命令...');
 
         registerOpenMappedNoteCommand(this.context);
-        registerMapNoteForFileCommand(this.context);
-        registerBindWorkspaceNoteCommand(this.context);
         registerEditNoteMappingCommand(this.context);
+        registerAddWorkspaceMappingCommand(this.context);
+        registerRemoveWorkspaceMappingCommand(this.context);
+        registerAddFileMappingCommand(this.context);
+        registerRemoveFileMappingCommand(this.context);
     }
 }

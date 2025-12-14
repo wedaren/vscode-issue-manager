@@ -363,13 +363,23 @@
         "icon": "$(type-hierarchy)"
       },
       {
-        "command": "issueManager.mapNoteForFile",
-        "title": "映射笔记到当前文件",
+        "command": "issueManager.addWorkspaceMapping",
+        "title": "添加工作区笔记映射",
         "category": "Issue Manager"
       },
       {
-        "command": "issueManager.bindWorkspaceNote",
-        "title": "绑定工作区笔记",
+        "command": "issueManager.removeWorkspaceMapping",
+        "title": "移除工作区笔记映射",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.addFileMapping",
+        "title": "添加文件笔记映射",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.removeFileMapping",
+        "title": "移除文件笔记映射",
         "category": "Issue Manager"
       },
       {
@@ -802,7 +812,7 @@
           "group": "0_issueManager@6"
         },
         {
-          "command": "issueManager.mapNoteForFile",
+          "command": "issueManager.addFileMapping",
           "when": "issueManager.isDirConfigured",
           "group": "1_noteMapping@1"
         },
@@ -810,6 +820,35 @@
           "command": "issueManager.openMappedNote",
           "when": "issueManager.isDirConfigured && issueManager.hasMappedNote",
           "group": "1_noteMapping@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "issueManager.addWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "issueManager.addWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == workspaceMapping",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.removeWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == workspaceIssue",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.addFileMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == fileMapping",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.removeFileMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == fileIssue",
+          "group": "inline@1"
         }
       ]
     },
@@ -869,7 +908,7 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.bindWorkspaceNote",
+        "command": "issueManager.addWorkspaceMapping",
         "key": "ctrl+j ctrl+w",
         "mac": "cmd+j cmd+w",
         "when": "issueManager.isDirConfigured"
