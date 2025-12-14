@@ -3,6 +3,7 @@ import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
 import { EditorEventManager } from '../services/EditorEventManager';
+import { getWorkspaceRoot } from '../utils/pathUtils';
 
 /**
  * 笔记映射节点类型
@@ -196,8 +197,9 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
         // 当前文件映射节点 - 只有当文件在工作区内时才显示
         if (this.currentFilePath) {
             // 检查文件是否在工作区内
-            if (this.currentFilePath.startsWith(issueDir)) {
-                const relativePath = this.getRelativePath(this.currentFilePath);
+            const workspaceRoot = getWorkspaceRoot();
+            if (workspaceRoot && this.currentFilePath.startsWith(workspaceRoot)) {
+                const relativePath = path.relative(workspaceRoot, this.currentFilePath);
                 nodes.push({
                     id: 'file-mappings',
                     type: 'file',
@@ -280,22 +282,6 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
         }
         
         return issueNodes;
-    }
-
-    /**
-     * 获取相对于工作区的路径
-     */
-    private getRelativePath(filePath: string): string | null {
-        const issueDir = getIssueDir();
-        if (!issueDir) {
-            return null;
-        }
-        
-        if (filePath.startsWith(issueDir)) {
-            return path.relative(issueDir, filePath);
-        }
-        
-        return null;
     }
 
     /**
