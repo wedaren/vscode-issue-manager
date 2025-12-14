@@ -1214,6 +1214,11 @@
           "id": "issueManager.views.para",
           "name": "PARA",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.noteMapping",
+          "name": "笔记映射",
+          "icon": "resources/icon.svg"
         }
       ]
     },
