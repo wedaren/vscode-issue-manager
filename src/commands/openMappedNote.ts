@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { QuickPickNoteSelector } from '../ui/QuickPickNoteSelector';
 import { getIssueDir } from '../config';
@@ -24,9 +25,9 @@ export async function openMappedNote(): Promise<void> {
   const mappingService = NoteMappingService.getInstance();
 
   // 解析映射
-  const notePaths = await mappingService.resolveForFile(currentFilePath);
+  const issueIds = await mappingService.resolveForFile(currentFilePath);
 
-  if (notePaths.length === 0) {
+  if (issueIds.length === 0) {
     // 没有映射，根据配置决定回退行为
     const config = vscode.workspace.getConfiguration('issueManager.noteMapping');
     const fallbackBehavior = config.get<string>('fallbackBehavior', 'ask');
@@ -57,16 +58,25 @@ export async function openMappedNote(): Promise<void> {
 
   // 有映射，使用 QuickPick 选择
   const selector = new QuickPickNoteSelector();
-  const selectedPath = await selector.show(notePaths, false);
+  const selectedIssueId = await selector.show(issueIds, false);
 
-  if (!selectedPath) {
+  if (!selectedIssueId) {
     return;
   }
 
+  // 将 issueId 转换为文件路径
+  const fileName = selectedIssueId.endsWith('.md') ? selectedIssueId : `${selectedIssueId}.md`;
+  const filePath = path.join(issueDir, fileName);
+  
   // 打开选中的笔记
-  const uri = vscode.Uri.file(selectedPath);
-  const document = await vscode.workspace.openTextDocument(uri);
-  await vscode.window.showTextDocument(document);
+  const uri = vscode.Uri.file(filePath);
+  try {
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document);
+  } catch (error) {
+    vscode.window.showErrorMessage(`无法打开笔记文件：${fileName}`);
+    console.error('打开笔记失败:', error);
+  }
 }
 
 /**

@@ -87,9 +87,9 @@ export class NoteMappingService {
   }
 
   /**
-   * 解析文件的映射笔记
+   * 解析文件的映射 issue
    * @param filePath 文件的绝对路径
-   * @returns 匹配的笔记路径列表（绝对路径）
+   * @returns 匹配的 issueId 列表
    */
   async resolveForFile(filePath: string): Promise<string[]> {
     if (!this.loaded) {
@@ -136,16 +136,8 @@ export class NoteMappingService {
     // 取第一个匹配的映射（优先级最高）
     const mapping = matchedMappings[0];
     
-    // 解析目标路径
-    const targetPaths: string[] = [];
-    for (const target of mapping.targets) {
-      const absolutePath = resolveFromNoteRoot(target);
-      if (absolutePath) {
-        targetPaths.push(absolutePath);
-      }
-    }
-
-    return targetPaths;
+    // 返回目标 issueId 列表
+    return mapping.targets;
   }
 
   /**
@@ -234,21 +226,23 @@ export class NoteMappingService {
   }
 
   /**
-   * 获取笔记的显示标题
+   * 获取 issue 的显示标题
+   * @param issueId issueId（不含 .md 扩展名）
    */
-  async getNoteTitle(notePath: string): Promise<string> {
-    const relativePath = getRelativeToNoteRoot(notePath);
-    if (relativePath) {
-      // 确保缓存已加载
-      await this.titleCache.preload();
-      const title = await this.titleCache.get(relativePath);
-      if (title) {
-        return title;
-      }
+  async getIssueTitle(issueId: string): Promise<string> {
+    // issueId 实际上就是相对于 issueDir 的相对路径（可能在子目录中）
+    // 如果 issueId 包含路径分隔符，说明在子目录中
+    const relativePath = issueId.endsWith('.md') ? issueId : `${issueId}.md`;
+    
+    // 确保缓存已加载
+    await this.titleCache.preload();
+    const title = await this.titleCache.get(relativePath);
+    if (title) {
+      return title;
     }
     
-    // 回退到文件名
-    return path.basename(notePath, path.extname(notePath));
+    // 回退到文件名（不含扩展名）
+    return path.basename(issueId, '.md');
   }
 
   /**

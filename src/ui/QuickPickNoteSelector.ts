@@ -1,17 +1,18 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
+import { getIssueDir } from '../config';
 
 /**
  * QuickPick 项
  */
-interface NoteQuickPickItem extends vscode.QuickPickItem {
-  notePath: string;
+interface IssueQuickPickItem extends vscode.QuickPickItem {
+  issueId: string;
   action?: 'create' | 'open';
 }
 
 /**
- * 笔记选择器
+ * Issue 选择器
  */
 export class QuickPickNoteSelector {
   private mappingService: NoteMappingService;
@@ -21,45 +22,43 @@ export class QuickPickNoteSelector {
   }
 
   /**
-   * 显示笔记选择器
-   * @param notePaths 候选笔记路径列表（绝对路径）
-   * @param allowCreate 是否允许创建新笔记
-   * @returns 选择的笔记路径，或 undefined 表示取消
+   * 显示 issue 选择器
+   * @param issueIds 候选 issueId 列表
+   * @param allowCreate 是否允许创建新 issue
+   * @returns 选择的 issueId，或 undefined 表示取消
    */
-  async show(notePaths: string[], allowCreate: boolean = true): Promise<string | undefined> {
-    if (notePaths.length === 0 && !allowCreate) {
+  async show(issueIds: string[], allowCreate: boolean = true): Promise<string | undefined> {
+    if (issueIds.length === 0 && !allowCreate) {
       return undefined;
     }
 
     // 只有一个候选且不允许创建，直接返回
-    if (notePaths.length === 1 && !allowCreate) {
-      return notePaths[0];
+    if (issueIds.length === 1 && !allowCreate) {
+      return issueIds[0];
     }
 
     // 准备 QuickPick 选项
-    const items: NoteQuickPickItem[] = [];
+    const items: IssueQuickPickItem[] = [];
 
-    // 添加现有笔记
-    for (const notePath of notePaths) {
-      const title = await this.mappingService.getNoteTitle(notePath);
-      const fileName = path.basename(notePath);
-      const description = path.dirname(notePath);
-
+    // 添加现有 issue
+    for (const issueId of issueIds) {
+      const title = await this.mappingService.getIssueTitle(issueId);
+      
       items.push({
         label: `$(file) ${title}`,
-        description: description,
-        detail: fileName,
-        notePath: notePath,
+        description: issueId,
+        detail: `${issueId}.md`,
+        issueId: issueId,
         action: 'open'
       });
     }
 
-    // 添加"创建新笔记"选项
+    // 添加"创建新 issue"选项
     if (allowCreate) {
       items.push({
         label: `$(add) 创建新笔记`,
         description: '在笔记根目录创建新的 Markdown 文件',
-        notePath: '',
+        issueId: '',
         action: 'create'
       });
     }
@@ -77,17 +76,17 @@ export class QuickPickNoteSelector {
 
     if (selected.action === 'create') {
       // 创建新笔记
-      return await this.createNewNote();
+      return await this.createNewIssue();
     } else {
-      return selected.notePath;
+      return selected.issueId;
     }
   }
 
   /**
-   * 创建新笔记
+   * 创建新 issue
    */
-  private async createNewNote(): Promise<string | undefined> {
-    const issueDir = vscode.workspace.getConfiguration('issueManager').get<string>('issueDir');
+  private async createNewIssue(): Promise<string | undefined> {
+    const issueDir = getIssueDir();
     if (!issueDir) {
       vscode.window.showErrorMessage('未配置笔记根目录');
       return undefined;
@@ -103,22 +102,24 @@ export class QuickPickNoteSelector {
     const seconds = String(now.getSeconds()).padStart(2, '0');
     const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
     
-    const fileName = `${year}${month}${day}-${hours}${minutes}${seconds}-${milliseconds}.md`;
+    const issueId = `${year}${month}${day}-${hours}${minutes}${seconds}-${milliseconds}`;
+    const fileName = `${issueId}.md`;
     const filePath = path.join(issueDir, fileName);
 
     // 创建文件
     const fileUri = vscode.Uri.file(filePath);
     await vscode.workspace.fs.writeFile(fileUri, Buffer.from('# 新笔记\n\n', 'utf8'));
 
-    return filePath;
+    return issueId;
   }
 
   /**
-   * 选择多个笔记（用于创建映射）
+   * 选择多个 issue（用于创建映射）
+   * @returns issueId 列表
    */
-  async selectMultiple(existingPaths: string[] = []): Promise<string[] | undefined> {
+  async selectMultiple(existingIds: string[] = []): Promise<string[] | undefined> {
     // 获取所有笔记文件
-    const issueDir = vscode.workspace.getConfiguration('issueManager').get<string>('issueDir');
+    const issueDir = getIssueDir();
     if (!issueDir) {
       vscode.window.showErrorMessage('未配置笔记根目录');
       return undefined;
@@ -140,6 +141,17 @@ export class QuickPickNoteSelector {
       return undefined;
     }
 
-    return uris.map(uri => uri.fsPath);
+    // 转换为 issueId（相对于 issueDir 的路径，不含 .md 扩展名）
+    const issueIds: string[] = [];
+    for (const uri of uris) {
+      const relativePath = path.relative(issueDir, uri.fsPath);
+      // 移除 .md 扩展名
+      const issueId = relativePath.endsWith('.md') 
+        ? relativePath.substring(0, relativePath.length - 3)
+        : relativePath;
+      issueIds.push(issueId);
+    }
+
+    return issueIds;
   }
 }

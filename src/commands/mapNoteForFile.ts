@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { QuickPickNoteSelector } from '../ui/QuickPickNoteSelector';
 import { getIssueDir } from '../config';
@@ -36,24 +37,12 @@ export async function mapNoteForFile(): Promise<void> {
     pattern = currentFilePath;
   }
 
-  // 选择笔记文件
+  // 选择 issue 文件
   const selector = new QuickPickNoteSelector();
-  const notePaths = await selector.selectMultiple();
+  const issueIds = await selector.selectMultiple();
 
-  if (!notePaths || notePaths.length === 0) {
+  if (!issueIds || issueIds.length === 0) {
     return;
-  }
-
-  // 转换为相对路径
-  const targets: string[] = [];
-  for (const notePath of notePaths) {
-    const relPath = getRelativeToNoteRoot(notePath);
-    if (relPath !== undefined) {
-      targets.push(relPath);
-    } else {
-      vscode.window.showWarningMessage(`笔记路径不在笔记根目录内：${notePath}`);
-      return;
-    }
   }
 
   // 创建或更新映射
@@ -61,7 +50,7 @@ export async function mapNoteForFile(): Promise<void> {
     id: generateMappingId(),
     scope: 'file',
     pattern: pattern,
-    targets: targets,
+    targets: issueIds,
     priority: 100, // 文件级映射默认高优先级
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

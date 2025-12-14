@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { QuickPickNoteSelector } from '../ui/QuickPickNoteSelector';
 import { getIssueDir } from '../config';
-import { getRelativeToNoteRoot } from '../utils/pathUtils';
 import { generateMappingId } from '../data/noteMappingStorage';
 
 // 工作区级别映射的默认模式
@@ -47,24 +46,12 @@ export async function bindWorkspaceNote(): Promise<void> {
  * 创建工作区映射
  */
 async function createWorkspaceMapping(mappingService: NoteMappingService): Promise<void> {
-  // 选择笔记文件
+  // 选择 issue 文件
   const selector = new QuickPickNoteSelector();
-  const notePaths = await selector.selectMultiple();
+  const issueIds = await selector.selectMultiple();
 
-  if (!notePaths || notePaths.length === 0) {
+  if (!issueIds || issueIds.length === 0) {
     return;
-  }
-
-  // 转换为相对路径
-  const targets: string[] = [];
-  for (const notePath of notePaths) {
-    const relPath = getRelativeToNoteRoot(notePath);
-    if (relPath !== undefined) {
-      targets.push(relPath);
-    } else {
-      vscode.window.showWarningMessage(`笔记路径不在笔记根目录内：${notePath}`);
-      return;
-    }
   }
 
   // 询问优先级
@@ -91,7 +78,7 @@ async function createWorkspaceMapping(mappingService: NoteMappingService): Promi
     id: generateMappingId(),
     scope: 'workspace',
     pattern: WORKSPACE_PATTERN, // 工作区级别匹配所有文件
-    targets: targets,
+    targets: issueIds,
     priority: priority,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

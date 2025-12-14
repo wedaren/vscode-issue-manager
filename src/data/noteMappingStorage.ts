@@ -13,7 +13,7 @@ export interface NoteMapping {
   scope: 'workspace' | 'file';
   /** 匹配模式：glob 或路径前缀 */
   pattern: string;
-  /** 目标笔记路径列表（相对于 issueDir） */
+  /** 目标 issueId 列表（不含 .md 扩展名） */
   targets: string[];
   /** 优先级（数值越大优先级越高） */
   priority: number;
