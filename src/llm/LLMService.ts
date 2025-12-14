@@ -314,4 +314,60 @@ ${JSON.stringify(allIssues, null, 2)}
             throw error; // 重新抛出异常  
         }
     }
+
+    /**
+     * 将用户文本改写为简洁的输出，仅返回改写后的内容以及一行结论（便于 diff 对比）。
+     */
+    public static async rewriteContent(
+        text: string,
+        options?: { signal?: AbortSignal; systemPrompt?: string }
+    ): Promise<string> {
+        if (!text || text.trim().length === 0) { return ''; }
+        const defaultSystemPrompt = `你是一个文本改写助手。任务：将下面的文本改写为更清晰、简洁的中文，保留原意。\n要求：\n1) 仅输出改写后的文本内容（不要添加说明、示例、编号或元信息）。\n2) 在最后单独一行输出一句结论，格式以“结论：”开头，结论一句话。\n3) 不要使用多余的 Markdown 标记或代码块。\n`;
+        const systemPrompt = options?.systemPrompt || defaultSystemPrompt;
+
+        try {
+            const model = await this.selectModel(options);
+            if (!model) {
+                vscode.window.showErrorMessage('未找到可用的 Copilot 模型。');
+                return '';
+            }
+
+            if (options?.signal?.aborted) {
+                throw new Error('请求已取消');
+            }
+
+            const response = await model.sendRequest([
+                vscode.LanguageModelChatMessage.User(systemPrompt),
+                vscode.LanguageModelChatMessage.User(`原文：${text}`)
+            ]);
+
+            const fragments: string[] = [];
+            for await (const fragment of response.stream) {
+                if (options?.signal?.aborted) {
+                    throw new Error('请求已取消');
+                }
+                if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
+                    fragments.push(fragment.value as string);
+                } else {
+                    fragments.push(fragment as string);
+                }
+            }
+
+            const full = fragments.join('');
+
+            // 清理可能的 ```markdown ``` 包裹
+            const codeBlockMatch = full.match(/^```(?:markdown)?\s*([\s\S]*?)\s*```$/i);
+            const clean = codeBlockMatch && codeBlockMatch[1] ? codeBlockMatch[1] : full;
+
+            return clean.trim();
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return '';
+            }
+            Logger.getInstance().error('rewriteContent error:', error);
+            vscode.window.showErrorMessage('调用 Copilot 改写失败。');
+            return '';
+        }
+    }
 }
