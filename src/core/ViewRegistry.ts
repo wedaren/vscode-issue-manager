@@ -8,10 +8,11 @@ import { RSSIssueDragAndDropController } from '../views/RSSIssueDragAndDropContr
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
+import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueTreeNode } from '../data/treeManager';
-import { IViewRegistryResult } from './interfaces';
+import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
 
@@ -79,6 +80,9 @@ export class ViewRegistry {
         // 注册 PARA 视图
         const { paraViewProvider, paraView } = this.registerParaView();
         
+        // 注册笔记映射视图
+        const { noteMappingProvider, noteMappingView } = this.registerNoteMappingView();
+        
         // 注册相关问题视图
         this.registerRelatedView();
         
@@ -97,7 +101,9 @@ export class ViewRegistry {
             issueStructureProvider,
             structureView,
             paraViewProvider,
-            paraView
+            paraView,
+            noteMappingProvider,
+            noteMappingView
         };
     }
 
@@ -237,6 +243,25 @@ export class ViewRegistry {
         paraViewProvider.loadData();
         
         return { paraViewProvider, paraView };
+    }
+
+    /**
+     * 注册笔记映射视图
+     */
+    private registerNoteMappingView(): {
+        noteMappingProvider: NoteMappingViewProvider;
+        noteMappingView: vscode.TreeView<vscode.TreeItem>;
+    } {
+        const noteMappingProvider = new NoteMappingViewProvider(this.context);
+        
+        const noteMappingView = vscode.window.createTreeView('issueManager.views.noteMapping', {
+            treeDataProvider: noteMappingProvider
+        });
+        
+        this.context.subscriptions.push(noteMappingView);
+        this.context.subscriptions.push(noteMappingProvider);
+        
+        return { noteMappingProvider, noteMappingView };
     }
 
     /**

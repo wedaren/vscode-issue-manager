@@ -41,6 +41,12 @@ import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
 import { TitleCacheService } from '../services/TitleCacheService';
+import { registerOpenMappedNoteCommand } from '../commands/openMappedNote';
+import { registerEditNoteMappingCommand } from '../commands/editNoteMapping';
+import { registerAddWorkspaceMappingCommand } from '../commands/addWorkspaceMapping';
+import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspaceMapping';
+import { registerAddFileMappingCommand } from '../commands/addFileMapping';
+import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
 
 
 
@@ -191,6 +197,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 9. 注册 LLM 相关命令
             this.registerLLMCommands();
+
+            // 10. 注册笔记映射命令
+            this.registerNoteMappingCommands();
 
             this.logger.info('✅ 所有命令注册完成');
 
@@ -748,5 +757,19 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '选择 LLM 模型'
         );
+    }
+
+    /**
+     * 注册笔记映射命令
+     */
+    private registerNoteMappingCommands(): void {
+        this.logger.info('🔗 注册笔记映射命令...');
+
+        registerOpenMappedNoteCommand(this.context);
+        registerEditNoteMappingCommand(this.context);
+        registerAddWorkspaceMappingCommand(this.context);
+        registerRemoveWorkspaceMappingCommand(this.context);
+        registerAddFileMappingCommand(this.context);
+        registerRemoveFileMappingCommand(this.context);
     }
 }
