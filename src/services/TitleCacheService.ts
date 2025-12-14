@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { readTitleCacheJson, writeTitleCacheJson } from '../data/treeManager';
+import { readTitleCacheJson, writeTitleCacheJson, readTree } from '../data/treeManager';
 import { getIssueDir, getTitleCacheRebuildIntervalHours } from '../config';
 import { getAllMarkdownFiles, getTitle } from '../utils/markdown';
 import { ensureIssueManagerDir, getRelativePathToIssueDir } from '../utils/fileUtils';
@@ -15,6 +15,8 @@ export class TitleCacheService {
   private static instance: TitleCacheService | null = null;
   private cache: Record<string, string> = {};
   private loaded = false;
+  // 可选的内存缓存：nodeId -> relativeFilePath
+  private nodeIdToFilePath: Map<string, string> = new Map();
   private readonly logger: Logger;  
 
   private constructor() {
@@ -38,6 +40,8 @@ export class TitleCacheService {
 
       // 加载（可能是重建后的）titleCache.json
       this.cache = await readTitleCacheJson();
+      // 同步构建 nodeId 缓存，避免后续多次读取 tree.json
+      await this.buildNodeIdCache();
       this.loaded = true;
     } catch (e) {  
       // 读取失败时保持空缓存，避免影响主流程
@@ -115,9 +119,75 @@ export class TitleCacheService {
       await this.buildAndWriteCache();
       // 写入完成后，加载到内存
       this.cache = await readTitleCacheJson();
+      await this.buildNodeIdCache();
       this.loaded = true;
     } catch (err) {
       this.logger.warn('[TitleCacheService] 强制重建标题缓存失败：', err);
+    }
+  }
+
+  /**
+   * 获取 nodeId 对应的相对文件路径（如果存在）。
+   * 优先使用内存缓存；未命中时会尝试读取 tree.json 并回填缓存。
+   */
+  public async getFilePathByNodeId(nodeId: string): Promise<string | undefined> {
+    if (!nodeId) { return undefined; }
+    if (!this.loaded) { await this.preload(); }
+
+    const cached = this.nodeIdToFilePath.get(nodeId);
+    if (cached) { return cached; }
+
+    // 回退到读取 tree.json 并回填缓存
+    try {
+      const tree = await readTree();
+      if (!tree) { return undefined; }
+
+      const walk = (nodes: any[]): string | undefined => {
+        for (const node of nodes) {
+          if (node.id === nodeId && node.filePath) {
+            return node.filePath;
+          }
+          if (node.children && node.children.length > 0) {
+            const found = walk(node.children);
+            if (found) { return found; }
+          }
+        }
+        return undefined;
+      };
+
+      const fp = walk(tree.rootNodes || []);
+      if (fp) { this.nodeIdToFilePath.set(nodeId, fp); }
+      return fp;
+    } catch (err) {
+      this.logger.error('[TitleCacheService] 通过 nodeId 查找 filePath 失败：', err);
+      return undefined;
+    }
+  }
+
+  /**
+   * 构建 nodeId -> filePath 的内存缓存
+   */
+  private async buildNodeIdCache(): Promise<void> {
+    try {
+      const tree = await readTree();
+      if (!tree) { this.nodeIdToFilePath.clear(); return; }
+
+      const map = new Map<string, string>();
+      const walk = (nodes: any[]) => {
+        for (const node of nodes) {
+          if (node && node.id && node.filePath) {
+            map.set(node.id, node.filePath);
+          }
+          if (node.children && node.children.length > 0) {
+            walk(node.children);
+          }
+        }
+      };
+      walk(tree.rootNodes || []);
+      this.nodeIdToFilePath = map;
+    } catch (err) {
+      this.logger.warn('[TitleCacheService] 构建 nodeId 缓存失败：', err);
+      this.nodeIdToFilePath.clear();
     }
   }
 

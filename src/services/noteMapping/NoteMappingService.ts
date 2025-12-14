@@ -15,7 +15,7 @@ import {
 } from '../../utils/pathUtils';
 import { TitleCacheService } from '../TitleCacheService';
 import { getIssueDir } from '../../config';
-import { readTree, findNodeById } from '../../data/treeManager';
+// treeManager functions moved to TitleCacheService for nodeId lookup
 
 /**
  * 笔记映射服务
@@ -51,6 +51,7 @@ export class NoteMappingService {
       this.mappings = await readMappings();
       // 按优先级降序排序
       this.mappings.sort((a, b) => b.priority - a.priority);
+      // title cache 已由 TitleCacheService 预构建必要缓存
       this.loaded = true;
     } catch (error) {
       console.error('预加载映射数据失败:', error);
@@ -232,20 +233,11 @@ export class NoteMappingService {
    * @returns 相对于 issueDir 的文件路径，找不到返回 undefined
    */
   private async getFilePathByNodeId(nodeId: string): Promise<string | undefined> {
+    // 委托给 TitleCacheService（其内部维护 nodeId 缓存）
     try {
-      const tree = await readTree();
-      if (!tree) {
-        return undefined;
-      }
-      
-      const result = findNodeById(tree.rootNodes, nodeId);
-      if (result) {
-        return result.node.filePath;
-      }
-      
-      return undefined;
-    } catch (error) {
-      console.error('查找节点失败:', error);
+      return await this.titleCache.getFilePathByNodeId(nodeId as string);
+    } catch (err) {
+      console.error('通过 TitleCacheService 查找节点失败:', err);
       return undefined;
     }
   }
