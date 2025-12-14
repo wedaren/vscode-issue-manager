@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { QuickPickNoteSelector } from '../ui/QuickPickNoteSelector';
 import { getIssueDir } from '../config';
