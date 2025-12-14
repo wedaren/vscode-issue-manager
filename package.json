@@ -387,11 +387,6 @@
         "icon": "$(trash)"
       },
       {
-        "command": "issueManager.openMappedNote",
-        "title": "打开映射的笔记",
-        "category": "Issue Manager"
-      },
-      {
         "command": "issueManager.editNoteMapping",
         "title": "编辑笔记映射",
         "category": "Issue Manager"
@@ -819,11 +814,6 @@
           "command": "issueManager.addFileMapping",
           "when": "issueManager.isDirConfigured",
           "group": "1_noteMapping@1"
-        },
-        {
-          "command": "issueManager.openMappedNote",
-          "when": "issueManager.isDirConfigured && issueManager.hasMappedNote",
-          "group": "1_noteMapping@2"
         }
       ],
       "view/title": [
@@ -915,12 +905,6 @@
         "command": "issueManager.addWorkspaceMapping",
         "key": "ctrl+j ctrl+w",
         "mac": "cmd+j cmd+w",
-        "when": "issueManager.isDirConfigured"
-      },
-      {
-        "command": "issueManager.openMappedNote",
-        "key": "ctrl+j ctrl+p",
-        "mac": "cmd+j cmd+p",
         "when": "issueManager.isDirConfigured"
       }
     ],
