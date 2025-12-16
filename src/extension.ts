@@ -6,6 +6,9 @@ import { ChromeIntegrationServer } from './integration/ChromeIntegrationServer';
 import { SharedConfig } from './config/SharedConfig';
 import { IssueFileCompletionProvider } from './providers/IssueFileCompletionProvider';
 import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
+import { NoteMappingService } from './services/noteMapping/NoteMappingService';
+import { EditorMappingContextUpdater } from './services/EditorMappingContextUpdater';
+import { ensureGitignoreForMappings } from './data/noteMappingStorage';
 
 // 当您的扩展被激活时,将调用此方法
 export function activate(context: vscode.ExtensionContext) {
@@ -15,6 +18,12 @@ export function activate(context: vscode.ExtensionContext) {
 	const initializer = new ExtensionInitializer(context);
 	// 预加载标题缓存（不阻塞激活流程）
 	void TitleCacheService.getInstance().preload();
+	// 预加载笔记映射服务（不阻塞激活流程）
+	void NoteMappingService.getInstance().preload();
+	// 初始化编辑器映射上下文更新器
+	new EditorMappingContextUpdater(context);
+	// 确保 .gitignore 包含映射文件（不阻塞激活流程）
+	void ensureGitignoreForMappings();
 	// 启动 Chrome 集成本地服务与 URI Handler（不阻塞激活流程）
 	void ChromeIntegrationServer.getInstance().start(context);
 	
