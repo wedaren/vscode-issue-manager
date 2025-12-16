@@ -5,6 +5,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.18] - 2025-12-17
+
+### ✨ 新功能
+- **feat(notes-map): 基于 node.id 的笔记映射** (#132)
+  - 实现文件与笔记的关联存储与内联操作视图，便于在编辑器中快速定位和管理相关笔记
+
+### 🔧 改进
+- **fix(keybindings): 更新快捷键**
+  - 将 `issueManager.openFocusedView` 快捷键更新为 `cmd+j cmd+i`（macOS）
+  - 将 `issueManager.searchIssuesInFocused` 快捷键更新为 `cmd+j cmd+f`
+
+### 🐞 修复
+- **fix(git-sync): 改善 pull 结果处理与标题刷新逻辑** (#130)
+  - `pullChanges` 现在返回 boolean 并增加对拉取结果的防御性检查，只有在拉取到更新时才刷新标题
+- **fix(git-sync): 移除自动同步后强制刷新 issue title**
+  - 防止在无实际变更时进行不必要的标题刷新，减少 UI 干扰
+
 ## [0.2.17] - 2025-12-08
 
 ### ✨ 新功能
