@@ -1,7 +1,7 @@
 ---
 name: '发布助手'
 description: '基于 Git 提交信息，更新 CHANGELOG，修改 package.json 版本号，并创建版本标签。'
-tools: ['run_in_terminal', 'read_file', 'replace_string_in_file']
+tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'gitkraken/*', 'agent', 'todo']
 ---
 # 发布与版本管理代理
 
