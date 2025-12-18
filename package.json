@@ -655,7 +655,7 @@
         },
         {
           "command": "issueManager.moveTo",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related' || (view == 'issueManager.views.noteMapping' && viewItem =~ /(fileIssue|workspaceIssue)/)",
           "group": "navigation@4"
         },
         {

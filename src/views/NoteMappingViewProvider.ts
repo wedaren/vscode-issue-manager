@@ -122,6 +122,16 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                 item.collapsibleState = vscode.TreeItemCollapsibleState.None;
                 item.iconPath = new vscode.ThemeIcon('note');
                 item.description = element.description;
+                
+                // 设置 resourceUri 以支持移动命令
+                if (element.filePath) {
+                    const issueDir = getIssueDir();
+                    if (issueDir) {
+                        const fullPath = path.join(issueDir, element.filePath);
+                        item.resourceUri = vscode.Uri.file(fullPath);
+                    }
+                }
+                
                 // Set contextValue based on the element ID to distinguish workspace vs file issues
                 if (element.id.startsWith('workspace-issue-')) {
                     item.contextValue = 'workspaceIssue';
@@ -259,17 +269,26 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
             ];
         }
         
+        // 读取树结构以获取文件路径
+        const tree = await readTree();
+        
         // 获取所有 issue（按优先级排序，已由 service 处理）
         const issueNodes: NoteMappingNode[] = [];
         for (const mapping of workspaceMappings) {
             for (const issueId of mapping.targets) {
                 const title = await this.mappingService.getIssueTitle(issueId);
+                
+                // 通过 node.id 查找节点以获取文件路径
+                const result = findNodeById(tree.rootNodes, issueId);
+                const filePath = result ? result.node.filePath : undefined;
+                
                 issueNodes.push({
                     id: `workspace-issue-${issueId}`,
                     type: 'issue',
                     label: title,
                     description: issueId,
-                    issueId: issueId
+                    issueId: issueId,
+                    filePath: filePath
                 });
             }
         }
@@ -309,16 +328,25 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
             ];
         }
         
+        // 读取树结构以获取文件路径
+        const tree = await readTree();
+        
         // 显示映射的 issue
         const issueNodes: NoteMappingNode[] = [];
         for (const issueId of issueIds) {
             const title = await this.mappingService.getIssueTitle(issueId);
+            
+            // 通过 node.id 查找节点以获取文件路径
+            const result = findNodeById(tree.rootNodes, issueId);
+            const filePath = result ? result.node.filePath : undefined;
+            
             issueNodes.push({
                 id: `file-issue-${issueId}`,
                 type: 'issue',
                 label: title,
                 description: issueId,
-                issueId: issueId
+                issueId: issueId,
+                filePath: filePath
             });
         }
         
