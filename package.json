@@ -453,6 +453,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "issueManager.addWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping",
+          "group": "navigation@1"
+        },
+        {
           "command": "issueManager.searchIssuesInOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
@@ -578,6 +583,26 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "issueManager.addWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == workspaceMapping",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.removeWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == workspaceIssue",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.addFileMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == fileMapping",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.removeFileMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == fileIssue",
+          "group": "inline@1"
+        },
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/",
@@ -814,35 +839,6 @@
           "command": "issueManager.addFileMapping",
           "when": "issueManager.isDirConfigured",
           "group": "1_noteMapping@1"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "issueManager.addWorkspaceMapping",
-          "when": "view == issueManager.views.noteMapping",
-          "group": "navigation@1"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "issueManager.addWorkspaceMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == workspaceMapping",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.removeWorkspaceMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == workspaceIssue",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.addFileMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == fileMapping",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.removeFileMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == fileIssue",
-          "group": "inline@1"
         }
       ]
     },
