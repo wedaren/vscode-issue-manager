@@ -1,13 +1,13 @@
-## v0.3.0 - 2025-12-18
-
-- (自动收集自上一个 tag 的提交记录)
-
 # 更新日志
 
 所有此项目的显著更改都将记录在此文件中。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
+
+## v3.0.1 - 2025-12-18
+
+- fix(menus): update context menu commands for note mapping (5b26fb6)
 
 ## [0.2.18] - 2025-12-17
 
