@@ -3,6 +3,7 @@ import { LLMService } from '../llm/LLMService';
 import { loadPrompts, savePrompt } from '../prompts/PromptManager';
 import { copilotDocumentProvider } from '../virtual/CopilotDocumentProvider';
 
+const timeoutSec =  60;
 
 export async function copilotDiffSend(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
@@ -18,8 +19,7 @@ export async function copilotDiffSend(): Promise<void> {
     }
 
     const config = vscode.workspace.getConfiguration('issueManager');
-    const defaultTemplate = config.get<string>('copilotDiff.promptTemplate') || '请将下列文本改写为更清晰、简洁的中文，保留原意。仅输出改写后的内容，最后单独一行以“结论：”开头给出一句简短结论：\\n\\n{{content}}';
-    const timeoutSec = config.get<number>('copilotDiff.timeout') || 60;
+    const defaultTemplate = config.get<string>('copilotDiff.promptTemplate');
 
     // 候选 prompt 列表：从工作区持久化的 markdown 文件加载，同时包含内置模板与自定义入口
     const promptsFromFiles = await loadPrompts();
