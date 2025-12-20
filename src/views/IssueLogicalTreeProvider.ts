@@ -35,7 +35,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         // 监听编辑器切换
         this.disposables.push(
             vscode.window.onDidChangeActiveTextEditor((editor) => {
-                editor && this.onActiveEditorChanged(editor);
+                this.onActiveEditorChanged(editor);
             })
         );
 
@@ -49,6 +49,14 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
      * 处理编辑器切换
      */
     private async onActiveEditorChanged(editor: vscode.TextEditor | undefined): Promise<void> {
+
+        if (!editor || editor.document.languageId !== 'markdown') {
+            // this.currentActiveFile = null;
+            // this.currentRootFile = null;
+            // this.rootNodes = [];
+            // this._onDidChangeTreeData.fire();
+            return;
+        }
 
         const issueDir = getIssueDir();
         if (!issueDir) {
@@ -192,13 +200,12 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
 
             // 收集需要读取的所有文件
             const filesToLoad = new Set<string>();
-            filesToLoad.add(rootFileName);
 
             // 递归收集所有相关文件
             const collectFiles = async (fileName: string) => {
-                // if (filesToLoad.has(fileName)) {
-                //     return;
-                // }
+                if (filesToLoad.has(fileName)) {
+                    return;
+                }
                 filesToLoad.add(fileName);
 
                 const fm = await service.getIssueFrontmatter(fileName);
