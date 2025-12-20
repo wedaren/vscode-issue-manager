@@ -834,8 +834,8 @@
       },
       {
         "command": "issueManager.copilotDiffSend",
-        "key": "ctrl+j ctrl+d",
-        "mac": "cmd+j cmd+d",
+        "key": "ctrl+j ctrl+l",
+        "mac": "cmd+j cmd+l",
         "when": "issueManager.isDirConfigured"
       },
       {
@@ -1121,7 +1121,7 @@
         ,
         "issueManager.copilotDiff.promptTemplate": {
           "type": "string",
-          "default": "请将下列文本改写为更清晰、简洁的中文，保留原意。仅输出改写后的内容，最后单独一行以“结论：”开头给出一句简短结论，不要添加任何其他说明或格式化：\\n\\n{{content}}",
+          "default": "请将下列文本改写为更清晰、简洁的中文，保留原意。仅输出改写后的内容，最后单独一行以“结论：”开头给出一句简短结论，不要添加任何其他说明或格式化：\n\n{{content}}",
           "description": "用于发送给模型的 prompt 模板，使用 {{content}} 占位要替换为用户编辑的文本。"
         }
         
