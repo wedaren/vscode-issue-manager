@@ -281,6 +281,26 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "issueManager.logicalTree.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.logicalTree.createRoot",
+        "title": "创建根节点",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.logicalTree.addChild",
+        "title": "添加子节点",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.logicalTree.removeNode",
+        "title": "从层级树移除",
+        "icon": "$(trash)"
+      },
+      {
         "command": "issueManager.para.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
@@ -563,6 +583,16 @@
           "group": "navigation@1"
         },
         {
+          "command": "issueManager.logicalTree.refresh",
+          "when": "view == issueManager.views.logicalTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.logicalTree.addChild",
+          "when": "view == issueManager.views.logicalTree",
+          "group": "navigation@2"
+        },
+        {
           "command": "issueManager.para.refresh",
           "when": "view == issueManager.views.para",
           "group": "navigation@1"
@@ -806,6 +836,16 @@
           "command": "issueManager.para.moveToResources",
           "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-archives'",
           "group": "para@3"
+        },
+        {
+          "command": "issueManager.logicalTree.addChild",
+          "when": "view == issueManager.views.logicalTree && viewItem =~ /issueLogical/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.logicalTree.removeNode",
+          "when": "view == issueManager.views.logicalTree && viewItem =~ /issueLogical/",
+          "group": "modification@1"
         }
       ],
       "editor/context": [
@@ -1243,6 +1283,11 @@
           "icon": "resources/icon.svg"
         },
         {
+          "id": "issueManager.views.logicalTree",
+          "name": "逻辑层级树",
+          "icon": "resources/icon.svg"
+        },
+        {
           "id": "issueManager.views.para",
           "name": "PARA",
           "icon": "resources/icon.svg"
@@ -1284,6 +1329,11 @@
         "view": "issueManager.views.para",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.logicalTree",
+        "contents": "当前文件没有 issue_root 字段。\n[为当前文件创建根节点](command:issueManager.logicalTree.createRoot)\n\n逻辑层级树基于当前活动文件的 Frontmatter 字段构建，显示该文件所属的完整层级结构。",
+        "when": "issueManager.isDirConfigured"
       }
     ]
   },

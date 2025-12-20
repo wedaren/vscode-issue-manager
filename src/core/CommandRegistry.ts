@@ -36,6 +36,8 @@ import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
+import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
@@ -129,6 +131,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
         issueStructureProvider: IssueStructureProvider,
+        issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
         paraView?: vscode.TreeView<ParaViewNode>
     ): void {
@@ -191,13 +194,16 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 7. 注册结构视图命令
             this.registerStructureViewCommands(issueStructureProvider);
 
-            // 8. 注册 PARA 视图命令
+            // 8. 注册逻辑树视图命令
+            this.registerLogicalTreeViewCommands(issueLogicalTreeProvider);
+
+            // 9. 注册 PARA 视图命令
             this.registerParaCommands();
 
-            // 9. 注册 LLM 相关命令
+            // 10. 注册 LLM 相关命令
             this.registerLLMCommands();
 
-            // 10. 注册笔记映射命令
+            // 11. 注册笔记映射命令
             this.registerNoteMappingCommands();
 
             this.logger.info('✅ 所有命令注册完成');
@@ -495,6 +501,48 @@ export class CommandRegistry extends BaseCommandRegistry {
                 issueStructureProvider.refresh();
             },
             '刷新结构视图'
+        );
+    }
+
+    /**
+     * 注册逻辑树视图命令
+     * @param issueLogicalTreeProvider 问题逻辑树视图提供者
+     */
+    private registerLogicalTreeViewCommands(issueLogicalTreeProvider: IssueLogicalTreeProvider): void {
+        this.logger.info('🌲 注册逻辑树视图命令...');
+
+        this.registerCommand(
+            'issueManager.logicalTree.refresh',
+            () => {
+                issueLogicalTreeProvider.refresh();
+            },
+            '刷新逻辑树视图'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.createRoot',
+            async () => {
+                await issueLogicalTreeProvider.createRootForCurrentFile();
+            },
+            '为当前文件创建根节点'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.addChild',
+            async (...args: unknown[]) => {
+                const node = args[0] as IssueLogicalTreeNode | undefined;
+                await issueLogicalTreeProvider.addChild(node);
+            },
+            '添加子节点到逻辑树'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.removeNode',
+            async (...args: unknown[]) => {
+                const node = args[0] as IssueLogicalTreeNode | undefined;
+                await issueLogicalTreeProvider.removeNode(node);
+            },
+            '从逻辑树移除节点'
         );
     }
 
