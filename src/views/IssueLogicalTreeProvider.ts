@@ -12,6 +12,7 @@ export interface IssueLogicalTreeNode {
     title: string;
     children: IssueLogicalTreeNode[];
     isRoot: boolean;
+    isCurrentFile: boolean; // 是否是当前活动文件
     resourceUri?: vscode.Uri;
 }
 
@@ -104,8 +105,10 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
             arguments: [element.resourceUri]
         };
 
-        // 设置图标
-        if (element.isRoot) {
+        // 设置图标 - 当前活动文件使用眼睛图标
+        if (element.isCurrentFile) {
+            treeItem.iconPath = new vscode.ThemeIcon('eye');
+        } else if (element.isRoot) {
             treeItem.iconPath = new vscode.ThemeIcon('root-folder');
         } else {
             treeItem.iconPath = new vscode.ThemeIcon('file');
@@ -131,7 +134,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
     }
 
     /**
-     * 构建逻辑树 - 只显示当前活动文件的层级
+     * 构建逻辑树 - 显示当前活动文件所属的完整层级结构
      */
     private async buildTree(): Promise<void> {
         const issueDir = getIssueDir();
@@ -228,6 +231,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
             title,
             children,
             isRoot,
+            isCurrentFile: fileName === this.currentActiveFile, // 标记是否是当前活动文件
             resourceUri: vscode.Uri.file(path.join(issueDir, fileName))
         };
     }
