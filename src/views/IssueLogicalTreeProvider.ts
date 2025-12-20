@@ -29,6 +29,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
     private rootNodes: IssueLogicalTreeNode[] = [];
     private disposables: vscode.Disposable[] = [];
     private currentActiveFile: string | null = null;
+    private currentRootFile: string | null = null; // 跟踪当前的根文件
 
     constructor(private context: vscode.ExtensionContext) {
         // 监听编辑器切换
@@ -50,6 +51,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
     private async onActiveEditorChanged(editor: vscode.TextEditor | undefined): Promise<void> {
         if (!editor || editor.document.languageId !== 'markdown') {
             this.currentActiveFile = null;
+            this.currentRootFile = null;
             this.rootNodes = [];
             this._onDidChangeTreeData.fire();
             return;
@@ -58,6 +60,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         const issueDir = getIssueDir();
         if (!issueDir) {
             this.currentActiveFile = null;
+            this.currentRootFile = null;
             this.rootNodes = [];
             this._onDidChangeTreeData.fire();
             return;
@@ -66,6 +69,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         const filePath = editor.document.uri.fsPath;
         if (!filePath.startsWith(issueDir)) {
             this.currentActiveFile = null;
+            this.currentRootFile = null;
             this.rootNodes = [];
             this._onDidChangeTreeData.fire();
             return;
@@ -73,10 +77,23 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
 
         const fileName = path.relative(issueDir, filePath).replace(/\\/g, '/');
         
-        if (this.currentActiveFile !== fileName) {
+        // 获取新文件的 root
+        const service = IssueFrontmatterService.getInstance();
+        const frontmatter = await service.getIssueFrontmatter(fileName);
+        const newRootFile = frontmatter?.issue_root || null;
+
+        // 如果切换到同一个 root 下的不同文件，只更新 currentActiveFile 并刷新图标
+        if (newRootFile && newRootFile === this.currentRootFile) {
             this.currentActiveFile = fileName;
-            await this.refresh();
+            // 只更新当前节点，不重建整个树
+            this._onDidChangeTreeData.fire();
+            return;
         }
+
+        // 切换到不同的 root 或没有 root，需要重建树
+        this.currentActiveFile = fileName;
+        this.currentRootFile = newRootFile;
+        await this.refresh();
     }
 
     /**
@@ -94,7 +111,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         const treeItem = new vscode.TreeItem(
             element.title,
             element.children.length > 0 
-                ? vscode.TreeItemCollapsibleState.Collapsed 
+                ? vscode.TreeItemCollapsibleState.Expanded  // 默认展开
                 : vscode.TreeItemCollapsibleState.None
         );
 
@@ -157,6 +174,9 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
 
             // 获取根文件名
             const rootFileName = currentFrontmatter.issue_root;
+            
+            // 更新当前根文件
+            this.currentRootFile = rootFileName;
 
             // 收集需要读取的所有文件
             const filesToLoad = new Set<string>();
