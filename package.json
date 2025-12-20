@@ -654,7 +654,7 @@
         },
         {
           "command": "issueManager.copyFilename",
-          "when": "viewItem =~ /(recentIssue|issueNode|focusedNode|focusedNodeFirst|isolatedIssue)/",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
           "group": "inline"
         },
         {
