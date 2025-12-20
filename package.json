@@ -61,6 +61,11 @@
         "title": "解除关联"
       },
       {
+        "command": "issueManager.unlinkIssue",
+        "title": "解除 Issue 层级关联",
+        "icon": "$(unlink)"
+      },
+      {
         "command": "issueManager.createSubIssue",
         "title": "新建子问题",
         "icon": "$(add)"
@@ -834,6 +839,11 @@
           "command": "issueManager.createSubIssueFromEditor",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@6"
+        },
+        {
+          "command": "issueManager.unlinkIssue",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
+          "group": "0_issueManager@7"
         },
         {
           "command": "issueManager.addFileMapping",

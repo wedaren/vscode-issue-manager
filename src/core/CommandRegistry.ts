@@ -46,6 +46,7 @@ import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspa
 import { registerAddFileMappingCommand } from '../commands/addFileMapping';
 import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
 import { registerOpenNoteByNodeIdCommand } from '../commands/openNoteByNodeId';
+import { registerUnlinkIssueCommand } from '../commands/unlinkIssue';
 
 
 
@@ -348,6 +349,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 注册外部实现的子问题创建命令
         registerCreateSubIssueCommand(this.context);
         registerCreateSubIssueFromEditorCommand(this.context);
+        // 注册解除 issue 层级关联命令
+        registerUnlinkIssueCommand(this.context);
     }
 
     /**
