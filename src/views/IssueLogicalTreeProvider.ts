@@ -35,7 +35,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         // 监听编辑器切换
         this.disposables.push(
             vscode.window.onDidChangeActiveTextEditor((editor) => {
-                this.onActiveEditorChanged(editor);
+                editor && this.onActiveEditorChanged(editor);
             })
         );
 
@@ -49,13 +49,6 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
      * 处理编辑器切换
      */
     private async onActiveEditorChanged(editor: vscode.TextEditor | undefined): Promise<void> {
-        if (!editor || editor.document.languageId !== 'markdown') {
-            this.currentActiveFile = null;
-            this.currentRootFile = null;
-            this.rootNodes = [];
-            this._onDidChangeTreeData.fire();
-            return;
-        }
 
         const issueDir = getIssueDir();
         if (!issueDir) {
@@ -83,7 +76,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         const newRootFile = frontmatter?.issue_root || null;
 
         // 如果切换到同一个 root 下的不同文件，只更新 isCurrentFile 属性
-        if (newRootFile && newRootFile === this.currentRootFile && this.rootNodes.length > 0) {
+        if (newRootFile && newRootFile === this.currentRootFile) {
             // 更新旧节点和新节点的 isCurrentFile 标志
             this.updateCurrentFileInTree(this.rootNodes, this.currentActiveFile, fileName);
             this.currentActiveFile = fileName;
@@ -203,9 +196,9 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
 
             // 递归收集所有相关文件
             const collectFiles = async (fileName: string) => {
-                if (filesToLoad.has(fileName)) {
-                    return;
-                }
+                // if (filesToLoad.has(fileName)) {
+                //     return;
+                // }
                 filesToLoad.add(fileName);
 
                 const fm = await service.getIssueFrontmatter(fileName);
