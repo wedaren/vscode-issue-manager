@@ -17,7 +17,7 @@ export interface IssueLogicalTreeNode {
 
 /**
  * Issue 逻辑树视图提供者
- * 基于 issue_root、issue_parent、issue_children 字段构建逻辑树
+ * 基于当前活动文件的 issue_root、issue_parent、issue_children 字段构建逻辑树
  */
 export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLogicalTreeNode>, vscode.Disposable {
     private _onDidChangeTreeData: vscode.EventEmitter<IssueLogicalTreeNode | undefined | null | void> = 
@@ -27,19 +27,63 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
 
     private rootNodes: IssueLogicalTreeNode[] = [];
     private disposables: vscode.Disposable[] = [];
+    private currentActiveFile: string | null = null;
 
     constructor(private context: vscode.ExtensionContext) {
-        // 初始化时构建树
-        this.refresh();
+        // 监听编辑器切换
+        this.disposables.push(
+            vscode.window.onDidChangeActiveTextEditor((editor) => {
+                this.onActiveEditorChanged(editor);
+            })
+        );
+
+        // 初始化时检查当前编辑器
+        if (vscode.window.activeTextEditor) {
+            this.onActiveEditorChanged(vscode.window.activeTextEditor);
+        }
+    }
+
+    /**
+     * 处理编辑器切换
+     */
+    private async onActiveEditorChanged(editor: vscode.TextEditor | undefined): Promise<void> {
+        if (!editor || editor.document.languageId !== 'markdown') {
+            this.currentActiveFile = null;
+            this.rootNodes = [];
+            this._onDidChangeTreeData.fire();
+            return;
+        }
+
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            this.currentActiveFile = null;
+            this.rootNodes = [];
+            this._onDidChangeTreeData.fire();
+            return;
+        }
+
+        const filePath = editor.document.uri.fsPath;
+        if (!filePath.startsWith(issueDir)) {
+            this.currentActiveFile = null;
+            this.rootNodes = [];
+            this._onDidChangeTreeData.fire();
+            return;
+        }
+
+        const fileName = path.relative(issueDir, filePath).replace(/\\/g, '/');
+        
+        if (this.currentActiveFile !== fileName) {
+            this.currentActiveFile = fileName;
+            await this.refresh();
+        }
     }
 
     /**
      * 刷新树视图
      */
-    public refresh(): void {
-        this.buildTree().then(() => {
-            this._onDidChangeTreeData.fire();
-        });
+    public async refresh(): Promise<void> {
+        await this.buildTree();
+        this._onDidChangeTreeData.fire();
     }
 
     /**
@@ -87,11 +131,11 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
     }
 
     /**
-     * 构建逻辑树
+     * 构建逻辑树 - 只显示当前活动文件的层级
      */
     private async buildTree(): Promise<void> {
         const issueDir = getIssueDir();
-        if (!issueDir) {
+        if (!issueDir || !this.currentActiveFile) {
             this.rootNodes = [];
             return;
         }
@@ -99,49 +143,51 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         try {
             const service = IssueFrontmatterService.getInstance();
             
-            // 获取所有 Markdown 文件
-            const allFiles = await vscode.workspace.findFiles(
-                new vscode.RelativePattern(issueDir, '**/*.md'),
-                '**/.issueManager/**'
-            );
-
-            // 构建文件名到 frontmatter 的映射
-            const fileMap = new Map<string, IssueFrontmatterData>();
-            const relativeFiles: string[] = [];
-
-            for (const fileUri of allFiles) {
-                const fileName = path.relative(issueDir, fileUri.fsPath).replace(/\\/g, '/');
-                relativeFiles.push(fileName);
+            // 读取当前文件的 frontmatter
+            const currentFrontmatter = await service.getIssueFrontmatter(this.currentActiveFile);
+            
+            if (!currentFrontmatter || !currentFrontmatter.issue_root) {
+                // 如果没有 issue_root，显示空树
+                this.rootNodes = [];
+                return;
             }
 
-            // 批量读取 frontmatter
-            const frontmatterMap = await service.getIssueFrontmatterBatch(relativeFiles);
+            // 获取根文件名
+            const rootFileName = currentFrontmatter.issue_root;
+
+            // 收集需要读取的所有文件
+            const filesToLoad = new Set<string>();
+            filesToLoad.add(rootFileName);
+
+            // 递归收集所有相关文件
+            const collectFiles = async (fileName: string) => {
+                if (filesToLoad.has(fileName)) {
+                    return;
+                }
+                filesToLoad.add(fileName);
+
+                const fm = await service.getIssueFrontmatter(fileName);
+                if (fm && fm.issue_children) {
+                    for (const child of fm.issue_children) {
+                        await collectFiles(child);
+                    }
+                }
+            };
+
+            await collectFiles(rootFileName);
+
+            // 批量读取所有相关文件的 frontmatter
+            const frontmatterMap = await service.getIssueFrontmatterBatch(Array.from(filesToLoad));
+            const fileMap = new Map<string, IssueFrontmatterData>();
             for (const [fileName, frontmatter] of frontmatterMap.entries()) {
                 if (frontmatter) {
                     fileMap.set(fileName, frontmatter);
                 }
             }
 
-            // 查找所有根节点（issue_root 指向自己或没有 issue_root 字段但有 issue_children 的文件）
-            const rootFileNames = new Set<string>();
-            for (const [fileName, frontmatter] of fileMap.entries()) {
-                if (frontmatter.issue_root === fileName || 
-                    (!frontmatter.issue_root && frontmatter.issue_children && frontmatter.issue_children.length > 0)) {
-                    rootFileNames.add(fileName);
-                }
-            }
-
             // 构建根节点
-            this.rootNodes = [];
-            for (const rootFileName of rootFileNames) {
-                const rootNode = await this.buildNodeTree(rootFileName, fileMap, issueDir, true);
-                if (rootNode) {
-                    this.rootNodes.push(rootNode);
-                }
-            }
-
-            // 按标题排序根节点
-            this.rootNodes.sort((a, b) => a.title.localeCompare(b.title));
+            const rootNode = await this.buildNodeTree(rootFileName, fileMap, issueDir, true);
+            this.rootNodes = rootNode ? [rootNode] : [];
 
         } catch (error) {
             console.error('构建逻辑树失败:', error);
@@ -247,6 +293,57 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
             }
         }
         return null;
+    }
+
+    /**
+     * 为当前文件创建根 frontmatter
+     */
+    public async createRootForCurrentFile(): Promise<void> {
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            vscode.window.showErrorMessage('问题目录未配置。');
+            return;
+        }
+
+        const activeEditor = vscode.window.activeTextEditor;
+        if (!activeEditor || activeEditor.document.languageId !== 'markdown') {
+            vscode.window.showErrorMessage('请先打开一个 Markdown 文件。');
+            return;
+        }
+
+        const filePath = activeEditor.document.uri.fsPath;
+        if (!filePath.startsWith(issueDir)) {
+            vscode.window.showErrorMessage('当前文件不在问题目录内。');
+            return;
+        }
+
+        const fileName = path.relative(issueDir, filePath).replace(/\\/g, '/');
+
+        try {
+            const service = IssueFrontmatterService.getInstance();
+            
+            // 检查是否已经有 issue_root
+            const existingFrontmatter = await service.getIssueFrontmatter(fileName);
+            if (existingFrontmatter && existingFrontmatter.issue_root) {
+                vscode.window.showInformationMessage('当前文件已经有 issue_root 字段。');
+                return;
+            }
+
+            // 添加 issue_root 字段
+            await service.updateIssueFields(fileName, {
+                issue_root: fileName,
+                issue_children: []
+            });
+
+            vscode.window.showInformationMessage('已为当前文件创建根节点 frontmatter。');
+            
+            // 刷新树视图
+            this.currentActiveFile = fileName;
+            await this.refresh();
+        } catch (error) {
+            console.error('创建根 frontmatter 失败:', error);
+            vscode.window.showErrorMessage(`创建失败: ${error}`);
+        }
     }
 
     /**

@@ -61,11 +61,6 @@
         "title": "解除关联"
       },
       {
-        "command": "issueManager.unlinkIssue",
-        "title": "解除 Issue 层级关联",
-        "icon": "$(unlink)"
-      },
-      {
         "command": "issueManager.createSubIssue",
         "title": "新建子问题",
         "icon": "$(add)"
@@ -285,6 +280,11 @@
         "command": "issueManager.logicalTree.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.logicalTree.createRoot",
+        "title": "创建根节点",
+        "icon": "$(add)"
       },
       {
         "command": "issueManager.logicalTree.addChild",
@@ -876,11 +876,6 @@
           "group": "0_issueManager@6"
         },
         {
-          "command": "issueManager.unlinkIssue",
-          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
-          "group": "0_issueManager@7"
-        },
-        {
           "command": "issueManager.addFileMapping",
           "when": "issueManager.isDirConfigured",
           "group": "1_noteMapping@1"
@@ -1328,7 +1323,7 @@
       },
       {
         "view": "issueManager.views.logicalTree",
-        "contents": "暂无逻辑层级树节点。\n[创建根节点](command:issueManager.logicalTree.addChild)\n\n逻辑层级树基于 Markdown 文件的 Frontmatter 字段构建，可以创建独立于物理文件位置的虚拟层级结构。",
+        "contents": "当前文件没有 issue_root 字段。\n[为当前文件创建根节点](command:issueManager.logicalTree.createRoot)\n\n逻辑层级树基于当前活动文件的 Frontmatter 字段构建，显示该文件所属的完整层级结构。",
         "when": "issueManager.isDirConfigured"
       }
     ]
