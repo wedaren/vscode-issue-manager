@@ -654,12 +654,12 @@
         },
         {
           "command": "issueManager.copyFilename",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
+          "when": "viewItem =~ /(recentIssue|issueNode|focusedNode|focusedNodeFirst|isolatedIssue)/",
           "group": "inline"
         },
         {
           "command": "issueManager.moveTo",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related' || (view == 'issueManager.views.noteMapping' && viewItem =~ /(fileIssue|workspaceIssue)/)",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
           "group": "navigation@4"
         },
         {
