@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { IssueFrontmatterService, IssueFrontmatterData } from '../services/IssueFrontmatterService';
 
 /**
@@ -251,8 +252,7 @@ async function getRelativeFileName(absolutePath: string): Promise<string | null>
             return null;
         }
 
-        const path = require('path');
-        return path.relative(issueDir, absolutePath);
+        return path.relative(issueDir, absolutePath).replace(/\\/g, '/');
     } catch (error) {
         console.error('获取相对路径失败:', error);
         return null;

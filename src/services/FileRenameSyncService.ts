@@ -3,6 +3,9 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { IssueFrontmatterService } from '../services/IssueFrontmatterService';
 
+// 常量定义
+const REFRESH_ALL_VIEWS_COMMAND = 'issueManager.refreshAllViews';
+
 /**
  * 文件重命名同步服务
  * 监听文件重命名事件，自动更新所有引用
@@ -79,7 +82,7 @@ export class FileRenameSyncService implements vscode.Disposable {
         }
 
         // 刷新视图
-        vscode.commands.executeCommand('issueManager.refreshAllViews');
+        vscode.commands.executeCommand(REFRESH_ALL_VIEWS_COMMAND);
     }
 
     /**

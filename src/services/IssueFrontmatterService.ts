@@ -439,6 +439,7 @@ export class IssueFrontmatterService {
 
         const collect = async (currentFile: string): Promise<void> => {
             if (visited.has(currentFile)) {
+                console.warn(`检测到循环引用: ${currentFile} 已在遍历路径中`);
                 return; // 防止循环引用
             }
             visited.add(currentFile);
@@ -472,10 +473,11 @@ export class IssueFrontmatterService {
 
         const references: Array<{ fileName: string; field: 'issue_root' | 'issue_parent' | 'issue_children' }> = [];
 
-        for (const fileUri of allFiles) {
-            const fileName = path.relative(issueDir, fileUri.fsPath);
-            const frontmatter = await this.getIssueFrontmatter(fileName);
+        // 批量读取所有文件的 frontmatter
+        const fileNames = allFiles.map(fileUri => path.relative(issueDir, fileUri.fsPath).replace(/\\/g, '/'));
+        const frontmatterMap = await this.getIssueFrontmatterBatch(fileNames);
 
+        for (const [fileName, frontmatter] of frontmatterMap.entries()) {
             if (frontmatter) {
                 if (frontmatter.issue_root === targetPath) {
                     references.push({ fileName, field: 'issue_root' });

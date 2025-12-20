@@ -131,9 +131,6 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
                 }
             }
 
-            // 批量获取标题
-            const titleMap = await this.getTitleMap(Array.from(rootFileNames));
-
             // 构建根节点
             this.rootNodes = [];
             for (const rootFileName of rootFileNames) {
