@@ -36,7 +36,7 @@ import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
-import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
+import { IssueLogicalTreeProvider, IssueLogicalTreeNode } from '../views/IssueLogicalTreeProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
@@ -481,6 +481,24 @@ export class CommandRegistry extends BaseCommandRegistry {
                 issueLogicalTreeProvider.refresh();
             },
             '刷新逻辑树视图'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.addChild',
+            async (...args: unknown[]) => {
+                const node = args[0] as IssueLogicalTreeNode | undefined;
+                await issueLogicalTreeProvider.addChild(node);
+            },
+            '添加子节点到逻辑树'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.removeNode',
+            async (...args: unknown[]) => {
+                const node = args[0] as IssueLogicalTreeNode | undefined;
+                await issueLogicalTreeProvider.removeNode(node);
+            },
+            '从逻辑树移除节点'
         );
     }
 

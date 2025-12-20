@@ -9,7 +9,6 @@ import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider
 import { NoteMappingService } from './services/noteMapping/NoteMappingService';
 import { EditorMappingContextUpdater } from './services/EditorMappingContextUpdater';
 import { ensureGitignoreForMappings } from './data/noteMappingStorage';
-import { FileRenameSyncService } from './services/FileRenameSyncService';
 
 // 当您的扩展被激活时,将调用此方法
 export function activate(context: vscode.ExtensionContext) {
@@ -27,8 +26,6 @@ export function activate(context: vscode.ExtensionContext) {
 	void ensureGitignoreForMappings();
 	// 启动 Chrome 集成本地服务与 URI Handler（不阻塞激活流程）
 	void ChromeIntegrationServer.getInstance().start(context);
-	// 初始化文件重命名同步服务
-	FileRenameSyncService.getInstance(context);
 	
 	// 注册 Issue 文件补全提供器
 	const completionProvider = new IssueFileCompletionProvider(context);
