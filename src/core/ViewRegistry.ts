@@ -6,6 +6,7 @@ import { IssueDragAndDropController } from '../views/IssueDragAndDropController'
 import { RSSIssuesProvider } from '../views/RSSIssuesProvider';
 import { RSSIssueDragAndDropController } from '../views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
@@ -77,6 +78,9 @@ export class ViewRegistry {
         // 注册问题结构视图
         const { issueStructureProvider, structureView } = this.registerStructureView();
         
+        // 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
+        const { issueLogicalTreeProvider, logicalTreeView } = this.registerLogicalTreeView();
+        
         // 注册 PARA 视图
         const { paraViewProvider, paraView } = this.registerParaView();
         
@@ -100,6 +104,8 @@ export class ViewRegistry {
             rssIssuesView,
             issueStructureProvider,
             structureView,
+            issueLogicalTreeProvider,
+            logicalTreeView,
             paraViewProvider,
             paraView,
             noteMappingProvider,
@@ -219,6 +225,26 @@ export class ViewRegistry {
         this.context.subscriptions.push(issueStructureProvider);
         
         return { issueStructureProvider, structureView };
+    }
+
+    /**
+     * 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
+     */
+    private registerLogicalTreeView(): {
+        issueLogicalTreeProvider: IssueLogicalTreeProvider;
+        logicalTreeView: vscode.TreeView<vscode.TreeItem>;
+    } {
+        const issueLogicalTreeProvider = new IssueLogicalTreeProvider(this.context);
+        
+        const logicalTreeView = vscode.window.createTreeView('issueManager.views.logicalTree', {
+            treeDataProvider: issueLogicalTreeProvider,
+            showCollapseAll: true
+        });
+        
+        this.context.subscriptions.push(logicalTreeView);
+        this.context.subscriptions.push(issueLogicalTreeProvider);
+        
+        return { issueLogicalTreeProvider, logicalTreeView };
     }
 
     /**

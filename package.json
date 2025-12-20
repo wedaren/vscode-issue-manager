@@ -282,6 +282,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "issueManager.logicalTree.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "issueManager.para.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
@@ -561,6 +566,11 @@
         {
           "command": "issueManager.structure.refresh",
           "when": "view == issueManager.views.structure",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.logicalTree.refresh",
+          "when": "view == issueManager.views.logicalTree",
           "group": "navigation@1"
         },
         {
@@ -1241,6 +1251,11 @@
         {
           "id": "issueManager.views.structure",
           "name": "问题结构",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.logicalTree",
+          "name": "逻辑层级树",
           "icon": "resources/icon.svg"
         },
         {
