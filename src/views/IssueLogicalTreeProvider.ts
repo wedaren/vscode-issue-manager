@@ -82,10 +82,12 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         const frontmatter = await service.getIssueFrontmatter(fileName);
         const newRootFile = frontmatter?.issue_root || null;
 
-        // 如果切换到同一个 root 下的不同文件，只更新 currentActiveFile 并刷新图标
-        if (newRootFile && newRootFile === this.currentRootFile) {
+        // 如果切换到同一个 root 下的不同文件，只更新 isCurrentFile 属性
+        if (newRootFile && newRootFile === this.currentRootFile && this.rootNodes.length > 0) {
+            // 更新旧节点和新节点的 isCurrentFile 标志
+            this.updateCurrentFileInTree(this.rootNodes, this.currentActiveFile, fileName);
             this.currentActiveFile = fileName;
-            // 只更新当前节点，不重建整个树
+            // 触发刷新以更新图标
             this._onDidChangeTreeData.fire();
             return;
         }
@@ -94,6 +96,23 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         this.currentActiveFile = fileName;
         this.currentRootFile = newRootFile;
         await this.refresh();
+    }
+
+    /**
+     * 在树中更新当前文件标志
+     */
+    private updateCurrentFileInTree(nodes: IssueLogicalTreeNode[], oldFile: string | null, newFile: string): void {
+        for (const node of nodes) {
+            if (oldFile && node.fileName === oldFile) {
+                node.isCurrentFile = false;
+            }
+            if (node.fileName === newFile) {
+                node.isCurrentFile = true;
+            }
+            if (node.children.length > 0) {
+                this.updateCurrentFileInTree(node.children, oldFile, newFile);
+            }
+        }
     }
 
     /**
@@ -391,19 +410,31 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         }
 
         try {
+            const service = IssueFrontmatterService.getInstance();
+            
             // 生成文件名
             const { generateFileName } = await import('../utils/fileUtils');
             const fileName = generateFileName();
             const filePath = path.join(issueDir, fileName);
             const fileUri = vscode.Uri.file(filePath);
 
-            // 确定父节点路径
+            // 确定父节点路径和根节点路径
             const parentFileName = parentNode ? parentNode.fileName : null;
+            
+            // 确定根节点：如果有父节点，使用父节点的root；否则使用当前的root
+            let rootFileName: string;
+            if (parentFileName) {
+                // 如果有父节点，使用父节点的 root
+                const parentFrontmatter = await service.getIssueFrontmatter(parentFileName);
+                rootFileName = parentFrontmatter?.issue_root || parentFileName;
+            } else {
+                // 如果没有父节点，使用当前活动文件的 root，如果没有则使用新文件本身
+                rootFileName = this.currentRootFile || fileName;
+            }
 
             // 创建 frontmatter 内容
-            const service = IssueFrontmatterService.getInstance();
             let frontmatterData: IssueFrontmatterData = {
-                issue_root: parentFileName || fileName
+                issue_root: rootFileName
             };
 
             if (parentFileName) {
