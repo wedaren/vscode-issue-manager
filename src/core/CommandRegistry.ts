@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
+import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById } from '../data/treeManager';
 import { isIssueTreeNode } from '../utils/treeUtils';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
@@ -239,6 +239,44 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             },
             '移动问题'
+        );
+
+        // 从编辑器移动问题命令
+        this.registerCommand(
+            'issueManager.moveToFromEditor',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showErrorMessage('未找到活动的编辑器。');
+                    return;
+                }
+
+                const uri = editor.document.uri;
+                const issueId = getIssueIdFromUri(uri);
+                
+                if (!issueId) {
+                    vscode.window.showWarningMessage('当前文档不包含问题 ID，无法执行移动操作。');
+                    return;
+                }
+
+                try {
+                    // 从树结构中查找节点
+                    const tree = await readTree();
+                    const result = findNodeById(tree.rootNodes, issueId);
+                    
+                    if (!result) {
+                        vscode.window.showWarningMessage('未在问题树中找到当前问题的节点。');
+                        return;
+                    }
+
+                    // 调用移动命令
+                    await moveIssuesTo([result.node]);
+                } catch (error) {
+                    this.logger.error('从编辑器移动问题失败', error);
+                    vscode.window.showErrorMessage(`移动问题失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                }
+            },
+            '从编辑器移动问题'
         );
 
         // 添加问题到树命令

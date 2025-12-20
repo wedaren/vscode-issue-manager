@@ -171,6 +171,10 @@
         "title": "移动到..."
       },
       {
+        "command": "issueManager.moveToFromEditor",
+        "title": "移动到..."
+      },
+      {
         "command": "issueManager.addIssueToTree",
         "title": "添加到..."
       },
@@ -834,6 +838,11 @@
           "command": "issueManager.createSubIssueFromEditor",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@6"
+        },
+        {
+          "command": "issueManager.moveToFromEditor",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
+          "group": "0_issueManager@7"
         },
         {
           "command": "issueManager.addFileMapping",
