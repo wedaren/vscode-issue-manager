@@ -7,6 +7,7 @@ import { RSSIssuesProvider } from '../views/RSSIssuesProvider';
 import { RSSIssueDragAndDropController } from '../views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
+import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
@@ -232,7 +233,7 @@ export class ViewRegistry {
      */
     private registerLogicalTreeView(): {
         issueLogicalTreeProvider: IssueLogicalTreeProvider;
-        logicalTreeView: vscode.TreeView<vscode.TreeItem>;
+        logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
     } {
         const issueLogicalTreeProvider = new IssueLogicalTreeProvider(this.context);
         

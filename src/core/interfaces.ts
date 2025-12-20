@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { IssueTreeNode } from '../data/treeManager';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
+import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaViewNode } from '../types';
 
@@ -103,7 +104,7 @@ export interface IViewRegistryResult {
     issueLogicalTreeProvider: IssueLogicalTreeProvider;
     
     /** 问题逻辑树视图实例 */
-    logicalTreeView: vscode.TreeView<vscode.TreeItem>;
+    logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
     
     /** PARA 视图提供者实例 */
     paraViewProvider: ParaViewProvider;

@@ -1,20 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { generateFileName } from '../utils/fileUtils';
 import { getIssueDir } from '../config';
 import { IssueFrontmatterService, IssueFrontmatterData } from '../services/IssueFrontmatterService';
-import { TitleCacheService } from '../services/TitleCacheService';
-
-/**
- * Issue 逻辑树节点
- */
-export interface IssueLogicalTreeNode {
-    fileName: string; // 相对路径
-    title: string;
-    children: IssueLogicalTreeNode[];
-    isRoot: boolean;
-    isCurrentFile: boolean; // 是否是当前活动文件
-    resourceUri?: vscode.Uri;
-}
+import { IssueLogicalTreeModel, IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 
 /**
  * Issue 逻辑树视图提供者
@@ -26,12 +15,12 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
     readonly onDidChangeTreeData: vscode.Event<IssueLogicalTreeNode | undefined | null | void> = 
         this._onDidChangeTreeData.event;
 
-    private rootNodes: IssueLogicalTreeNode[] = [];
+    private model: IssueLogicalTreeModel;
     private disposables: vscode.Disposable[] = [];
-    private currentActiveFile: string | null = null;
-    private currentRootFile: string | null = null; // 跟踪当前的根文件
 
     constructor(private context: vscode.ExtensionContext) {
+        this.model = new IssueLogicalTreeModel();
+
         // 监听编辑器切换
         this.disposables.push(
             vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -51,27 +40,21 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
     private async onActiveEditorChanged(editor: vscode.TextEditor | undefined): Promise<void> {
 
         if (!editor || editor.document.languageId !== 'markdown') {
-            // this.currentActiveFile = null;
-            // this.currentRootFile = null;
-            // this.rootNodes = [];
+            // this.model.clear();
             // this._onDidChangeTreeData.fire();
             return;
         }
 
         const issueDir = getIssueDir();
         if (!issueDir) {
-            this.currentActiveFile = null;
-            this.currentRootFile = null;
-            this.rootNodes = [];
+            this.model.clear();
             this._onDidChangeTreeData.fire();
             return;
         }
 
         const filePath = editor.document.uri.fsPath;
         if (!filePath.startsWith(issueDir)) {
-            this.currentActiveFile = null;
-            this.currentRootFile = null;
-            this.rootNodes = [];
+            this.model.clear();
             this._onDidChangeTreeData.fire();
             return;
         }
@@ -84,43 +67,29 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         const newRootFile = frontmatter?.issue_root || null;
 
         // 如果切换到同一个 root 下的不同文件，只更新 isCurrentFile 属性
-        if (newRootFile && newRootFile === this.currentRootFile) {
+        if (newRootFile && newRootFile === this.model.rootFile) {
             // 更新旧节点和新节点的 isCurrentFile 标志
-            this.updateCurrentFileInTree(this.rootNodes, this.currentActiveFile, fileName);
-            this.currentActiveFile = fileName;
+            this.model.updateCurrentFileInTree(this.model.activeFile, fileName);
             // 触发刷新以更新图标
             this._onDidChangeTreeData.fire();
             return;
         }
 
         // 切换到不同的 root 或没有 root，需要重建树
-        this.currentActiveFile = fileName;
-        this.currentRootFile = newRootFile;
+        this.model.activeFile = fileName;
+        this.model.rootFile = newRootFile;
         await this.refresh();
-    }
-
-    /**
-     * 在树中更新当前文件标志
-     */
-    private updateCurrentFileInTree(nodes: IssueLogicalTreeNode[], oldFile: string | null, newFile: string): void {
-        for (const node of nodes) {
-            if (oldFile && node.fileName === oldFile) {
-                node.isCurrentFile = false;
-            }
-            if (node.fileName === newFile) {
-                node.isCurrentFile = true;
-            }
-            if (node.children.length > 0) {
-                this.updateCurrentFileInTree(node.children, oldFile, newFile);
-            }
-        }
     }
 
     /**
      * 刷新树视图
      */
     public async refresh(): Promise<void> {
-        await this.buildTree();
+        if (this.model.activeFile) {
+            await this.model.buildTree(this.model.activeFile);
+        } else {
+            this.model.clear();
+        }
         this._onDidChangeTreeData.fire();
     }
 
@@ -163,145 +132,11 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
     async getChildren(element?: IssueLogicalTreeNode): Promise<IssueLogicalTreeNode[]> {
         if (!element) {
             // 返回根节点
-            return this.rootNodes;
+            return this.model.nodes;
         }
 
         // 返回子节点
         return element.children;
-    }
-
-    /**
-     * 构建逻辑树 - 显示当前活动文件所属的完整层级结构
-     */
-    private async buildTree(): Promise<void> {
-        const issueDir = getIssueDir();
-        if (!issueDir || !this.currentActiveFile) {
-            this.rootNodes = [];
-            return;
-        }
-
-        try {
-            const service = IssueFrontmatterService.getInstance();
-            
-            // 读取当前文件的 frontmatter
-            const currentFrontmatter = await service.getIssueFrontmatter(this.currentActiveFile);
-            
-            if (!currentFrontmatter || !currentFrontmatter.issue_root) {
-                // 如果没有 issue_root，显示空树
-                this.rootNodes = [];
-                return;
-            }
-
-            // 获取根文件名
-            const rootFileName = currentFrontmatter.issue_root;
-            
-            // 更新当前根文件
-            this.currentRootFile = rootFileName;
-
-            // 收集需要读取的所有文件
-            const filesToLoad = new Set<string>();
-
-            // 递归收集所有相关文件
-            const collectFiles = async (fileName: string) => {
-                if (filesToLoad.has(fileName)) {
-                    return;
-                }
-                filesToLoad.add(fileName);
-
-                const fm = await service.getIssueFrontmatter(fileName);
-                if (fm && fm.issue_children) {
-                    for (const child of fm.issue_children) {
-                        await collectFiles(child);
-                    }
-                }
-            };
-
-            await collectFiles(rootFileName);
-
-            // 批量读取所有相关文件的 frontmatter
-            const frontmatterMap = await service.getIssueFrontmatterBatch(Array.from(filesToLoad));
-            const fileMap = new Map<string, IssueFrontmatterData>();
-            for (const [fileName, frontmatter] of frontmatterMap.entries()) {
-                if (frontmatter) {
-                    fileMap.set(fileName, frontmatter);
-                }
-            }
-
-            // 构建根节点
-            const rootNode = await this.buildNodeTree(rootFileName, fileMap, issueDir, true);
-            this.rootNodes = rootNode ? [rootNode] : [];
-
-        } catch (error) {
-            console.error('构建逻辑树失败:', error);
-            this.rootNodes = [];
-        }
-    }
-
-    /**
-     * 递归构建节点树
-     */
-    private async buildNodeTree(
-        fileName: string,
-        fileMap: Map<string, IssueFrontmatterData>,
-        issueDir: string,
-        isRoot: boolean
-    ): Promise<IssueLogicalTreeNode | null> {
-        const frontmatter = fileMap.get(fileName);
-        if (!frontmatter) {
-            return null;
-        }
-
-        // 获取标题
-        const title = await this.getTitle(fileName);
-
-        // 构建子节点
-        const children: IssueLogicalTreeNode[] = [];
-        const childrenFiles = frontmatter.issue_children || [];
-        
-        for (const childFileName of childrenFiles) {
-            const childNode = await this.buildNodeTree(childFileName, fileMap, issueDir, false);
-            if (childNode) {
-                children.push(childNode);
-            }
-        }
-
-        return {
-            fileName,
-            title,
-            children,
-            isRoot,
-            isCurrentFile: fileName === this.currentActiveFile, // 标记是否是当前活动文件
-            resourceUri: vscode.Uri.file(path.join(issueDir, fileName))
-        };
-    }
-
-    /**
-     * 获取文件标题
-     */
-    private async getTitle(fileName: string): Promise<string> {
-        try {
-            const titleCache = TitleCacheService.getInstance();
-            const title = await titleCache.get(fileName);
-            return title || path.basename(fileName, '.md');
-        } catch (error) {
-            console.error(`获取标题失败 (${fileName}):`, error);
-            return path.basename(fileName, '.md');
-        }
-    }
-
-    /**
-     * 批量获取标题映射
-     */
-    private async getTitleMap(fileNames: string[]): Promise<Map<string, string>> {
-        const titleCache = TitleCacheService.getInstance();
-        const titles = await titleCache.getMany(fileNames);
-        
-        const titleMap = new Map<string, string>();
-        for (let i = 0; i < fileNames.length; i++) {
-            titleMap.set(fileNames[i], titles[i] || path.basename(fileNames[i], '.md'));
-        }
-        
-        return titleMap;
     }
 
     /**
@@ -316,26 +151,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
         }
 
         // 在树中查找父节点
-        return this.findNodeInTree(frontmatter.issue_parent, this.rootNodes);
-    }
-
-    /**
-     * 在树中查找节点
-     */
-    private findNodeInTree(
-        fileName: string, 
-        nodes: IssueLogicalTreeNode[]
-    ): IssueLogicalTreeNode | null {
-        for (const node of nodes) {
-            if (node.fileName === fileName) {
-                return node;
-            }
-            const found = this.findNodeInTree(fileName, node.children);
-            if (found) {
-                return found;
-            }
-        }
-        return null;
+        return this.model.findNode(frontmatter.issue_parent);
     }
 
     /**
@@ -381,7 +197,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
             vscode.window.showInformationMessage('已为当前文件创建根节点 frontmatter。');
             
             // 刷新树视图
-            this.currentActiveFile = fileName;
+            this.model.activeFile = fileName;
             await this.refresh();
         } catch (error) {
             console.error('创建根 frontmatter 失败:', error);
@@ -413,7 +229,6 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
             const service = IssueFrontmatterService.getInstance();
             
             // 生成文件名
-            const { generateFileName } = await import('../utils/fileUtils');
             const fileName = generateFileName();
             const filePath = path.join(issueDir, fileName);
             const fileUri = vscode.Uri.file(filePath);
@@ -429,7 +244,7 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
                 rootFileName = parentFrontmatter?.issue_root || parentFileName;
             } else {
                 // 如果没有父节点，使用当前活动文件的 root，如果没有则使用新文件本身
-                rootFileName = this.currentRootFile || fileName;
+                rootFileName = this.model.rootFile || fileName;
             }
 
             // 创建 frontmatter 内容
@@ -562,5 +377,6 @@ export class IssueLogicalTreeProvider implements vscode.TreeDataProvider<IssueLo
             disposable.dispose();
         }
         this.disposables = [];
+        this.model.clear();
     }
 }
