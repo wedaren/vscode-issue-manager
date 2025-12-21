@@ -22,6 +22,7 @@ export type ParaViewNode =
       category: ParaCategory; 
       treeNode: IssueTreeNode; 
       isTopLevel?: boolean; // 可选属性,用于标识是否为顶层问题
+      indexInCategory?: number; // 可选: 在所属分类中的 1-based 序号，仅用于渲染
     };
 
 /**
@@ -51,6 +52,7 @@ export function isParaIssueNode(item: unknown): item is {
   category: ParaCategory; 
   treeNode: IssueTreeNode;
   isTopLevel?: boolean;
+  indexInCategory?: number;
 } {
   return (
     !!item && 

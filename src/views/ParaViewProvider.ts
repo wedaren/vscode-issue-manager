@@ -58,7 +58,14 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
         return this.createCategoryTreeItem(element.category);
       
       case 'issue':
-        return await this.createIssueTreeItem(element.id, element.category, element.isTopLevel ?? false, issueDir);
+        return await this.createIssueTreeItem(
+          element.id,
+          element.category,
+          element.isTopLevel ?? false,
+          issueDir,
+          // 仅顶级节点会有该字段
+          element.indexInCategory
+        );
     }
   }
 
@@ -88,8 +95,10 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     if (element.type === 'category') {
       const issueIds = this.paraData[element.category];
       const nodes: ParaViewNode[] = [];
-      
-      for (const id of issueIds) {
+
+      // 按顺序为每个顶级节点分配 1-based 序号
+      for (let i = 0; i < issueIds.length; i++) {
+        const id = issueIds[i];
         const treeNode = this.treeData ? getTreeNodeById(this.treeData, id) : null;
         if (treeNode) {
           nodes.push({
@@ -97,11 +106,12 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
             id,
             category: element.category,
             treeNode,
-            isTopLevel: true  // 直接在分类下的节点是顶级节点
+            isTopLevel: true, // 直接在分类下的节点是顶级节点
+            indexInCategory: i + 1
           });
         }
       }
-      
+
       return nodes;
     }
 
@@ -142,7 +152,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
   /**
    * 创建问题树节点
    */
-  private async createIssueTreeItem(issueId: string, category: ParaCategory, isTopLevel: boolean, issueDir: string): Promise<vscode.TreeItem> {
+  private async createIssueTreeItem(issueId: string, category: ParaCategory, isTopLevel: boolean, issueDir: string, indexInCategory?: number): Promise<vscode.TreeItem> {
     // 从树数据中查找节点以获取 filePath
   const node = this.treeData ? getTreeNodeById(this.treeData, issueId) : null;
     
@@ -164,8 +174,10 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
       ? (node.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
       : vscode.TreeItemCollapsibleState.None;
     
+    const displayTitle = (isTopLevel && typeof indexInCategory === 'number') ? `${indexInCategory}. ${title}` : title;
+
     const item = new vscode.TreeItem(
-      title,
+      displayTitle,
       collapsibleState
     );
     
