@@ -64,7 +64,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
           element.isTopLevel ?? false,
           issueDir,
           // 仅顶级节点会有该字段
-          (element as any).indexInCategory
+          element.indexInCategory
         );
     }
   }
