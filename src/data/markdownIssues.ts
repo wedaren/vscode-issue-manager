@@ -16,13 +16,18 @@ export async function getAllMarkdownFiles(): Promise<vscode.Uri[]> {
     return files;
 }
 
-export async function getMarkdownIssues(): Promise<{ title: string, filePath: string }[]> {
+type MarkdownIssue = {
+    title: string;
+    uri: vscode.Uri;
+};
+
+export async function getMarkdownIssues(): Promise<MarkdownIssue[]> {
     const files = await getAllMarkdownFiles();
-    const issues: { title: string, filePath: string, uri: vscode.Uri }[] = [];
+    const issues: MarkdownIssue[] = [];
 
     for (const file of files) {
         const title = await getTitle(file);
-        issues.push({ title, filePath: file.fsPath, uri: file });
+        issues.push({ title, uri: file });
     }
 
     return issues;

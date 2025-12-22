@@ -64,7 +64,7 @@ export class LLMService {
 用户问题描述: "${text}"
 
 现有笔记列表（标题和文件路径）：
-${JSON.stringify(allIssues, null, 2)}
+${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })), null, 2)}
 `;
 
         try {
