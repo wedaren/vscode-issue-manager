@@ -196,11 +196,17 @@ export class TitleCacheService {
    * 内部方法：包含并发控制与错误吞吐。
    */
   private async buildAndWriteCache(): Promise<void> {
-    const map = new Map((await getMarkdownIssues()).map(issue => [getRelativePathToIssueDir(issue.uri.fsPath)!, issue.title]));
-    // 确保目录存在并写回
-    await ensureIssueManagerDir();
-    // 将 Map 转换为普通对象
-    const obj: Record<string, string> = Object.fromEntries(map.entries());
-    await writeTitleCacheJson(obj);
+    const issues = await getMarkdownIssues();  
+    const obj = issues.reduce((acc, issue) => {  
+      const relPath = getRelativePathToIssueDir(issue.uri.fsPath);  
+      if (relPath) {  
+        acc[relPath] = issue.title;  
+      }  
+      return acc;  
+    }, {} as Record<string, string>);  
+
+    // 确保目录存在并写回  
+    await ensureIssueManagerDir();  
+    await writeTitleCacheJson(obj);  
   }
 }

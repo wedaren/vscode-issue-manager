@@ -16,11 +16,15 @@ export async function getAllMarkdownFiles(): Promise<vscode.Uri[]> {
     return files;
 }
 
-type MarkdownIssue = {
-    title: string;
-    uri: vscode.Uri;
+export type MarkdownIssue = {  
+    title: string;  
+    uri: vscode.Uri;  
 };
 
+/**  
+ * 获取问题目录中所有 Markdown 文件的标题和 URI。  
+ * @returns 包含标题和 URI 的对象数组。  
+ */  
 export async function getMarkdownIssues(): Promise<MarkdownIssue[]> {
     const files = await getAllMarkdownFiles();
     const issues: MarkdownIssue[] = [];
