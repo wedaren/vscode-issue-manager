@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getAllMarkdownIssues } from '../utils/markdown';
+import { getMarkdownIssues } from '../data/markdownIssues';
 import { Logger } from '../core/utils/Logger';
 
 export class LLMService {
@@ -36,7 +36,7 @@ export class LLMService {
         text: string,
         options?: { signal?: AbortSignal }
     ): Promise<{ optimized: string[], similar: { title: string, filePath: string }[] }> {
-        const allIssues = await getAllMarkdownIssues();
+        const allIssues = await getMarkdownIssues();
 
         const prompt = `
 你是一个智能问题管理助手。用户会给你一个问题描述，你需要完成以下任务：
