@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getTitle } from '../utils/markdown';
+import { titleCache } from './titleCache';
 import { getIssueDir } from '../config';
 
 /**
@@ -30,7 +30,7 @@ export async function getMarkdownIssues(): Promise<MarkdownIssue[]> {
     const issues: MarkdownIssue[] = [];
 
     for (const file of files) {
-        const title = await getTitle(file);
+        const title = await titleCache.get(file);
         issues.push({ title, uri: file });
     }
 
