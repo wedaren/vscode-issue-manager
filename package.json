@@ -1273,21 +1273,6 @@
           "icon": "resources/icon.svg"
         },
         {
-          "id": "issueManager.views.rss",
-          "name": "RSS问题",
-          "icon": "resources/icon.svg"
-        },
-        {
-          "id": "issueManager.views.structure",
-          "name": "问题结构",
-          "icon": "resources/icon.svg"
-        },
-        {
-          "id": "issueManager.views.logicalTree",
-          "name": "逻辑层级树",
-          "icon": "resources/icon.svg"
-        },
-        {
           "id": "issueManager.views.para",
           "name": "PARA",
           "icon": "resources/icon.svg"
