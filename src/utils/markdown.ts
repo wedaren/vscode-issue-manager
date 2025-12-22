@@ -123,33 +123,4 @@ export async function getTitle(fileUri: vscode.Uri): Promise<string> {
     return path.basename(fileUri.fsPath, '.md');
 }
 
-/**
- * 获取问题目录中所有 Markdown 文件;
- * @returns 问题目录中所有 Markdown 文件
- */
-export async function getAllMarkdownFiles(): Promise<vscode.Uri[]> {
-    const issueDir = getIssueDir();
-    if (!issueDir) {
-        return [];
-    }
 
-    const files = await vscode.workspace.findFiles(new vscode.RelativePattern(issueDir, '**/*.md'), '**/.issueManager/**');
-    return files;
-}
-
-
-/**
- * 获取问题目录中所有 Markdown 文件的标题和文件路径。
- * @returns 包含标题和文件路径的对象数组。
- */
-export async function getAllMarkdownIssues(): Promise<{ title: string, filePath: string }[]> {
-    const files = await getAllMarkdownFiles();
-    const issues: { title: string, filePath: string }[] = [];
-
-    for (const file of files) {
-        const title = await getTitle(file);
-        issues.push({ title, filePath: file.fsPath });
-    }
-
-    return issues;
-}

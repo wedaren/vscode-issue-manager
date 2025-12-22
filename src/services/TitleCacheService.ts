@@ -2,9 +2,9 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { readTitleCacheJson, writeTitleCacheJson, readTree } from '../data/treeManager';
 import { getIssueDir, getTitleCacheRebuildIntervalHours } from '../config';
-import { getAllMarkdownFiles, getTitle } from '../utils/markdown';
 import { ensureIssueManagerDir, getRelativePathToIssueDir } from '../utils/fileUtils';
 import { Logger } from '../core/utils/Logger';
+import { getMarkdownIssues } from '../data/markdownIssues';
 
 /**
  * 标题缓存服务：从 titleCache.json 读取并缓存 { [relativeFilePath]: title }
@@ -196,37 +196,17 @@ export class TitleCacheService {
    * 内部方法：包含并发控制与错误吞吐。
    */
   private async buildAndWriteCache(): Promise<void> {
-    // 扫描所有 Markdown，构建 { relativePath: title }，使用简易并发控制加速
-    const files = await getAllMarkdownFiles();
-    const map: Record<string, string> = {};
-    const CONCURRENCY = 16;
-    let index = 0;
+    const issues = await getMarkdownIssues();  
+    const obj = issues.reduce((acc, issue) => {  
+      const relPath = getRelativePathToIssueDir(issue.uri.fsPath);  
+      if (relPath) {  
+        acc[relPath] = issue.title;  
+      }  
+      return acc;  
+    }, {} as Record<string, string>);  
 
-    const worker = async () => {
-      for (;;) {
-        const current = index++;
-        if (current >= files.length) {
-          break;
-        }
-        const file = files[current];
-        try {
-          const title = await getTitle(file);
-          const rel = getRelativePathToIssueDir(file.fsPath);
-          if (rel) {
-            map[rel] = title;
-          }
-        } catch (e) {
-          // 忽略单文件失败，继续其它文件
-          this.logger.warn(`获取文件标题失败，已跳过: ${file.fsPath}`, e);  
-        }
-      }
-    };
-
-    const workers = Array.from({ length: Math.min(CONCURRENCY, files.length) }, () => worker());
-    await Promise.all(workers);
-
-    // 确保目录存在并写回
-    await ensureIssueManagerDir();
-    await writeTitleCacheJson(map);
+    // 确保目录存在并写回  
+    await ensureIssueManagerDir();  
+    await writeTitleCacheJson(obj);  
   }
 }
