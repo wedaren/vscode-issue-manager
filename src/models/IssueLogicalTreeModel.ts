@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { IssueFrontmatterService, IssueFrontmatterData } from '../services/IssueFrontmatterService';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from '../data/titleCache';
 
 /**
  * Issue 逻辑树节点
@@ -162,7 +162,7 @@ export class IssueLogicalTreeModel {
         }
 
         // 获取标题
-        const title = await this.getTitle(fileName);
+        const title = await titleCache.get(fileName);
 
         // 构建子节点
         const children: IssueLogicalTreeNode[] = [];
@@ -185,19 +185,6 @@ export class IssueLogicalTreeModel {
         };
     }
 
-    /**
-     * 获取文件标题
-     */
-    private async getTitle(fileName: string): Promise<string> {
-        try {
-            const titleCache = TitleCacheService.getInstance();
-            const title = await titleCache.get(fileName);
-            return title || path.basename(fileName, '.md');
-        } catch (error) {
-            console.error(`获取标题失败 (${fileName}):`, error);
-            return path.basename(fileName, '.md');
-        }
-    }
 
     /**
      * 在树中查找节点

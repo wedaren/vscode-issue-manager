@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getTitle } from '../utils/markdown';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
+import { readTree, findNodeById } from '../data/treeManager';
 
 
 type CacheEntry = { title: string; mtime: number };
@@ -15,7 +16,31 @@ type CacheEntry = { title: string; mtime: number };
  */
 export class TitleCache {
   private cache = new Map<string, CacheEntry>();
+  private _onDidUpdate = new vscode.EventEmitter<void>();
+  private _debounceMs = 200;
+  private _debounceTimer?: ReturnType<typeof setTimeout>;
+  private scheduleOnDidUpdate(): void {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+    this._debounceTimer = setTimeout(() => {
+      try { this._onDidUpdate.fire(); } catch {}
+      this._debounceTimer = undefined;
+    }, this._debounceMs);
+  }
+  /** 当缓存条目被写入或更新时触发（仅 set/update） */
+  public readonly onDidUpdate: vscode.Event<void> = this._onDidUpdate.event;
 
+  async getByIssueId(issueId: string): Promise<string> {
+    // TODO 优化
+    const tree = await readTree();
+    const {node} = findNodeById(tree.rootNodes, issueId)||{}; // 确保 tree 已加载
+    if(node?.filePath){
+      return this.get(node.filePath);
+    } else {
+      return `[Unknown Issue: ${issueId}]`;
+    }
+  }
   async get(uriOrPath: vscode.Uri | string): Promise<string> {
     let uri: vscode.Uri;
 
@@ -26,7 +51,8 @@ export class TitleCache {
       } else {
         const issueDir = getIssueDir();
         if (!issueDir) {
-          throw new Error('issueDir is not configured');
+          Logger.getInstance().warn('[TitleCache] issueDir is not configured for relative path.', { path: uriOrPath });
+          return path.basename(uriOrPath, '.md');
         }
         uri = vscode.Uri.file(path.join(issueDir, uriOrPath));
       }
@@ -46,7 +72,14 @@ export class TitleCache {
       }
 
       const title = await getTitle(uri);
+      if (title === cached?.title) {
+        // 标题未变更，仅更新 mtime
+        this.cache.set(key, { title, mtime });
+        return title;
+      }
       this.cache.set(key, { title, mtime });
+      // 通知监听者：条目已写入/更新（防抖触发）
+      this.scheduleOnDidUpdate();
       Logger.getInstance().debug('[TitleCache] set', { uri: key, size: this.cache.size });
       return title;
     } catch (err) {
@@ -79,6 +112,10 @@ export class TitleCache {
 
   clear(): void {
     this.cache.clear();
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = undefined;
+    }
     Logger.getInstance().debug('[TitleCache] clear', { size: this.cache.size });
   }
 

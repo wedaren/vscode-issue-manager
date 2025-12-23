@@ -1,11 +1,7 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
+import { titleCache } from '../data/titleCache';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
-import { debounce } from '../utils/debounce';
-import { TitleCacheService } from '../services/TitleCacheService';
-import { getRelativePathToIssueDir, ensureIssueManagerDir } from '../utils/fileUtils';
-import { readTitleCacheJson, writeTitleCacheJson } from '../data/treeManager';
-import { getTitle } from '../utils/markdown';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 
@@ -97,12 +93,6 @@ export class ConfigurationManager {
                 // 刷新所有视图以反映新目录的内容
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             }
-            // 标题缓存过期重建间隔变更后，重载缓存服务以应用新配置（后续过期判断将使用新值）
-            if (e.affectsConfiguration('issueManager.titleCache.rebuildIntervalHours')) {
-                TitleCacheService.getInstance().reload()
-                    .then(() => this.logger.info('配置变更：已应用新的标题缓存过期重建间隔'))
-                    .catch(err => this.logger.warn('应用新的标题缓存过期重建间隔失败', err));
-            }
         });
         
         this.context.subscriptions.push(configListener);
@@ -124,81 +114,16 @@ export class ConfigurationManager {
         }
 
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
+        fileWatcher.onMarkdownChange((e) => {
+            titleCache.get(e.uri); // 预热标题缓存
+        });
 
-        // 订阅 Markdown 文件变更 - 更新标题缓存
-        const handleMarkdownChanged = debounce(async (event) => {
-            try {
-                const rel = getRelativePathToIssueDir(event.uri.fsPath);
-                if (!rel) { return; }
-
-                // 提取最新标题
-                const newTitle = await getTitle(event.uri);
-
-                // 确保 .issueManager 目录存在
-                await ensureIssueManagerDir();
-
-                // 读取并更新缓存文件
-                const map = await readTitleCacheJson();
-                const oldTitle = map[rel];
-                if (oldTitle === newTitle) {
-                    this.logger.debug?.(`标题未变化，跳过写入: ${rel}`);
-                    return;
-                }
-                map[rel] = newTitle;
-                await writeTitleCacheJson(map);
-                // 不在此处 reload/refresh，交由 titleCache.json 监听统一处理
-                this.logger.info(`标题已变更，已写入缓存: ${rel} -> ${newTitle}`);
-            } catch (e) {
-                this.logger.warn('处理 Markdown 变更并更新标题缓存失败', e);
-            }
-        }, DEBOUNCE_REFRESH_DELAY_MS);
-
-        // 订阅 Markdown 文件删除 - 从缓存中移除
-        const handleMarkdownDeleted = debounce(async (event) => {
-            try {
-                const rel = getRelativePathToIssueDir(event.uri.fsPath);
-                if (!rel) { return; }
-
-                await ensureIssueManagerDir();
-                const map = await readTitleCacheJson();
-                if (Object.prototype.hasOwnProperty.call(map, rel)) {
-                    delete map[rel];
-                    await writeTitleCacheJson(map);
-                    // 不在此处 reload/refresh，交由 titleCache.json 监听统一处理
-                    this.logger.info(`Markdown 删除，已从标题缓存移除: ${rel}`);
-                }
-            } catch (e) {
-                this.logger.warn('处理 Markdown 删除并更新标题缓存失败', e);
-            }
-        }, DEBOUNCE_REFRESH_DELAY_MS);
-
-        // 注册 Markdown 变更和删除监听（保存到 fileWatcherDisposables）
-        this.fileWatcherDisposables.push(
-            fileWatcher.onMarkdownChange(event => {
-                if (event.type === 'delete') {
-                    handleMarkdownDeleted(event);
-                } else {
-                    handleMarkdownChanged(event);
-                }
-            })
-        );
-
-        // 订阅 titleCache.json 变更 - 重载缓存并刷新视图
-        const debouncedReloadTitleCache = debounce(async () => {
-            try {
-                await TitleCacheService.getInstance().reload();
-                this.logger.info('titleCache.json 变更，已重载标题缓存');
-                vscode.commands.executeCommand('issueManager.refreshAllViews');
-            } catch (e) {
-                this.logger.warn('重载标题缓存失败，将继续使用旧缓存', e);
-                // 失败时也刷新一次，确保UI状态一致
-                vscode.commands.executeCommand('issueManager.refreshAllViews');
-            }
-        }, DEBOUNCE_REFRESH_DELAY_MS);
-
-        this.fileWatcherDisposables.push(
-            fileWatcher.onTitleCacheChange(debouncedReloadTitleCache)
-        );
+        // 订阅内存标题缓存写入/更新事件，触发刷新所有视图（加短延迟以合并快速连续更新）
+        this.fileWatcherDisposables.push(titleCache.onDidUpdate(() => {
+            setTimeout(() => {
+                 vscode.commands.executeCommand('issueManager.refreshAllViews');
+            }, 100);
+        }));
     }
 
     /**

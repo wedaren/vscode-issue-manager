@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById } from '../data/treeManager';
 import { getIssueDir } from '../config';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from '../data/titleCache';
 import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
@@ -96,9 +96,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     }
 
   const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
-  const titleCache = TitleCacheService.getInstance();
-  const cachedTitle = await titleCache.get(element.filePath);
-  const title = cachedTitle || path.basename(element.filePath, '.md');
+  const title = await titleCache.get(element.filePath);
 
     const focusIndex = this.focusedData?.focusList.indexOf(element.id) ?? -1;
 
