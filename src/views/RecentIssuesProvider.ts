@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from '../data/titleCache';
 import { getCtimeOrNow, getMtimeOrNow, getRelativePathToIssueDir } from '../utils/fileUtils';
 import { FileAccessTracker } from '../services/FileAccessTracker';
 import { getAssociatedFiles } from '../data/treeManager';
@@ -397,8 +397,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   private async createFileTreeItem(fileStat: FileStat): Promise<vscode.TreeItem> {
     const uri = vscode.Uri.file(fileStat.filePath);
     const relativePath = getRelativePathToIssueDir(fileStat.filePath);
-    const cachedTitle = relativePath ? await TitleCacheService.getInstance().get(relativePath) : undefined;
-    const title = cachedTitle || path.basename(fileStat.filePath, '.md');
+    const title = await titleCache.get(fileStat.filePath);
     const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
     item.resourceUri = uri;
     item.command = {

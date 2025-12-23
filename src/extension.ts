@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { ExtensionInitializer } from './core/ExtensionInitializer';
 import { GitSyncService } from './services/GitSyncService';
-import { TitleCacheService } from './services/TitleCacheService';
 import { ChromeIntegrationServer } from './integration/ChromeIntegrationServer';
 import { SharedConfig } from './config/SharedConfig';
 import { IssueFileCompletionProvider } from './providers/IssueFileCompletionProvider';
@@ -16,8 +15,6 @@ export function activate(context: vscode.ExtensionContext) {
 	SharedConfig.initialize(context);
 	
 	const initializer = new ExtensionInitializer(context);
-	// 预加载标题缓存（不阻塞激活流程）
-	void TitleCacheService.getInstance().preload();
 	// 预加载笔记映射服务（不阻塞激活流程）
 	void NoteMappingService.getInstance().preload();
 	// 初始化编辑器映射上下文更新器

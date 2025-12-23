@@ -41,7 +41,7 @@ import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from '../data/titleCache';
 import { registerEditNoteMappingCommand } from '../commands/editNoteMapping';
 import { registerAddWorkspaceMappingCommand } from '../commands/addWorkspaceMapping';
 import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspaceMapping';
@@ -315,15 +315,6 @@ export class CommandRegistry extends BaseCommandRegistry {
                 await createIssueFromHtml(params as CreateIssueFromHtmlParams);
             },
             '从 HTML 创建问题'
-        );
-
-
-        this.registerCommand(
-            'issueManager.refreshTitle',
-            async () => {
-                TitleCacheService.getInstance().forceRebuild();
-            },
-            '重新渲染标题'
         );
 
         // 显示问题关系图命令

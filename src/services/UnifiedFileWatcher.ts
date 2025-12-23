@@ -64,7 +64,6 @@ export class UnifiedFileWatcher implements vscode.Disposable {
     
     // 回调函数注册表 - 使用 Set 防止重复注册
     private mdChangeCallbacks: Set<FileWatcherCallback> = new Set();
-    private titleCacheCallbacks: Set<FileWatcherCallback> = new Set();
     private paraCacheCallbacks: Set<FileWatcherCallback> = new Set();
     private issueManagerCallbacks: Set<FileWatcherCallback> = new Set();
 
@@ -201,16 +200,7 @@ export class UnifiedFileWatcher implements vscode.Disposable {
 
         this.logger.debug?.(`.issueManager 文件变更: ${fileName} (${type})`);
 
-        // 根据文件类型分发到不同的回调集合
-        if (fileName === 'titleCache.json') {
-            for (const callback of this.titleCacheCallbacks) {
-                try {
-                    await callback(event);
-                } catch (error) {
-                    this.logger.warn('titleCache.json 监听回调执行失败:', error);
-                }
-            }
-        } else if (fileName === 'para.json') {
+        if (fileName === 'para.json') {
             for (const callback of this.paraCacheCallbacks) {
                 try {
                     await callback(event);
@@ -241,21 +231,6 @@ export class UnifiedFileWatcher implements vscode.Disposable {
         return {
             dispose: () => {
                 this.mdChangeCallbacks.delete(callback);
-            }
-        };
-    }
-
-    /**
-     * 注册 titleCache.json 变更监听
-     * 
-     * @param callback 回调函数
-     * @returns Disposable 对象，调用 dispose() 取消订阅
-     */
-    public onTitleCacheChange(callback: FileWatcherCallback): vscode.Disposable {
-        this.titleCacheCallbacks.add(callback);
-        return {
-            dispose: () => {
-                this.titleCacheCallbacks.delete(callback);
             }
         };
     }
@@ -306,7 +281,6 @@ export class UnifiedFileWatcher implements vscode.Disposable {
     public dispose(): void {
         this.cleanup();
         this.mdChangeCallbacks.clear();
-        this.titleCacheCallbacks.clear();
         this.paraCacheCallbacks.clear();
         this.issueManagerCallbacks.clear();
         UnifiedFileWatcher.instance = null;

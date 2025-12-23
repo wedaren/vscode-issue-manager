@@ -517,20 +517,6 @@ export class GitSyncService implements vscode.Disposable {
     }
 
     /**
-     * 刷新问题标题显示。
-     * 
-     * 成功同步后调用 VS Code 命令 `issueManager.refreshTitle` 以更新标题相关 UI。
-     * 使用 try/catch 避免命令执行失败影响主流程。
-     */
-    private async refreshIssueTitles(): Promise<void> {
-        try {
-            await vscode.commands.executeCommand('issueManager.refreshTitle');
-        } catch (err) {
-            Logger.getInstance().debug('刷新问题标题命令调用失败', err);
-        }
-    }
-
-    /**
      * 拉取远程更新并在拉取到更新时刷新问题标题
      *
      * @returns 是否拉取到更新
@@ -538,7 +524,6 @@ export class GitSyncService implements vscode.Disposable {
     private async pullAndRefreshIfNeeded(issueDir: string): Promise<boolean> {
         const isPulled = await GitOperations.pullChanges(issueDir);
         if (isPulled) {
-            await this.refreshIssueTitles();
         }
         return isPulled;
     }

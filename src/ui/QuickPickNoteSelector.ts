@@ -3,6 +3,7 @@ import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
 import { getFlatTree, FlatTreeNode } from '../data/treeManager';
+import { titleCache } from '../data/titleCache';
 
 /**
  * QuickPick 项
@@ -43,7 +44,7 @@ export class QuickPickNoteSelector {
 
     // 添加现有 issue
     for (const issueId of issueIds) {
-      const title = await this.mappingService.getIssueTitle(issueId);
+      const title = await titleCache.getByIssueId(issueId);
       
       items.push({
         label: `$(file) ${title}`,

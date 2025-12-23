@@ -9,7 +9,7 @@ import {
 } from '../data/paraManager';
 import { readTree, IssueTreeNode, TreeData, getTreeNodeById, findParentNodeById, getAncestors } from '../data/treeManager';
 import { getIssueDir } from '../config';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from '../data/titleCache';
 import { ParaViewNode } from '../types';
 
 /**
@@ -164,9 +164,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
   const absolutePath = path.join(issueDir, node.filePath);
   const fileUri = vscode.Uri.file(absolutePath);
   // 优先从标题缓存获取，未命中回退到文件名，避免在渲染阶段触发 I/O
-  const titleCache = TitleCacheService.getInstance();
-  const cachedTitle = await titleCache.get(node.filePath);
-  const title = cachedTitle || path.basename(node.filePath, '.md');
+  const title = await titleCache.get(node.filePath);
     
     // 根据是否有子节点决定折叠状态
     const hasChildren = node.children && node.children.length > 0;
@@ -207,7 +205,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     // 顶级（直接挂在分类下）的节点，展示其祖先路径，便于在 PARA 视图中辨识来源
     if (isTopLevel && this.treeData) {
       const ancestors = getAncestors(issueId, this.treeData);
-      const ancestorTitles = await titleCache.getMany(ancestors.map(a => a.filePath));
+      const ancestorTitles = await Promise.all(ancestors.map(a => titleCache.get(a.filePath)));
       if (ancestorTitles.length > 0) {
         item.description = `/ ${ancestorTitles.join(' / ')}`;
       }

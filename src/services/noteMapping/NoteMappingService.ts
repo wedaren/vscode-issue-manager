@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import {
   NoteMapping,
   readMappings,
@@ -9,11 +8,8 @@ import {
 import {
   matchPattern,
   getRelativeToNoteRoot,
-  resolveFromNoteRoot,
-  isPathInNoteRoot,
   normalizePath
 } from '../../utils/pathUtils';
-import { TitleCacheService } from '../TitleCacheService';
 import { getIssueDir } from '../../config';
 // treeManager functions moved to TitleCacheService for nodeId lookup
 
@@ -26,10 +22,8 @@ export class NoteMappingService {
   private mappings: NoteMapping[] = [];
   private loaded = false;
   private changeListeners: Array<() => void> = [];
-  private titleCache: TitleCacheService;
 
   private constructor() {
-    this.titleCache = TitleCacheService.getInstance();
   }
 
   static getInstance(): NoteMappingService {
@@ -227,43 +221,6 @@ export class NoteMappingService {
     }
   }
 
-  /**
-   * 通过 node.id 查找节点的文件路径
-   * @param nodeId node.id
-   * @returns 相对于 issueDir 的文件路径，找不到返回 undefined
-   */
-  private async getFilePathByNodeId(nodeId: string): Promise<string | undefined> {
-    // 委托给 TitleCacheService（其内部维护 nodeId 缓存）
-    try {
-      return await this.titleCache.getFilePathByNodeId(nodeId as string);
-    } catch (err) {
-      console.error('通过 TitleCacheService 查找节点失败:', err);
-      return undefined;
-    }
-  }
-
-  /**
-   * 获取 issue 的显示标题
-   * @param issueId node.id（节点唯一标识符）
-   */
-  async getIssueTitle(issueId: string): Promise<string> {
-    // issueId 是 node.id，需要查找对应的文件路径
-    const filePath = await this.getFilePathByNodeId(issueId);
-    if (!filePath) {
-      // 找不到节点，返回 issueId 本身
-      return issueId;
-    }
-    
-    // 确保缓存已加载
-    await this.titleCache.preload();
-    const title = await this.titleCache.get(filePath);
-    if (title) {
-      return title;
-    }
-    
-    // 回退到文件名（不含扩展名）
-    return path.basename(filePath, '.md');
-  }
 
   /**
    * 检查文件是否有映射

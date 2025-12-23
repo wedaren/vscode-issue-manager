@@ -96,11 +96,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "issueManager.refreshTitle",
-        "title": "重新渲染标题",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "issueManager.setRecentIssuesViewMode.group",
         "title": "切换为分组视图",
         "icon": "$(list-flat)"
@@ -364,11 +359,6 @@
         "title": "移动到 Archives"
       },
       {
-        "command": "issueManager.reloadTitleCache",
-        "title": "重载标题缓存",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "issueManager.selectLLMModel",
         "title": "选择 AI 模型",
         "category": "Issue Manager",
@@ -510,11 +500,6 @@
           "command": "issueManager.createIssueFromOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
-        },
-        {
-          "command": "issueManager.refreshTitle",
-          "when": "view == issueManager.views.recent || view == issueManager.views.focused",
-          "group": "navigation@2"
         },
         {
           "command": "issueManager.setRecentIssuesViewMode.group",
@@ -1154,11 +1139,6 @@
           "type": "object",
           "default": {},
           "description": "订阅源特定的内容处理配置。这是一个内部配置项，通常通过界面操作进行管理。"
-        },
-        "issueManager.titleCache.rebuildIntervalHours": {
-          "type": "number",
-          "default": 24,
-          "description": "标题缓存自动重建的过期时长（单位：小时）。当 titleCache.json 的最近更新时间超过此时长时，插件将在下次预加载时自动重建缓存。设置为 0 可禁用因过期触发的自动重建（但在缓存文件缺失时仍会重建）。"
         },
         "issueManager.chromeIntegration.enableServer": {
           "type": "boolean",

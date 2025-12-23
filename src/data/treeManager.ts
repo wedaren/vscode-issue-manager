@@ -3,7 +3,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from './titleCache';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -65,7 +65,7 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   
   // 2. 批量获取标题
   const pathArray = Array.from(paths);
-  const titles = await TitleCacheService.getInstance().getMany(pathArray);
+  const titles = await Promise.all(pathArray.map(p => titleCache.get(p)));
   const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
   
   // 3. 递归构建扁平化节点
@@ -614,42 +614,5 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
     await vscode.workspace.fs.writeFile(vscode.Uri.file(quickPickPath), content);
   } catch (error) {
     vscode.window.showErrorMessage(`写入 quickPickData.json 失败: ${error}`);
-  }
-};
-
-/**
- * 读取 titleCache.json 文件，返回 { [filePath]: title }
- */
-export const readTitleCacheJson = async (): Promise<Record<string, string>> => {
-  const issueDir = getIssueDir();
-  if (!issueDir) {
-    return {};
-  }
-  const cachePath = path.join(issueDir, '.issueManager', 'titleCache.json');
-  try {
-    const content = await vscode.workspace.fs.readFile(vscode.Uri.file(cachePath));
-    return JSON.parse(content.toString());
-  } catch (e) {
-    // 错误日志，便于调试缓存文件损坏等问题
-    console.error(`读取或解析 titleCache.json 失败:`, e);
-    return {};
-  }
-};
-
-/**
- * 写入 titleCache.json 文件
- * @param data 标题映射 { [relativePath]: title }
- */
-export const writeTitleCacheJson = async (data: Record<string, string>): Promise<void> => {
-  const issueDir = getIssueDir();
-  if (!issueDir) {
-    return;
-  }
-  const cachePath = path.join(issueDir, '.issueManager', 'titleCache.json');
-  try {
-    const uint8Array = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
-    await vscode.workspace.fs.writeFile(vscode.Uri.file(cachePath), uint8Array);
-  } catch (e) {
-    console.error(`写入 titleCache.json 失败:`, e);
   }
 };
