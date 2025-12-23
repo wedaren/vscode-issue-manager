@@ -110,7 +110,7 @@ export async function moveIssuesTo(selectedNodes: (IssueTreeNode | vscode.TreeIt
         // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
         let description = '';
         if (node.parentPath.length > 0) {
-            const parentTitles = await Promise.all(node.parentPath.map(async n => (await titleCache.get(n.filePath))));
+            const parentTitles = await Promise.all(node.parentPath.map(n => titleCache.get(n.filePath)));
             description = ['', ...parentTitles].join(' / ');
         }
         return {

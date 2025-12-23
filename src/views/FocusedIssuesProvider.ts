@@ -105,7 +105,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
 
     // 生成并设置 description
     const ancestors = getAncestors(realId, this.treeData);
-    const ancestorTitles = await Promise.all(ancestors.map(async a => (await titleCache.get(a.filePath))));
+    const ancestorTitles = await Promise.all(ancestors.map(a => titleCache.get(a.filePath)));
     if (ancestorTitles.length > 0 && isFocusedRootId(element.id)) {
       item.description = `/ ${ancestorTitles.join(' / ')}`;
     }

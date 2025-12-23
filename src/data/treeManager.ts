@@ -65,7 +65,7 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   
   // 2. 批量获取标题
   const pathArray = Array.from(paths);
-  const titles = await Promise.all(pathArray.map(async p => (await titleCache.get(p))));
+  const titles = await Promise.all(pathArray.map(p => titleCache.get(p)));
   const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
   
   // 3. 递归构建扁平化节点

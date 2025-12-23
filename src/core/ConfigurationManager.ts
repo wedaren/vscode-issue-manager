@@ -121,7 +121,7 @@ export class ConfigurationManager {
         // 订阅内存标题缓存写入/更新事件，触发刷新所有视图（加短延迟以合并快速连续更新）
         this.fileWatcherDisposables.push(titleCache.onDidUpdate(() => {
             setTimeout(() => {
-                 vscode.commands.executeCommand('issueManager.refreshAllViews');
+                vscode.commands.executeCommand('issueManager.refreshAllViews');
             }, 100);
         }));
     }

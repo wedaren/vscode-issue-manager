@@ -91,7 +91,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             type: 'parent',
             filePath: parentIssueNode.filePath,
             children: [],
-            tooltip: (await Promise.all(parentNodes.map(async n => await titleCache.get(n.filePath)))).join(' / '),
+            tooltip: (await Promise.all(parentNodes.map(n => titleCache.get(n.filePath)))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
             contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),
