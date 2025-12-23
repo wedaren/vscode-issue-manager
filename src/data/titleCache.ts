@@ -28,6 +28,22 @@ export class TitleCache {
       this._debounceTimer = undefined;
     }, this._debounceMs);
   }
+  private _resolveUri(uriOrPath: vscode.Uri | string): vscode.Uri | undefined {
+    if (uriOrPath instanceof vscode.Uri) {
+      return uriOrPath;
+    }
+
+    if (path.isAbsolute(uriOrPath)) {
+      return vscode.Uri.file(uriOrPath);
+    }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+      Logger.getInstance().warn('[TitleCache] issueDir is not configured, cannot resolve relative path', { path: uriOrPath });
+      return undefined;
+    }
+    return vscode.Uri.file(path.join(issueDir, uriOrPath));
+  }
   /** 当缓存条目被写入或更新时触发（仅 set/update） */
   public readonly onDidUpdate: vscode.Event<void> = this._onDidUpdate.event;
 
@@ -42,22 +58,9 @@ export class TitleCache {
     }
   }
   async get(uriOrPath: vscode.Uri | string): Promise<string> {
-    let uri: vscode.Uri;
-
-    if (typeof uriOrPath === 'string') {
-      // 如果是绝对路径则直接使用，否则当作相对于 issueDir 的相对路径
-      if (path.isAbsolute(uriOrPath)) {
-        uri = vscode.Uri.file(uriOrPath);
-      } else {
-        const issueDir = getIssueDir();
-        if (!issueDir) {
-          Logger.getInstance().warn('[TitleCache] issueDir is not configured for relative path.', { path: uriOrPath });
-          return path.basename(uriOrPath, '.md');
-        }
-        uri = vscode.Uri.file(path.join(issueDir, uriOrPath));
-      }
-    } else {
-      uri = uriOrPath;
+    const uri = this._resolveUri(uriOrPath);
+    if (!uri) {
+      return path.basename(typeof uriOrPath === 'string' ? uriOrPath : uriOrPath.fsPath, '.md');
     }
 
     const key = uri.toString();
@@ -89,20 +92,9 @@ export class TitleCache {
   }
 
   invalidate(uriOrPath: vscode.Uri | string): void {
-    let uri: vscode.Uri;
-
-    if (typeof uriOrPath === 'string') {
-      if (path.isAbsolute(uriOrPath)) {
-        uri = vscode.Uri.file(uriOrPath);
-      } else {
-        const issueDir = getIssueDir();
-        if (!issueDir) {
-          return; // 无法解析相对路径，直接返回
-        }
-        uri = vscode.Uri.file(path.join(issueDir, uriOrPath));
-      }
-    } else {
-      uri = uriOrPath;
+    const uri = this._resolveUri(uriOrPath);
+    if (!uri) {
+      return;
     }
 
     const key = uri.toString();
