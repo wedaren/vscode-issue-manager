@@ -112,9 +112,9 @@ export class TitleCache {
   }
 
   /** 返回当前缓存条目数 */
-  size(): number {
-    return this.cache.size;
-  }
+  get size(): number {  
+    return this.cache.size;  
+  }  
 }
 
 export const titleCache = new TitleCache();
