@@ -13,7 +13,7 @@ import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
-import { IssueTreeNode } from '../data/treeManager';
+import { IssueTreeNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';

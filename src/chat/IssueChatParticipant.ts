@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { createIssueFile } from '../commands/issueFileUtils';
 import { LLMService } from '../llm/LLMService';
-import { getFlatTree } from '../data/treeManager';
+import { getFlatTree } from '../data/issueTreeManager';
 import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 

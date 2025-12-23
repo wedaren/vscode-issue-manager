@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
-import { getFlatTree, FlatTreeNode } from '../data/treeManager';
+import { getFlatTree, FlatTreeNode } from '../data/issueTreeManager';
 import { titleCache } from '../data/titleCache';
 
 /**

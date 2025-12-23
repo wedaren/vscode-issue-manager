@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { BaseCommandRegistry } from './BaseCommandRegistry';
-import { IssueTreeNode, readTree, writeTree, updateNodeExpanded, stripFocusedId } from '../../data/treeManager';
+import { IssueTreeNode, readTree, writeTree, updateNodeExpanded, stripFocusedId } from '../../data/issueTreeManager';
 import { debounce, DebouncedFunction } from '../../utils/debounce';
 import { Logger } from '../utils/Logger';
 

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ParaCategory, readParaCategoryMap } from '../data/paraManager';
-import { stripFocusedId } from '../data/treeManager';
+import { stripFocusedId } from '../data/issueTreeManager';
 import { UnifiedFileWatcher } from './UnifiedFileWatcher';
 
 /**

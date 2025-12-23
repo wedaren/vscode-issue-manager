@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { IssueTreeNode } from '../data/treeManager';
+import { IssueTreeNode } from '../data/issueTreeManager';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
 import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';

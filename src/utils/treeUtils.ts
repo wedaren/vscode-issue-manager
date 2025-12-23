@@ -1,4 +1,4 @@
-import { IssueTreeNode } from '../data/treeManager';
+import { IssueTreeNode } from '../data/issueTreeManager';
 
 /**
  * 类型守卫：判断对象是否为 IssueTreeNode

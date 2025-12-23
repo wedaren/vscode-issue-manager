@@ -3,7 +3,7 @@ import * as path from 'path';
 import { getTitle } from '../utils/markdown';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
-import { readTree, findNodeById } from '../data/treeManager';
+import { readTree, findNodeById } from './issueTreeManager';
 
 
 type CacheEntry = { title: string; mtime: number };

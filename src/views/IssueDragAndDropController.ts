@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { TreeData, IssueTreeNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/treeManager';
+import { TreeData, IssueTreeNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/issueTreeManager';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
 import { RecentIssuesProvider } from './RecentIssuesProvider';

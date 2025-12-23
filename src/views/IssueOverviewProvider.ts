@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById } from '../data/treeManager';
+import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { titleCache } from '../data/titleCache';
 import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';

@@ -7,7 +7,7 @@ import {
   getCategoryLabel,
   getCategoryIcon
 } from '../data/paraManager';
-import { readTree, IssueTreeNode, TreeData, getTreeNodeById, findParentNodeById, getAncestors } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData, getTreeNodeById, findParentNodeById, getAncestors } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { titleCache } from '../data/titleCache';
 import { ParaViewNode } from '../types';
