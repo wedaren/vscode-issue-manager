@@ -4,7 +4,7 @@ import { getIssueDir } from '../config';
 import { getFrontmatter, FrontmatterData } from '../utils/markdown';
 import { titleCache } from '../data/titleCache';
 import { FrontmatterService } from '../services/FrontmatterService';
-import { findParentNodeById } from '../data/treeManager';
+import { findParentNodeById } from '../data/issueTreeManager';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { EditorEventManager } from '../services/EditorEventManager';
 

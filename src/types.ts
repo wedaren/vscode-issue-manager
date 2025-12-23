@@ -5,7 +5,7 @@
  */
 
 import { ParaCategory } from './data/paraManager';
-import { IssueTreeNode } from './data/treeManager';
+import { IssueTreeNode } from './data/issueTreeManager';
 
 /**
  * PARA 视图节点类型

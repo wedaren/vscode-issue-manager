@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/treeManager';
+import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/issueTreeManager';
 import { titleCache } from '../data/titleCache';
 import * as path from 'path';
 import { getIssueDir } from '../config';

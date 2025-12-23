@@ -4,7 +4,7 @@ import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../confi
 import { titleCache } from '../data/titleCache';
 import { getCtimeOrNow, getMtimeOrNow, getRelativePathToIssueDir } from '../utils/fileUtils';
 import { FileAccessTracker } from '../services/FileAccessTracker';
-import { getAssociatedFiles } from '../data/treeManager';
+import { getAssociatedFiles } from '../data/issueTreeManager';
 
 
 /**

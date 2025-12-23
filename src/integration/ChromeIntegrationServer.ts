@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
 import { Logger } from '../core/utils/Logger';
 import { readFocused } from '../data/focusedManager';
-import { readTree, IssueTreeNode } from '../data/treeManager';
+import { readTree, IssueTreeNode } from '../data/issueTreeManager';
 import { titleCache } from '../data/titleCache';
 import * as path from 'path';
 import { getIssueDir } from '../config';

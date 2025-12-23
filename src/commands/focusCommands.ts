@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { addFocus, pinFocus, removeFocus } from '../data/focusedManager';
-import { IssueTreeNode, stripFocusedId, getFlatTree } from '../data/treeManager';
+import { IssueTreeNode, stripFocusedId, getFlatTree } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { addIssueToTree } from './issueFileUtils';
 import { getIssueIdFromUri } from '../utils/uriUtils';

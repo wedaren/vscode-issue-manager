@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { getFlatTree, FlatTreeNode } from '../data/treeManager';
+import { getFlatTree, FlatTreeNode } from '../data/issueTreeManager';
 /**
  * 关注问题视图与问题总览视图搜索命令实现
  */

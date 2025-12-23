@@ -4,7 +4,7 @@
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
+import { readTree, TreeData, IssueTreeNode } from '../data/issueTreeManager';
 import { titleCache } from '../data/titleCache';
 import { getUri } from '../utils/fileUtils';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';

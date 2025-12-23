@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, findNodeById } from '../data/treeManager';
+import { readTree, findNodeById } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 
 /**

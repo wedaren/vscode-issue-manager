@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { BaseCommandRegistry } from './BaseCommandRegistry';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from '../interfaces';
-import { IssueTreeNode } from '../../data/treeManager';
+import { IssueTreeNode } from '../../data/issueTreeManager';
 import { ParaViewProvider } from '../../views/ParaViewProvider';
 
 /**
