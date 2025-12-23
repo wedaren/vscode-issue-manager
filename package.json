@@ -908,9 +908,15 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.createIssueFromFocused",
+        "command": "issueManager.createIssueFromOverview",
         "key": "ctrl+j ctrl+n",
         "mac": "cmd+j cmd+n",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.createIssueFromFocused",
+        "key": "ctrl+j ctrl+m",
+        "mac": "cmd+j cmd+m",
         "when": "issueManager.isDirConfigured"
       },
       {
