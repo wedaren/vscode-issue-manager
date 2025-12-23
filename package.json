@@ -84,7 +84,8 @@
       },
       {
         "command": "issueManager.removeFocus",
-        "title": "移除关注"
+        "title": "移除关注",
+        "icon": "$(trash)"
       },
       {
         "command": "issueManager.pinFocus",
@@ -669,7 +670,12 @@
         },
         {
           "command": "issueManager.copyFilename",
-          "when": "viewItem =~ /(recentIssue|issueNode|focusedNode|focusedNodeFirst|isolatedIssue)/",
+          "when": "viewItem =~ /(recentIssue|issueNode|isolatedIssue)/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.removeFocus",
+          "when": "viewItem =~ /(focusedNode|focusedNodeFirst)/",
           "group": "inline"
         },
         {
