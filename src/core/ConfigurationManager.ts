@@ -4,6 +4,7 @@ import { titleCache } from '../data/titleCache';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
+import { frontmatterCache } from '../data/frontmatterCache';
 
 const DEBOUNCE_REFRESH_DELAY_MS = 500;
 
@@ -115,6 +116,7 @@ export class ConfigurationManager {
 
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
         fileWatcher.onMarkdownChange((e) => {
+            frontmatterCache.get(e.uri); // 预热 frontmatter 缓存
             titleCache.get(e.uri); // 预热标题缓存
         });
 
