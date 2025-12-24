@@ -84,7 +84,8 @@
       },
       {
         "command": "issueManager.removeFocus",
-        "title": "移除关注"
+        "title": "移除关注",
+        "icon": "$(trash)"
       },
       {
         "command": "issueManager.pinFocus",
@@ -669,7 +670,12 @@
         },
         {
           "command": "issueManager.copyFilename",
-          "when": "viewItem =~ /(recentIssue|issueNode|focusedNode|focusedNodeFirst|isolatedIssue)/",
+          "when": "viewItem =~ /(recentIssue|issueNode|isolatedIssue)/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.removeFocus",
+          "when": "viewItem =~ /(focusedNode|focusedNodeFirst)/",
           "group": "inline"
         },
         {
@@ -902,9 +908,15 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.createIssueFromFocused",
+        "command": "issueManager.createIssueFromOverview",
         "key": "ctrl+j ctrl+n",
         "mac": "cmd+j cmd+n",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.createIssueFromFocused",
+        "key": "ctrl+j ctrl+m",
+        "mac": "cmd+j cmd+m",
         "when": "issueManager.isDirConfigured"
       },
       {
