@@ -1,8 +1,8 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { getFrontmatter, FrontmatterData } from '../utils/markdown';
-import { getIssueDir } from '../config';
-import { Logger } from '../core/utils/Logger';
+import * as vscode from "vscode";
+import * as path from "path";
+import { getFrontmatter, FrontmatterData } from "../utils/markdown";
+import { getIssueDir } from "../config";
+import { Logger } from "../core/utils/Logger";
 
 type CacheEntry = { data: FrontmatterData | null; mtime: number };
 
@@ -21,19 +21,33 @@ export class FrontmatterCache {
       clearTimeout(this._debounceTimer);
     }
     this._debounceTimer = setTimeout(() => {
-      try { this._onDidUpdate.fire(); } catch {}
+      try {
+        this._onDidUpdate.fire();
+      } catch (e) {
+        Logger.getInstance().warn(
+          "onDidUpdate event listener threw an error",
+          e
+        );
+      }
       this._debounceTimer = undefined;
     }, this._debounceMs);
   }
 
   private _resolveUri(uriOrPath: vscode.Uri | string): vscode.Uri | undefined {
-    if (uriOrPath instanceof vscode.Uri) { return uriOrPath; }
+    if (uriOrPath instanceof vscode.Uri) {
+      return uriOrPath;
+    }
 
-    if (path.isAbsolute(uriOrPath)) { return vscode.Uri.file(uriOrPath); }
+    if (path.isAbsolute(uriOrPath)) {
+      return vscode.Uri.file(uriOrPath);
+    }
 
     const issueDir = getIssueDir();
     if (!issueDir) {
-      Logger.getInstance().warn('[FrontmatterCache] issueDir is not configured, cannot resolve relative path', { path: uriOrPath });
+      Logger.getInstance().warn(
+        "[FrontmatterCache] issueDir is not configured, cannot resolve relative path",
+        { path: uriOrPath }
+      );
       return undefined;
     }
     return vscode.Uri.file(path.join(issueDir, uriOrPath));
@@ -43,9 +57,13 @@ export class FrontmatterCache {
   public readonly onDidUpdate: vscode.Event<void> = this._onDidUpdate.event;
 
   /** 获取指定文件的 frontmatter（缓存旁路） */
-  public async get(uriOrPath: vscode.Uri | string): Promise<FrontmatterData | null> {
+  public async get(
+    uriOrPath: vscode.Uri | string
+  ): Promise<FrontmatterData | null> {
     const uri = this._resolveUri(uriOrPath);
-    if (!uri) { return null; }
+    if (!uri) {
+      return null;
+    }
 
     const key = uri.toString();
 
@@ -61,24 +79,32 @@ export class FrontmatterCache {
       const data = await getFrontmatter(uri);
       this.cache.set(key, { data, mtime });
       this.scheduleOnDidUpdate();
-      Logger.getInstance().debug('[FrontmatterCache] set', { uri: key, size: this.cache.size });
+      Logger.getInstance().debug("[FrontmatterCache] set", {
+        uri: key,
+        size: this.cache.size,
+      });
       return data;
     } catch (err) {
-      // 如果无法 stat（例如文件不存在），直接尝试读取 frontmatter
-      try {
-        return await getFrontmatter(uri);
-      } catch (e) {
-        return null;
-      }
+      this.cache.delete(key);
+      Logger.getInstance().debug(
+        "[FrontmatterCache] stat failed, entry removed",
+        { uri: key, size: this.cache.size }
+      );
+      return null;
     }
   }
 
   public invalidate(uriOrPath: vscode.Uri | string): void {
     const uri = this._resolveUri(uriOrPath);
-    if (!uri) { return; }
+    if (!uri) {
+      return;
+    }
     const key = uri.toString();
     this.cache.delete(key);
-    Logger.getInstance().debug('[FrontmatterCache] invalidate', { uri: key, size: this.cache.size });
+    Logger.getInstance().debug("[FrontmatterCache] invalidate", {
+      uri: key,
+      size: this.cache.size,
+    });
   }
 
   public clear(): void {
@@ -87,10 +113,14 @@ export class FrontmatterCache {
       clearTimeout(this._debounceTimer);
       this._debounceTimer = undefined;
     }
-    Logger.getInstance().debug('[FrontmatterCache] clear', { size: this.cache.size });
+    Logger.getInstance().debug("[FrontmatterCache] clear", {
+      size: this.cache.size,
+    });
   }
 
-  get size(): number { return this.cache.size; }
+  get size(): number {
+    return this.cache.size;
+  }
 }
 
 export const frontmatterCache = new FrontmatterCache();

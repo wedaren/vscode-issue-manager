@@ -69,7 +69,7 @@ export class TitleCache {
    * @param fileUri 文件的 URI。
    * @returns 解析出的标题。
    */
-   async getTitle(fileUri: vscode.Uri): Promise<string> {
+  async getTitle(fileUri: vscode.Uri): Promise<string> {
     try {
       // 1) 优先从 frontmatter 中读取 issue_title
       const fm = await frontmatterCache.get(fileUri);
@@ -90,7 +90,7 @@ export class TitleCache {
         return titleFromContent;
       }
     } catch (error) {
-      console.error(`读取文件时出错 ${fileUri.fsPath}:`, error);
+      Logger.getInstance().error(`读取文件时出错 ${fileUri.fsPath}:`, error);
     }
     // 3) 使用文件名作为后备
     return path.basename(fileUri.fsPath, ".md");
