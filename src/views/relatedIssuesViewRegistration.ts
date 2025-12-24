@@ -40,7 +40,7 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   // 注册解锁命令
   context.subscriptions.push(vscode.commands.registerCommand('issueManager.unpinRelatedView', () => {
     updatePinContext(false);
-    vscode.window.showInformationMessage('已解锁相关联问题视图，内容将根据上下文自动刷新。');
+    // 已解锁相关联问题视图，内容将根据上下文自动刷新。
     // 解锁后立即刷新为当前上下文
     relatedIssuesProvider.updateContext(vscode.window.activeTextEditor?.document.uri);
   }));
