@@ -3,6 +3,21 @@ import { getMarkdownIssues } from '../data/markdownIssues';
 import { Logger } from '../core/utils/Logger';
 
 export class LLMService {
+    private static async _aggregateStream(stream: AsyncIterable<unknown>, signal?: AbortSignal): Promise<string> {
+        const fragments: string[] = [];
+        for await (const fragment of stream) {
+            if (signal?.aborted) {
+                throw new Error('请求已取消');
+            }
+            if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
+                fragments.push((fragment as any).value as string);
+            } else {
+                fragments.push(String(fragment));
+            }
+        }
+        return fragments.join('');
+    }
+
     private static async selectModel(options?: { signal?: AbortSignal }): Promise<vscode.LanguageModelChat | undefined> {
         const config = vscode.workspace.getConfiguration('issueManager');
         const preferredFamily = config.get<string>('llm.modelFamily') || 'gpt-4.1';
@@ -83,20 +98,7 @@ ${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })),
             const response = await model.sendRequest([
                 vscode.LanguageModelChatMessage.User(prompt)
             ]);
-            const fragments: string[] = [];
-            for await (const fragment of response.stream) {
-                if (options?.signal?.aborted) {
-                    throw new Error('请求已取消');
-                }
-                // 确保 fragment 是一个对象并且有 value 属性
-                if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
-                    fragments.push(fragment.value as string);
-                } else {
-                    // 如果 fragment 不是预期的对象，作为字符串直接添加（以防万一）
-                    fragments.push(fragment as string);
-                }
-            }
-            const fullResponse = fragments.join('');
+            const fullResponse = await this._aggregateStream(response.stream, options?.signal);
 
             Logger.getInstance().info('LLM Raw Response:', fullResponse); // 打印原始响应
 
@@ -159,20 +161,7 @@ ${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })),
             const response = await model.sendRequest([
                 vscode.LanguageModelChatMessage.User(prompt)
             ]);
-
-            const fragments: string[] = [];
-            for await (const fragment of response.stream) {
-                if (options?.signal?.aborted) {
-                    throw new Error('请求已取消');
-                }
-                if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
-                    fragments.push(fragment.value as string);
-                } else {
-                    fragments.push(fragment as string);
-                }
-            }
-
-            const fullResponse = fragments.join('');
+            const fullResponse = await this._aggregateStream(response.stream, options?.signal);
             Logger.getInstance().info('LLM generateTitle Raw Response:', fullResponse);
 
             // 1) 优先尝试提取 ```json``` 区块中的 JSON
@@ -263,19 +252,7 @@ ${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })),
                 vscode.LanguageModelChatMessage.User(`用户主题：${prompt}`)
             ]);
 
-            const fragments: string[] = [];
-            for await (const fragment of response.stream) {
-                if (options?.signal?.aborted) {
-                    throw new Error('请求已取消');
-                }
-                if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
-                    fragments.push(fragment.value as string);
-                } else {
-                    fragments.push(fragment as string);
-                }
-            }
-
-            const fullResponse = fragments.join('');
+            const fullResponse = await this._aggregateStream(response.stream, options?.signal);
             Logger.getInstance().debug('LLM generateDocument Raw Response:', fullResponse);
 
             // 清理可能存在的 Markdown 代码块标记
@@ -342,22 +319,10 @@ ${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })),
                 vscode.LanguageModelChatMessage.User(`原文：${text}`)
             ]);
 
-            const fragments: string[] = [];
-            for await (const fragment of response.stream) {
-                if (options?.signal?.aborted) {
-                    throw new Error('请求已取消');
-                }
-                if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
-                    fragments.push(fragment.value as string);
-                } else {
-                    fragments.push(fragment as string);
-                }
-            }
-
-            const full = fragments.join('');
+            const full = await this._aggregateStream(response.stream, options?.signal);
 
             // 清理可能的 ```markdown ``` 包裹
-            const codeBlockMatch = full.match(/^```(?:markdown)?\s*([\s\S]*?)\s*```$/i);
+            const codeBlockMatch = full.match(/```(?:markdown)?\s*([\s\S]*?)\s*```/i);
             const clean = codeBlockMatch && codeBlockMatch[1] ? codeBlockMatch[1] : full;
 
             return clean.trim();
