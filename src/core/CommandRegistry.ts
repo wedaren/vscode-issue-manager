@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree } from '../data/treeManager';
+import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById } from '../data/issueTreeManager';
 import { isIssueTreeNode } from '../utils/treeUtils';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
@@ -34,14 +34,21 @@ import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIs
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
-import { addIssueToTree } from '../commands/issueFileUtils';
 import { moveIssuesTo } from '../commands/moveTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
+import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
+import { titleCache } from '../data/titleCache';
+import { registerEditNoteMappingCommand } from '../commands/editNoteMapping';
+import { registerAddWorkspaceMappingCommand } from '../commands/addWorkspaceMapping';
+import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspaceMapping';
+import { registerAddFileMappingCommand } from '../commands/addFileMapping';
+import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
+import { registerOpenNoteByNodeIdCommand } from '../commands/openNoteByNodeId';
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
-import { TitleCacheService } from '../services/TitleCacheService';
 
 
 
@@ -125,6 +132,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
         issueStructureProvider: IssueStructureProvider,
+        issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
         paraView?: vscode.TreeView<ParaViewNode>
     ): void {
@@ -187,11 +195,17 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 7. 注册结构视图命令
             this.registerStructureViewCommands(issueStructureProvider);
 
-            // 8. 注册 PARA 视图命令
+            // 8. 注册逻辑树视图命令
+            this.registerLogicalTreeViewCommands(issueLogicalTreeProvider);
+
+            // 9. 注册 PARA 视图命令
             this.registerParaCommands();
 
-            // 9. 注册 LLM 相关命令
+            // 10. 注册 LLM 相关命令
             this.registerLLMCommands();
+
+            // 11. 注册笔记映射命令
+            this.registerNoteMappingCommands();
 
             this.logger.info('✅ 所有命令注册完成');
 
@@ -234,6 +248,44 @@ export class CommandRegistry extends BaseCommandRegistry {
             '移动问题'
         );
 
+        // 从编辑器移动问题命令
+        this.registerCommand(
+            'issueManager.moveToFromEditor',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showErrorMessage('未找到活动的编辑器。');
+                    return;
+                }
+
+                const uri = editor.document.uri;
+                const issueId = getIssueIdFromUri(uri);
+                
+                if (!issueId) {
+                    vscode.window.showWarningMessage('当前文档不包含问题 ID，无法执行移动操作。');
+                    return;
+                }
+
+                try {
+                    // 从树结构中查找节点
+                    const tree = await readTree();
+                    const result = findNodeById(tree.rootNodes, issueId);
+                    
+                    if (!result) {
+                        vscode.window.showWarningMessage('未在问题树中找到当前问题的节点。');
+                        return;
+                    }
+
+                    // 调用移动命令
+                    await moveIssuesTo([result.node]);
+                } catch (error) {
+                    this.logger.error('从编辑器移动问题失败', error);
+                    vscode.window.showErrorMessage(`移动问题失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                }
+            },
+            '从编辑器移动问题'
+        );
+
         // 添加问题到树命令
         this.registerCommand(
             'issueManager.addIssueToTree',
@@ -264,15 +316,6 @@ export class CommandRegistry extends BaseCommandRegistry {
                 await createIssueFromHtml(params as CreateIssueFromHtmlParams);
             },
             '从 HTML 创建问题'
-        );
-
-
-        this.registerCommand(
-            'issueManager.refreshTitle',
-            async () => {
-                TitleCacheService.getInstance().forceRebuild();
-            },
-            '重新渲染标题'
         );
 
         // 显示问题关系图命令
@@ -450,6 +493,48 @@ export class CommandRegistry extends BaseCommandRegistry {
                 issueStructureProvider.refresh();
             },
             '刷新结构视图'
+        );
+    }
+
+    /**
+     * 注册逻辑树视图命令
+     * @param issueLogicalTreeProvider 问题逻辑树视图提供者
+     */
+    private registerLogicalTreeViewCommands(issueLogicalTreeProvider: IssueLogicalTreeProvider): void {
+        this.logger.info('🌲 注册逻辑树视图命令...');
+
+        this.registerCommand(
+            'issueManager.logicalTree.refresh',
+            () => {
+                issueLogicalTreeProvider.refresh();
+            },
+            '刷新逻辑树视图'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.createRoot',
+            async () => {
+                await issueLogicalTreeProvider.createRootForCurrentFile();
+            },
+            '为当前文件创建根节点'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.addChild',
+            async (...args: unknown[]) => {
+                const node = args[0] as IssueLogicalTreeNode | undefined;
+                await issueLogicalTreeProvider.addChild(node);
+            },
+            '添加子节点到逻辑树'
+        );
+
+        this.registerCommand(
+            'issueManager.logicalTree.removeNode',
+            async (...args: unknown[]) => {
+                const node = args[0] as IssueLogicalTreeNode | undefined;
+                await issueLogicalTreeProvider.removeNode(node);
+            },
+            '从逻辑树移除节点'
         );
     }
 
@@ -768,5 +853,19 @@ export class CommandRegistry extends BaseCommandRegistry {
         );
 
         // note: copilotDiffSaveResult command was removed per user request
+    }
+
+    /**
+     * 注册笔记映射命令
+     */
+    private registerNoteMappingCommands(): void {
+        this.logger.info('🔗 注册笔记映射命令...');
+
+        registerEditNoteMappingCommand(this.context);
+        registerAddWorkspaceMappingCommand(this.context);
+        registerRemoveWorkspaceMappingCommand(this.context);
+        registerAddFileMappingCommand(this.context);
+        registerRemoveFileMappingCommand(this.context);
+        registerOpenNoteByNodeIdCommand(this.context);
     }
 }

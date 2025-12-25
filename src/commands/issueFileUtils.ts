@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { generateFileName } from '../utils/fileUtils';
-import { readTree, addNode, writeTree, IssueTreeNode } from '../data/treeManager';
+import { readTree, addNode, writeTree, IssueTreeNode } from '../data/issueTreeManager';
 import { addFocus } from '../data/focusedManager';
 
 /**

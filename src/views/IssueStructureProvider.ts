@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { getFrontmatter, FrontmatterData } from '../utils/markdown';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from '../data/titleCache';
 import { FrontmatterService } from '../services/FrontmatterService';
-import { findParentNodeById } from '../data/treeManager';
+import { findParentNodeById } from '../data/issueTreeManager';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { EditorEventManager } from '../services/EditorEventManager';
 
@@ -462,9 +462,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             // 检查文件是否存在
             await vscode.workspace.fs.stat(fileUri);
             
-            // 获取文件标题（缓存优先）
-            const cachedTitle = await TitleCacheService.getInstance().get(fileName);
-            const title = cachedTitle || path.basename(fileName, '.md');
+            const title = await titleCache.get(fileName);
             
             // 获取 frontmatter
             const frontmatter = await getFrontmatter(fileUri);

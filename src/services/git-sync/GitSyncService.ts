@@ -293,15 +293,14 @@ export class GitSyncService implements vscode.Disposable {
         this.setStatus({ status: SyncStatus.Syncing, message: '正在初始化同步...' });
 
         try {
-            await GitOperations.pullChanges(issueDir);
+            await this.pullAndRefreshIfNeeded(issueDir);
+
             this.setStatus({ 
                 status: SyncStatus.Synced, 
                 message: '初始化同步完成', 
                 lastSync: new Date() 
             });
             this.notificationManager.info('初始化同步完成');
-            // 初始化同步成功后刷新问题标题
-            await this.refreshIssueTitles();
         } catch (error) {
             this.notificationManager.error('初始化同步失败', error);
             this.handleSyncError(error);
@@ -327,7 +326,7 @@ export class GitSyncService implements vscode.Disposable {
                 'auto-sync',
                 async () => {
                     // 先拉取
-                    await GitOperations.pullChanges(issueDir);
+                    await this.pullAndRefreshIfNeeded(issueDir);
                     
                     // 检查是否有本地更改
                     if (await GitOperations.hasLocalChanges(issueDir)) {
@@ -382,7 +381,7 @@ export class GitSyncService implements vscode.Disposable {
             await this.retryManager.executeWithRetry(
                 'periodic-pull',
                 async () => {
-                    await GitOperations.pullChanges(issueDir);
+                    await this.pullAndRefreshIfNeeded(issueDir);
                 },
                 (attempt, nextDelay) => {
                     // 周期性拉取失败时的重试，不需要显示通知
@@ -398,8 +397,6 @@ export class GitSyncService implements vscode.Disposable {
                     message: '已是最新状态', 
                     lastSync: new Date() 
                 });
-                // 周期性拉取后若是最新状态也刷新标题
-                await this.refreshIssueTitles();
             }
         } catch (error) {
             // 周期性拉取失败不应该触发冲突模式，只记录错误
@@ -459,8 +456,8 @@ export class GitSyncService implements vscode.Disposable {
 
         try {
             // 拉取
-            await GitOperations.pullChanges(issueDir);
-            
+            await this.pullAndRefreshIfNeeded(issueDir);
+
             // 提交并推送（如果有更改）
             if (await GitOperations.hasLocalChanges(issueDir)) {
                 await GitOperations.commitAndPushChanges(issueDir);
@@ -473,7 +470,6 @@ export class GitSyncService implements vscode.Disposable {
             });
             vscode.window.showInformationMessage('同步完成');
             // 手动同步成功后刷新问题标题
-            await this.refreshIssueTitles();
         } catch (error) {
             this.handleSyncError(error);
             vscode.window.showErrorMessage(`同步失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -521,17 +517,15 @@ export class GitSyncService implements vscode.Disposable {
     }
 
     /**
-     * 刷新问题标题显示。
-     * 
-     * 成功同步后调用 VS Code 命令 `issueManager.refreshTitle` 以更新标题相关 UI。
-     * 使用 try/catch 避免命令执行失败影响主流程。
+     * 拉取远程更新并在拉取到更新时刷新问题标题
+     *
+     * @returns 是否拉取到更新
      */
-    private async refreshIssueTitles(): Promise<void> {
-        try {
-            await vscode.commands.executeCommand('issueManager.refreshTitle');
-        } catch (err) {
-            Logger.getInstance().debug('刷新问题标题命令调用失败', err);
+    private async pullAndRefreshIfNeeded(issueDir: string): Promise<boolean> {
+        const isPulled = await GitOperations.pullChanges(issueDir);
+        if (isPulled) {
         }
+        return isPulled;
     }
 
     /**

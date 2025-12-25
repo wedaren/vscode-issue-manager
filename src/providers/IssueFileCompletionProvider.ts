@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getFlatTree, FlatTreeNode, FocusedData } from '../data/treeManager';
+import { getFlatTree, FlatTreeNode, FocusedData } from '../data/issueTreeManager';
 import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completionUtils';
 import { getIssueDir } from '../config';
 import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';

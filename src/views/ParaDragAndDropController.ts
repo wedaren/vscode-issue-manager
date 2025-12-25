@@ -4,7 +4,7 @@ import {
   ParaCategory,
   getCategoryLabel
 } from '../data/paraManager';
-import { readTree, IssueTreeNode, TreeData } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData } from '../data/issueTreeManager';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { ParaViewNode } from '../types';
 

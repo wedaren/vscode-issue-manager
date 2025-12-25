@@ -4,8 +4,8 @@
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode } from '../data/treeManager';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { readTree, TreeData, IssueTreeNode } from '../data/issueTreeManager';
+import { titleCache } from '../data/titleCache';
 import { getUri } from '../utils/fileUtils';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
@@ -83,8 +83,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         const parentIssueNode = parentNodes.pop();
         // 辅助方法：获取节点标题（缓存优先，未命中回退为文件名）
         const getNodeTitle = async (n: IssueTreeNode) => {
-            const cached = await TitleCacheService.getInstance().get(n.filePath);
-            return cached || path.basename(n.filePath, '.md');
+            return titleCache.get(n.filePath);
         };
 
         const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
@@ -92,7 +91,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             type: 'parent',
             filePath: parentIssueNode.filePath,
             children: [],
-            tooltip: (await TitleCacheService.getInstance().getMany(parentNodes.map(n => n.filePath))).join(' / '),
+            tooltip: (await Promise.all(parentNodes.map(n => titleCache.get(n.filePath)))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
             contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),

@@ -236,6 +236,7 @@ export class ExtensionInitializer {
                 views.overviewView,
                 views.focusedView,
                 views.issueStructureProvider,
+                views.issueLogicalTreeProvider,
                 views.paraViewProvider,
                 views.paraView
             );

@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
-import { IssueTreeNode } from '../data/treeManager';
+import { IssueTreeNode } from '../data/issueTreeManager';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
+import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
+import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaViewNode } from '../types';
 
@@ -98,11 +100,23 @@ export interface IViewRegistryResult {
     /** 问题结构树视图实例 */
     structureView: vscode.TreeView<vscode.TreeItem>;
     
+    /** 问题逻辑树视图提供者实例（基于 issue_ frontmatter 字段）*/
+    issueLogicalTreeProvider: IssueLogicalTreeProvider;
+    
+    /** 问题逻辑树视图实例 */
+    logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
+    
     /** PARA 视图提供者实例 */
     paraViewProvider: ParaViewProvider;
     
     /** PARA 树视图实例 */
     paraView: vscode.TreeView<ParaViewNode>;
+    
+    /** 笔记映射视图提供者实例 */
+    noteMappingProvider: IIssueViewProvider<vscode.TreeItem>;
+    
+    /** 笔记映射树视图实例 */
+    noteMappingView: vscode.TreeView<vscode.TreeItem>;
 }
 
 /**

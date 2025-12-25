@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getUri } from '../utils/fileUtils';
 import { getIssueDir, getFocusedMaxItems } from '../config';
-import { FocusedData } from './treeManager';
+import { FocusedData } from './issueTreeManager';
 import { getCategoryIcon, ParaCategory } from './paraManager';
 import { ChromeIntegrationServer } from '../integration/ChromeIntegrationServer';
 import { Logger } from '../core/utils/Logger';

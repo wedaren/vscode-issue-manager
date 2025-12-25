@@ -6,8 +6,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
 import { Logger } from '../core/utils/Logger';
 import { readFocused } from '../data/focusedManager';
-import { readTree, IssueTreeNode } from '../data/treeManager';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { readTree, IssueTreeNode } from '../data/issueTreeManager';
+import { titleCache } from '../data/titleCache';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { SharedConfig } from '../config/SharedConfig';
@@ -248,12 +248,10 @@ export class ChromeIntegrationServer {
               };
               collectMap(treeData.rootNodes);
 
-              // 获取标题缓存服务
-              const titleCache = TitleCacheService.getInstance();
               
               // 递归构建树节点，包含子节点和 markdown 内容
               const buildTreeNode = async (node: IssueTreeNode): Promise<any> => {
-                const title = await titleCache.get(node.filePath) ?? path.basename(node.filePath, '.md');
+                const title = await titleCache.get(node.filePath);
                 const absolutePath = path.join(issueDir, node.filePath);
                 
                 // 读取 markdown 文件内容

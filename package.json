@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "0.2.18",
+  "version": "3.0.3",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -84,7 +84,8 @@
       },
       {
         "command": "issueManager.removeFocus",
-        "title": "移除关注"
+        "title": "移除关注",
+        "icon": "$(trash)"
       },
       {
         "command": "issueManager.pinFocus",
@@ -93,11 +94,6 @@
       {
         "command": "issueManager.refreshAllViews",
         "title": "刷新",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "issueManager.refreshTitle",
-        "title": "重新渲染标题",
         "icon": "$(refresh)"
       },
       {
@@ -168,6 +164,10 @@
       },
       {
         "command": "issueManager.moveTo",
+        "title": "移动到..."
+      },
+      {
+        "command": "issueManager.moveToFromEditor",
         "title": "移动到..."
       },
       {
@@ -277,6 +277,26 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "issueManager.logicalTree.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.logicalTree.createRoot",
+        "title": "创建根节点",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.logicalTree.addChild",
+        "title": "添加子节点",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.logicalTree.removeNode",
+        "title": "从层级树移除",
+        "icon": "$(trash)"
+      },
+      {
         "command": "issueManager.para.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
@@ -340,11 +360,6 @@
         "title": "移动到 Archives"
       },
       {
-        "command": "issueManager.reloadTitleCache",
-        "title": "重载标题缓存",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "issueManager.selectLLMModel",
         "title": "选择 AI 模型",
         "category": "Issue Manager",
@@ -373,6 +388,35 @@
         "title": "显示思维导图",
         "category": "Issue Manager",
         "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "issueManager.addWorkspaceMapping",
+        "title": "添加工作区笔记映射",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.removeWorkspaceMapping",
+        "title": "移除工作区笔记映射",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.addFileMapping",
+        "title": "添加文件笔记映射",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.removeFileMapping",
+        "title": "移除文件笔记映射",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.editNoteMapping",
+        "title": "编辑笔记映射",
+        "category": "Issue Manager"
       }
     ],
     "submenus": [
@@ -436,6 +480,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "issueManager.addWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping",
+          "group": "navigation@1"
+        },
+        {
           "command": "issueManager.searchIssuesInOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
@@ -464,11 +513,6 @@
           "command": "issueManager.createIssueFromOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
-        },
-        {
-          "command": "issueManager.refreshTitle",
-          "when": "view == issueManager.views.recent || view == issueManager.views.focused",
-          "group": "navigation@2"
         },
         {
           "command": "issueManager.setRecentIssuesViewMode.group",
@@ -537,6 +581,16 @@
           "group": "navigation@1"
         },
         {
+          "command": "issueManager.logicalTree.refresh",
+          "when": "view == issueManager.views.logicalTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.logicalTree.addChild",
+          "when": "view == issueManager.views.logicalTree",
+          "group": "navigation@2"
+        },
+        {
           "command": "issueManager.para.refresh",
           "when": "view == issueManager.views.para",
           "group": "navigation@1"
@@ -561,6 +615,26 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "issueManager.addWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == workspaceMapping",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.removeWorkspaceMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == workspaceIssue",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.addFileMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == fileMapping",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.removeFileMapping",
+          "when": "view == issueManager.views.noteMapping && viewItem == fileIssue",
+          "group": "inline@1"
+        },
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/",
@@ -608,7 +682,12 @@
         },
         {
           "command": "issueManager.copyFilename",
-          "when": "viewItem =~ /(recentIssue|issueNode|focusedNode|focusedNodeFirst|isolatedIssue)/",
+          "when": "viewItem =~ /(recentIssue|issueNode|isolatedIssue)/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.removeFocus",
+          "when": "viewItem =~ /(focusedNode|focusedNodeFirst)/",
           "group": "inline"
         },
         {
@@ -760,6 +839,16 @@
           "command": "issueManager.para.moveToResources",
           "when": "view == 'issueManager.views.para' && viewItem == 'paraIssue-archives'",
           "group": "para@3"
+        },
+        {
+          "command": "issueManager.logicalTree.addChild",
+          "when": "view == issueManager.views.logicalTree && viewItem =~ /issueLogical/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.logicalTree.removeNode",
+          "when": "view == issueManager.views.logicalTree && viewItem =~ /issueLogical/",
+          "group": "modification@1"
         }
       ],
       "editor/context": [
@@ -792,12 +881,24 @@
           "command": "issueManager.createSubIssueFromEditor",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@6"
+        },
+        {
+          "command": "issueManager.moveToFromEditor",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
+          "group": "0_issueManager@7"
+        },
+        {
+          "command": "issueManager.addFileMapping",
+          "when": "issueManager.isDirConfigured",
+          "group": "1_noteMapping@1"
         }
       ]
     },
     "keybindings": [
       {
         "command": "issueManager.openFocusedView",
+        "key": "ctrl+j ctrl+i",
+        "mac": "cmd+j cmd+i",
         "key": "ctrl+j ctrl+i",
         "mac": "cmd+j cmd+i",
         "when": "issueManager.isDirConfigured"
@@ -821,13 +922,21 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.createIssueFromFocused",
+        "command": "issueManager.createIssueFromOverview",
         "key": "ctrl+j ctrl+n",
         "mac": "cmd+j cmd+n",
         "when": "issueManager.isDirConfigured"
       },
       {
+        "command": "issueManager.createIssueFromFocused",
+        "key": "ctrl+j ctrl+m",
+        "mac": "cmd+j cmd+m",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
         "command": "issueManager.searchIssuesInFocused",
+        "key": "ctrl+j ctrl+f",
+        "mac": "cmd+j cmd+f",
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured"
@@ -854,6 +963,12 @@
         "command": "issueManager.createIssueFromClipboard",
         "key": "ctrl+j ctrl+b",
         "mac": "cmd+j cmd+b",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.addWorkspaceMapping",
+        "key": "ctrl+j ctrl+w",
+        "mac": "cmd+j cmd+w",
         "when": "issueManager.isDirConfigured"
       }
     ],
@@ -1059,11 +1174,6 @@
           "default": {},
           "description": "订阅源特定的内容处理配置。这是一个内部配置项，通常通过界面操作进行管理。"
         },
-        "issueManager.titleCache.rebuildIntervalHours": {
-          "type": "number",
-          "default": 24,
-          "description": "标题缓存自动重建的过期时长（单位：小时）。当 titleCache.json 的最近更新时间超过此时长时，插件将在下次预加载时自动重建缓存。设置为 0 可禁用因过期触发的自动重建（但在缓存文件缺失时仍会重建）。"
-        },
         "issueManager.chromeIntegration.enableServer": {
           "type": "boolean",
           "default": true,
@@ -1117,6 +1227,31 @@
           "type": "string",
           "default": "gpt-4.1",
           "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
+        },
+        "issueManager.noteMapping.fallbackBehavior": {
+          "type": "string",
+          "default": "ask",
+          "enum": [
+            "none",
+            "noteRoot",
+            "ask"
+          ],
+          "enumDescriptions": [
+            "无回退：如果没有映射则不执行任何操作",
+            "笔记根目录：回退到笔记根目录",
+            "询问：询问用户如何处理"
+          ],
+          "description": "当文件没有映射的笔记时的回退行为。"
+        },
+        "issueManager.noteMapping.requireInNoteRoot": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否要求映射的笔记路径必须在笔记根目录（issueDir）内。启用此选项可增强安全性。"
+        },
+        "issueManager.noteMapping.autoUpdateContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否在切换编辑器时自动更新笔记映射上下文（用于控制菜单显示）。"
         }
         ,
         "issueManager.copilotDiff.promptTemplate": {
@@ -1159,18 +1294,13 @@
           "icon": "resources/icon.svg"
         },
         {
-          "id": "issueManager.views.rss",
-          "name": "RSS问题",
-          "icon": "resources/icon.svg"
-        },
-        {
-          "id": "issueManager.views.structure",
-          "name": "问题结构",
-          "icon": "resources/icon.svg"
-        },
-        {
           "id": "issueManager.views.para",
           "name": "PARA",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.noteMapping",
+          "name": "笔记映射",
           "icon": "resources/icon.svg"
         }
       ]
@@ -1205,6 +1335,11 @@
         "view": "issueManager.views.para",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.logicalTree",
+        "contents": "当前文件没有 issue_root 字段。\n[为当前文件创建根节点](command:issueManager.logicalTree.createRoot)\n\n逻辑层级树基于当前活动文件的 Frontmatter 字段构建，显示该文件所属的完整层级结构。",
+        "when": "issueManager.isDirConfigured"
       }
     ]
   },

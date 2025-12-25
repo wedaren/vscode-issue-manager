@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById } from '../data/treeManager';
+import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById } from '../data/issueTreeManager';
 import { getIssueNodeIconPath, readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
-import { TitleCacheService } from '../services/TitleCacheService';
+import { titleCache } from '../data/titleCache';
 import { getIssueDir } from '../config';
 
 /**
@@ -80,9 +80,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     const realId = stripFocusedId(element.id);
   const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
   // 使用标题缓存，未命中回退到文件名，避免渲染阶段 I/O
-  const titleCache = TitleCacheService.getInstance();
-  const cachedTitle = await titleCache.get(element.filePath);
-  const title = cachedTitle || path.basename(element.filePath, '.md');
+  const title = await titleCache.get(element.filePath);
 
     const item = new vscode.TreeItem(title,
       element.children && element.children.length > 0
@@ -107,7 +105,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
 
     // 生成并设置 description
     const ancestors = getAncestors(realId, this.treeData);
-    const ancestorTitles = await TitleCacheService.getInstance().getMany(ancestors.map(a => a.filePath));
+    const ancestorTitles = await Promise.all(ancestors.map(a => titleCache.get(a.filePath)));
     if (ancestorTitles.length > 0 && isFocusedRootId(element.id)) {
       item.description = `/ ${ancestorTitles.join(' / ')}`;
     }

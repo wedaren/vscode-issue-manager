@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { stripFocusedId } from '../data/treeManager';
+import { stripFocusedId } from '../data/issueTreeManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { smartCreateIssue } from './smartCreateIssue';
 import { Logger } from '../core/utils/Logger';
