@@ -22,4 +22,3 @@ class CopilotDocumentProvider implements vscode.TextDocumentContentProvider {
 
 export const copilotDocumentProvider = new CopilotDocumentProvider();
 
-export default CopilotDocumentProvider;
