@@ -47,11 +47,14 @@ export async function copilotDiffSend(): Promise<void> {
     // custom entry
     picks.push({ label: '自定义 Prompt...', description: '输入自定义的 prompt 模板（使用 {{content}} 占位）', isCustom: true });
 
-    const pick = await vscode.window.showQuickPick(picks.map(x => ({ label: x.label, description: x.description, detail: x.fileUri ? `来自：${x.fileUri.path.split('/').pop()}` : undefined })), { placeHolder: '选择用于改写的 prompt 模板' });
-    if (!pick) { return; }
+    const pickItems: (typeof picks[0] & vscode.QuickPickItem)[] = picks.map(x => ({
+        ...x,
+        label: x.label,
+        description: x.description,
+        detail: x.fileUri ? `来自：${x.fileUri.path.split('/').pop()}` : undefined
+    }));
 
-    // find selected item
-    const sel = picks.find(p => p.label === pick.label && p.description === pick.description);
+    const sel = await vscode.window.showQuickPick(pickItems, { placeHolder: '选择用于改写的 prompt 模板' }) as (typeof pickItems[0]) | undefined;
     if (!sel) { return; }
 
     let template = sel.template;
