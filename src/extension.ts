@@ -50,6 +50,19 @@ export function activate(context: vscode.ExtensionContext) {
 	// 注册 Copilot 虚拟文档提供者（用于展示不提示保存的虚拟编辑窗口）
 	const providerDisposable = vscode.workspace.registerTextDocumentContentProvider('copilot', copilotDocumentProvider);
 	context.subscriptions.push(providerDisposable);
+
+	// 当 Copilot 虚拟文档被关闭时，清理提供者中的缓存以避免内存泄漏
+	const closeDisposable = vscode.workspace.onDidCloseTextDocument((doc) => {
+		try {
+			if (doc?.uri?.scheme === 'copilot') {
+				copilotDocumentProvider.clear(doc.uri);
+			}
+		} catch (err) {
+			// 忽略清理时的错误，防止影响扩展生命周期
+			console.error('Error clearing copilot document provider cache:', err);
+		}
+	});
+	context.subscriptions.push(closeDisposable);
 	
 	return initializer.initialize();
 }
