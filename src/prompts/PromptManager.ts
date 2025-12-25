@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
+import * as yaml from 'js-yaml';
 
 export interface PromptFile {
     uri: vscode.Uri;
@@ -19,25 +20,43 @@ async function ensureDir(uri: vscode.Uri): Promise<void> {
 }
 
 function parseFrontmatter(text: string): { attrs: Record<string, string>, body: string } {
-    const fmMatch = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
     const attrs: Record<string, string> = {};
     let body = text;
-    if (fmMatch) {
-        const fm = fmMatch[1];
-        body = text.slice(fmMatch[0].length);
-        const lines = fm.split(/\r?\n/);
-        for (const line of lines) {
-            const m = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
-            if (m) {
-                let val = m[2].trim();
-                // remove surrounding quotes
-                if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-                    val = val.slice(1, -1);
-                }
-                attrs[m[1]] = val;
-            }
+
+    if (!text.startsWith('---')) {
+        return { attrs, body };
+    }
+
+    const lines = text.split(/\r?\n/);
+    let endIndex = -1;
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
+            endIndex = i;
+            break;
         }
     }
+
+    if (endIndex === -1) {
+        return { attrs, body };
+    }
+
+    const yamlContent = lines.slice(1, endIndex).join('\n');
+    body = lines.slice(endIndex + 1).join('\n');
+
+    try {
+        const parsed = yaml.load(yamlContent);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+                if (v === undefined || v === null) continue;
+                if (typeof v === 'string') attrs[k] = v;
+                else if (typeof v === 'number' || typeof v === 'boolean') attrs[k] = String(v);
+                else attrs[k] = JSON.stringify(v);
+            }
+        }
+    } catch (err) {
+        console.error('parseFrontmatter: failed to parse yaml', err);
+    }
+
     return { attrs, body };
 }
 
@@ -89,8 +108,8 @@ export async function loadPrompts(): Promise<PromptFile[]> {
 }
 
 function yamlEscape(s: string): string {
-    const safe = s.replace(/"/g, '\\"');
-    return `"${safe}"`;
+    // 保留兼容接口，但实际存储使用 js-yaml 序列化，因此这里直接返回原始字符串
+    return s;
 }
 
 function slugify(s: string): string {
@@ -102,19 +121,16 @@ export async function savePrompt(label: string, description: string | undefined,
     await ensureDir(dir);
     const name = `${slugify(label)}-${Date.now()}.md`;
     const fileUri = vscode.Uri.joinPath(dir, name);
-    const fmLines = [
-        '---',
-        `label: ${yamlEscape(label)}`
-    ];
-    if (description) fmLines.push(`description: ${yamlEscape(description)}`);
-    if (systemPrompt) fmLines.push(`systemPrompt: ${yamlEscape(systemPrompt)}`);
-    fmLines.push('---', '', template.trim(), '');
-    const content = fmLines.join('\n');
+
+    const fmObj: Record<string, unknown> = { label };
+    if (description) fmObj.description = description;
+    if (systemPrompt) fmObj.systemPrompt = systemPrompt;
+
+    // 使用 js-yaml 生成可靠的 frontmatter
+    const yamlStr = yaml.dump(fmObj, { lineWidth: -1 }).trimEnd();
+    const content = ['---', yamlStr, '---', '', template.trim(), ''].join('\n');
+
     await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
     return fileUri;
 }
 
-export default {
-    loadPrompts,
-    savePrompt
-};
