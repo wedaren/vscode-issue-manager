@@ -4,6 +4,7 @@ import * as yaml from "js-yaml";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { readTree, findNodeById } from "./issueTreeManager";
+import { getRelativeToNoteRoot } from "../utils/pathUtils";
 /**
  * 从 Markdown 文件内容中提取第一个一级标题。
  * @param content 文件内容。
@@ -146,17 +147,15 @@ export async function getIssueMarkdownFrontmatter(
 }
 
 const titleCache = new Map<string, { title: string; mtime: number }>();
-export function getIssueMarkdownTitleFromCache(
-      uriOrPath: vscode.Uri | string
-){
-    const uri = _resolveUri(uriOrPath);
-    if (!uri) {
-      return uriOrPath.toString();
-    }
-    const key = uri.toString();
-    const cached = titleCache.get(key);
-    getIssueMarkdownTitle(uri); // 预热标题缓存
-    return cached?.title ?? uri.fsPath;
+export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
+  const uri = _resolveUri(uriOrPath);
+  if (!uri) {
+    return uriOrPath.toString();
+  }
+  const key = uri.toString();
+  const cached = titleCache.get(key);
+  getIssueMarkdownTitle(uri); // 预热标题缓存
+  return cached?.title ?? getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
 }
 /**
  * 从 frontmatter 的 `issue_title` 优先取标题，其次解析 H1，再回退到文件名
@@ -166,10 +165,7 @@ export async function getIssueMarkdownTitle(
 ): Promise<string> {
   const uri = _resolveUri(uriOrPath);
   if (!uri) {
-    return path.basename(
-      typeof uriOrPath === "string" ? uriOrPath : uriOrPath.fsPath,
-      ".md"
-    );
+    return uriOrPath.toString();
   }
 
   let title: string | undefined;
@@ -215,7 +211,7 @@ export async function getIssueMarkdownTitle(
   } catch (error) {
     Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
   }
-  title = title ?? uri.fsPath;
+  title = title ?? getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
   return title;
 }
 const onTitleUpdateEmitter = new vscode.EventEmitter<void>();
