@@ -9,7 +9,7 @@ import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
  * @param content 文件内容。
  * @returns 第一个一级标题的文本，如果找不到则返回 undefined。
  */
-export function extractTitleFromContent(content: string): string | undefined {
+function extractTitleFromContent(content: string): string | undefined {
   const match = content.match(/^#\s+(.*)/m);
   return match ? match[1].trim() : undefined;
 }
