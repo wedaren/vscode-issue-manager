@@ -205,7 +205,7 @@ export class ParaViewProvider implements vscode.TreeDataProvider<ParaViewNode> {
     // 顶级（直接挂在分类下）的节点，展示其祖先路径，便于在 PARA 视图中辨识来源
     if (isTopLevel && this.treeData) {
       const ancestors = getAncestors(issueId, this.treeData);
-      const ancestorTitles = await Promise.all(ancestors.map(a => getIssueMarkdownTitleFromCache(a.filePath)));
+      const ancestorTitles = ancestors.map(a => getIssueMarkdownTitleFromCache(a.filePath));
       if (ancestorTitles.length > 0) {
         item.description = `/ ${ancestorTitles.join(' / ')}`;
       }
