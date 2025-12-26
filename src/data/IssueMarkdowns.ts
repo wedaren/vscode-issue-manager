@@ -56,8 +56,6 @@ export function parseFrontmatter(content: string): FrontmatterData | null {
   }
 }
 
-// `getFrontmatter` 已被内联到 `getIssueMarkdownFrontmatter`，不再导出。
-
 /**
  * 获取问题目录中所有 Markdown 文件;
  * @returns 问题目录中所有 Markdown 文件
@@ -100,8 +98,6 @@ type CacheEntry = { data: FrontmatterData | null; mtime: number };
 
 const _frontmatterCache = new Map<string, CacheEntry>();
 
-// 使用 `resolveIssueUri` 从 `src/utils/pathUtils` 解析 URI
-
 /** 获取 Markdown 文件的 frontmatter（带简单 mtime 缓存） */
 export async function getIssueMarkdownFrontmatter(
   uriOrPath: vscode.Uri | string
@@ -130,6 +126,8 @@ export async function getIssueMarkdownFrontmatter(
 }
 
 const titleCache = new Map<string, { title: string; mtime: number }>();
+
+/** 从缓存获取标题，若未命中则触发预热 */
 export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
   const uri = resolveIssueUri(uriOrPath);
   if (!uri) {
@@ -138,7 +136,12 @@ export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
   const key = uri.toString();
   const cached = titleCache.get(key);
   getIssueMarkdownTitle(uri); // 预热标题缓存
-  return cached?.title ?? getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
+  return cached?.title ?? fallbackTitle(uri);
+}
+
+/** 标题兜底：优先返回相对于笔记根的相对路径，否则返回完整路径 */
+function fallbackTitle(uri: vscode.Uri): string {
+  return getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
 }
 /**
  * 从 frontmatter 的 `issue_title` 优先取标题，其次解析 H1，再回退到文件名
@@ -194,7 +197,7 @@ export async function getIssueMarkdownTitle(
   } catch (error) {
     Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
   }
-  title = title ?? getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
+  title = title ?? fallbackTitle(uri);
   return title;
 }
 const onTitleUpdateEmitter = new vscode.EventEmitter<void>();
