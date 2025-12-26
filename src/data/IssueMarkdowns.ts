@@ -94,9 +94,14 @@ export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
   return issues;
 }
 
-type CacheEntry = { data: FrontmatterData | null; mtime: number };
+type UnifiedCacheEntry = {
+  mtime: number;
+  frontmatter?: FrontmatterData | null;
+  title?: string;
+};
 
-const _frontmatterCache = new Map<string, CacheEntry>();
+// 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
+const _unifiedCache = new Map<string, UnifiedCacheEntry>();
 
 /** 获取 Markdown 文件的 frontmatter（带简单 mtime 缓存） */
 export async function getIssueMarkdownFrontmatter(
@@ -110,22 +115,26 @@ export async function getIssueMarkdownFrontmatter(
   try {
     const stat = await vscode.workspace.fs.stat(uri);
     const mtime = stat.mtime;
-    const cached = _frontmatterCache.get(key);
-    if (cached && cached.mtime === mtime) {
-      return cached.data;
+    const cached = _unifiedCache.get(key);
+    if (cached && cached.mtime === mtime && cached.frontmatter !== undefined) {
+      return cached.frontmatter ?? null;
     }
+
     const contentBytes = await vscode.workspace.fs.readFile(uri);
     const content = Buffer.from(contentBytes).toString("utf-8");
     const data = parseFrontmatter(content);
-    _frontmatterCache.set(key, { data, mtime });
+    const entry: UnifiedCacheEntry = { mtime, frontmatter: data };
+    // 如果已有 title 且未改变，可保留
+    if (cached?.title) {
+      entry.title = cached.title;
+    }
+    _unifiedCache.set(key, entry);
     return data;
   } catch (err) {
-    _frontmatterCache.delete(key);
+    _unifiedCache.delete(key);
     return null;
   }
 }
-
-const titleCache = new Map<string, { title: string; mtime: number }>();
 
 /** 从缓存获取标题，若未命中则触发预热 */
 export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
@@ -134,9 +143,13 @@ export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
     return uriOrPath.toString();
   }
   const key = uri.toString();
-  const cached = titleCache.get(key);
-  getIssueMarkdownTitle(uri); // 预热标题缓存
-  return cached?.title ?? fallbackTitle(uri);
+  const cached = _unifiedCache.get(key);
+  // 触发异步预热，但不等待
+  getIssueMarkdownTitle(uri);
+  if (cached?.title) {
+    return cached.title;
+  }
+  return fallbackTitle(uri);
 }
 
 /** 标题兜底：优先返回相对于笔记根的相对路径，否则返回完整路径 */
@@ -159,8 +172,8 @@ export async function getIssueMarkdownTitle(
   try {
     const stat = await vscode.workspace.fs.stat(uri);
     const mtime = stat.mtime;
-    const cached = titleCache.get(key);
-    if (cached && cached.mtime === mtime) {
+    const cached = _unifiedCache.get(key);
+    if (cached && cached.mtime === mtime && cached.title !== undefined) {
       return cached.title;
     }
 
@@ -187,12 +200,20 @@ export async function getIssueMarkdownTitle(
     }
 
     title = title ?? path.basename(uri.fsPath, ".md");
-    if (title !== titleCache.get(key)?.title) {
-      titleCache.set(key, { title, mtime });
+    const prevTitle = cached?.title;
+    if (title !== prevTitle) {
+      _unifiedCache.set(key, {
+        mtime,
+        title,
+        frontmatter: cached?.frontmatter,
+      });
       scheduleOnDidUpdate();
       Logger.getInstance().debug("[IssueMarkdowns] get and update title", {
         [key]: title,
       });
+    } else if (cached && cached.mtime !== mtime) {
+      // 更新 mtime 保持一致
+      _unifiedCache.set(key, { ...cached, mtime });
     }
   } catch (error) {
     Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
