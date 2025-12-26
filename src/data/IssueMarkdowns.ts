@@ -55,16 +55,7 @@ export function parseFrontmatter(content: string): FrontmatterData | null {
     }
 }
 
-export async function getFrontmatter(fileUri: vscode.Uri): Promise<FrontmatterData | null> {
-    try {
-        const contentBytes = await vscode.workspace.fs.readFile(fileUri);
-        const content = Buffer.from(contentBytes).toString('utf-8');
-        return parseFrontmatter(content);
-    } catch (error) {
-        Logger.getInstance().warn(`读取文件时出错 ${fileUri.fsPath}:`, error);
-        return null;
-    }
-}
+// `getFrontmatter` 已被内联到 `getIssueMarkdownFrontmatter`，不再导出。
 
 
 /**
@@ -140,7 +131,9 @@ export async function getIssueMarkdownFrontmatter(
         if (cached && cached.mtime === mtime) {
             return cached.data;
         }
-        const data = await getFrontmatter(uri);
+        const contentBytes = await vscode.workspace.fs.readFile(uri);
+        const content = Buffer.from(contentBytes).toString('utf-8');
+        const data = parseFrontmatter(content);
         _frontmatterCache.set(key, { data, mtime });
         return data;
     } catch (err) {
