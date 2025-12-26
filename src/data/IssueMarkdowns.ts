@@ -1,8 +1,71 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getFrontmatter, FrontmatterData, extractTitleFromContent } from "../utils/markdown";
+import * as yaml from 'js-yaml';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
+/**
+ * 从 Markdown 文件内容中提取第一个一级标题。
+ * @param content 文件内容。
+ * @returns 第一个一级标题的文本，如果找不到则返回 undefined。
+ */
+export function extractTitleFromContent(content: string): string | undefined {
+    const match = content.match(/^#\s+(.*)/m);
+    return match ? match[1].trim() : undefined;
+}
+
+/**
+ * Frontmatter 数据结构
+ */
+export interface FrontmatterData {
+    root_file?: string;
+    parent_file?: string | null;
+    children_files?: string[];
+    [key: string]: unknown; // 支持其他字段
+}
+
+function isValidObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function parseFrontmatter(content: string): FrontmatterData | null {
+    if (!content.startsWith('---')) {
+        return null;
+    }
+    const lines = content.split(/\r?\n/);
+    let endIndex = -1;
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
+            endIndex = i;
+            break;
+        }
+    }
+    if (endIndex === -1) {
+        return null;
+    }
+    const yamlContent = lines.slice(1, endIndex).join('\n');
+    try {
+        const parsed = yaml.load(yamlContent);
+        if (isValidObject(parsed)) {
+            return parsed as FrontmatterData;
+        }
+        return null;
+    } catch (error) {
+        Logger.getInstance().warn('解析 frontmatter 失败', error);
+        return null;
+    }
+}
+
+export async function getFrontmatter(fileUri: vscode.Uri): Promise<FrontmatterData | null> {
+    try {
+        const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+        const content = Buffer.from(contentBytes).toString('utf-8');
+        return parseFrontmatter(content);
+    } catch (error) {
+        Logger.getInstance().warn(`读取文件时出错 ${fileUri.fsPath}:`, error);
+        return null;
+    }
+}
+
 
 /**
  * 获取问题目录中所有 Markdown 文件;

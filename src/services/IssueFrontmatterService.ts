@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { getIssueDir } from '../config';
-import { getFrontmatter, FrontmatterData } from '../utils/markdown';
+import { getIssueMarkdownFrontmatter, FrontmatterData } from '../data/IssueMarkdowns';
 
 /**
  * 扩展的 Frontmatter 数据结构，包含 issue_ 前缀字段
@@ -42,7 +42,7 @@ export class IssueFrontmatterService {
             const filePath = path.join(issueDir, fileName);
             const fileUri = vscode.Uri.file(filePath);
 
-            const frontmatter = await getFrontmatter(fileUri);
+            const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
             return frontmatter as IssueFrontmatterData;
         } catch (error) {
             console.error(`读取 issue frontmatter 失败 (${fileName}):`, error);
