@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { extractTitleFromContent } from "../utils/markdown";
+import { extractTitleFromContent } from "./IssueMarkdowns";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { readTree, findNodeById } from "./issueTreeManager";
