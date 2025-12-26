@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
-import { titleCache } from './titleCache';
+import * as path from 'path';
+import { getFrontmatter, FrontmatterData, extractTitleFromContent } from "../utils/markdown";
 import { getIssueDir } from '../config';
+import { Logger } from '../core/utils/Logger';
 
 /**
  * 获取问题目录中所有 Markdown 文件;
@@ -30,9 +32,90 @@ export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
     const issues: IssueMarkdown[] = [];
 
     for (const file of files) {
-        const title = await titleCache.get(file);
-        issues.push({ title, uri: file });
+                const title = await getIssueMarkdownTitle(file);
+                issues.push({ title, uri: file });
     }
 
     return issues;
+}
+
+type CacheEntry = { data: FrontmatterData | null; mtime: number };
+
+const _frontmatterCache = new Map<string, CacheEntry>();
+
+function _resolveUri(uriOrPath: vscode.Uri | string): vscode.Uri | undefined {
+    if (uriOrPath instanceof vscode.Uri) {
+        return uriOrPath;
+    }
+    if (path.isAbsolute(uriOrPath)) {
+        return vscode.Uri.file(uriOrPath);
+    }
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        Logger.getInstance().warn(
+            "[IssueMarkdowns] issueDir is not configured, cannot resolve relative path",
+            { path: uriOrPath }
+        );
+        return undefined;
+    }
+    return vscode.Uri.file(path.join(issueDir, uriOrPath));
+}
+
+/** 获取 Markdown 文件的 frontmatter（带简单 mtime 缓存） */
+export async function getIssueMarkdownFrontmatter(
+    uriOrPath: vscode.Uri | string
+): Promise<FrontmatterData | null> {
+    const uri = _resolveUri(uriOrPath);
+    if (!uri) {
+        return null;
+    }
+    const key = uri.toString();
+    try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        const mtime = stat.mtime;
+        const cached = _frontmatterCache.get(key);
+        if (cached && cached.mtime === mtime) {
+            return cached.data;
+        }
+        const data = await getFrontmatter(uri);
+        _frontmatterCache.set(key, { data, mtime });
+        return data;
+    } catch (err) {
+        _frontmatterCache.delete(key);
+        return null;
+    }
+}
+
+/**
+ * 从 frontmatter 的 `issue_title` 优先取标题，其次解析 H1，再回退到文件名
+ */
+export async function getIssueMarkdownTitle(
+    uriOrPath: vscode.Uri | string
+): Promise<string> {
+    const uri = _resolveUri(uriOrPath);
+    if (!uri) {
+        return path.basename(typeof uriOrPath === 'string' ? uriOrPath : uriOrPath.fsPath, '.md');
+    }
+
+    try {
+        const fm = await getIssueMarkdownFrontmatter(uri);
+        if (fm) {
+            const fmAny = fm as Record<string, unknown>;
+            const fromFm = typeof fmAny.issue_title === 'string' && fmAny.issue_title.trim();
+            if (fromFm) {
+                return String(fromFm);
+            }
+        }
+
+        const contentBytes = await vscode.workspace.fs.readFile(uri);
+        const content = Buffer.from(contentBytes).toString('utf-8');
+        const titleFromContent = extractTitleFromContent(content);
+        if (titleFromContent) {
+            return titleFromContent;
+        }
+    } catch (error) {
+        Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
+    }
+
+    return path.basename(uri.fsPath, '.md');
 }

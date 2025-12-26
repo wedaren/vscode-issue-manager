@@ -4,7 +4,7 @@ import { extractTitleFromContent } from "../utils/markdown";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { readTree, findNodeById } from "./issueTreeManager";
-import { frontmatterCache } from "./frontmatterCache";
+import { getIssueMarkdownFrontmatter } from "./IssueMarkdowns";
 
 type CacheEntry = { title: string; mtime: number };
 
@@ -72,7 +72,7 @@ export class TitleCache {
   async getTitle(fileUri: vscode.Uri): Promise<string> {
     try {
       // 1) 优先从 frontmatter 中读取 issue_title
-      const fm = await frontmatterCache.get(fileUri);
+      const fm = await getIssueMarkdownFrontmatter(fileUri);
       if (fm) {
         const fmAny = fm as Record<string, unknown>;
         const fromFm =
