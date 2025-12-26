@@ -6,7 +6,7 @@ import { getIssueDir } from '../config';
  * 获取问题目录中所有 Markdown 文件;
  * @returns 问题目录中所有 Markdown 文件
  */
-export async function getAllMarkdownFiles(): Promise<vscode.Uri[]> {
+async function getAllIssueMarkdownFiles(): Promise<vscode.Uri[]> {
     const issueDir = getIssueDir();
     if (!issueDir) {
         return [];
@@ -16,7 +16,7 @@ export async function getAllMarkdownFiles(): Promise<vscode.Uri[]> {
     return files;
 }
 
-export type MarkdownIssue = {  
+export type IssueMarkdown = {  
     title: string;  
     uri: vscode.Uri;  
 };
@@ -25,9 +25,9 @@ export type MarkdownIssue = {
  * 获取问题目录中所有 Markdown 文件的标题和 URI。  
  * @returns 包含标题和 URI 的对象数组。  
  */  
-export async function getMarkdownIssues(): Promise<MarkdownIssue[]> {
-    const files = await getAllMarkdownFiles();
-    const issues: MarkdownIssue[] = [];
+export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
+    const files = await getAllIssueMarkdownFiles();
+    const issues: IssueMarkdown[] = [];
 
     for (const file of files) {
         const title = await titleCache.get(file);
