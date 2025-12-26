@@ -3,8 +3,7 @@ import * as path from "path";
 import * as yaml from "js-yaml";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
-import { readTree, findNodeById } from "./issueTreeManager";
-import { getRelativeToNoteRoot } from "../utils/pathUtils";
+import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
 /**
  * 从 Markdown 文件内容中提取第一个一级标题。
  * @param content 文件内容。
@@ -101,29 +100,13 @@ type CacheEntry = { data: FrontmatterData | null; mtime: number };
 
 const _frontmatterCache = new Map<string, CacheEntry>();
 
-function _resolveUri(uriOrPath: vscode.Uri | string): vscode.Uri | undefined {
-  if (uriOrPath instanceof vscode.Uri) {
-    return uriOrPath;
-  }
-  if (path.isAbsolute(uriOrPath)) {
-    return vscode.Uri.file(uriOrPath);
-  }
-  const issueDir = getIssueDir();
-  if (!issueDir) {
-    Logger.getInstance().warn(
-      "[IssueMarkdowns] issueDir is not configured, cannot resolve relative path",
-      { path: uriOrPath }
-    );
-    return undefined;
-  }
-  return vscode.Uri.file(path.join(issueDir, uriOrPath));
-}
+// 使用 `resolveIssueUri` 从 `src/utils/pathUtils` 解析 URI
 
 /** 获取 Markdown 文件的 frontmatter（带简单 mtime 缓存） */
 export async function getIssueMarkdownFrontmatter(
   uriOrPath: vscode.Uri | string
 ): Promise<FrontmatterData | null> {
-  const uri = _resolveUri(uriOrPath);
+  const uri = resolveIssueUri(uriOrPath);
   if (!uri) {
     return null;
   }
@@ -148,7 +131,7 @@ export async function getIssueMarkdownFrontmatter(
 
 const titleCache = new Map<string, { title: string; mtime: number }>();
 export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
-  const uri = _resolveUri(uriOrPath);
+  const uri = resolveIssueUri(uriOrPath);
   if (!uri) {
     return uriOrPath.toString();
   }
@@ -163,7 +146,7 @@ export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
 export async function getIssueMarkdownTitle(
   uriOrPath: vscode.Uri | string
 ): Promise<string> {
-  const uri = _resolveUri(uriOrPath);
+  const uri = resolveIssueUri(uriOrPath);
   if (!uri) {
     return uriOrPath.toString();
   }
