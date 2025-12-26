@@ -4,6 +4,7 @@ import * as yaml from "js-yaml";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
+import * as cacheStorage from "../data/issueMarkdownCacheStorage";
 /**
  * 从 Markdown 文件内容中提取第一个一级标题。
  * @param content 文件内容。
@@ -94,14 +95,24 @@ export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
   return issues;
 }
 
-type UnifiedCacheEntry = {
+type IssueMarkdownCacheEntry = {
   mtime: number;
   frontmatter?: FrontmatterData | null;
   title?: string;
 };
 
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
-const _unifiedCache = new Map<string, UnifiedCacheEntry>();
+const _issueMarkdownCache = new Map<string, IssueMarkdownCacheEntry>();
+
+// 尝试加载磁盘缓存（不阻塞启动流程）
+void (async () => {
+  const obj = await cacheStorage.load();
+  if (!obj) return;
+  for (const [k, v] of Object.entries(obj)) {
+    _issueMarkdownCache.set(k, v as IssueMarkdownCacheEntry);
+  }
+  Logger.getInstance().debug('[IssueMarkdowns] loaded cache from storage', { size: _issueMarkdownCache.size });
+})();
 
 /** 获取 Markdown 文件的 frontmatter（带简单 mtime 缓存） */
 export async function getIssueMarkdownFrontmatter(
@@ -115,7 +126,7 @@ export async function getIssueMarkdownFrontmatter(
   try {
     const stat = await vscode.workspace.fs.stat(uri);
     const mtime = stat.mtime;
-    const cached = _unifiedCache.get(key);
+    const cached = _issueMarkdownCache.get(key);
     if (cached && cached.mtime === mtime && cached.frontmatter !== undefined) {
       return cached.frontmatter ?? null;
     }
@@ -123,15 +134,17 @@ export async function getIssueMarkdownFrontmatter(
     const contentBytes = await vscode.workspace.fs.readFile(uri);
     const content = Buffer.from(contentBytes).toString("utf-8");
     const data = parseFrontmatter(content);
-    const entry: UnifiedCacheEntry = { mtime, frontmatter: data };
+    const entry: IssueMarkdownCacheEntry = { mtime, frontmatter: data };
     // 如果已有 title 且未改变，可保留
     if (cached?.title) {
       entry.title = cached.title;
     }
-    _unifiedCache.set(key, entry);
+    _issueMarkdownCache.set(key, entry);
+    cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
     return data;
   } catch (err) {
-    _unifiedCache.delete(key);
+    _issueMarkdownCache.delete(key);
+    cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
     return null;
   }
 }
@@ -143,7 +156,7 @@ export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
     return uriOrPath.toString();
   }
   const key = uri.toString();
-  const cached = _unifiedCache.get(key);
+  const cached = _issueMarkdownCache.get(key);
   // 触发异步预热，但不等待
   getIssueMarkdownTitle(uri);
   if (cached?.title) {
@@ -172,7 +185,7 @@ export async function getIssueMarkdownTitle(
   try {
     const stat = await vscode.workspace.fs.stat(uri);
     const mtime = stat.mtime;
-    const cached = _unifiedCache.get(key);
+    const cached = _issueMarkdownCache.get(key);
     if (cached && cached.mtime === mtime && cached.title !== undefined) {
       return cached.title;
     }
@@ -202,18 +215,20 @@ export async function getIssueMarkdownTitle(
     title = title ?? path.basename(uri.fsPath, ".md");
     const prevTitle = cached?.title;
     if (title !== prevTitle) {
-      _unifiedCache.set(key, {
+      _issueMarkdownCache.set(key, {
         mtime,
         title,
         frontmatter: cached?.frontmatter,
       });
       scheduleOnDidUpdate();
+      cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
       Logger.getInstance().debug("[IssueMarkdowns] get and update title", {
         [key]: title,
       });
     } else if (cached && cached.mtime !== mtime) {
       // 更新 mtime 保持一致
-      _unifiedCache.set(key, { ...cached, mtime });
+      _issueMarkdownCache.set(key, { ...cached, mtime });
+      cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
     }
   } catch (error) {
     Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
