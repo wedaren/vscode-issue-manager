@@ -22,6 +22,7 @@ export interface FrontmatterData {
   root_file?: string;
   parent_file?: string | null;
   children_files?: string[];
+  issue_title?: string[] | string;
   [key: string]: unknown; // 支持其他字段
 }
 
@@ -194,11 +195,12 @@ export async function getIssueMarkdownTitle(
 
     const fm = await getIssueMarkdownFrontmatter(uri);
     if (fm) {
-      const fmAny = fm as Record<string, unknown>;
-      const fromFm =
-        typeof fmAny.issue_title === "string" && fmAny.issue_title.trim();
-      if (fromFm) {
-        title = String(fromFm);
+      // 优先从 frontmatter 的 issue_title 字段获取标题，支持字符串或字符串数组
+      const issueTitle = fm.issue_title;
+      if (typeof issueTitle === "string" && issueTitle.trim()) {
+        title = issueTitle.trim();
+      } else if (Array.isArray(issueTitle) && issueTitle.length > 0 && typeof issueTitle[0] === "string") {
+        title = issueTitle[0].trim();
       }
     }
     if (!title) {
