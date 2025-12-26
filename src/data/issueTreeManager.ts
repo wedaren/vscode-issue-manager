@@ -156,11 +156,8 @@ async function getIssueData(){
   }
 
   const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
-  if(cache.mtime === stat.mtime){
-    return {treeData: cache.treeData as TreeData, issueIdMap: new Map<string, IssueTreeNode>()};
-  }
-  if(cache.treeData && cache.mtime === stat.mtime){
-    return {treeData: cache.treeData, issueIdMap: cache.issueIdMap };
+  if (cache.mtime === stat.mtime) {
+    return { treeData: cache.treeData, issueIdMap: cache.issueIdMap };
   }
 
 

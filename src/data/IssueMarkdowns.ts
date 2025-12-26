@@ -205,17 +205,17 @@ export async function getIssueMarkdownTitle(
     }
 
     title = title ?? path.basename(uri.fsPath, ".md");
+    if (title !== titleCache.get(key)?.title) {
+      titleCache.set(key, { title, mtime });
+      scheduleOnDidUpdate();
+      Logger.getInstance().debug("[IssueMarkdowns] get and update title", {
+        [key]: title,
+      });
+    }
   } catch (error) {
     Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
   }
   title = title ?? uri.fsPath;
-  if (title !== titleCache.get(key)?.title) {
-    titleCache.set(key, { title, mtime: Date.now() });
-    scheduleOnDidUpdate();
-    Logger.getInstance().debug("[IssueMarkdowns] get and update title", {
-      [key]: title,
-    });
-  }
   return title;
 }
 const onTitleUpdateEmitter = new vscode.EventEmitter<void>();
