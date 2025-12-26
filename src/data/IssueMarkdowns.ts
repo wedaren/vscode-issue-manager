@@ -145,7 +145,7 @@ export async function getIssueMarkdownFrontmatter(
   }
 }
 
-const titlecache = new Map<string, { title: string; mtime: number }>();
+const titleCache = new Map<string, { title: string; mtime: number }>();
 export function getIssueMarkdownTitleFromCache(
       uriOrPath: vscode.Uri | string
 ){
@@ -154,7 +154,7 @@ export function getIssueMarkdownTitleFromCache(
       return uriOrPath.toString();
     }
     const key = uri.toString();
-    const cached = titlecache.get(key);
+    const cached = titleCache.get(key);
     getIssueMarkdownTitle(uri); // 预热标题缓存
     return cached?.title ?? uri.fsPath;
 }
@@ -177,7 +177,7 @@ export async function getIssueMarkdownTitle(
   try {
     const stat = await vscode.workspace.fs.stat(uri);
     const mtime = stat.mtime;
-    const cached = titlecache.get(key);
+    const cached = titleCache.get(key);
     if (cached && cached.mtime === mtime) {
       return cached.title;
     }
@@ -209,8 +209,8 @@ export async function getIssueMarkdownTitle(
     Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
   }
   title = title ?? uri.fsPath;
-  if (title !== titlecache.get(key)?.title) {
-    titlecache.set(key, { title, mtime: Date.now() });
+  if (title !== titleCache.get(key)?.title) {
+    titleCache.set(key, { title, mtime: Date.now() });
     scheduleOnDidUpdate();
     Logger.getInstance().debug("[IssueMarkdowns] get and update title", {
       [key]: title,
