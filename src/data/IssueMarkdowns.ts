@@ -288,14 +288,6 @@ export interface PromptFile {
   systemPrompt?: string;
 }
 
-async function ensureDir(uri: vscode.Uri): Promise<void> {
-  try {
-    await vscode.workspace.fs.stat(uri);
-  } catch (err) {
-    await vscode.workspace.fs.createDirectory(uri);
-  }
-}
-
 export async function getPromptDir(): Promise<vscode.Uri> {
   const config = vscode.workspace.getConfiguration("issueManager");
   const issueDir = config.get<string>("issueDir") || "";
@@ -336,6 +328,8 @@ export async function getAllPrompts(): Promise<PromptFile[]> {
         systemPrompt: undefined,
       });
     }
-  } catch {}
+  } catch (err) {
+        Logger.getInstance().error('加载 prompts 失败', err);  
+  }
   return res;
 }
