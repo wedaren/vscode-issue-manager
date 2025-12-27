@@ -1341,6 +1341,8 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,json,md,mdx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,json,md,mdx}\"",
     "test": "vscode-test",
     "chrome:dev": "wxt --mode development",
     "chrome:build": "wxt build --mode production",
@@ -1370,7 +1372,8 @@
     "vue": "^3.5.22",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1",
-    "wxt": "^0.20.11"
+    "wxt": "^0.20.11",
+    "prettier": "^2.8.8"
   },
   "dependencies": {
     "@antv/g2": "^5.4.6",
