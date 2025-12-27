@@ -36,13 +36,19 @@ function isValidObject(value: unknown): value is Record<string, unknown> {
 /**
  * 从 frontmatter 的 `issue_title` 字段安全提取字符串标题（支持 string 或 string[]）。
  */
-export function extractIssueTitleFromFrontmatter(fm: FrontmatterData | null | undefined): string | undefined {
+export function extractIssueTitleFromFrontmatter(
+  fm: FrontmatterData | null | undefined
+): string | undefined {
   if (!fm) return undefined;
   const issueTitle = fm.issue_title;
   if (typeof issueTitle === "string" && issueTitle.trim()) {
     return issueTitle.trim();
   }
-  if (Array.isArray(issueTitle) && issueTitle.length > 0 && typeof issueTitle[0] === "string") {
+  if (
+    Array.isArray(issueTitle) &&
+    issueTitle.length > 0 &&
+    typeof issueTitle[0] === "string"
+  ) {
     return issueTitle[0].trim();
   }
   return undefined;
@@ -70,14 +76,14 @@ function extractFrontmatterAndBody(content: string): {
     return { frontmatter: null, body: content };
   }
   const body = lines.slice(endIndex + 1).join("\n");
-  const yamlContent = lines.slice(1, endIndex).join("\n");  
-  try {  
-    const parsed = yaml.load(yamlContent);  
-    if (isValidObject(parsed)) {  
-      return { frontmatter: parsed as FrontmatterData, body };  
-    }  
-  } catch (error) {  
-    Logger.getInstance().warn("解析 frontmatter 失败", error);  
+  const yamlContent = lines.slice(1, endIndex).join("\n");
+  try {
+    const parsed = yaml.load(yamlContent);
+    if (isValidObject(parsed)) {
+      return { frontmatter: parsed as FrontmatterData, body };
+    }
+  } catch (error) {
+    Logger.getInstance().warn("解析 frontmatter 失败", error);
   }
   return { frontmatter: null, body };
 }
@@ -163,7 +169,10 @@ export async function getIssueMarkdownFrontmatter(
     const contentBytes = await vscode.workspace.fs.readFile(uri);
     const content = Buffer.from(contentBytes).toString("utf-8");
     const data = extractFrontmatterAndBody(content);
-    const entry: IssueMarkdownCacheEntry = { mtime, frontmatter: data.frontmatter };
+    const entry: IssueMarkdownCacheEntry = {
+      mtime,
+      frontmatter: data.frontmatter,
+    };
     // 如果已有 title 且未改变，可保留
     if (cached?.title) {
       entry.title = cached.title;
@@ -322,14 +331,15 @@ export async function getAllPrompts(): Promise<PromptFile[]> {
       const description = frontmatter?.issue_description;
       res.push({
         uri,
-        label: extractIssueTitleFromFrontmatter(frontmatter) ?? fallbackTitle(uri),
+        label:
+          extractIssueTitleFromFrontmatter(frontmatter) ?? fallbackTitle(uri),
         description,
         template: body.trim(),
         systemPrompt: undefined,
       });
     }
   } catch (err) {
-        Logger.getInstance().error('加载 prompts 失败', err);  
+    Logger.getInstance().error("加载 prompts 失败", err);
   }
   return res;
 }

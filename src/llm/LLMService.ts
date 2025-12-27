@@ -10,7 +10,7 @@ export class LLMService {
                 throw new Error('请求已取消');
             }
             if (typeof fragment === 'object' && fragment !== null && 'value' in fragment) {
-                fragments.push((fragment as any).value as string);
+                fragments.push(String((fragment as { value: unknown }).value));
             } else {
                 fragments.push(String(fragment));
             }
