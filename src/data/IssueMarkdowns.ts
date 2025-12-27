@@ -39,7 +39,9 @@ function isValidObject(value: unknown): value is Record<string, unknown> {
 export function extractIssueTitleFromFrontmatter(
     fm: FrontmatterData | null | undefined
 ): string | undefined {
-    if (!fm) return undefined;
+    if (!fm) {
+        return undefined;
+    }
     const issueTitle = fm.issue_title;
     if (typeof issueTitle === "string" && issueTitle.trim()) {
         return issueTitle.trim();
@@ -175,7 +177,7 @@ export async function getIssueMarkdownFrontmatter(
         }
         _issueMarkdownCache.set(key, entry);
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
-        return data;
+        return data.frontmatter;
     } catch (err) {
         _issueMarkdownCache.delete(key);
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
