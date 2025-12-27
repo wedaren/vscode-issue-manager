@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { getFrontmatter, FrontmatterData } from '../utils/markdown';
+import { getIssueMarkdownFrontmatter, FrontmatterData } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
 
 /**
@@ -32,7 +32,7 @@ export class FrontmatterService {
             }
 
             // 读取父文件的 frontmatter
-            const parentFrontmatter = await getFrontmatter(parentFileUri);
+            const parentFrontmatter = await getIssueMarkdownFrontmatter(parentFileUri);
             if (!parentFrontmatter) {
                 console.warn(`父文件 ${parentFileName} 没有有效的 frontmatter`);
                 return false;
@@ -97,7 +97,7 @@ export class FrontmatterService {
             }
 
             // 读取父文件的 frontmatter
-            const parentFrontmatter = await getFrontmatter(parentFileUri);
+            const parentFrontmatter = await getIssueMarkdownFrontmatter(parentFileUri);
             if (!parentFrontmatter) {
                 console.warn(`父文件 ${parentFileName} 没有有效的 frontmatter`);
                 return false;
@@ -181,7 +181,7 @@ export class FrontmatterService {
             }
 
             // 获取子文件当前的 frontmatter
-            const childFrontmatter = await getFrontmatter(childFileUri);
+            const childFrontmatter = await getIssueMarkdownFrontmatter(childFileUri);
             if (!childFrontmatter) {
                 console.warn(`子文件 ${childFileName} 没有有效的 frontmatter`);
                 return false;
@@ -276,7 +276,7 @@ export class FrontmatterService {
                     // 检查子文件是否存在
                     await vscode.workspace.fs.stat(childFileUri);
                     
-                    const childFrontmatter = await getFrontmatter(childFileUri);
+                    const childFrontmatter = await getIssueMarkdownFrontmatter(childFileUri);
                     if (childFrontmatter && childFrontmatter.parent_file !== parentFileName) {
                         // 子文件的 parent_file 不匹配，需要同步
                         await this.syncChildParentReference(childFileName, parentFileName);
@@ -310,7 +310,7 @@ export class FrontmatterService {
                 // 检查父文件是否存在
                 await vscode.workspace.fs.stat(parentFileUri);
                 
-                const parentFrontmatter = await getFrontmatter(parentFileUri);
+                const parentFrontmatter = await getIssueMarkdownFrontmatter(parentFileUri);
                 if (parentFrontmatter) {
                     const currentChildren = parentFrontmatter.children_files || [];
                     
@@ -461,7 +461,7 @@ export class FrontmatterService {
             const filePath = path.join(issueDir, fileName);
             const fileUri = vscode.Uri.file(filePath);
 
-            const frontmatter = await getFrontmatter(fileUri);
+            const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
             return frontmatter !== null;
 
         } catch (error) {

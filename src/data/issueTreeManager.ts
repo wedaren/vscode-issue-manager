@@ -3,7 +3,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
-import { titleCache } from './titleCache';
+import { getIssueMarkdownTitle } from './IssueMarkdowns';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -65,7 +65,7 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   
   // 2. 批量获取标题
   const pathArray = Array.from(paths);
-  const titles = await Promise.all(pathArray.map(p => titleCache.get(p)));
+  const titles = await Promise.all(pathArray.map(p => getIssueMarkdownTitle(p)));
   const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
   
   // 3. 递归构建扁平化节点
@@ -141,12 +141,26 @@ const defaultTreeData: TreeData = {
  * @returns 返回解析后的 TreeData 对象，如果文件不存在或损坏则返回默认结构。
  */
 export const readTree = async (): Promise<TreeData> => {
+  const { treeData } = await getIssueData();
+  return treeData;
+};
+
+const cache = {mtime: 0, issueIdMap:new Map<string, IssueTreeNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
+
+async function getIssueData(){
   const treePath = getTreeDataPath();
   const issueDir = getIssueDir();
 
   if (!treePath || !issueDir) {
-    return { ...defaultTreeData, rootNodes: [] };
+    return {treeData: { ...defaultTreeData, rootNodes: [] }, issueIdMap: new Map<string, IssueTreeNode>()};
   }
+
+  const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
+  if (cache.mtime === stat.mtime) {
+    return { treeData: cache.treeData, issueIdMap: cache.issueIdMap };
+  }
+
+
 
   let treeData: TreeData;
   try {
@@ -159,18 +173,31 @@ export const readTree = async (): Promise<TreeData> => {
     // 如果文件不存在或解析失败，返回默认数据
     treeData = { ...defaultTreeData, rootNodes: [] };
   }
-
+  const issueIdMap = new Map<string, IssueTreeNode>();
   // 运行时动态添加 resourceUri
   walkTree(treeData.rootNodes, (node) => {
     // 确保 filePath 存在再创建 Uri
     if (node.filePath) {
       node.resourceUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), node.filePath);
     }
+    issueIdMap.set(node.id, node);
   });
 
-  return treeData;
-};
+  cache.mtime = stat.mtime;
+  cache.treeData = treeData;
+  cache.issueIdMap = issueIdMap;
+  return { treeData, issueIdMap };
+}
 
+export async function getIssueTitle(issueId:string){
+  const {issueIdMap} = await getIssueData();
+  const issueNode = issueIdMap.get(issueId);
+  if(issueNode?.resourceUri){
+    return getIssueMarkdownTitle(issueNode?.filePath);
+  } else {
+    return '[Unknown Issue: ' + issueId + ']';
+  }
+}
 /**
  * 将树状数据写入 tree.json 文件。
  * @param data 要写入的 TreeData 对象。

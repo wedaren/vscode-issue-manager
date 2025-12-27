@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
-import { titleCache } from '../data/titleCache';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
-import { frontmatterCache } from '../data/frontmatterCache';
+import { getIssueMarkdownTitle,onTitleUpdate } from '../data/IssueMarkdowns';
 
 const DEBOUNCE_REFRESH_DELAY_MS = 500;
 
@@ -116,15 +115,12 @@ export class ConfigurationManager {
 
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
         fileWatcher.onMarkdownChange((e) => {
-            frontmatterCache.get(e.uri); // 预热 frontmatter 缓存
-            titleCache.get(e.uri); // 预热标题缓存
+            getIssueMarkdownTitle(e.uri); // 预热标题缓存
         });
 
         // 订阅内存标题缓存写入/更新事件，触发刷新所有视图（加短延迟以合并快速连续更新）
-        this.fileWatcherDisposables.push(titleCache.onDidUpdate(() => {
-            setTimeout(() => {
-                vscode.commands.executeCommand('issueManager.refreshAllViews');
-            }, 100);
+        this.fileWatcherDisposables.push(onTitleUpdate(() => {
+            vscode.commands.executeCommand('issueManager.refreshAllViews');
         }));
     }
 

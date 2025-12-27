@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseFrontmatter } from '../utils/markdown';
+import { parseFrontmatter } from '../data/IssueMarkdowns';
 
 suite('Frontmatter Parser Tests', () => {
     test('should parse valid frontmatter', () => {

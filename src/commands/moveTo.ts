@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/issueTreeManager';
-import { titleCache } from '../data/titleCache';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
+import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 /**
  * 判断节点是否为 vscode.TreeItem 类型
@@ -106,11 +106,11 @@ export async function moveIssuesTo(selectedNodes: (IssueTreeNode | vscode.TreeIt
         node: null as FlatNode | null
     };
     const items = [rootItem, ...await Promise.all(flatNodes.map(async node => {
-        const title = await titleCache.get(node.filePath);
+        const title = await getIssueMarkdownTitle(node.filePath);
         // 层级路径展示优化：一级节点 description 留空，二级及以上显示父级路径
         let description = '';
         if (node.parentPath.length > 0) {
-            const parentTitles = await Promise.all(node.parentPath.map(n => titleCache.get(n.filePath)));
+            const parentTitles = await Promise.all(node.parentPath.map(n => getIssueMarkdownTitle(n.filePath)));
             description = ['', ...parentTitles].join(' / ');
         }
         return {
