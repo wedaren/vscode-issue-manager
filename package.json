@@ -935,8 +935,6 @@
         "command": "issueManager.searchIssuesInFocused",
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
-        "key": "ctrl+j ctrl+f",
-        "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured"
       },
       {
