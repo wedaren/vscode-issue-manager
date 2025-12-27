@@ -16,9 +16,9 @@ children_files:
 Content here.`;
 
         const result = parseFrontmatter(content);
-        assert.strictEqual(result?.root_file, 'test.md');
-        assert.strictEqual(result?.parent_file, null);
-        assert.deepStrictEqual(result?.children_files, ['child1.md', 'child2.md']);
+        assert.strictEqual(result?.issue_root_file, 'test.md');
+        assert.strictEqual(result?.issue_parent_file, null);
+        assert.deepStrictEqual(result?.issue_children_files, ['child1.md', 'child2.md']);
     });
 
     test('should return null for content without frontmatter', () => {
@@ -62,7 +62,7 @@ date: 2024-01-01
 # Test Document`;
 
         const result = parseFrontmatter(content);
-        assert.strictEqual(result?.root_file, 'test.md');
+        assert.strictEqual(result?.issue_root_file, 'test.md');
         assert.strictEqual(result?.title, 'Custom Title');
         assert.deepStrictEqual(result?.tags, ['tag1', 'tag2']);
         // YAML parser may convert date string to Date object, so we check both possibilities

@@ -1,19 +1,21 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as yaml from 'js-yaml';
-import { getIssueMarkdownFrontmatter, FrontmatterData } from '../data/IssueMarkdowns';
-import { getIssueDir } from '../config';
+import * as vscode from "vscode";
+import * as path from "path";
+import * as yaml from "js-yaml";
+import { getIssueMarkdownFrontmatter, FrontmatterData } from "../data/IssueMarkdowns";
+import { getIssueDir } from "../config";
 
 /**
  * Frontmatter 管理服务
  * 负责处理 markdown 文件的 frontmatter 自动维护
  */
 export class FrontmatterService {
-    
     /**
      * 自动将新文件添加到父文件的 children_files 中
      */
-    public static async addChildToParent(childFileName: string, parentFileName: string): Promise<boolean> {
+    public static async addChildToParent(
+        childFileName: string,
+        parentFileName: string
+    ): Promise<boolean> {
         try {
             const issueDir = getIssueDir();
             if (!issueDir) {
@@ -39,36 +41,34 @@ export class FrontmatterService {
             }
 
             // 检查是否已经包含该子文件
-            const currentChildren = parentFrontmatter.children_files || [];
+            const currentChildren = parentFrontmatter.issue_children_files || [];
             if (currentChildren.includes(childFileName)) {
                 console.log(`${childFileName} 已经在 ${parentFileName} 的 children_files 中`);
                 return true;
             }
 
             // 添加子文件到 children_files
-            const success = await this.updateFrontmatterField(
-                parentFileName,
-                'children_files',
-                [...currentChildren, childFileName]
-            );
+            const success = await this.updateFrontmatterField(parentFileName, "children_files", [
+                ...currentChildren,
+                childFileName,
+            ]);
 
             if (success) {
                 console.log(`已自动将 ${childFileName} 添加到 ${parentFileName} 的 children_files`);
-                
+
                 // 显示用户通知
-                const selection = await vscode.window.showInformationMessage(  
-                    `已自动将 "${childFileName}" 添加到 "${parentFileName}" 的子文件列表`,  
-                    '了解更多'  
-                );  
-                if (selection === '了解更多') {  
-                    await vscode.window.showInformationMessage(  
-                        '当创建新文件时，系统会自动将其添加到当前活动文件的子文件列表中，保持结构完整性。'  
-                    );  
-                }  
+                const selection = await vscode.window.showInformationMessage(
+                    `已自动将 "${childFileName}" 添加到 "${parentFileName}" 的子文件列表`,
+                    "了解更多"
+                );
+                if (selection === "了解更多") {
+                    await vscode.window.showInformationMessage(
+                        "当创建新文件时，系统会自动将其添加到当前活动文件的子文件列表中，保持结构完整性。"
+                    );
+                }
             }
 
             return success;
-
         } catch (error) {
             console.error(`添加子文件到父文件时出错:`, error);
             return false;
@@ -78,7 +78,10 @@ export class FrontmatterService {
     /**
      * 自动从父文件的 children_files 中移除子文件
      */
-    public static async removeChildFromParent(childFileName: string, parentFileName: string): Promise<boolean> {
+    public static async removeChildFromParent(
+        childFileName: string,
+        parentFileName: string
+    ): Promise<boolean> {
         try {
             const issueDir = getIssueDir();
             if (!issueDir) {
@@ -104,8 +107,10 @@ export class FrontmatterService {
             }
 
             // 从 children_files 中移除子文件
-            const currentChildren = parentFrontmatter.children_files || [];
-            const updatedChildren = currentChildren.filter((child: string) => child !== childFileName);
+            const currentChildren = parentFrontmatter.issue_children_files || [];
+            const updatedChildren = currentChildren.filter(
+                (child: string) => child !== childFileName
+            );
 
             // 如果没有变化，直接返回成功
             if (updatedChildren.length === currentChildren.length) {
@@ -115,13 +120,13 @@ export class FrontmatterService {
 
             const success = await this.updateFrontmatterField(
                 parentFileName,
-                'children_files',
+                "children_files",
                 updatedChildren
             );
 
             if (success) {
                 console.log(`已自动从 ${parentFileName} 的 children_files 中移除 ${childFileName}`);
-                
+
                 // 显示用户通知
                 vscode.window.showInformationMessage(
                     `已自动从 "${parentFileName}" 的子文件列表中移除 "${childFileName}"`
@@ -129,7 +134,6 @@ export class FrontmatterService {
             }
 
             return success;
-
         } catch (error) {
             console.error(`从父文件移除子文件时出错:`, error);
             return false;
@@ -139,11 +143,14 @@ export class FrontmatterService {
     /**
      * 设置文件的 parent_file 字段
      */
-    public static async setParentFile(childFileName: string, parentFileName: string): Promise<boolean> {
+    public static async setParentFile(
+        childFileName: string,
+        parentFileName: string
+    ): Promise<boolean> {
         try {
             const success = await this.updateFrontmatterField(
                 childFileName,
-                'parent_file',
+                "parent_file",
                 parentFileName
             );
 
@@ -152,7 +159,6 @@ export class FrontmatterService {
             }
 
             return success;
-
         } catch (error) {
             console.error(`设置 parent_file 时出错:`, error);
             return false;
@@ -162,7 +168,10 @@ export class FrontmatterService {
     /**
      * 同步子文件的 parent_file 字段与父文件的 children_files 保持一致
      */
-    public static async syncChildParentReference(childFileName: string, newParentFileName: string): Promise<boolean> {
+    public static async syncChildParentReference(
+        childFileName: string,
+        newParentFileName: string
+    ): Promise<boolean> {
         try {
             const issueDir = getIssueDir();
             if (!issueDir) {
@@ -188,34 +197,33 @@ export class FrontmatterService {
             }
 
             // 如果 parent_file 已经是正确的，无需修改
-            if (childFrontmatter.parent_file === newParentFileName) {
+            if (childFrontmatter.issue_parent_file === newParentFileName) {
                 return true;
             }
 
             // 更新子文件的 parent_file
             const success = await this.updateFrontmatterField(
                 childFileName,
-                'parent_file',
+                "parent_file",
                 newParentFileName
             );
 
             if (success) {
                 console.log(`已自动同步 ${childFileName} 的 parent_file 为 ${newParentFileName}`);
-                
+
                 // 显示通知给用户
-                const selection = await vscode.window.showInformationMessage(  
-                    `已自动同步 "${childFileName}" 的 parent_file 为 "${newParentFileName}"`,  
-                    '了解更多'  
-                );  
-                if (selection === '了解更多') {  
-                    await vscode.window.showInformationMessage(  
-                        '当手动修改文件的结构关系时，系统会自动同步相关文件的 frontmatter，保持结构一致性。'  
-                    );  
-                }  
+                const selection = await vscode.window.showInformationMessage(
+                    `已自动同步 "${childFileName}" 的 parent_file 为 "${newParentFileName}"`,
+                    "了解更多"
+                );
+                if (selection === "了解更多") {
+                    await vscode.window.showInformationMessage(
+                        "当手动修改文件的结构关系时，系统会自动同步相关文件的 frontmatter，保持结构一致性。"
+                    );
+                }
             }
 
             return success;
-
         } catch (error) {
             console.error(`同步子文件 parent_file 时出错:`, error);
             return false;
@@ -225,10 +233,12 @@ export class FrontmatterService {
     /**
      * 确保父文件的 children_files 包含指定的子文件
      */
-    public static async ensureChildInParent(childFileName: string, parentFileName: string): Promise<boolean> {
+    public static async ensureChildInParent(
+        childFileName: string,
+        parentFileName: string
+    ): Promise<boolean> {
         try {
             return await this.addChildToParent(childFileName, parentFileName);
-
         } catch (error) {
             console.error(`确保子文件在父文件中时出错:`, error);
             return false;
@@ -238,10 +248,13 @@ export class FrontmatterService {
     /**
      * 批量同步文件的结构关系
      */
-    public static async syncFileStructureRelations(fileName: string, newFrontmatter: FrontmatterData): Promise<void> {
+    public static async syncFileStructureRelations(
+        fileName: string,
+        newFrontmatter: FrontmatterData
+    ): Promise<void> {
         try {
-            const newChildrenFiles = newFrontmatter.children_files || [];
-            const newParentFile = newFrontmatter.parent_file;
+            const newChildrenFiles = newFrontmatter.issue_children_files || [];
+            const newParentFile = newFrontmatter.issue_parent_file;
 
             // 同步 children_files 的变化
             await this.syncChildrenFilesChanges(fileName, newChildrenFiles);
@@ -250,7 +263,6 @@ export class FrontmatterService {
             if (newParentFile) {
                 await this.syncParentFileChanges(fileName, newParentFile);
             }
-
         } catch (error) {
             console.error(`批量同步文件结构关系时出错:`, error);
         }
@@ -260,7 +272,10 @@ export class FrontmatterService {
      * 同步 children_files 的变化
      * 确保子文件的 parent_file 字段与父文件的 children_files 保持一致
      */
-    private static async syncChildrenFilesChanges(parentFileName: string, newChildrenFiles: string[]): Promise<void> {
+    private static async syncChildrenFilesChanges(
+        parentFileName: string,
+        newChildrenFiles: string[]
+    ): Promise<void> {
         try {
             const issueDir = getIssueDir();
             if (!issueDir) {
@@ -275,9 +290,9 @@ export class FrontmatterService {
                 try {
                     // 检查子文件是否存在
                     await vscode.workspace.fs.stat(childFileUri);
-                    
+
                     const childFrontmatter = await getIssueMarkdownFrontmatter(childFileUri);
-                    if (childFrontmatter && childFrontmatter.parent_file !== parentFileName) {
+                    if (childFrontmatter && childFrontmatter.issue_parent_file !== parentFileName) {
                         // 子文件的 parent_file 不匹配，需要同步
                         await this.syncChildParentReference(childFileName, parentFileName);
                     }
@@ -286,7 +301,6 @@ export class FrontmatterService {
                     continue;
                 }
             }
-
         } catch (error) {
             console.error(`同步 children_files 变化时出错:`, error);
         }
@@ -296,7 +310,10 @@ export class FrontmatterService {
      * 同步 parent_file 的变化
      * 确保父文件的 children_files 包含当前文件
      */
-    private static async syncParentFileChanges(childFileName: string, newParentFileName: string): Promise<void> {
+    private static async syncParentFileChanges(
+        childFileName: string,
+        newParentFileName: string
+    ): Promise<void> {
         try {
             const issueDir = getIssueDir();
             if (!issueDir) {
@@ -309,11 +326,11 @@ export class FrontmatterService {
             try {
                 // 检查父文件是否存在
                 await vscode.workspace.fs.stat(parentFileUri);
-                
+
                 const parentFrontmatter = await getIssueMarkdownFrontmatter(parentFileUri);
                 if (parentFrontmatter) {
-                    const currentChildren = parentFrontmatter.children_files || [];
-                    
+                    const currentChildren = parentFrontmatter.issue_children_files || [];
+
                     // 如果父文件的 children_files 中没有当前文件，添加它
                     if (!currentChildren.includes(childFileName)) {
                         await this.addChildToParent(childFileName, newParentFileName);
@@ -322,7 +339,6 @@ export class FrontmatterService {
             } catch {
                 // 父文件不存在或无法访问，跳过
             }
-
         } catch (error) {
             console.error(`同步 parent_file 变化时出错:`, error);
         }
@@ -351,31 +367,27 @@ export class FrontmatterService {
 
             // 更新 frontmatter
             const updatedContent = await this.updateFrontmatterInContent(
-                content, 
-                fieldName, 
+                content,
+                fieldName,
                 fieldValue
             );
 
             if (updatedContent && updatedContent !== content) {
                 // 创建编辑操作
                 const edit = new vscode.WorkspaceEdit();
-                const fullRange = new vscode.Range(
-                    0, 0, 
-                    document.lineCount, 0
-                );
+                const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
                 edit.replace(fileUri, fullRange, updatedContent);
 
                 // 应用编辑并保存
                 return await this.applyEditAndSave(
-                    edit, 
-                    fileUri, 
-                    fileName, 
+                    edit,
+                    fileUri,
+                    fileName,
                     `已更新并保存 ${fileName} 的 ${fieldName} 字段`
                 );
             }
 
             return false;
-
         } catch (error) {
             console.error(`更新 frontmatter 字段时出错:`, error);
             return false;
@@ -392,14 +404,14 @@ export class FrontmatterService {
     ): Promise<string | null> {
         try {
             const lines = content.split(/\r?\n/);
-            
+
             // 检查是否有 frontmatter
-            if (lines.length < 2 || lines[0] !== '---') {
+            if (lines.length < 2 || lines[0] !== "---") {
                 return null;
             }
 
             // 找到 frontmatter 结束位置
-            const frontmatterEndIndex = lines.indexOf('---', 1);  
+            const frontmatterEndIndex = lines.indexOf("---", 1);
 
             if (frontmatterEndIndex === -1) {
                 return null;
@@ -407,14 +419,14 @@ export class FrontmatterService {
 
             // 提取 frontmatter 内容
             const frontmatterLines = lines.slice(1, frontmatterEndIndex);
-            const frontmatterContent = frontmatterLines.join('\n');
+            const frontmatterContent = frontmatterLines.join("\n");
 
             // 解析 YAML
             let frontmatterData: FrontmatterData;
             try {
                 const parsed = yaml.load(frontmatterContent) || {};
-                if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-                    console.warn('Frontmatter is not a key-value object, cannot update.');
+                if (typeof parsed !== "object" || Array.isArray(parsed)) {
+                    console.warn("Frontmatter is not a key-value object, cannot update.");
                     return null;
                 }
                 frontmatterData = parsed as FrontmatterData;
@@ -429,19 +441,18 @@ export class FrontmatterService {
             // 转换回 YAML
             const updatedFrontmatterContent = yaml.dump(frontmatterData, {
                 flowLevel: -1,
-                lineWidth: -1
+                lineWidth: -1,
             });
 
             // 重建文件内容
             const newLines = [
-                '---',
-                ...updatedFrontmatterContent.trim().split('\n'),
-                '---',
-                ...lines.slice(frontmatterEndIndex + 1)
+                "---",
+                ...updatedFrontmatterContent.trim().split("\n"),
+                "---",
+                ...lines.slice(frontmatterEndIndex + 1),
             ];
 
-            return newLines.join('\n');
-
+            return newLines.join("\n");
         } catch (error) {
             console.error(`更新文件内容中的 frontmatter 时出错:`, error);
             return null;
@@ -463,7 +474,6 @@ export class FrontmatterService {
 
             const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
             return frontmatter !== null;
-
         } catch (error) {
             console.error(`检查 frontmatter 有效性时出错:`, error);
             return false;
@@ -492,7 +502,7 @@ export class FrontmatterService {
             try {
                 const document = await vscode.workspace.openTextDocument(fileUri);
                 const content = document.getText().trim();
-                
+
                 // 如果文件已有内容，不覆盖
                 if (content.length > 0) {
                     return false;
@@ -504,27 +514,27 @@ export class FrontmatterService {
             // 创建基础 frontmatter
             const frontmatterData: FrontmatterData = {
                 title,
-                date: new Date().toISOString().split('T')[0],
-                root_file: rootFile,
-                children_files: []
+                date: new Date().toISOString().split("T")[0],
+                issue_root_file: rootFile,
+                issue_children_files: [],
             };
 
             if (parentFile) {
-                frontmatterData.parent_file = parentFile;
+                frontmatterData.issue_parent_file = parentFile;
             }
 
             const frontmatterContent = yaml.dump(frontmatterData, {
                 flowLevel: -1,
-                lineWidth: -1
+                lineWidth: -1,
             });
 
             const fileContent = `---\n${frontmatterContent.trim()}\n---\n\n# ${title}\n\n`;
 
             // 直接创建文件并写入内容
             const edit = new vscode.WorkspaceEdit();
-            edit.createFile(fileUri, { 
+            edit.createFile(fileUri, {
                 ignoreIfExists: true,
-                contents: Buffer.from(fileContent, 'utf8')
+                contents: Buffer.from(fileContent, "utf8"),
             });
 
             // 应用编辑操作
@@ -534,7 +544,6 @@ export class FrontmatterService {
             }
 
             return success;
-
         } catch (error) {
             console.error(`创建基础 frontmatter 时出错:`, error);
             return false;
@@ -564,7 +573,7 @@ export class FrontmatterService {
                     console.warn(`保存文件时出现警告 (${fileName}):`, saveError);
                     // 即使保存有警告，编辑操作已经成功，返回 true
                 }
-                
+
                 console.log(`${operation}: ${fileName}`);
                 return true;
             }

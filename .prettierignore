@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+.vscode/
+.git/
+.gitignore
+package-lock.json
+yarn.lock
+*.log
+coverage/
+**/*.min.js
+chrome-extension-wxt/dist/

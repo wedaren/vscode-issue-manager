@@ -46,6 +46,7 @@ import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspa
 import { registerAddFileMappingCommand } from '../commands/addFileMapping';
 import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
 import { registerOpenNoteByNodeIdCommand } from '../commands/openNoteByNodeId';
+import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
 
 
 
@@ -831,6 +832,25 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '选择 LLM 模型'
         );
+
+
+        this.registerCommand(
+            'issueManager.copilotDiffSend',
+            async () => {
+                await copilotDiffSend();
+            },
+            '发送当前编辑器内容到 Copilot 并展示 Diff'
+        );
+
+        this.registerCommand(
+            'issueManager.copilotDiffCopyResult',
+            async () => {
+                await copilotDiffCopyResult();
+            },
+            '复制当前激活编辑器内容到剪贴板'
+        );
+
+        // note: copilotDiffSaveResult command was removed per user request
     }
 
     /**
