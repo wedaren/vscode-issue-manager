@@ -899,8 +899,6 @@
         "command": "issueManager.openFocusedView",
         "key": "ctrl+j ctrl+i",
         "mac": "cmd+j cmd+i",
-        "key": "ctrl+j ctrl+i",
-        "mac": "cmd+j cmd+i",
         "when": "issueManager.isDirConfigured"
       },
       {
