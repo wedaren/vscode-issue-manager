@@ -2,8 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
-import { getFlatTree, FlatTreeNode } from '../data/issueTreeManager';
-import { titleCache } from '../data/titleCache';
+import { getFlatTree, FlatTreeNode, getIssueTitle } from '../data/issueTreeManager';
 
 /**
  * QuickPick 项
@@ -44,7 +43,7 @@ export class QuickPickNoteSelector {
 
     // 添加现有 issue
     for (const issueId of issueIds) {
-      const title = await titleCache.getByIssueId(issueId);
+      const title = await getIssueTitle(issueId);
       
       items.push({
         label: `$(file) ${title}`,

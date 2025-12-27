@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { IssueFrontmatterService, IssueFrontmatterData } from '../services/IssueFrontmatterService';
-import { titleCache } from '../data/titleCache';
+import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 /**
  * Issue 逻辑树节点
@@ -162,7 +162,7 @@ export class IssueLogicalTreeModel {
         }
 
         // 获取标题
-        const title = await titleCache.get(fileName);
+        const title = await getIssueMarkdownTitle(fileName);
 
         // 构建子节点
         const children: IssueLogicalTreeNode[] = [];

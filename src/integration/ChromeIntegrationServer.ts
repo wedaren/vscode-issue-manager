@@ -7,10 +7,10 @@ import { createIssueFromHtml } from '../commands/createIssueFromHtml';
 import { Logger } from '../core/utils/Logger';
 import { readFocused } from '../data/focusedManager';
 import { readTree, IssueTreeNode } from '../data/issueTreeManager';
-import { titleCache } from '../data/titleCache';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { SharedConfig } from '../config/SharedConfig';
+import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 
 interface ChromeRequestPayload {  
@@ -251,7 +251,7 @@ export class ChromeIntegrationServer {
               
               // 递归构建树节点，包含子节点和 markdown 内容
               const buildTreeNode = async (node: IssueTreeNode): Promise<any> => {
-                const title = await titleCache.get(node.filePath);
+                const title = await getIssueMarkdownTitle(node.filePath);
                 const absolutePath = path.join(issueDir, node.filePath);
                 
                 // 读取 markdown 文件内容

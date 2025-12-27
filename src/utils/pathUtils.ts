@@ -153,3 +153,23 @@ export function getWorkspaceRoot(): string | undefined {
   }
   return workspaceFolders[0].uri.fsPath;
 }
+
+/**
+ * 将给定的 URI 或相对路径解析为 issue 目录下的 `vscode.Uri`。
+ * - 若传入为 `vscode.Uri` 则返回该对象
+ * - 若为绝对路径则返回 `vscode.Uri.file(...)`
+ * - 否则相对于 `getIssueDir()` 解析；若未配置则返回 `undefined`
+ */
+export function resolveIssueUri(uriOrPath: vscode.Uri | string): vscode.Uri | undefined {
+  if (uriOrPath instanceof vscode.Uri) {
+    return uriOrPath;
+  }
+  if (path.isAbsolute(uriOrPath)) {
+    return vscode.Uri.file(uriOrPath);
+  }
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return undefined;
+  }
+  return vscode.Uri.file(path.join(issueDir, uriOrPath));
+}

@@ -4,7 +4,7 @@ import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
 import { EditorEventManager } from '../services/EditorEventManager';
 import { getWorkspaceRoot } from '../utils/pathUtils';
-import { titleCache } from '../data/titleCache';
+import { getIssueTitle } from '../data/issueTreeManager';
 
 /**
  * 笔记映射节点类型
@@ -263,7 +263,7 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
         const issueNodes: NoteMappingNode[] = [];
         for (const mapping of workspaceMappings) {
             for (const issueId of mapping.targets) {
-                const title = await titleCache.getByIssueId(issueId)
+                const title = await getIssueTitle(issueId);
                 issueNodes.push({
                     id: `workspace-issue-${issueId}`,
                     type: 'issue',
@@ -312,7 +312,7 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
         // 显示映射的 issue
         const issueNodes: NoteMappingNode[] = [];
         for (const issueId of issueIds) {
-            const title = await titleCache.getByIssueId(issueId);
+            const title = await getIssueTitle(issueId);
             issueNodes.push({
                 id: `file-issue-${issueId}`,
                 type: 'issue',

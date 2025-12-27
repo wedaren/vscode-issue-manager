@@ -3,11 +3,9 @@
  * 只读视图，动态展示某问题在知识库中的所有引用及上下文
  */
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode } from '../data/issueTreeManager';
-import { titleCache } from '../data/titleCache';
-import { getUri } from '../utils/fileUtils';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
+import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
@@ -83,7 +81,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         const parentIssueNode = parentNodes.pop();
         // 辅助方法：获取节点标题（缓存优先，未命中回退为文件名）
         const getNodeTitle = async (n: IssueTreeNode) => {
-            return titleCache.get(n.filePath);
+            return getIssueMarkdownTitle(n.filePath);
         };
 
         const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
@@ -91,7 +89,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             type: 'parent',
             filePath: parentIssueNode.filePath,
             children: [],
-            tooltip: (await Promise.all(parentNodes.map(n => titleCache.get(n.filePath)))).join(' / '),
+            tooltip: (await Promise.all(parentNodes.map(n => getIssueMarkdownTitle(n.filePath)))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
             contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),
