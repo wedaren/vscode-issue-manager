@@ -33,34 +33,6 @@ function isValidObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function parseFrontmatter(content: string): FrontmatterData | null {
-  if (!content.startsWith("---")) {
-    return null;
-  }
-  const lines = content.split(/\r?\n/);
-  let endIndex = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") {
-      endIndex = i;
-      break;
-    }
-  }
-  if (endIndex === -1) {
-    return null;
-  }
-  const yamlContent = lines.slice(1, endIndex).join("\n");
-  try {
-    const parsed = yaml.load(yamlContent);
-    if (isValidObject(parsed)) {
-      return parsed as FrontmatterData;
-    }
-    return null;
-  } catch (error) {
-    Logger.getInstance().warn("解析 frontmatter 失败", error);
-    return null;
-  }
-}
-
 /**
  * 从 frontmatter 的 `issue_title` 字段安全提取字符串标题（支持 string 或 string[]）。
  */
@@ -98,8 +70,16 @@ function extractFrontmatterAndBody(content: string): {
     return { frontmatter: null, body: content };
   }
   const body = lines.slice(endIndex + 1).join("\n");
-  const parsed = parseFrontmatter(content);
-  return { frontmatter: parsed, body };
+  const yamlContent = lines.slice(1, endIndex).join("\n");  
+  try {  
+    const parsed = yaml.load(yamlContent);  
+    if (isValidObject(parsed)) {  
+      return { frontmatter: parsed as FrontmatterData, body };  
+    }  
+  } catch (error) {  
+    Logger.getInstance().warn("解析 frontmatter 失败", error);  
+  }
+  return { frontmatter: null, body };
 }
 
 /**
@@ -182,8 +162,8 @@ export async function getIssueMarkdownFrontmatter(
 
     const contentBytes = await vscode.workspace.fs.readFile(uri);
     const content = Buffer.from(contentBytes).toString("utf-8");
-    const data = parseFrontmatter(content);
-    const entry: IssueMarkdownCacheEntry = { mtime, frontmatter: data };
+    const data = extractFrontmatterAndBody(content);
+    const entry: IssueMarkdownCacheEntry = { mtime, frontmatter: data.frontmatter };
     // 如果已有 title 且未改变，可保留
     if (cached?.title) {
       entry.title = cached.title;
