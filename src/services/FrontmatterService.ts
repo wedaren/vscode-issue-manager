@@ -39,7 +39,7 @@ export class FrontmatterService {
             }
 
             // 检查是否已经包含该子文件
-            const currentChildren = parentFrontmatter.children_files || [];
+            const currentChildren = parentFrontmatter.issue_children_files || [];
             if (currentChildren.includes(childFileName)) {
                 console.log(`${childFileName} 已经在 ${parentFileName} 的 children_files 中`);
                 return true;
@@ -104,7 +104,7 @@ export class FrontmatterService {
             }
 
             // 从 children_files 中移除子文件
-            const currentChildren = parentFrontmatter.children_files || [];
+            const currentChildren = parentFrontmatter.issue_children_files || [];
             const updatedChildren = currentChildren.filter((child: string) => child !== childFileName);
 
             // 如果没有变化，直接返回成功
@@ -188,7 +188,7 @@ export class FrontmatterService {
             }
 
             // 如果 parent_file 已经是正确的，无需修改
-            if (childFrontmatter.parent_file === newParentFileName) {
+            if (childFrontmatter.issue_parent_file === newParentFileName) {
                 return true;
             }
 
@@ -240,8 +240,8 @@ export class FrontmatterService {
      */
     public static async syncFileStructureRelations(fileName: string, newFrontmatter: FrontmatterData): Promise<void> {
         try {
-            const newChildrenFiles = newFrontmatter.children_files || [];
-            const newParentFile = newFrontmatter.parent_file;
+            const newChildrenFiles = newFrontmatter.issue_children_files || [];
+            const newParentFile = newFrontmatter.issue_parent_file;
 
             // 同步 children_files 的变化
             await this.syncChildrenFilesChanges(fileName, newChildrenFiles);
@@ -277,7 +277,7 @@ export class FrontmatterService {
                     await vscode.workspace.fs.stat(childFileUri);
                     
                     const childFrontmatter = await getIssueMarkdownFrontmatter(childFileUri);
-                    if (childFrontmatter && childFrontmatter.parent_file !== parentFileName) {
+                    if (childFrontmatter && childFrontmatter.issue_parent_file !== parentFileName) {
                         // 子文件的 parent_file 不匹配，需要同步
                         await this.syncChildParentReference(childFileName, parentFileName);
                     }
@@ -312,7 +312,7 @@ export class FrontmatterService {
                 
                 const parentFrontmatter = await getIssueMarkdownFrontmatter(parentFileUri);
                 if (parentFrontmatter) {
-                    const currentChildren = parentFrontmatter.children_files || [];
+                    const currentChildren = parentFrontmatter.issue_children_files || [];
                     
                     // 如果父文件的 children_files 中没有当前文件，添加它
                     if (!currentChildren.includes(childFileName)) {
@@ -505,12 +505,12 @@ export class FrontmatterService {
             const frontmatterData: FrontmatterData = {
                 title,
                 date: new Date().toISOString().split('T')[0],
-                root_file: rootFile,
-                children_files: []
+                issue_root_file: rootFile,
+                issue_children_files: []
             };
 
             if (parentFile) {
-                frontmatterData.parent_file = parentFile;
+                frontmatterData.issue_parent_file = parentFile;
             }
 
             const frontmatterContent = yaml.dump(frontmatterData, {

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as yaml from "js-yaml";
+import * as os from "os";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
@@ -19,10 +20,12 @@ function extractTitleFromContent(content: string): string | undefined {
  * Frontmatter 数据结构
  */
 export interface FrontmatterData {
-  root_file?: string;
-  parent_file?: string | null;
-  children_files?: string[];
+  issue_root_file?: string;
+  issue_parent_file?: string | null;
+  issue_children_files?: string[];
   issue_title?: string[] | string;
+  issue_description?: string;
+  issue_prompt?: boolean;
   [key: string]: unknown; // 支持其他字段
 }
 
@@ -59,6 +62,47 @@ export function parseFrontmatter(content: string): FrontmatterData | null {
 }
 
 /**
+ * 从 frontmatter 的 `issue_title` 字段安全提取字符串标题（支持 string 或 string[]）。
+ */
+export function extractIssueTitleFromFrontmatter(fm: FrontmatterData | null | undefined): string | undefined {
+  if (!fm) return undefined;
+  const issueTitle = fm.issue_title;
+  if (typeof issueTitle === "string" && issueTitle.trim()) {
+    return issueTitle.trim();
+  }
+  if (Array.isArray(issueTitle) && issueTitle.length > 0 && typeof issueTitle[0] === "string") {
+    return issueTitle[0].trim();
+  }
+  return undefined;
+}
+
+/**
+ * 分离 frontmatter 与正文，返回解析后的 frontmatter（如果存在）和剩余 body 文本。
+ */
+function extractFrontmatterAndBody(content: string): {
+  frontmatter: FrontmatterData | null;
+  body: string;
+} {
+  if (!content.startsWith("---")) {
+    return { frontmatter: null, body: content };
+  }
+  const lines = content.split(/\r?\n/);
+  let endIndex = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === "---") {
+      endIndex = i;
+      break;
+    }
+  }
+  if (endIndex === -1) {
+    return { frontmatter: null, body: content };
+  }
+  const body = lines.slice(endIndex + 1).join("\n");
+  const parsed = parseFrontmatter(content);
+  return { frontmatter: parsed, body };
+}
+
+/**
  * 获取问题目录中所有 Markdown 文件;
  * @returns 问题目录中所有 Markdown 文件
  */
@@ -78,6 +122,7 @@ async function getAllIssueMarkdownFiles(): Promise<vscode.Uri[]> {
 export type IssueMarkdown = {
   title: string;
   uri: vscode.Uri;
+  frontmatter?: FrontmatterData | null;
 };
 
 /**
@@ -90,7 +135,8 @@ export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
 
   for (const file of files) {
     const title = await getIssueMarkdownTitle(file);
-    issues.push({ title, uri: file });
+    const frontmatter = await getIssueMarkdownFrontmatter(file);
+    issues.push({ title, uri: file, frontmatter });
   }
 
   return issues;
@@ -112,7 +158,9 @@ void (async () => {
   for (const [k, v] of Object.entries(obj)) {
     _issueMarkdownCache.set(k, v as IssueMarkdownCacheEntry);
   }
-  Logger.getInstance().debug('[IssueMarkdowns] loaded cache from storage', { size: _issueMarkdownCache.size });
+  Logger.getInstance().debug("[IssueMarkdowns] loaded cache from storage", {
+    size: _issueMarkdownCache.size,
+  });
 })();
 
 /** 获取 Markdown 文件的 frontmatter（带简单 mtime 缓存） */
@@ -196,12 +244,7 @@ export async function getIssueMarkdownTitle(
     const fm = await getIssueMarkdownFrontmatter(uri);
     if (fm) {
       // 优先从 frontmatter 的 issue_title 字段获取标题，支持字符串或字符串数组
-      const issueTitle = fm.issue_title;
-      if (typeof issueTitle === "string" && issueTitle.trim()) {
-        title = issueTitle.trim();
-      } else if (Array.isArray(issueTitle) && issueTitle.length > 0 && typeof issueTitle[0] === "string") {
-        title = issueTitle[0].trim();
-      }
+      title = extractIssueTitleFromFrontmatter(fm);
     }
     if (!title) {
       // 2) 回退到 H1 标题（需要读取文件内容）
@@ -255,3 +298,64 @@ function scheduleOnDidUpdate(): void {
 }
 
 export const onTitleUpdate = onTitleUpdateEmitter.event;
+
+// -------------------- Prompt management (migrated from src/prompts/PromptManager.ts) --------------------
+export interface PromptFile {
+  uri: vscode.Uri;
+  label: string;
+  description?: string;
+  template: string;
+  systemPrompt?: string;
+}
+
+async function ensureDir(uri: vscode.Uri): Promise<void> {
+  try {
+    await vscode.workspace.fs.stat(uri);
+  } catch (err) {
+    await vscode.workspace.fs.createDirectory(uri);
+  }
+}
+
+export async function getPromptDir(): Promise<vscode.Uri> {
+  const config = vscode.workspace.getConfiguration("issueManager");
+  const issueDir = config.get<string>("issueDir") || "";
+
+  if (issueDir && issueDir.trim().length > 0) {
+    return vscode.Uri.file(path.join(issueDir, "copilot-prompts"));
+  }
+
+  if (
+    vscode.workspace.workspaceFolders &&
+    vscode.workspace.workspaceFolders.length > 0
+  ) {
+    return vscode.Uri.joinPath(
+      vscode.workspace.workspaceFolders[0].uri,
+      "copilot-prompts"
+    );
+  }
+
+  return vscode.Uri.file(path.join(os.homedir(), ".copilot-prompts"));
+}
+
+export async function getAllPrompts(): Promise<PromptFile[]> {
+  const prompts = (await getAllIssueMarkdowns()).filter(
+    (m) => m.frontmatter?.issue_prompt
+  );
+  const res: PromptFile[] = [];
+  try {
+    for (const { frontmatter, uri } of prompts) {
+      const data = await vscode.workspace.fs.readFile(uri);
+      const text = Buffer.from(data).toString("utf8");
+      const { body } = extractFrontmatterAndBody(text);
+      const description = frontmatter?.issue_description;
+      res.push({
+        uri,
+        label: extractIssueTitleFromFrontmatter(frontmatter) ?? fallbackTitle(uri),
+        description,
+        template: body.trim(),
+        systemPrompt: undefined,
+      });
+    }
+  } catch {}
+  return res;
+}

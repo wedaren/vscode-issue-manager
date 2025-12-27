@@ -292,16 +292,11 @@ ${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })),
         }
     }
 
-    /**
-     * 将用户文本改写为简洁的输出，仅返回改写后的内容以及一行结论（便于 diff 对比）。
-     */
     public static async rewriteContent(
         text: string,
-        options?: { signal?: AbortSignal; systemPrompt?: string }
+        options?: { signal?: AbortSignal; }
     ): Promise<string> {
         if (!text || text.trim().length === 0) { return ''; }
-        const defaultSystemPrompt = `你是一个文本改写助手。任务：将下面的文本改写为更清晰、简洁的中文，保留原意。\n要求：\n1) 仅输出改写后的文本内容（不要添加说明、示例、编号或元信息）。\n2) 在最后单独一行输出一句结论，格式以“结论：”开头，结论一句话。\n3) 不要使用多余的 Markdown 标记或代码块。\n`;
-        const systemPrompt = options?.systemPrompt || defaultSystemPrompt;
 
         try {
             const model = await this.selectModel(options);
@@ -315,8 +310,7 @@ ${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })),
             }
 
             const response = await model.sendRequest([
-                vscode.LanguageModelChatMessage.User(systemPrompt),
-                vscode.LanguageModelChatMessage.User(`原文：${text}`)
+                vscode.LanguageModelChatMessage.User(text)
             ]);
 
             const full = await this._aggregateStream(response.stream, options?.signal);

@@ -81,7 +81,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
         //  清除指定文件的缓存
         if (this.nodeCache.has(fileName)) {
             this.nodeCache.delete(fileName);
-            const root_file = this.currentActiveFrontmatter?.root_file;
+            const root_file = this.currentActiveFrontmatter?.issue_root_file;
             if (root_file && this.nodeCache.has(root_file)) {
                 this.nodeCache.delete(root_file);
             }
@@ -119,17 +119,17 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
 
             // 如果文件没有 frontmatter，检查是否与当前视图相关
-            if (!frontmatter || !frontmatter.root_file) {
+            if (!frontmatter || !frontmatter.issue_root_file) {
                 return changeType === 'create' ? false : await this.isFileRelatedToCurrent(fileName);
             }
 
             // 检查是否是当前的根文件
-            if (fileName === this.currentActiveFrontmatter?.root_file) {
+            if (fileName === this.currentActiveFrontmatter?.issue_root_file) {
                 return true;
             }
 
             // 检查是否与当前结构相关（同一个 root_file）
-            if (frontmatter.root_file === this.currentActiveFrontmatter?.root_file) {
+            if (frontmatter.issue_root_file === this.currentActiveFrontmatter?.issue_root_file) {
                 // 统一的 frontmatter 关系同步处理
                 await this.syncFrontmatterRelations(fileName, frontmatter);
 
@@ -157,13 +157,13 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private async syncFrontmatterRelations(fileName: string, frontmatter: FrontmatterData): Promise<void> {
         try {
             // 创建文件时的关系建立逻辑
-            if (frontmatter.parent_file) {
+            if (frontmatter.issue_parent_file) {
                 // 如果新文件声明了 parent_file，自动更新父文件的 children_files
-                const success = await FrontmatterService.addChildToParent(fileName, frontmatter.parent_file);
-                if (success && this.nodeCache.has(frontmatter.parent_file)) {
-                    this.nodeCache.delete(frontmatter.parent_file);
+                const success = await FrontmatterService.addChildToParent(fileName, frontmatter.issue_parent_file);
+                if (success && this.nodeCache.has(frontmatter.issue_parent_file)) {
+                    this.nodeCache.delete(frontmatter.issue_parent_file);
                 }
-            } else if (this.currentActiveFile && fileName !== frontmatter.root_file) {
+            } else if (this.currentActiveFile && fileName !== frontmatter.issue_root_file) {
                 // 如果新文件没有 parent_file，并且它本身不是根文件，  
                 // 则将其添加到当前活动文件的 children_files  
                 const currentActiveFileName = path.basename(this.currentActiveFile!);
@@ -204,7 +204,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
 
             if (frontmatter) {  
                 // 对于存在 frontmatter 的文件，通过 root_file 判断关联性  
-                return frontmatter.root_file === this.currentActiveFrontmatter.root_file;  
+                return frontmatter.issue_root_file === this.currentActiveFrontmatter.issue_root_file;  
             }  
             
             // 回退逻辑：对于已删除或无 frontmatter 的文件，检查它是否存在于当前视图的树结构中  
@@ -261,7 +261,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
                 
                 try {
                     const existingFrontmatter = await getIssueMarkdownFrontmatter(existingFileUri);
-                    const childrenFiles = existingFrontmatter?.children_files || [];
+                    const childrenFiles = existingFrontmatter?.issue_children_files || [];
                     
                     // 如果当前文件的 children_files 中包含被删除的文件
                     if (childrenFiles.includes(deletedFileName)) {
@@ -315,7 +315,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
     private async onIssueFileActivated(uri: vscode.Uri): Promise<void> {
         // 检查文件是否有有效的 frontmatter
         const frontmatter = await getIssueMarkdownFrontmatter(uri);
-        if (!frontmatter || !frontmatter.root_file) {
+        if (!frontmatter || !frontmatter.issue_root_file) {
             this.showGuidanceMessage();
             return;
         }
@@ -347,11 +347,11 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
      */
     private async buildStructureFromActiveFile(frontmatter: FrontmatterData): Promise<void> {
         const issueDir = getIssueDir();
-        if (!issueDir || !frontmatter.root_file) {
+        if (!issueDir || !frontmatter.issue_root_file) {
             return;
         }
 
-        const rootFilePath = path.join(issueDir, frontmatter.root_file);
+        const rootFilePath = path.join(issueDir, frontmatter.issue_root_file);
         const rootUri = vscode.Uri.file(rootFilePath);
 
         try {
@@ -363,7 +363,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             const visited = new Set<string>();
             const sessionCache = new Map<string, IssueStructureNode>();
             const rootNode = await this.buildNodeRecursively(
-                frontmatter.root_file, 
+                frontmatter.issue_root_file, 
                 visited, 
                 this.nodeCache, 
                 sessionCache
@@ -375,10 +375,10 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             this.rootNodes = [{
                 id: 'error',
                 filePath: '',
-                title: `根文件不存在: ${frontmatter.root_file}`,
+                title: `根文件不存在: ${frontmatter.issue_root_file}`,
                 children: [],
                 hasError: true,
-                errorMessage: `根文件不存在: ${frontmatter.root_file}`
+                errorMessage: `根文件不存在: ${frontmatter.issue_root_file}`
             }];
             this._onDidChangeTreeData.fire();
         }
@@ -465,7 +465,7 @@ export class IssueStructureProvider implements vscode.TreeDataProvider<IssueStru
             
             // 获取 frontmatter
             const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
-            const childrenFiles = frontmatter?.children_files || [];
+            const childrenFiles = frontmatter?.issue_children_files || [];
 
             // 递归构建子节点
             const children: IssueStructureNode[] = [];

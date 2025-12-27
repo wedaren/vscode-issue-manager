@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
-import { loadPrompts, savePrompt } from '../prompts/PromptManager';
+import { getAllPrompts } from '../data/IssueMarkdowns';
 import { copilotDocumentProvider } from '../virtual/CopilotDocumentProvider';
 
 const timeoutSec =  60;
@@ -18,66 +18,74 @@ export async function copilotDiffSend(): Promise<void> {
         return;
     }
 
-    const config = vscode.workspace.getConfiguration('issueManager');
-    const defaultTemplate = config.get<string>('copilotDiff.promptTemplate');
-
-    // 候选 prompt 列表：从工作区持久化的 markdown 文件加载，同时包含内置模板与自定义入口
-    const promptsFromFiles = await loadPrompts();
-
+    
     const builtin = [
-        { label: '标准：清晰简洁（默认）', template: defaultTemplate, description: '仅返回改写内容 + 一句结论' },
-        { label: '技术文档风格', template: '请将下列文本改写为更专业、结构化的技术文档风格，保留技术细节：\n\n{{content}}', description: '适用于技术说明、Wiki' },
-        { label: '更口语化/适合邮件', template: '请将下列文本改写为更口语化、友好的中文，适合用作邮件正文：\n\n{{content}}', description: '适合对外沟通' },
-        { label: '压缩为摘要（3句）', template: '请把下列文本压缩为最多三句的简短摘要，并在最后给出一句结论：\n\n{{content}}', description: '快速概要' },
-        { label: '委婉措辞（客户用）', template: '请将下列文本用更委婉、礼貌的措辞改写，适用于客户沟通：\n\n{{content}}', description: '客户/外部沟通' }
+        { label: '压缩为摘要（3句）', template: '你是一个文本改写助手。任务：将下面的文本改写为更清晰、简洁的中文，保留原意。\n\n要求：\n\n1) 仅输出改写后的文本内容（不要添加说明、示例、编号或元信息）。\n\n2) 在最后单独一行输出一句结论，格式以“结论：”开头，结论一句话。\n\n3) 不要使用多余的 Markdown 标记或代码块。\n\n请把下列文本压缩为最多三句的简短摘要，并在最后给出一句结论：\n\n{{content}}', description: '快速概要' },
     ];
 
-    const picks: Array<{ label: string; description?: string; template?: string; fileUri?: vscode.Uri; systemPrompt?: string; isCustom?: boolean }> = [];
+    // 创建 QuickPick 并立即显示（先展示加载状态），随后异步加载自定义 prompts 并更新 items
+    const qp = vscode.window.createQuickPick<vscode.QuickPickItem & { template?: string; fileUri?: vscode.Uri; systemPrompt?: string; isCustom?: boolean }>();
+    qp.placeholder = '选择用于改写的 prompt 模板';
+    qp.items = builtin.map(b => ({ label: b.label, description: b.description, template: b.template }));
+    qp.items = qp.items.concat([{ label: '自定义 Prompt...', description: '输入自定义的 prompt 模板（使用 {{content}} 占位）', isCustom: true }]);
+    qp.show();
+    qp.busy = true;
 
-    // add prompts from files first
-    for (const p of promptsFromFiles) {
-        picks.push({ label: p.label, description: p.description, template: p.template, fileUri: p.uri, systemPrompt: p.systemPrompt });
-    }
+    // 异步加载并更新 items
+    (async () => {
+        try {
+            const promptsFromFiles = await getAllPrompts();
+            const picks: Array<{ label: string; description?: string; template?: string; fileUri?: vscode.Uri; systemPrompt?: string; }> = [];
+            for (const p of promptsFromFiles) {
+                picks.push({ label: p.label, description: p.description, template: p.template, fileUri: p.uri, systemPrompt: p.systemPrompt });
+            }
+            for (const b of builtin) {
+                picks.push({ label: b.label, description: b.description, template: b.template });
+            }
+            picks.push({ label: '自定义 Prompt...', description: '输入自定义的 prompt 模板（使用 {{content}} 占位）' });
 
-    // then builtins
-    for (const b of builtin) {
-        picks.push({ label: b.label, description: b.description, template: b.template });
-    }
+            // 文件模板放在最前，随后是内置模板，最后保留自定义入口
+            const fileItems = promptsFromFiles.map(x => ({
+                ...x,
+                label: x.label,
+                description: x.description,
+                detail: x.uri ? `来自：${x.uri.path.split('/').pop()}` : undefined
+            }));
+            const builtinItems = builtin.map(b => ({ label: b.label, description: b.description, template: b.template }));
+            qp.items = [...fileItems,
+                ...builtinItems,
+                { label: '自定义 Prompt...', description: '输入自定义的 prompt 模板（使用 {{content}} 占位）' },
+            ]
+            qp.busy = false;
+        } catch (err) {
+            qp.placeholder = '选择用于改写的 prompt 模板';
+            qp.busy = false;
+            console.error('加载自定义 prompts 失败', err);
+            vscode.window.showWarningMessage('加载自定义模板失败，已使用内置模板。');
+        }
+    })();
 
-    // custom entry
-    picks.push({ label: '自定义 Prompt...', description: '输入自定义的 prompt 模板（使用 {{content}} 占位）', isCustom: true });
-
-    const pickItems: (typeof picks[0] & vscode.QuickPickItem)[] = picks.map(x => ({
-        ...x,
-        label: x.label,
-        description: x.description,
-        detail: x.fileUri ? `来自：${x.fileUri.path.split('/').pop()}` : undefined
-    }));
-
-    const sel = await vscode.window.showQuickPick(pickItems, { placeHolder: '选择用于改写的 prompt 模板' }) as (typeof pickItems[0]) | undefined;
-    if (!sel) { return; }
+    const sel = await new Promise<(typeof qp.items[0]) | undefined>(resolve => {
+        const disposables: vscode.Disposable[] = [];
+        disposables.push(qp.onDidAccept(() => {
+            const v = qp.selectedItems[0];
+            qp.hide();
+            resolve(v as typeof qp.items[0]);
+        }));
+        disposables.push(qp.onDidHide(() => {
+            resolve(undefined);
+        }));
+        // ensure disposables cleaned
+        qp.onDidHide(() => disposables.forEach(d => d.dispose()));
+    });
+    if (!sel) { qp.dispose(); return; }
+    qp.dispose();
 
     let template = sel.template;
     if (sel.isCustom) {
-        const custom = await vscode.window.showInputBox({ prompt: '输入自定义 prompt（使用 {{content}} 占位要替换为文本）', value: defaultTemplate });
+        const custom = await vscode.window.showInputBox({ prompt: '输入自定义 prompt（使用 {{content}} 占位要替换为文本）', value: `{{content}}` });
         if (!custom) { return; }
         template = custom;
-
-        const save = await vscode.window.showQuickPick(['否，临时使用', '是，保存为模板'], { placeHolder: '是否将此自定义 prompt 保存为 Markdown 模板？' });
-        if (save === '是，保存为模板') {
-            const label = await vscode.window.showInputBox({ prompt: '为模板输入一个短名称（将作为 label 存储）' });
-            if (label) {
-                const description = await vscode.window.showInputBox({ prompt: '（可选）为模板输入 description（简短说明）' });
-                const systemPromptInput = await vscode.window.showInputBox({ prompt: '（可选）为该模板指定 systemPrompt（用于设置模型角色/约束），留空则使用本地默认', value: '' });
-                try {
-                    const uri = await savePrompt(label, description, template, systemPromptInput || undefined);
-                    vscode.window.showInformationMessage(`已保存 prompt 到 ${uri.fsPath}`);
-                } catch (err) {
-                    console.error('保存 prompt 失败', err);
-                    vscode.window.showErrorMessage('保存 prompt 失败，请检查文件权限。');
-                }
-            }
-        }
     }
 
     const prompt = template && template.includes('{{content}}') ? template.replace('{{content}}', original) : `${template}\n\n${original}`;
@@ -88,8 +96,7 @@ export async function copilotDiffSend(): Promise<void> {
     try {
         await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '调用模型生成改写...', cancellable: true }, async (progress, token) => {
             token.onCancellationRequested(() => controller.abort());
-            // pass through systemPrompt from selected prompt file if present
-            const optimized = await LLMService.rewriteContent(prompt, { signal: controller.signal, systemPrompt: sel.systemPrompt });
+            const optimized = await LLMService.rewriteContent(prompt, { signal: controller.signal });
 
             if (!optimized || optimized.trim().length === 0) {
                 vscode.window.showErrorMessage('模型未返回改写结果。');

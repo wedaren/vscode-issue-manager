@@ -1249,13 +1249,6 @@
           "default": true,
           "description": "是否在切换编辑器时自动更新笔记映射上下文（用于控制菜单显示）。"
         }
-        ,
-        "issueManager.copilotDiff.promptTemplate": {
-          "type": "string",
-          "default": "请将下列文本改写为更清晰、简洁的中文，保留原意。仅输出改写后的内容，最后单独一行以“结论：”开头给出一句简短结论，不要添加任何其他说明或格式化：\n\n{{content}}",
-          "description": "用于发送给模型的 prompt 模板，使用 {{content}} 占位要替换为用户编辑的文本。"
-        }
-        
       }
     },
     "viewsContainers": {
