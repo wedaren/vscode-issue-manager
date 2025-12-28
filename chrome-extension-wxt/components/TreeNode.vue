@@ -8,7 +8,16 @@
     >
       <span class="toggle-icon">{{ isExpanded ? '▼' : '▶' }}</span>
       <span class="node-title">{{ nodeTitle }}</span>
+      <button
+        class="generate-btn"
+        title="生成标题"
+        @click.stop="handleGenerateTitle"
+      >
+        生成标题
+      </button>
     </div>
+
+    <div v-if="statusMessage" class="node-status">{{ statusMessage }}</div>
 
     <!-- 节点内容详情 -->
     <div v-show="isExpanded" class="tree-node-content">
@@ -51,6 +60,8 @@ const props = defineProps<TreeNodeProps>();
 
 const isExpanded = ref(false);
 
+const statusMessage = ref('');
+
 // 配置 marked 选项
 marked.setOptions({
   breaks: true,        // 支持 GFM 换行
@@ -82,6 +93,39 @@ const parsedMarkdown = computed(() => {
 
 function toggleExpand() {
   isExpanded.value = !isExpanded.value;
+}
+
+async function handleGenerateTitle() {
+  statusMessage.value = '请求中...';
+
+  // 尝试从 node 中获取路径字段
+  const anyNode = props.node as any;
+  const filePath = anyNode.filePath || anyNode.filename || anyNode.absolutePath || '';
+
+  if (!filePath) {
+    statusMessage.value = '无法获取文件路径';
+    setTimeout(() => (statusMessage.value = ''), 3000);
+    return;
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'GENERATE_TITLE',
+      filePath,
+      id: props.node.id
+    });
+
+    if (response && response.success) {
+      statusMessage.value = '生成标题已触发，正在刷新...';
+    } else {
+      statusMessage.value = '生成标题失败: ' + (response?.error || '未知错误');
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    statusMessage.value = '生成请求失败: ' + msg;
+  }
+
+  setTimeout(() => (statusMessage.value = ''), 3000);
 }
 
 /**
@@ -185,6 +229,22 @@ function parseMarkdown(markdown: string): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.generate-btn {
+  background: transparent;
+  border: 1px solid #0e639c;
+  color: #d4d4d4;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.node-status {
+  margin: 6px 0 8px 0;
+  color: #9bd5ff;
+  font-size: 12px;
 }
 
 .tree-node-content {

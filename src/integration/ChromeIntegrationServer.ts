@@ -301,6 +301,44 @@ export class ChromeIntegrationServer {
                 id: message.id 
               }));
             }
+          } else if (message.type === 'execute-command') {
+            // 远程执行受限命令
+            try {
+              const payload = message.data || {};
+              const command: string | undefined = (payload as any).command;
+              const args: any[] = (payload as any).args || [];
+
+              const allowedCommands = ['issueManager.generateTitleCommand'];
+              if (!command || !allowedCommands.includes(command)) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Command not allowed', id: message.id }));
+                return;
+              }
+
+              // 如果第一个参数包含 filePath，则做路径校验
+              if (args.length > 0 && args[0] && (args[0].filePath || args[0].file)) {
+                const filePath = args[0].filePath || args[0].file;
+                const issueDir = getIssueDir();
+                if (!issueDir) {
+                  ws.send(JSON.stringify({ type: 'error', error: 'Issue directory not configured', id: message.id }));
+                  return;
+                }
+
+                const resolved = path.normalize(path.join(issueDir, filePath));
+                const normalizedIssueDir = path.normalize(issueDir);
+                if (!resolved.startsWith(normalizedIssueDir)) {
+                  ws.send(JSON.stringify({ type: 'error', error: 'Invalid filePath', id: message.id }));
+                  return;
+                }
+
+                // 将 filePath 转为相对路径传给命令（命令内部可能期望相对路径）
+                args[0].filePath = path.relative(issueDir, resolved);
+              }
+
+              await vscode.commands.executeCommand(command, ...(args || []));
+              ws.send(JSON.stringify({ type: 'success', id: message.id }));
+            } catch (e: any) {
+              ws.send(JSON.stringify({ type: 'error', error: e?.message || String(e), id: message.id }));
+            }
           } else if (message.type === 'ping') {
             // 心跳响应
             ws.send(JSON.stringify({ type: 'pong', id: message.id }));
