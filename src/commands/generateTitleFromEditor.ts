@@ -15,6 +15,29 @@ function containsTitle(arr: string[], title: string) {
     return arr.some(a => normalizeTitle(a).toLowerCase() === n);
 }
 
+function mergeTitle(
+    existing: { issue_title?: string | string[] | null } | null | undefined,
+    title: string
+): string | string[] | undefined {
+    const t = normalizeTitle(title);
+    if (!existing || existing.issue_title === undefined || existing.issue_title === null) {
+        return t;
+    } else if (typeof existing.issue_title === 'string') {
+        const existingNorm = normalizeTitle(existing.issue_title);
+        if (existingNorm.toLowerCase() === t.toLowerCase()) {
+            return undefined; // 表示无需修改
+        }
+        return [existing.issue_title, t];
+    } else if (Array.isArray(existing.issue_title)) {
+        if (containsTitle(existing.issue_title, t)) {
+            return undefined; // 表示无需修改
+        }
+        return [...existing.issue_title, t];
+    } else {
+        return t;
+    }
+}
+
 export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.generateTitleFromEditor', async () => {
@@ -71,28 +94,22 @@ export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext
                 const existing = await getIssueMarkdownFrontmatter(doc.uri);
 
                 const newTitle = normalizeTitle(title);
-                let merged: string | string[] | undefined;
-
-                if (!existing || existing.issue_title === undefined || existing.issue_title === null) {
-                    merged = newTitle;
-                } else if (typeof existing.issue_title === 'string') {
-                    const existingNorm = normalizeTitle(existing.issue_title);
-                    if (existingNorm.toLowerCase() === newTitle.toLowerCase()) {
-                        vscode.window.showInformationMessage('生成标题与现有 title 相同，未做修改。');
-                        return;
+                const merged = mergeTitle(existing, newTitle);
+                if (merged === undefined) {
+                    if (existing) {
+                        if (typeof existing.issue_title === 'string' && normalizeTitle(existing.issue_title).toLowerCase() === newTitle.toLowerCase()) {
+                            vscode.window.showInformationMessage('生成标题与现有 title 相同，未做修改。');
+                            return;
+                        }
+                        if (Array.isArray(existing.issue_title) && containsTitle(existing.issue_title, newTitle)) {
+                            vscode.window.showInformationMessage('生成标题已存在于 issue_title 中，未做修改。');
+                            return;
+                        }
                     }
-                    merged = [existing.issue_title, newTitle];
-                } else if (Array.isArray(existing.issue_title)) {
-                    if (containsTitle(existing.issue_title, newTitle)) {
-                        vscode.window.showInformationMessage('生成标题已存在于 issue_title 中，未做修改。');
-                        return;
-                    }
-                    merged = [...existing.issue_title, newTitle];
-                } else {
-                    merged = newTitle;
+                    return;
                 }
 
-                const ok = await updateIssueMarkdownFrontmatter(doc.uri, { issue_title: merged as any });
+                const ok = await updateIssueMarkdownFrontmatter(doc.uri, { issue_title: merged });
                 if (ok) {
                     // 触发缓存刷新/标题更新
                     try {
@@ -119,23 +136,19 @@ export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext
                 try {
                     const existing = await getIssueMarkdownFrontmatter(vscode.window.activeTextEditor!.document.uri);
                     const t = normalizeTitle(manual);
-                    let merged: string | string[] | undefined;
-                    if (!existing || existing.issue_title === undefined || existing.issue_title === null) {
-                        merged = t;
-                    } else if (typeof existing.issue_title === 'string') {
-                        if (normalizeTitle(existing.issue_title).toLowerCase() === t.toLowerCase()) {
-                            return;
+                    const merged = mergeTitle(existing, t);
+                    if (merged === undefined) {
+                        if (existing) {
+                            if (typeof existing.issue_title === 'string' && normalizeTitle(existing.issue_title).toLowerCase() === t.toLowerCase()) {
+                                return;
+                            }
+                            if (Array.isArray(existing.issue_title) && containsTitle(existing.issue_title, t)) {
+                                return;
+                            }
                         }
-                        merged = [existing.issue_title, t];
-                    } else if (Array.isArray(existing.issue_title)) {
-                        if (containsTitle(existing.issue_title, t)) {
-                            return;
-                        }
-                        merged = [...existing.issue_title, t];
-                    } else {
-                        merged = t;
+                        return;
                     }
-                    const ok = await updateIssueMarkdownFrontmatter(vscode.window.activeTextEditor!.document.uri, { issue_title: merged as any });
+                    const ok = await updateIssueMarkdownFrontmatter(vscode.window.activeTextEditor!.document.uri, { issue_title: merged });
                     if (ok) {
                         try { await getIssueMarkdownTitle(vscode.window.activeTextEditor!.document.uri); } catch {}
                         vscode.window.showInformationMessage('已将手动输入标题写入 frontmatter.issue_title');
