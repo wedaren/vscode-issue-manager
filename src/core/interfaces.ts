@@ -88,23 +88,23 @@ export interface IViewRegistryResult {
     /** 最近问题树视图实例 */
     recentIssuesView: vscode.TreeView<vscode.TreeItem>;
     
-    /** RSS问题视图提供者实例 */
-    rssIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
+    // /** RSS问题视图提供者实例 */
+    // rssIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
     
-    /** RSS问题树视图实例 */
-    rssIssuesView: vscode.TreeView<vscode.TreeItem>;
+    // /** RSS问题树视图实例 */
+    // rssIssuesView: vscode.TreeView<vscode.TreeItem>;
     
-    /** 问题结构视图提供者实例 */
-    issueStructureProvider: IssueStructureProvider;
+    // /** 问题结构视图提供者实例 */
+    // issueStructureProvider: IssueStructureProvider;
     
-    /** 问题结构树视图实例 */
-    structureView: vscode.TreeView<vscode.TreeItem>;
+    // /** 问题结构树视图实例 */
+    // structureView: vscode.TreeView<vscode.TreeItem>;
     
-    /** 问题逻辑树视图提供者实例（基于 issue_ frontmatter 字段）*/
-    issueLogicalTreeProvider: IssueLogicalTreeProvider;
+    // /** 问题逻辑树视图提供者实例（基于 issue_ frontmatter 字段）*/
+    // issueLogicalTreeProvider: IssueLogicalTreeProvider;
     
-    /** 问题逻辑树视图实例 */
-    logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
+    // /** 问题逻辑树视图实例 */
+    // logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
     
     /** PARA 视图提供者实例 */
     paraViewProvider: ParaViewProvider;

@@ -74,13 +74,13 @@ export class ViewRegistry {
         const { recentIssuesProvider, recentIssuesView } = this.registerRecentView();
         
         // 注册RSS问题视图
-        const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
+        // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
         
         // 注册问题结构视图
-        const { issueStructureProvider, structureView } = this.registerStructureView();
+        // const { issueStructureProvider, structureView } = this.registerStructureView();
         
         // 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
-        const { issueLogicalTreeProvider, logicalTreeView } = this.registerLogicalTreeView();
+        // const { issueLogicalTreeProvider, logicalTreeView } = this.registerLogicalTreeView();
         
         // 注册 PARA 视图
         const { paraViewProvider, paraView } = this.registerParaView();
@@ -101,12 +101,12 @@ export class ViewRegistry {
             overviewView,
             focusedView,
             recentIssuesView,
-            rssIssuesProvider,
-            rssIssuesView,
-            issueStructureProvider,
-            structureView,
-            issueLogicalTreeProvider,
-            logicalTreeView,
+            // rssIssuesProvider,
+            // rssIssuesView,
+            // issueStructureProvider,
+            // structureView,
+            // issueLogicalTreeProvider,
+            // logicalTreeView,
             paraViewProvider,
             paraView,
             noteMappingProvider,
@@ -228,25 +228,25 @@ export class ViewRegistry {
         return { issueStructureProvider, structureView };
     }
 
-    /**
-     * 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
-     */
-    private registerLogicalTreeView(): {
-        issueLogicalTreeProvider: IssueLogicalTreeProvider;
-        logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
-    } {
-        const issueLogicalTreeProvider = new IssueLogicalTreeProvider(this.context);
+    // /**
+    //  * 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
+    //  */
+    // private registerLogicalTreeView(): {
+    //     issueLogicalTreeProvider: IssueLogicalTreeProvider;
+    //     logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
+    // } {
+    //     const issueLogicalTreeProvider = new IssueLogicalTreeProvider(this.context);
         
-        const logicalTreeView = vscode.window.createTreeView('issueManager.views.logicalTree', {
-            treeDataProvider: issueLogicalTreeProvider,
-            showCollapseAll: true
-        });
+    //     const logicalTreeView = vscode.window.createTreeView('issueManager.views.logicalTree', {
+    //         treeDataProvider: issueLogicalTreeProvider,
+    //         showCollapseAll: true
+    //     });
         
-        this.context.subscriptions.push(logicalTreeView);
-        this.context.subscriptions.push(issueLogicalTreeProvider);
+    //     this.context.subscriptions.push(logicalTreeView);
+    //     this.context.subscriptions.push(issueLogicalTreeProvider);
         
-        return { issueLogicalTreeProvider, logicalTreeView };
-    }
+    //     return { issueLogicalTreeProvider, logicalTreeView };
+    // }
 
     /**
      * 注册 PARA 视图
