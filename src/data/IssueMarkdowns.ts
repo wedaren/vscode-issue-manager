@@ -138,7 +138,9 @@ const _issueMarkdownCache = new Map<string, IssueMarkdownCacheEntry>();
 // 尝试加载磁盘缓存（不阻塞启动流程）
 void (async () => {
     const obj = await cacheStorage.load();
-    if (!obj) return;
+    if (!obj) {
+        return;
+    }
     for (const [k, v] of Object.entries(obj)) {
         _issueMarkdownCache.set(k, v as IssueMarkdownCacheEntry);
     }
@@ -182,6 +184,72 @@ export async function getIssueMarkdownFrontmatter(
         _issueMarkdownCache.delete(key);
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         return null;
+    }
+}
+
+/** 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。 */
+export async function updateIssueMarkdownFrontmatter(
+    uriOrPath: vscode.Uri | string,
+    updates: Partial<FrontmatterData>
+): Promise<boolean> {
+    const uri = resolveIssueUri(uriOrPath);
+    if (!uri) {
+        return false;
+    }
+    const key = uri.toString();
+    try {
+        const document = await vscode.workspace.openTextDocument(uri);
+        const original = document.getText();
+        const { frontmatter, body } = extractFrontmatterAndBody(original);
+
+        const fm: FrontmatterData = (frontmatter ? { ...frontmatter } : {}) as FrontmatterData;
+        for (const [k, v] of Object.entries(updates)) {
+            // @ts-ignore
+            fm[k] = v as any;
+        }
+
+        const fmYaml = yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim();
+        const newContent = `---\n${fmYaml}\n---\n${body}`;
+
+        if (newContent === original) {
+            return true;
+        }
+
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
+        edit.replace(uri, fullRange, newContent);
+
+        const applied = await vscode.workspace.applyEdit(edit);
+        if (!applied) {
+            return false;
+        }
+
+        const doc = await vscode.workspace.openTextDocument(uri);
+        if (doc.isDirty) {
+            await doc.save();
+        }
+
+        // 更新缓存 mtime & frontmatter
+        try {
+            const stat = await vscode.workspace.fs.stat(uri);
+            const mtime = stat.mtime;
+            const cached = _issueMarkdownCache.get(key);
+            _issueMarkdownCache.set(key, {
+                mtime,
+                frontmatter: fm,
+                title: cached?.title,
+            });
+            cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+            scheduleOnDidUpdate();
+        } catch (e) {
+            // 忽略缓存更新错误
+            Logger.getInstance().warn('更新 frontmatter 后更新缓存失败', e);
+        }
+
+        return true;
+    } catch (err) {
+        Logger.getInstance().error('updateIssueMarkdownFrontmatter error:', err);
+        return false;
     }
 }
 

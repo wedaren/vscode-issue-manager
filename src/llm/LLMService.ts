@@ -210,6 +210,128 @@ ${JSON.stringify(allIssues.map(i=>({ title: i.title, filePath: i.uri.fsPath })),
     }
 
     /**
+     * 更强壮的标题生成器：改进 prompt、支持截断、增强 JSON 提取与回退解析。
+     */
+    public static async generateTitleOptimized(
+        text: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<string> {
+        if (!text || text.trim().length === 0) {
+            return '';
+        }
+
+        // 截断以防超长内容导致模型拒绝或超时
+        const MAX_CHARS = 64000;
+        let sentText = text;
+        let truncated = false;
+        if (text.length > MAX_CHARS) {
+            sentText = text.slice(0, MAX_CHARS);
+            truncated = true;
+        }
+
+        const promptLines: string[] = [];
+        promptLines.push('请为下面的 Markdown 文本生成一个简洁、精确的一行标题（适合作为 Markdown 一级标题，去掉任何前导的 `#`）。');
+        promptLines.push('仅返回一个 JSON 对象，格式为：{ "title": "生成的标题文本" }。不要添加其它说明、注释或代码块标签。');
+        if (truncated) {
+            promptLines.push('(注意：输入已被截断，只包含文件的前部分，因此请基于可见内容生成简洁标题，并尽量保持通用性)');
+        }
+        promptLines.push('原文如下：');
+        promptLines.push('---');
+        promptLines.push(sentText);
+        promptLines.push('---');
+
+        const prompt = promptLines.join('\n');
+
+        try {
+            const model = await this.selectModel(options);
+            if (!model) {
+                vscode.window.showErrorMessage('未找到可用的 Copilot 模型，无法自动生成标题。');
+                return '';
+            }
+
+            if (options?.signal?.aborted) {
+                throw new Error('请求已取消');
+            }
+
+            const response = await model.sendRequest([
+                vscode.LanguageModelChatMessage.User(prompt)
+            ]);
+
+            const full = await this._aggregateStream(response.stream, options?.signal);
+            Logger.getInstance().info('LLM generateTitleOptimized Raw Response:', full);
+
+            // 1) 尝试提取 ```json ``` 区块
+            const jsonBlockMatch = full.match(/```json\s*([\s\S]*?)\s*```/i);
+            let jsonCandidate = '';
+            if (jsonBlockMatch && jsonBlockMatch[1]) {
+                jsonCandidate = jsonBlockMatch[1];
+            }
+
+            // 2) 如果没有，尝试提取第一个平衡的 JSON 对象
+            function extractFirstBalancedJson(s: string): string | null {
+                const first = s.indexOf('{');
+                if (first === -1) {
+                    return null;
+                }
+                let depth = 0;
+                for (let i = first; i < s.length; i++) {
+                    const ch = s[i];
+                    if (ch === '{') {
+                        depth++;
+                    } else if (ch === '}') {
+                        depth--;
+                    }
+                    if (depth === 0) {
+                        return s.substring(first, i + 1);
+                    }
+                }
+                return null;
+            }
+
+            if (!jsonCandidate) {
+                const balanced = extractFirstBalancedJson(full);
+                if (balanced) {
+                    jsonCandidate = balanced;
+                }
+            }
+
+            // 3) 解析 JSON
+            if (jsonCandidate) {
+                try {
+                    const parsed = JSON.parse(jsonCandidate);
+                    if (parsed && typeof parsed.title === 'string' && parsed.title.trim().length > 0) {
+                        return parsed.title.trim();
+                    }
+                } catch (err) {
+                    Logger.getInstance().warn('解析 LLM generateTitleOptimized JSON 失败，尝试其它解析策略', err);
+                }
+            }
+
+            // 4) 直接使用键值正则提取 "title": "..."
+            const titleMatch = full.match(/"title"\s*:\s*"([^"]{1,200})"/i) || full.match(/'title'\s*:\s*'([^']{1,200})'/i);
+            if (titleMatch && titleMatch[1]) {
+                return titleMatch[1].trim();
+            }
+
+            // 5) 回退：取第一行非空并清理 Markdown 前缀
+            const lines = full.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            if (lines.length > 0) {
+                const first = lines[0].replace(/^#+\s*/, '').trim();
+                return first;
+            }
+
+            return '';
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return '';
+            }
+            Logger.getInstance().error('generateTitleOptimized error:', error);
+            vscode.window.showErrorMessage('调用 Copilot 自动生成标题失败。');
+            return '';
+        }
+    }
+
+    /**
      * 根据用户输入生成一篇完整的 Markdown 文档。
      * @param prompt 用户的主题或问题
      * @param options 可选参数
