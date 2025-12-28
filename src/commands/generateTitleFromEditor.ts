@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { LLMService } from '../llm/LLMService';
 import { updateIssueMarkdownFrontmatter, getIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
@@ -167,5 +166,3 @@ export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext
         })
     );
 }
-
-export default registerGenerateTitleFromEditor;

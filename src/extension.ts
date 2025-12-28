@@ -9,7 +9,6 @@ import { NoteMappingService } from './services/noteMapping/NoteMappingService';
 import { EditorMappingContextUpdater } from './services/EditorMappingContextUpdater';
 import { ensureGitignoreForMappings } from './data/noteMappingStorage';
 import { copilotDocumentProvider } from './virtual/CopilotDocumentProvider';
-import registerGenerateTitleFromEditor from './commands/generateTitleFromEditor';
 
 // 当您的扩展被激活时,将调用此方法
 export function activate(context: vscode.ExtensionContext) {
@@ -52,8 +51,6 @@ export function activate(context: vscode.ExtensionContext) {
 	const providerDisposable = vscode.workspace.registerTextDocumentContentProvider('copilot', copilotDocumentProvider);
 	context.subscriptions.push(providerDisposable);
 
-	// 注册“生成标题”命令（编辑器右键）
-	registerGenerateTitleFromEditor(context);
 
 	// 当 Copilot 虚拟文档被关闭时，清理提供者中的缓存以避免内存泄漏
 	const closeDisposable = vscode.workspace.onDidCloseTextDocument((doc) => {
