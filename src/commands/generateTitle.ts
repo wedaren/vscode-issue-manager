@@ -37,19 +37,60 @@ function mergeTitle(
     }
 }
 
-export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext) {
+export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.generateTitleFromEditor', async () => {
+        vscode.commands.registerCommand('issueManager.generateTitleCommand', async (...args: unknown[]) => {
             let targetUri: vscode.Uri | undefined;
             try {
-                const editor = vscode.window.activeTextEditor;
-                if (!editor) {
-                    vscode.window.showWarningMessage('请在 Markdown 编辑器中运行此命令。');
+                // 支持三种来源：
+                // 1. 传入 TreeItem / IssueTreeNode（含 resourceUri）
+                // 2. 传入 vscode.Uri
+                // 3. 无参数时使用活动编辑器
+                let doc: vscode.TextDocument | undefined;
+
+                if (args && args.length > 0) {
+                    const firstArg = args[0];
+                    let potentialUri: vscode.Uri | undefined;
+
+                    // 1. 检查是否为 TreeItem/IssueTreeNode (包含 resourceUri)
+                    if (typeof firstArg === 'object' && firstArg !== null && 'resourceUri' in firstArg) {
+                        const { resourceUri } = firstArg as { resourceUri?: unknown };
+                        if (resourceUri instanceof vscode.Uri) {
+                            potentialUri = resourceUri;
+                        }
+                    }
+                    // 2. 检查是否为 vscode.Uri 实例
+                    else if (firstArg instanceof vscode.Uri) {
+                        potentialUri = firstArg as vscode.Uri;
+                    }
+
+                    // 尝试打开文档
+                    if (potentialUri) {
+                        try {
+                            doc = await vscode.workspace.openTextDocument(potentialUri);
+                            targetUri = potentialUri;
+                        } catch (e) {
+                            Logger.getInstance().warn(`打开传入的 URI 失败: ${potentialUri.toString()}`, e);
+                            // 失败则忽略，后续逻辑会回退到活动编辑器
+                        }
+                    }
+                }
+
+                if (!doc) {
+                    const editor = vscode.window.activeTextEditor;
+                    if (!editor) {
+                        vscode.window.showWarningMessage('请在 Markdown 编辑器中运行此命令或从问题总览右键触发。');
+                        return;
+                    }
+                    doc = editor.document;
+                    targetUri = doc.uri;
+                }
+
+                if (!doc) {
+                    vscode.window.showWarningMessage('找不到目标文档。');
                     return;
                 }
 
-                const doc = editor.document;
-                targetUri = doc.uri;
                 if (doc.languageId !== 'markdown') {
                     vscode.window.showWarningMessage('此命令仅适用于 Markdown 文件。');
                     return;
@@ -76,7 +117,7 @@ export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext
                     },
                     async (progress, token) => {
                         try {
-                            const generated = await LLMService.generateTitleOptimized(doc.getText(), { signal: token as unknown as AbortSignal });
+                            const generated = await LLMService.generateTitleOptimized(doc!.getText(), { signal: token as unknown as AbortSignal });
                             return generated;
                         } catch (err) {
                             if (token.isCancellationRequested) {

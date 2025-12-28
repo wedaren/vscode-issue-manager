@@ -72,7 +72,7 @@
         "icon": "$(add)"
       },
       {
-        "command": "issueManager.generateTitleFromEditor",
+        "command": "issueManager.generateTitleCommand",
         "title": "生成标题",
         "category": "Issue Manager",
         "icon": "$(pencil)"
@@ -666,6 +666,11 @@
           "group": "navigation@4"
         },
         {
+          "command": "issueManager.generateTitleCommand",
+          "when": "view == 'issueManager.views.overview' && (viewItem =~ /issueNode/ || viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
+          "group": "llm"
+        },
+        {
           "command": "issueManager.focusIssueFromIssueFile",
           "when": "(view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/)",
           "group": "modification@3"
@@ -898,7 +903,7 @@
           "group": "0_issueManager@6"
         },
         {
-          "command": "issueManager.generateTitleFromEditor",
+          "command": "issueManager.generateTitleCommand",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
           "group": "0_issueManager@6"
         },
