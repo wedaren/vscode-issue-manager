@@ -103,7 +103,7 @@ export function buildTopLevelNodes(treeRootNodes: IssueTreeNode[], selectedTreeN
     return topLevel;
 }
 
-export function insertNodesAtPick(tree: { rootNodes: IssueTreeNode[] }, pick: any, nodesToInsert: IssueTreeNode[]) {
+export function insertNodesAtPick(tree: { rootNodes: IssueTreeNode[] }, pick: { node: IssueTreeNode | null } | undefined, nodesToInsert: IssueTreeNode[]) {
     if (!pick || !pick.node) {
         tree.rootNodes.unshift(...nodesToInsert);
     } else {

@@ -25,8 +25,9 @@ export async function moveIssuesTo(selectedNodes: (IssueTreeNode | vscode.TreeIt
     let convertedNodes: IssueTreeNode[];
     try {
         convertedNodes = issueFileNodes.map(item => convertTreeItemToTreeNode(item));
-    } catch (error: any) {
-        vscode.window.showErrorMessage(`移动问题失败: ${error.message}`);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        vscode.window.showErrorMessage(`移动问题失败: ${message}`);
         return;
     }
 
