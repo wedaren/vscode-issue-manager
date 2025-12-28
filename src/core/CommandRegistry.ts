@@ -132,7 +132,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
         issueStructureProvider: IssueStructureProvider,
-        issueLogicalTreeProvider: IssueLogicalTreeProvider,
+        // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
         paraView?: vscode.TreeView<ParaViewNode>
     ): void {
@@ -196,7 +196,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             this.registerStructureViewCommands(issueStructureProvider);
 
             // 8. 注册逻辑树视图命令
-            this.registerLogicalTreeViewCommands(issueLogicalTreeProvider);
+            // this.registerLogicalTreeViewCommands(issueLogicalTreeProvider);
 
             // 9. 注册 PARA 视图命令
             this.registerParaCommands();
