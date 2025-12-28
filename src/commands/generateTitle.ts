@@ -49,17 +49,29 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                 let doc: vscode.TextDocument | undefined;
 
                 if (args && args.length > 0) {
-                    const first = args[0] as any;
-                    if (first && typeof first === 'object' && 'resourceUri' in first && first.resourceUri) {
-                        targetUri = first.resourceUri as vscode.Uri;
-                        doc = await vscode.workspace.openTextDocument(targetUri);
-                    } else if (first && (first.scheme || first.fsPath || first.path)) {
-                        // 可能是 Uri
+                    const firstArg = args[0];
+                    let potentialUri: vscode.Uri | undefined;
+
+                    // 1. 检查是否为 TreeItem/IssueTreeNode (包含 resourceUri)
+                    if (typeof firstArg === 'object' && firstArg !== null && 'resourceUri' in firstArg) {
+                        const { resourceUri } = firstArg as { resourceUri?: unknown };
+                        if (resourceUri instanceof vscode.Uri) {
+                            potentialUri = resourceUri;
+                        }
+                    }
+                    // 2. 检查是否为 vscode.Uri 实例
+                    else if (firstArg instanceof vscode.Uri) {
+                        potentialUri = firstArg as vscode.Uri;
+                    }
+
+                    // 尝试打开文档
+                    if (potentialUri) {
                         try {
-                            targetUri = first as vscode.Uri;
-                            doc = await vscode.workspace.openTextDocument(targetUri);
+                            doc = await vscode.workspace.openTextDocument(potentialUri);
+                            targetUri = potentialUri;
                         } catch (e) {
-                            // ignore
+                            Logger.getInstance().warn(`打开传入的 URI 失败: ${potentialUri.toString()}`, e);
+                            // 失败则忽略，后续逻辑会回退到活动编辑器
                         }
                     }
                 }
