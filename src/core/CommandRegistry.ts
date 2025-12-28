@@ -131,7 +131,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
         overviewView: vscode.TreeView<IssueTreeNode>,
         focusedView: vscode.TreeView<IssueTreeNode>,
-        issueStructureProvider: IssueStructureProvider,
+        // issueStructureProvider: IssueStructureProvider,
         // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
         paraView?: vscode.TreeView<ParaViewNode>
@@ -192,8 +192,8 @@ export class CommandRegistry extends BaseCommandRegistry {
                 })
             );
 
-            // 7. 注册结构视图命令
-            this.registerStructureViewCommands(issueStructureProvider);
+            // // 7. 注册结构视图命令
+            // this.registerStructureViewCommands(issueStructureProvider);
 
             // 8. 注册逻辑树视图命令
             // this.registerLogicalTreeViewCommands(issueLogicalTreeProvider);

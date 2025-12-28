@@ -76,8 +76,8 @@ export class ViewRegistry {
         // 注册RSS问题视图
         // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
         
-        // 注册问题结构视图
-        const { issueStructureProvider, structureView } = this.registerStructureView();
+        // // 注册问题结构视图
+        // const { issueStructureProvider, structureView } = this.registerStructureView();
         
         // 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
         // const { issueLogicalTreeProvider, logicalTreeView } = this.registerLogicalTreeView();
@@ -103,8 +103,8 @@ export class ViewRegistry {
             recentIssuesView,
             // rssIssuesProvider,
             // rssIssuesView,
-            issueStructureProvider,
-            structureView,
+            // issueStructureProvider,
+            // structureView,
             // issueLogicalTreeProvider,
             // logicalTreeView,
             paraViewProvider,

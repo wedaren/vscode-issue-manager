@@ -58,6 +58,7 @@
       },
       {
         "command": "issueManager.disassociateIssue",
+        "icon": "$(trash)",
         "title": "解除关联"
       },
       {
@@ -91,7 +92,7 @@
       {
         "command": "issueManager.removeFocus",
         "title": "移除关注",
-        "icon": "$(trash)"
+        "icon": "$(eye-closed)"
       },
       {
         "command": "issueManager.pinFocus",
@@ -695,8 +696,8 @@
           "group": "modification@3"
         },
         {
-          "command": "issueManager.copyFilename",
-          "when": "viewItem =~ /(recentIssue|issueNode|isolatedIssue)/",
+          "command": "issueManager.disassociateIssue",
+          "when": "viewItem =~ /(issueNode)/",
           "group": "inline"
         },
         {

@@ -94,11 +94,11 @@ export interface IViewRegistryResult {
     // /** RSS问题树视图实例 */
     // rssIssuesView: vscode.TreeView<vscode.TreeItem>;
     
-    /** 问题结构视图提供者实例 */
-    issueStructureProvider: IssueStructureProvider;
+    // /** 问题结构视图提供者实例 */
+    // issueStructureProvider: IssueStructureProvider;
     
-    /** 问题结构树视图实例 */
-    structureView: vscode.TreeView<vscode.TreeItem>;
+    // /** 问题结构树视图实例 */
+    // structureView: vscode.TreeView<vscode.TreeItem>;
     
     // /** 问题逻辑树视图提供者实例（基于 issue_ frontmatter 字段）*/
     // issueLogicalTreeProvider: IssueLogicalTreeProvider;
