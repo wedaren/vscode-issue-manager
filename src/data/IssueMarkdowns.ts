@@ -187,7 +187,12 @@ export async function getIssueMarkdownFrontmatter(
     }
 }
 
-/** 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。 */
+/** 
+ * 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。  
+ * @param uriOrPath 要更新的文件的 URI 或路径。  
+ * @param updates 一个包含要更新的 frontmatter 字段的对象。  
+ * @returns 如果更新成功，则返回 true；否则返回 false。  
+ */  
 export async function updateIssueMarkdownFrontmatter(
     uriOrPath: vscode.Uri | string,
     updates: Partial<FrontmatterData>
