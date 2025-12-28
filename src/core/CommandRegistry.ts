@@ -47,6 +47,7 @@ import { registerAddFileMappingCommand } from '../commands/addFileMapping';
 import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
 import { registerOpenNoteByNodeIdCommand } from '../commands/openNoteByNodeId';
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
+import {registerGenerateTitleFromEditor} from '../commands/generateTitleFromEditor';
 
 
 
@@ -849,6 +850,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '复制当前激活编辑器内容到剪贴板'
         );
+
+        // 注册编辑器右键的“生成标题”命令
+        registerGenerateTitleFromEditor(this.context);
 
         // note: copilotDiffSaveResult command was removed per user request
     }

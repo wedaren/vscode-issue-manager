@@ -71,6 +71,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.generateTitleFromEditor",
+        "title": "生成标题",
+        "category": "Issue Manager",
+        "icon": "$(pencil)"
+      },
+      {
         "command": "issueManager.focusIssue",
         "title": "添加关注"
       },
@@ -880,6 +886,11 @@
         {
           "command": "issueManager.createSubIssueFromEditor",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
+          "group": "0_issueManager@6"
+        },
+        {
+          "command": "issueManager.generateTitleFromEditor",
+          "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured",
           "group": "0_issueManager@6"
         },
         {

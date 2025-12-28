@@ -51,6 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const providerDisposable = vscode.workspace.registerTextDocumentContentProvider('copilot', copilotDocumentProvider);
 	context.subscriptions.push(providerDisposable);
 
+
 	// 当 Copilot 虚拟文档被关闭时，清理提供者中的缓存以避免内存泄漏
 	const closeDisposable = vscode.workspace.onDidCloseTextDocument((doc) => {
 		try {
