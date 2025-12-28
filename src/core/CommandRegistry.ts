@@ -5,8 +5,10 @@ import { isIssueTreeNode } from '../utils/treeUtils';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
-import type { WebviewManager } from '../webview/WebviewManager';
-import type { GraphDataService } from '../services/GraphDataService';
+import { WebviewManager } from '../webview/WebviewManager';
+import { GraphDataService } from '../services/GraphDataService';
+import { EditorContextService } from '../services/EditorContextService';
+import { addFocus } from '../data/focusedManager';
 import { ParaCategory, removeIssueFromCategory, addIssueToCategory, getCategoryLabel } from '../data/paraManager';
 import { addIssueToParaCategory } from '../commands/paraCommands';
 import { isParaIssueNode, ParaViewNode } from '../types';
@@ -49,6 +51,8 @@ import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping'
 import { registerOpenNoteByNodeIdCommand } from '../commands/openNoteByNodeId';
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
 import {registerGenerateTitleFromEditor} from '../commands/generateTitleFromEditor';
+import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
+import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 
 
 
@@ -379,17 +383,15 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.showRelationGraph',
             async (...args: unknown[]) => {
                 const uri = args[0] as vscode.Uri | undefined;
-                const { ShowRelationGraphCommand } = await import('../commands/ShowRelationGraphCommand');
+                // 使用静态导入的 `ShowRelationGraphCommand`
 
                 let webviewManager = this.webviewManager;
                 if (!webviewManager) {
-                    const { WebviewManager } = await import('../webview/WebviewManager');
                     webviewManager = WebviewManager.getInstance(this.context);
                 }
 
                 let graphDataService = this.graphDataService;
                 if (!graphDataService) {
-                    const { GraphDataService } = await import('../services/GraphDataService');
                     graphDataService = GraphDataService.getInstance();
                 }
 
@@ -404,17 +406,15 @@ export class CommandRegistry extends BaseCommandRegistry {
             'issueManager.showMindMap',
             async (...args: unknown[]) => {
                 const uri = args[0] as vscode.Uri | undefined;
-                const { ShowMindMapCommand } = await import('../commands/ShowMindMapCommand');
+                // 使用静态导入的 `ShowMindMapCommand`
 
                 let webviewManager = this.webviewManager;
                 if (!webviewManager) {
-                    const { WebviewManager } = await import('../webview/WebviewManager');
                     webviewManager = WebviewManager.getInstance(this.context);
                 }
 
                 let graphDataService = this.graphDataService;
                 if (!graphDataService) {
-                    const { GraphDataService } = await import('../services/GraphDataService');
                     graphDataService = GraphDataService.getInstance();
                 }
 
@@ -525,7 +525,6 @@ export class CommandRegistry extends BaseCommandRegistry {
                     vscode.commands.executeCommand('issueManager.refreshAllViews');
                     
                     // 重新检查当前编辑器的上下文，避免 issueId 仍然存在
-                    const { EditorContextService } = await import('../services/EditorContextService');
                     await EditorContextService.getInstance()?.recheckCurrentEditor();
                 } else {
                     vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
@@ -831,8 +830,6 @@ export class CommandRegistry extends BaseCommandRegistry {
      */
     private async addParaNodeToFocused(issueId: string): Promise<void> {
         try {
-            // @ts-ignore - 动态导入路径特意省略了扩展名，以便 webpack 可以解析 TS 模块
-            const { addFocus } = await import('../data/focusedManager') as { addFocus: (nodeIds: string[]) => Promise<void> };
             await addFocus([issueId]);
             await Promise.all([
                 vscode.commands.executeCommand('issueManager.focused.refresh'),
