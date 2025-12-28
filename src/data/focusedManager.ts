@@ -214,5 +214,5 @@ export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategor
     return new vscode.ThemeIcon('sparkle');
   }
 
-  return undefined;
+  return new vscode.ThemeIcon('symbol-file');
 }
