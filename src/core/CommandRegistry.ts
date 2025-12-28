@@ -34,6 +34,7 @@ import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { moveIssuesTo } from '../commands/moveTo';
+import { attachIssuesTo } from '../commands/attachTo';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
 import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
@@ -247,6 +248,24 @@ export class CommandRegistry extends BaseCommandRegistry {
             '移动问题'
         );
 
+        // 问题关联命令（与移动类似但保留原位置）
+        this.registerCommand(
+            'issueManager.attachTo',
+            async (...args: unknown[]) => {
+                const [node, nodes] = args;
+                if (nodes && Array.isArray(nodes) && nodes.length > 0) {
+                    const validNodes = nodes.filter(isIssueTreeNode);
+                    await attachIssuesTo(validNodes);
+                } else if (node && isIssueTreeNode(node)) {
+                    await attachIssuesTo([node]);
+                } else {
+                    this.logger.warn('attachTo 命令需要一个有效的树节点参数。');
+                    vscode.window.showWarningMessage('请从视图中选择一个问题以执行关联操作。');
+                }
+            },
+            '关联问题'
+        );
+
         // 从编辑器移动问题命令
         this.registerCommand(
             'issueManager.moveToFromEditor',
@@ -283,6 +302,44 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             },
             '从编辑器移动问题'
+        );
+
+        // 从编辑器关联问题命令
+        this.registerCommand(
+            'issueManager.attachToFromEditor',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showErrorMessage('未找到活动的编辑器。');
+                    return;
+                }
+
+                const uri = editor.document.uri;
+                const issueId = getIssueIdFromUri(uri);
+                
+                if (!issueId) {
+                    vscode.window.showWarningMessage('当前文档不包含问题 ID，无法执行关联操作。');
+                    return;
+                }
+
+                try {
+                    // 从树结构中查找节点
+                    const tree = await readTree();
+                    const result = findNodeById(tree.rootNodes, issueId);
+                    
+                    if (!result) {
+                        vscode.window.showWarningMessage('未在问题树中找到当前问题的节点。');
+                        return;
+                    }
+
+                    // 调用关联命令
+                    await attachIssuesTo([result.node]);
+                } catch (error) {
+                    this.logger.error('从编辑器关联问题失败', error);
+                    vscode.window.showErrorMessage(`关联问题失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                }
+            },
+            '从编辑器关联问题'
         );
 
         // 添加问题到树命令
