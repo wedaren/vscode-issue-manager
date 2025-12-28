@@ -41,6 +41,7 @@ function mergeTitle(
 export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.generateTitleFromEditor', async () => {
+            let targetUri: vscode.Uri | undefined;
             try {
                 const editor = vscode.window.activeTextEditor;
                 if (!editor) {
@@ -49,6 +50,7 @@ export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext
                 }
 
                 const doc = editor.document;
+                targetUri = doc.uri;
                 if (doc.languageId !== 'markdown') {
                     vscode.window.showWarningMessage('此命令仅适用于 Markdown 文件。');
                     return;
@@ -134,7 +136,11 @@ export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext
                 }
 
                 try {
-                    const existing = await getIssueMarkdownFrontmatter(vscode.window.activeTextEditor!.document.uri);
+                    if (!targetUri) {
+                        vscode.window.showErrorMessage('目标文档已丢失，无法写入标题。');
+                        return;
+                    }
+                    const existing = await getIssueMarkdownFrontmatter(targetUri);
                     const t = normalizeTitle(manual);
                     const merged = mergeTitle(existing, t);
                     if (merged === undefined) {
@@ -148,9 +154,9 @@ export function registerGenerateTitleFromEditor(context: vscode.ExtensionContext
                         }
                         return;
                     }
-                    const ok = await updateIssueMarkdownFrontmatter(vscode.window.activeTextEditor!.document.uri, { issue_title: merged });
+                    const ok = await updateIssueMarkdownFrontmatter(targetUri, { issue_title: merged });
                     if (ok) {
-                        try { await getIssueMarkdownTitle(vscode.window.activeTextEditor!.document.uri); } catch {}
+                        try { await getIssueMarkdownTitle(targetUri); } catch {}
                         vscode.window.showInformationMessage('已将手动输入标题写入 frontmatter.issue_title');
                     }
                 } catch (e) {
