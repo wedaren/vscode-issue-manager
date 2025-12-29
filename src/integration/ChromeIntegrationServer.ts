@@ -304,10 +304,13 @@ export class ChromeIntegrationServer {
           } else if (message.type === 'execute-command') {
             // 远程执行受限命令
             try {
-              const payload = message.data || {};
-              const command: string | undefined = (payload as any).command;
-              const args: any[] = (payload as any).args || [];
-
+              interface ExecuteCommandPayload {  
+                command: string;  
+                args?: any[];  
+              }  
+              const payload = (message.data || {}) as Partial<ExecuteCommandPayload>;  
+              const command = payload.command;  
+              const args = payload.args || [];  
               const allowedCommands = ['issueManager.generateTitleCommand'];
               if (!command || !allowedCommands.includes(command)) {
                 ws.send(JSON.stringify({ type: 'error', error: 'Command not allowed', id: message.id }));
@@ -315,7 +318,7 @@ export class ChromeIntegrationServer {
               }
 
               // 如果第一个参数包含 filePath，则做路径校验
-              if (args.length > 0 && args[0] && (args[0].filePath || args[0].file)) {
+              if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null && (args[0].filePath || args[0].file)) {  
                 const filePath = args[0].filePath || args[0].file;
                 const issueDir = getIssueDir();
                 if (!issueDir) {
@@ -336,9 +339,10 @@ export class ChromeIntegrationServer {
 
               await vscode.commands.executeCommand(command, ...(args || []));
               ws.send(JSON.stringify({ type: 'success', id: message.id }));
-            } catch (e: any) {
-              ws.send(JSON.stringify({ type: 'error', error: e?.message || String(e), id: message.id }));
-            }
+            } catch (e: unknown) {  
+              const errorMessage = e instanceof Error ? e.message : String(e);  
+              ws.send(JSON.stringify({ type: 'error', error: errorMessage, id: message.id }));  
+            }  
           } else if (message.type === 'ping') {
             // 心跳响应
             ws.send(JSON.stringify({ type: 'pong', id: message.id }));

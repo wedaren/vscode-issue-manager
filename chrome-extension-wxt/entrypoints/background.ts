@@ -34,6 +34,7 @@ interface ChromeMessage {
   type: string;
   tabId?: number;
   data?: ContentData;
+  filePath?: string;
 }
 
 interface SidePanelNotification {
@@ -357,7 +358,7 @@ export default defineBackground(() => {
       case 'GENERATE_TITLE':
         (async () => {
           try {
-            const filePath = (message as any).filePath;
+            const filePath = message.filePath;
             if (!filePath) {
               sendResponse({ success: false, error: 'Missing filePath' });
               return;
@@ -376,8 +377,7 @@ export default defineBackground(() => {
               // 请求成功，通知 Side Panel 刷新关注列表
               notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
               sendResponse({ success: true });
-            } else if (wsResponse && wsResponse.type === 'error') {
-              sendResponse({ success: false, error: (wsResponse as any).error || 'VSCode error' });
+              sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });
             } else {
               sendResponse({ success: false, error: 'Unexpected response from VSCode' });
             }
