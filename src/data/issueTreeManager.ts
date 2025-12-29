@@ -145,6 +145,18 @@ export const readTree = async (): Promise<TreeData> => {
   return treeData;
 };
 
+export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueTreeNode[]|undefined> => {
+  const { issueIdMap } = await getIssueData();
+  const uriMap = new Map<string, IssueTreeNode[]>();
+  issueIdMap.forEach((node) => {
+    if (node.resourceUri?.fsPath) {
+      const arr = uriMap.get(node.resourceUri?.fsPath) || [];
+      arr.push(node);
+      uriMap.set(node.resourceUri?.fsPath, arr);
+    }
+  });
+  return uriMap.get(uri.fsPath);
+};
 const cache = {mtime: 0, issueIdMap:new Map<string, IssueTreeNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
 
 async function getIssueData(){
