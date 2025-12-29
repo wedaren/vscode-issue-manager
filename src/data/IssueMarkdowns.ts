@@ -87,7 +87,8 @@ function extractFrontmatterAndBody(content: string): {
 }
 
 export async function getIssueMarkdownContent(uri: vscode.Uri): Promise<string> {
-    const data = (await vscode.workspace.fs.readFile(uri)).toString().replace(/^---\s*[\s\S]*?---\s*/, '');
+    const contentBytes = await vscode.workspace.fs.readFile(uri);
+    const data = Buffer.from(contentBytes).toString("utf-8").replace(/^---\s*[\s\S]*?---\s*/, "");
     return data;
 }
 

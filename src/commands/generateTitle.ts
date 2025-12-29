@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
 import { updateIssueMarkdownFrontmatter, getIssueMarkdownFrontmatter, onTitleUpdate } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
-import { getIssueMarkdownTitle,getIssueMarkdownContent } from '../data/IssueMarkdowns';
+import { getIssueMarkdownTitle, getIssueMarkdownContent } from '../data/IssueMarkdowns';
 import { Logger } from '../core/utils/Logger';
 
 function normalizeTitle(t: string) {
