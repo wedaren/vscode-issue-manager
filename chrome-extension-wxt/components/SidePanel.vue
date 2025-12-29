@@ -3,12 +3,12 @@
     <!-- 自动登录工具视图 -->
     <AutoLoginPanel v-if="showAutoLogin" @back="showAutoLogin = false" />
     
-    <!-- 关注问题视图 - 全屏模式 -->
+    <!-- 问题总览视图 - 全屏模式 -->
     <div v-else class="focused-section-fullscreen">
       <div class="section-header-fullscreen">
         <h2>
           <span class="section-icon">⭐</span>
-          关注问题
+          问题总览
         </h2>
         <div class="header-actions">
           <button 
@@ -38,7 +38,7 @@
           <button 
             id="refresh-focused-btn" 
             class="action-btn" 
-            title="刷新关注问题"
+            title="刷新问题总览"
             @click="loadFocusedIssues"
           >
             <span class="btn-icon">🔄</span>
@@ -48,7 +48,7 @@
       <div id="focused-list" class="focused-list-fullscreen">
         <div v-if="loading" class="loading">加载中...</div>
         <div v-else-if="focusedIssues.length === 0" class="empty-message">
-          暂无关注问题
+          暂无问题
         </div>
         <div v-else class="focused-issues">
           <TreeNode
@@ -154,20 +154,21 @@ async function loadFocusedIssues() {
   loading.value = true;
   try {
     console.log('[SidePanel] Loading focused issues...');
-    const response = await chrome.runtime.sendMessage({ type: 'GET_FOCUSED_ISSUES' });
+    // 请求轻量化的问题树（由 background 转发到 VSCode）
+    const response = await chrome.runtime.sendMessage({ type: 'GET_ISSUE_TREE' });
     console.log('[SidePanel] Got response:', response);
     
     if (response.success) {
       focusedIssues.value = response.data || [];
       console.log('[SidePanel] Focused issues loaded:', focusedIssues.value);
     } else {
-      showMessage('获取关注问题失败: ' + (response.error || '未知错误'), 'error');
+      showMessage('获取问题总览失败: ' + (response.error || '未知错误'), 'error');
       focusedIssues.value = [];
     }
   } catch (error: unknown) {
     console.error('Failed to load focused issues:', error);
     const errorMessage = error instanceof Error ? error.message : '未知错误';
-    showMessage('获取关注问题失败: ' + errorMessage, 'error');
+    showMessage('获取问题总览失败: ' + errorMessage, 'error');
     focusedIssues.value = [];
   } finally {
     loading.value = false;

@@ -85,14 +85,7 @@ marked.setOptions({
 });
 
 const nodeTitle = computed(() => {
-  // 优先使用 markdown 内容的第一个 H1 标题
-  if (props.node.content) {
-    const titleMatch = props.node.content.match(/^#\s+(.+)$/m);
-    if (titleMatch) {
-      return titleMatch[1];
-    }
-  }
-  return props.node.title || '未命名';
+  return props.node.title
 });
 
 const hasChildren = computed(() => {
@@ -104,10 +97,34 @@ const parsedMarkdown = computed(() => {
     return '';
   }
   const contentWithoutH1 = removeFirstH1Title(props.node.content);
-  return parseMarkdown(contentWithoutH1);
+  const contentWithoutFrontMatter = removeFrontMatter(contentWithoutH1);
+  return parseMarkdown(contentWithoutFrontMatter);
 });
 
-function toggleExpand() {
+async function toggleExpand() {
+  const anyNode = props.node as any;
+  const filePath = anyNode.filePath || anyNode.filename || anyNode.absolutePath || '';
+
+  // 展开时如果还没有 content，则按需请求
+  if (!isExpanded.value && !props.node.content) {
+    statusMessage.value = '';
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_ISSUE_MARKDOWN', filePath });
+      if (response && response.success && response.content) {
+        // 直接修改 prop 对象的 content（父组件的数据为响应式对象）
+        (props.node as any).content = response.content;
+        if (response.mtime) (props.node as any).mtime = response.mtime;
+        statusMessage.value = '';
+      } else {
+        statusMessage.value = '加载内容失败: ' + (response?.error || '未知错误');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      statusMessage.value = '加载内容失败: ' + msg;
+    }
+    scheduleClearMessage(5000);
+  }
+
   isExpanded.value = !isExpanded.value;
 }
 
@@ -150,6 +167,11 @@ async function handleGenerateTitle() {
  */
 function removeFirstH1Title(markdown: string): string {
   return markdown.replace(/^#\s+.+$/m, '').trim();
+}
+
+
+function removeFrontMatter(markdown: string): string {
+  return markdown.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
 }
 
 /**

@@ -301,6 +301,83 @@ export class ChromeIntegrationServer {
                 id: message.id 
               }));
             }
+          } else if (message.type === 'get-issue-tree') {
+            // 返回轻量化的 issue tree（不包含完整 content），用于 Chrome 扩展按需加载
+            try {
+              const treeData = await readTree();
+              const issueDir = getIssueDir();
+
+              if (!issueDir) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Issue directory not configured', id: message.id }));
+                return;
+              }
+
+
+              const buildMeta = async (node: IssueTreeNode): Promise<any> => {
+                const title = await getIssueMarkdownTitle(node.filePath);
+                const children = node.children && node.children.length > 0
+                  ? await Promise.all(node.children.map(child => buildMeta(child)))
+                  : [];
+
+                return {
+                  id: node.id,
+                  filePath: node.filePath,
+                  absolutePath: path.join(issueDir, node.filePath),
+                  title,
+                  hasChildren: !!(node.children && node.children.length > 0),
+                  children,
+                  expanded: node.expanded ?? false
+                };
+              };
+
+              const data = await Promise.all(
+                treeData.rootNodes
+                  .map(node => buildMeta(node))
+              );
+
+              ws.send(JSON.stringify({ type: 'issue-tree', data, id: message.id }));
+            } catch (e: any) {
+              this.logger.error('[ChromeIntegration] 获取 issue tree 失败', e);
+              ws.send(JSON.stringify({ type: 'error', error: e?.message || String(e), id: message.id }));
+            }
+          } else if (message.type === 'get-issue-content') {
+            // 按需返回单个 issue 的 markdown 内容
+            try {
+              const data = message.data || {};
+              const filePath = (data as any).filePath;
+              if (!filePath) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing filePath', id: message.id }));
+                return;
+              }
+
+              const issueDir = getIssueDir();
+              if (!issueDir) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Issue directory not configured', id: message.id }));
+                return;
+              }
+
+              const absolutePath = path.join(issueDir, filePath);
+              let content = '';
+              let mtime: number | undefined = undefined;
+              try {
+                const fileUri = vscode.Uri.file(absolutePath);
+                const fileContent = await vscode.workspace.fs.readFile(fileUri);
+                content = Buffer.from(fileContent).toString('utf8');
+                try {
+                  const stat = await vscode.workspace.fs.stat(fileUri);
+                  // vscode.FileStat.mtime may be a number
+                  // @ts-ignore
+                  mtime = stat.mtime;
+                } catch { /* ignore */ }
+              } catch (e) {
+                this.logger.warn(`无法读取文件: ${absolutePath}`, e);
+              }
+
+              ws.send(JSON.stringify({ type: 'issue-content', data: { filePath, content, mtime }, id: message.id }));
+            } catch (e: any) {
+              this.logger.error('[ChromeIntegration] 获取 issue content 失败', e);
+              ws.send(JSON.stringify({ type: 'error', error: e?.message || String(e), id: message.id }));
+            }
           } else if (message.type === 'execute-command') {
             // 远程执行受限命令
             try {
@@ -333,8 +410,7 @@ export class ChromeIntegrationServer {
                   return;
                 }
 
-                // 将 filePath 转为相对路径传给命令（命令内部可能期望相对路径）
-                args[0].filePath = path.relative(issueDir, resolved);
+                args[0] = vscode.Uri.file(resolved);
               }
 
               await vscode.commands.executeCommand(command, ...(args || []));
