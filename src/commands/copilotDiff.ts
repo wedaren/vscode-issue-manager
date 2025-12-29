@@ -114,7 +114,7 @@ export async function copilotDiffSend(): Promise<void> {
         );
         disposables.push(
             qp.onDidTriggerItemButton(async (e) => {
-                const fileUri = (e.item as any).fileUri as vscode.Uri | undefined;
+                const fileUri = (e.item as { fileUri?: vscode.Uri }).fileUri;
                 if (!fileUri) {
                     vscode.window.showWarningMessage("未找到对应的文件位置");
                     return;
@@ -123,6 +123,8 @@ export async function copilotDiffSend(): Promise<void> {
                     const nodes = await getIssueNodesByUri(fileUri);
                     if(nodes?.[0]){
                         await vscode.commands.executeCommand("issueManager.openAndRevealIssue", nodes[0], 'overview');
+                    } else {
+                        throw new Error("未找到对应的问题节点");
                     }
                 } catch (err) {
                     // 回退：直接打开文件
