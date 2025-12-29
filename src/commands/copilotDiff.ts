@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { LLMService } from "../llm/LLMService";
 import { getAllPrompts } from "../data/IssueMarkdowns";
+import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { copilotDocumentProvider } from "../virtual/CopilotDocumentProvider";
 
 const TIMEOUT_SEC = 60;
@@ -34,6 +35,7 @@ export async function copilotDiffSend(): Promise<void> {
             fileUri?: vscode.Uri;
             systemPrompt?: string;
             isCustom?: boolean;
+            buttons?: vscode.QuickInputButton[];
         }
     >();
     qp.placeholder = "选择用于改写的 prompt 模板";
@@ -62,6 +64,7 @@ export async function copilotDiffSend(): Promise<void> {
                 template?: string;
                 fileUri?: vscode.Uri;
                 systemPrompt?: string;
+                buttons?: vscode.QuickInputButton[];
             }> = [];
             for (const p of promptsFromFiles) {
                 picks.push({
@@ -70,6 +73,12 @@ export async function copilotDiffSend(): Promise<void> {
                     template: p.template,
                     fileUri: p.uri,
                     systemPrompt: p.systemPrompt,
+                    buttons: [
+                        {
+                            iconPath: new vscode.ThemeIcon("go-to-file"),
+                            tooltip: "在问题总览中查看",
+                        },
+                    ],
                 });
             }
             for (const b of builtin) {
@@ -101,6 +110,31 @@ export async function copilotDiffSend(): Promise<void> {
                 const v = qp.selectedItems[0];
                 qp.hide();
                 resolve(v as (typeof qp.items)[0]);
+            })
+        );
+        disposables.push(
+            qp.onDidTriggerItemButton(async (e) => {
+                const fileUri = (e.item as { fileUri?: vscode.Uri }).fileUri;
+                if (!fileUri) {
+                    vscode.window.showWarningMessage("未找到对应的文件位置");
+                    return;
+                }
+                try {
+                    const nodes = await getIssueNodesByUri(fileUri);
+                    if(nodes?.[0]){
+                        await vscode.commands.executeCommand("issueManager.openAndRevealIssue", nodes[0], 'overview');
+                    } else {
+                        throw new Error("未找到对应的问题节点");
+                    }
+                } catch (err) {
+                    // 回退：直接打开文件
+                    try {
+                        const doc = await vscode.workspace.openTextDocument(fileUri);
+                        await vscode.window.showTextDocument(doc, { preview: true });
+                    } catch (e) {
+                        vscode.window.showErrorMessage("打开问题文件失败：" + String(e));
+                    }
+                }
             })
         );
         disposables.push(
