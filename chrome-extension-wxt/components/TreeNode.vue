@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -61,6 +61,22 @@ const props = defineProps<TreeNodeProps>();
 const isExpanded = ref(false);
 
 const statusMessage = ref('');
+
+let clearTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleClearMessage(delay = 3000) {
+  if (clearTimer) {
+    clearTimeout(clearTimer);
+  }
+  clearTimer = setTimeout(() => (statusMessage.value = ''), delay);
+}
+
+onUnmounted(() => {
+  if (clearTimer) {
+    clearTimeout(clearTimer);
+    clearTimer = undefined;
+  }
+});
 
 // 配置 marked 选项
 marked.setOptions({
@@ -104,7 +120,7 @@ async function handleGenerateTitle() {
 
   if (!filePath) {
     statusMessage.value = '无法获取文件路径';
-    setTimeout(() => (statusMessage.value = ''), 3000);
+    scheduleClearMessage();
     return;
   }
 
@@ -125,7 +141,7 @@ async function handleGenerateTitle() {
     statusMessage.value = '生成请求失败: ' + msg;
   }
 
-  setTimeout(() => (statusMessage.value = ''), 3000);
+  scheduleClearMessage();
 }
 
 /**
