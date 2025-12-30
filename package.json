@@ -22,6 +22,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.quickCreateIssue",
+        "title": "快速新建问题",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.createIssueFromFocused",
         "title": "新建问题",
         "icon": "$(add)"
@@ -929,6 +934,12 @@
         "command": "issueManager.openFocusedView",
         "key": "ctrl+j ctrl+i",
         "mac": "cmd+j cmd+i",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.quickCreateIssue",
+        "key": "ctrl+j ctrl+q",
+        "mac": "cmd+j cmd+q",
         "when": "issueManager.isDirConfigured"
       },
       {
