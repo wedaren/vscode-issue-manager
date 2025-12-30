@@ -64,8 +64,8 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                 }
 
                 if (!targetUri) {
-                        vscode.window.showWarningMessage('请在 Markdown 编辑器中运行此命令或从问题总览右键触发。');
-                        return;
+                    vscode.window.showWarningMessage('请在 Markdown 编辑器中运行此命令或从问题总览右键触发。');
+                    return;
                 }
 
 
@@ -77,8 +77,8 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                 }
 
                 const filePath = targetUri.fsPath;
-                if (!filePath.startsWith(issueDir)) {
-                    vscode.window.showWarningMessage('当前文件不在配置的 issueDir 内，无法写入 issue frontmatter。');
+                if (!filePath.startsWith(issueDir)||!targetUri.fsPath.toLowerCase().endsWith('.md')) {
+                    vscode.window.showWarningMessage('当前文件不在配置的 issueDir 内的 Markdown 文件，无法写入 issue frontmatter。');
                     return;
                 }
 
