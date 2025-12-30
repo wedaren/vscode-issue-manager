@@ -32,6 +32,7 @@
         :key="child.id"
         :node="child"
         :level="level + 1"
+        @update:node-content="onChildUpdate"
       />
     </div>
   </div>
@@ -46,6 +47,8 @@ interface TreeNode {
   id: string;
   title: string;
   filename: string;
+  filePath?: string;
+  absolutePath?: string;
   content?: string;
   mtime?: number;
   children?: TreeNode[];
@@ -57,6 +60,9 @@ interface TreeNodeProps {
 }
 
 const props = defineProps<TreeNodeProps>();
+const emit = defineEmits<{
+  (e: 'update:node-content', payload: { nodeId: string; content: string; mtime?: number }): void;
+}>();
 
 const isExpanded = ref(false);
 
@@ -102,8 +108,8 @@ const parsedMarkdown = computed(() => {
 });
 
 async function toggleExpand() {
-  const anyNode = props.node as any;
-  const filePath = anyNode.filePath || anyNode.filename || anyNode.absolutePath || '';
+  const node = props.node;
+  const filePath = node.filePath ?? node.filename ?? node.absolutePath ?? '';
 
   // 展开时如果还没有 content，则按需请求
   if (!isExpanded.value && !props.node.content) {
@@ -111,9 +117,12 @@ async function toggleExpand() {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_ISSUE_MARKDOWN', filePath });
       if (response && response.success && response.content) {
-        // 直接修改 prop 对象的 content（父组件的数据为响应式对象）
-        (props.node as any).content = response.content;
-        if (response.mtime) (props.node as any).mtime = response.mtime;
+        // 通过事件将内容传回父组件，由父组件更新 node 数据（遵循单向数据流）
+        emit('update:node-content', {
+          nodeId: props.node.id,
+          content: response.content,
+          mtime: response.mtime,
+        });
         statusMessage.value = '';
       } else {
         statusMessage.value = '加载内容失败: ' + (response?.error || '未知错误');
@@ -132,8 +141,8 @@ async function handleGenerateTitle() {
   statusMessage.value = '请求中...';
 
   // 尝试从 node 中获取路径字段
-  const anyNode = props.node as any;
-  const filePath = anyNode.filePath || anyNode.filename || anyNode.absolutePath || '';
+  const node = props.node;
+  const filePath = node.filePath ?? node.filename ?? node.absolutePath ?? '';
 
   if (!filePath) {
     statusMessage.value = '无法获取文件路径';
@@ -159,6 +168,11 @@ async function handleGenerateTitle() {
   }
 
   scheduleClearMessage();
+}
+
+function onChildUpdate(payload: { nodeId: string; content: string; mtime?: number }) {
+  // 将子节点的更新事件向上转发（父组件或祖先组件可处理）
+  emit('update:node-content', payload);
 }
 
 /**

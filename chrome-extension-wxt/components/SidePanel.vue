@@ -56,6 +56,7 @@
             :key="issue.id"
             :node="issue"
             :level="0"
+            @update:node-content="handleUpdateNodeContent"
           />
         </div>
       </div>
@@ -90,6 +91,8 @@ interface FocusedIssue {
   id: string;
   title: string;
   filename: string;
+  filePath?: string;
+  absolutePath?: string;
   content?: string;
   mtime?: number;
   children?: FocusedIssue[];
@@ -215,6 +218,29 @@ function handleOpenIssueDir() {
     console.error('Failed to open issue directory:', error);
     const errorMessage = error instanceof Error ? error.message : '未知错误';
     showMessage('打开问题目录失败: ' + errorMessage, 'error');
+  }
+}
+
+function updateNodeContentById(list: FocusedIssue[], nodeId: string, content: string, mtime?: number): boolean {
+  for (const item of list) {
+    if (item.id === nodeId) {
+      item.content = content;
+      if (mtime) item.mtime = mtime;
+      return true;
+    }
+    if (item.children && item.children.length > 0) {
+      const found = updateNodeContentById(item.children, nodeId, content, mtime);
+      if (found) return true;
+    }
+  }
+  return false;
+}
+
+function handleUpdateNodeContent(payload: { nodeId: string; content: string; mtime?: number }) {
+  if (!payload || !payload.nodeId) return;
+  const updated = updateNodeContentById(focusedIssues.value, payload.nodeId, payload.content, payload.mtime);
+  if (!updated) {
+    console.warn('[SidePanel] 未能在 focusedIssues 中找到节点:', payload.nodeId);
   }
 }
 
