@@ -937,12 +937,6 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.quickCreateIssue",
-        "key": "ctrl+j ctrl+q",
-        "mac": "cmd+j cmd+q",
-        "when": "issueManager.isDirConfigured"
-      },
-      {
         "command": "issueManager.openRecentView",
         "key": "ctrl+j ctrl+r",
         "mac": "cmd+j cmd+r",
@@ -973,7 +967,7 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.searchIssuesInFocused",
+        "command": "issueManager.quickCreateIssue",
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured"

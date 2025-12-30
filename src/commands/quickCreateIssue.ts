@@ -72,7 +72,7 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
                 const title = sel.payload || input || sel.label;
                 const uri = await createIssueFile(title);
                 if (uri) {
-                    await addIssueToTree([uri], parentId, true);
+                    await addIssueToTree([uri], parentId);
                 }
                 break;
             }
