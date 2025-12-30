@@ -19,6 +19,35 @@ interface ChromeRequestPayload {
   url?: string;  
 } 
 
+// WebSocket 消息通用格式
+interface WSMessage<T = unknown> {
+  type: string;
+  id?: string | number;
+  data?: T;
+}
+
+// 轻量化 issue tree 元数据节点
+interface IssueTreeMetaNode {
+  id: string;
+  filePath: string;
+  absolutePath: string;
+  title: string;
+  hasChildren: boolean;
+  children: IssueTreeMetaNode[];
+  expanded: boolean;
+}
+
+// 包含 markdown content 的完整节点（用于关注问题按需返回完整子树）
+interface IssueTreeFullNode {
+  id: string;
+  filePath: string;
+  absolutePath: string;
+  title: string;
+  content: string;
+  children: IssueTreeFullNode[];
+  expanded: boolean;
+}
+
 const URI_PATH_OPEN_DIR = '/open-issue-dir';  
 const URI_PATH_CREATE_FROM_HTML = '/create-from-html';  
 const COMMAND_OPEN_ISSUE_DIR = 'issueManager.openIssueDir';  
@@ -183,13 +212,23 @@ export class ChromeIntegrationServer {
       ws.send(JSON.stringify({ type: 'connected', message: 'VSCode 已连接' }));
 
       // 处理接收到的消息
-      ws.on('message', async (data: Buffer) => {
-        let message: any;
-        try {
-          message = JSON.parse(data.toString('utf8'));
-          this.logger.debug('[ChromeIntegration] 收到消息', message);
+        ws.on('message', async (data: Buffer) => {
+          let message: WSMessage | null = null;
+          try {
+            const parsed = JSON.parse(data.toString('utf8')) as unknown;
+            this.logger.debug('[ChromeIntegration] 收到消息', parsed);
+            if (!parsed || typeof parsed !== 'object') {
+              ws.send(JSON.stringify({ type: 'error', error: 'Invalid message', id: undefined }));
+              return;
+            }
+            const parsedObj = parsed as WSMessage;
+            if (typeof parsedObj.type !== 'string') {
+              ws.send(JSON.stringify({ type: 'error', error: 'Invalid message.type', id: parsedObj.id }));
+              return;
+            }
+            message = parsedObj;
 
-          if (message.type === 'create-note') {
+            if (message.type === 'create-note') {
             const payload: ChromeRequestPayload = message.data || {};
             const html: string = payload.html || '';
             const title: string | undefined = payload.title || undefined;
@@ -250,7 +289,7 @@ export class ChromeIntegrationServer {
 
               
               // 递归构建树节点，包含子节点和 markdown 内容
-              const buildTreeNode = async (node: IssueTreeNode): Promise<any> => {
+              const buildTreeNode = async (node: IssueTreeNode): Promise<IssueTreeFullNode> => {
                 const title = await getIssueMarkdownTitle(node.filePath);
                 const absolutePath = path.join(issueDir, node.filePath);
                 
@@ -260,12 +299,12 @@ export class ChromeIntegrationServer {
                   const fileUri = vscode.Uri.file(absolutePath);
                   const fileContent = await vscode.workspace.fs.readFile(fileUri);
                   content = Buffer.from(fileContent).toString('utf8');
-                } catch (e) {
-                  this.logger.warn(`无法读取文件: ${absolutePath}`, e);
+                } catch (e: unknown) {
+                  this.logger.warn(`无法读取文件: ${absolutePath}`, e as Error ?? e);
                 }
                 
                 // 递归处理子节点
-                const children = node.children && node.children.length > 0
+                const children: IssueTreeFullNode[] = node.children && node.children.length > 0
                   ? await Promise.all(node.children.map(child => buildTreeNode(child)))
                   : [];
                 
@@ -293,13 +332,91 @@ export class ChromeIntegrationServer {
                 data: focusedTrees,
                 id: message.id 
               }));
-            } catch (e: any) {
-              this.logger.error('[ChromeIntegration] 获取关注问题失败', e);
-              ws.send(JSON.stringify({ 
-                type: 'error', 
-                error: e?.message || String(e),
-                id: message.id 
+            } catch (e: unknown) {
+              this.logger.error('[ChromeIntegration] 获取关注问题失败', e as Error ?? e);
+              const errorMessage = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({
+                type: 'error',
+                error: errorMessage,
+                id: message?.id
               }));
+            }
+          } else if (message.type === 'get-issue-tree') {
+            // 返回轻量化的 issue tree（不包含完整 content），用于 Chrome 扩展按需加载
+            try {
+              const treeData = await readTree();
+              const issueDir = getIssueDir();
+
+              if (!issueDir) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Issue directory not configured', id: message.id }));
+                return;
+              }
+
+
+              const buildMeta = async (node: IssueTreeNode): Promise<IssueTreeMetaNode> => {
+                const title = await getIssueMarkdownTitle(node.filePath);
+                const children: IssueTreeMetaNode[] = node.children && node.children.length > 0
+                  ? await Promise.all(node.children.map(child => buildMeta(child)))
+                  : [];
+
+                return {
+                  id: node.id,
+                  filePath: node.filePath,
+                  absolutePath: path.join(issueDir, node.filePath),
+                  title,
+                  hasChildren: !!(node.children && node.children.length > 0),
+                  children,
+                  expanded: node.expanded ?? false
+                };
+              };
+
+              const data = await Promise.all(
+                treeData.rootNodes
+                  .map(node => buildMeta(node))
+              );
+
+              ws.send(JSON.stringify({ type: 'issue-tree', data, id: message.id }));
+            } catch (e: unknown) {
+              this.logger.error('[ChromeIntegration] 获取 issue tree 失败', e as Error ?? e);
+              const errorMessage = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errorMessage, id: message?.id }));
+            }
+          } else if (message.type === 'get-issue-content') {
+            // 按需返回单个 issue 的 markdown 内容
+            try {
+              const data = message.data as Record<string, unknown> | undefined;
+              const filePath = typeof data?.filePath === 'string' ? data!.filePath : undefined;
+              if (!filePath) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing filePath', id: message?.id }));
+                return;
+              }
+
+              const issueDir = getIssueDir();
+              if (!issueDir) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Issue directory not configured', id: message.id }));
+                return;
+              }
+
+              const absolutePath = path.join(issueDir, filePath);
+              let content = '';
+              let mtime: number | undefined = undefined;
+              try {
+                const fileUri = vscode.Uri.file(absolutePath);
+                const fileContent = await vscode.workspace.fs.readFile(fileUri);
+                content = Buffer.from(fileContent).toString('utf8');
+                try {
+                  const stat = await vscode.workspace.fs.stat(fileUri);
+                  mtime = stat.mtime;
+                } catch { /* ignore */ }
+              } catch (e: unknown) {
+                this.logger.warn(`无法读取文件: ${absolutePath}`, e as Error ?? e);
+              }
+
+              ws.send(JSON.stringify({ type: 'issue-content', data: { filePath, content, mtime }, id: message?.id }));
+            } catch (e: unknown) {
+              this.logger.error('[ChromeIntegration] 获取 issue content 失败', e as Error ?? e);
+              const errorMessage = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errorMessage, id: message?.id }));
             }
           } else if (message.type === 'execute-command') {
             // 远程执行受限命令
@@ -333,8 +450,7 @@ export class ChromeIntegrationServer {
                   return;
                 }
 
-                // 将 filePath 转为相对路径传给命令（命令内部可能期望相对路径）
-                args[0].filePath = path.relative(issueDir, resolved);
+                args[0] = vscode.Uri.file(resolved);
               }
 
               await vscode.commands.executeCommand(command, ...(args || []));
@@ -353,12 +469,13 @@ export class ChromeIntegrationServer {
               id: message.id 
             }));
           }
-        } catch (e: any) {
-          this.logger.error('[ChromeIntegration] 消息处理失败', e);
+        } catch (e: unknown) {
+          this.logger.error('[ChromeIntegration] 消息处理失败', e as Error ?? e);
+          const errorMessage = e instanceof Error ? e.message : String(e);
           try {
-            ws.send(JSON.stringify({ 
-              type: 'error', 
-              error: e?.message || String(e),
+            ws.send(JSON.stringify({
+              type: 'error',
+              error: errorMessage,
               id: message?.id
             }));
           } catch {

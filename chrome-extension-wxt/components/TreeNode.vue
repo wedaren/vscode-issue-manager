@@ -32,6 +32,7 @@
         :key="child.id"
         :node="child"
         :level="level + 1"
+        @update:node-content="onChildUpdate"
       />
     </div>
   </div>
@@ -46,6 +47,8 @@ interface TreeNode {
   id: string;
   title: string;
   filename: string;
+  filePath?: string;
+  absolutePath?: string;
   content?: string;
   mtime?: number;
   children?: TreeNode[];
@@ -57,6 +60,9 @@ interface TreeNodeProps {
 }
 
 const props = defineProps<TreeNodeProps>();
+const emit = defineEmits<{
+  (e: 'update:node-content', payload: { nodeId: string; content: string; mtime?: number }): void;
+}>();
 
 const isExpanded = ref(false);
 
@@ -85,14 +91,7 @@ marked.setOptions({
 });
 
 const nodeTitle = computed(() => {
-  // 优先使用 markdown 内容的第一个 H1 标题
-  if (props.node.content) {
-    const titleMatch = props.node.content.match(/^#\s+(.+)$/m);
-    if (titleMatch) {
-      return titleMatch[1];
-    }
-  }
-  return props.node.title || '未命名';
+  return props.node.title
 });
 
 const hasChildren = computed(() => {
@@ -104,10 +103,37 @@ const parsedMarkdown = computed(() => {
     return '';
   }
   const contentWithoutH1 = removeFirstH1Title(props.node.content);
-  return parseMarkdown(contentWithoutH1);
+  const contentWithoutFrontMatter = removeFrontMatter(contentWithoutH1);
+  return parseMarkdown(contentWithoutFrontMatter);
 });
 
-function toggleExpand() {
+async function toggleExpand() {
+  const node = props.node;
+  const filePath = node.filePath ?? node.filename ?? node.absolutePath ?? '';
+
+  // 展开时如果还没有 content，则按需请求
+  if (!isExpanded.value && !props.node.content) {
+    statusMessage.value = '';
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_ISSUE_MARKDOWN', filePath });
+      if (response && response.success && response.content) {
+        // 通过事件将内容传回父组件，由父组件更新 node 数据（遵循单向数据流）
+        emit('update:node-content', {
+          nodeId: props.node.id,
+          content: response.content,
+          mtime: response.mtime,
+        });
+        statusMessage.value = '';
+      } else {
+        statusMessage.value = '加载内容失败: ' + (response?.error || '未知错误');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      statusMessage.value = '加载内容失败: ' + msg;
+    }
+    scheduleClearMessage(5000);
+  }
+
   isExpanded.value = !isExpanded.value;
 }
 
@@ -115,8 +141,8 @@ async function handleGenerateTitle() {
   statusMessage.value = '请求中...';
 
   // 尝试从 node 中获取路径字段
-  const anyNode = props.node as any;
-  const filePath = anyNode.filePath || anyNode.filename || anyNode.absolutePath || '';
+  const node = props.node;
+  const filePath = node.filePath ?? node.filename ?? node.absolutePath ?? '';
 
   if (!filePath) {
     statusMessage.value = '无法获取文件路径';
@@ -144,12 +170,22 @@ async function handleGenerateTitle() {
   scheduleClearMessage();
 }
 
+function onChildUpdate(payload: { nodeId: string; content: string; mtime?: number }) {
+  // 将子节点的更新事件向上转发（父组件或祖先组件可处理）
+  emit('update:node-content', payload);
+}
+
 /**
  * 移除 Markdown 内容中的第一个 H1 标题
  * 避免与节点头部标题重复显示
  */
 function removeFirstH1Title(markdown: string): string {
   return markdown.replace(/^#\s+.+$/m, '').trim();
+}
+
+
+function removeFrontMatter(markdown: string): string {
+  return markdown.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
 }
 
 /**
