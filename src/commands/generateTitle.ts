@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
-import { updateIssueMarkdownFrontmatter, getIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
+import { updateIssueMarkdownFrontmatter, getIssueMarkdownFrontmatter, onTitleUpdate } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
-import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
+import { getIssueMarkdownTitle, getIssueMarkdownContent } from '../data/IssueMarkdowns';
 import { Logger } from '../core/utils/Logger';
 
 function normalizeTitle(t: string) {
@@ -45,56 +45,30 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                 // 支持三种来源：
                 // 1. 传入 TreeItem / IssueTreeNode（含 resourceUri）
                 // 2. 传入 vscode.Uri
-                // 3. 无参数时使用活动编辑器
-                let doc: vscode.TextDocument | undefined;
 
                 if (args && args.length > 0) {
                     const firstArg = args[0];
-                    let potentialUri: vscode.Uri | undefined;
 
                     // 1. 检查是否为 TreeItem/IssueTreeNode (包含 resourceUri)
                     if (typeof firstArg === 'object' && firstArg !== null && 'resourceUri' in firstArg) {
                         const { resourceUri } = firstArg as { resourceUri?: unknown };
                         if (resourceUri instanceof vscode.Uri) {
-                            potentialUri = resourceUri;
+                            targetUri = resourceUri;
                         }
                     }
-                    // 2. 检查是否为 vscode.Uri 实例
+                    // 2. 检查是否为 vscode.Uri 实例, 编辑器右键时传入
                     else if (firstArg instanceof vscode.Uri) {
-                        potentialUri = firstArg as vscode.Uri;
+                        targetUri = firstArg as vscode.Uri;
                     }
 
-                    // 尝试打开文档
-                    if (potentialUri) {
-                        try {
-                            doc = await vscode.workspace.openTextDocument(potentialUri);
-                            targetUri = potentialUri;
-                        } catch (e) {
-                            Logger.getInstance().warn(`打开传入的 URI 失败: ${potentialUri.toString()}`, e);
-                            // 失败则忽略，后续逻辑会回退到活动编辑器
-                        }
-                    }
                 }
 
-                if (!doc) {
-                    const editor = vscode.window.activeTextEditor;
-                    if (!editor) {
-                        vscode.window.showWarningMessage('请在 Markdown 编辑器中运行此命令或从问题总览右键触发。');
-                        return;
-                    }
-                    doc = editor.document;
-                    targetUri = doc.uri;
-                }
-
-                if (!doc) {
-                    vscode.window.showWarningMessage('找不到目标文档。');
+                if (!targetUri) {
+                    vscode.window.showWarningMessage('请在 Markdown 编辑器中运行此命令或从问题总览右键触发。');
                     return;
                 }
 
-                if (doc.languageId !== 'markdown') {
-                    vscode.window.showWarningMessage('此命令仅适用于 Markdown 文件。');
-                    return;
-                }
+
 
                 const issueDir = getIssueDir();
                 if (!issueDir) {
@@ -102,9 +76,9 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                const filePath = doc.uri.fsPath;
-                if (!filePath.startsWith(issueDir)) {
-                    vscode.window.showWarningMessage('当前文件不在配置的 issueDir 内，无法写入 issue frontmatter。');
+                const filePath = targetUri.fsPath;
+                if (!filePath.startsWith(issueDir)||!targetUri.fsPath.toLowerCase().endsWith('.md')) {
+                    vscode.window.showWarningMessage('当前文件不在配置的 issueDir 内的 Markdown 文件，无法写入 issue frontmatter。');
                     return;
                 }
 
@@ -117,7 +91,8 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     },
                     async (progress, token) => {
                         try {
-                            const generated = await LLMService.generateTitleOptimized(doc!.getText(), { signal: token as unknown as AbortSignal });
+                            const content = await getIssueMarkdownContent(targetUri!);
+                            const generated = await LLMService.generateTitleOptimized(content, { signal: token as unknown as AbortSignal });
                             return generated;
                         } catch (err) {
                             if (token.isCancellationRequested) {
@@ -133,7 +108,7 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                const existing = await getIssueMarkdownFrontmatter(doc.uri);
+                const existing = await getIssueMarkdownFrontmatter(targetUri);
 
                 const newTitle = normalizeTitle(title);
                 const merged = mergeTitle(existing, newTitle);
@@ -151,11 +126,11 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                const ok = await updateIssueMarkdownFrontmatter(doc.uri, { issue_title: merged });
+                const ok = await updateIssueMarkdownFrontmatter(targetUri, { issue_title: merged });
                 if (ok) {
                     // 触发缓存刷新/标题更新
                     try {
-                        await getIssueMarkdownTitle(doc.uri);
+                        await getIssueMarkdownTitle(targetUri);
                     } catch (e) {
                         Logger.getInstance().warn('刷新标题缓存失败', e);
                     }
@@ -169,41 +144,11 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     return;
                 }
                 Logger.getInstance().error('generateTitleFromEditor error:', err);
-                // 降级：允许手动输入
-                const manual = await vscode.window.showInputBox({ prompt: '自动生成失败，请手动输入标题（留空取消）' });
-                if (!manual || manual.trim().length === 0) {
-                    return;
-                }
-
-                try {
-                    if (!targetUri) {
-                        vscode.window.showErrorMessage('目标文档已丢失，无法写入标题。');
-                        return;
-                    }
-                    const existing = await getIssueMarkdownFrontmatter(targetUri);
-                    const t = normalizeTitle(manual);
-                    const merged = mergeTitle(existing, t);
-                    if (merged === undefined) {
-                        if (existing) {
-                            if (typeof existing.issue_title === 'string' && normalizeTitle(existing.issue_title).toLowerCase() === t.toLowerCase()) {
-                                return;
-                            }
-                            if (Array.isArray(existing.issue_title) && containsTitle(existing.issue_title, t)) {
-                                return;
-                            }
-                        }
-                        return;
-                    }
-                    const ok = await updateIssueMarkdownFrontmatter(targetUri, { issue_title: merged });
-                    if (ok) {
-                        try { await getIssueMarkdownTitle(targetUri); } catch {}
-                        vscode.window.showInformationMessage('已将手动输入标题写入 frontmatter.issue_title');
-                    }
-                } catch (e) {
-                    Logger.getInstance().error('手动写入标题失败', e);
-                    vscode.window.showErrorMessage('写入标题失败，请查看日志。');
-                }
+                vscode.window.showErrorMessage('写入标题失败，请查看日志。');
             }
+        }),
+        onTitleUpdate(() => {
+            vscode.commands.executeCommand('issueManager.refreshAllViews');
         })
     );
 }

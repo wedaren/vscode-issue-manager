@@ -86,6 +86,12 @@ function extractFrontmatterAndBody(content: string): {
     return { frontmatter: null, body };
 }
 
+export async function getIssueMarkdownContent(uri: vscode.Uri): Promise<string> {
+    const contentBytes = await vscode.workspace.fs.readFile(uri);
+    const data = Buffer.from(contentBytes).toString("utf-8").replace(/^---\s*[\s\S]*?---\s*/, "");
+    return data;
+}
+
 /**
  * 获取问题目录中所有 Markdown 文件;
  * @returns 问题目录中所有 Markdown 文件
