@@ -33,6 +33,7 @@ import { registerFocusCommands } from '../commands/focusCommands';
 import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
+import { quickCreateIssue } from '../commands/quickCreateIssue';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { moveIssuesTo } from '../commands/moveTo';
@@ -232,6 +233,15 @@ export class CommandRegistry extends BaseCommandRegistry {
                 await smartCreateIssue();
             },
             '创建问题'
+        );
+
+        // 快速新建命令（QuickPick 三选项实现）
+        this.registerCommand(
+            'issueManager.quickCreateIssue',
+            async () => {
+                await quickCreateIssue();
+            },
+            '快速新建问题'
         );
 
         // 问题移动命令 

@@ -31,6 +31,27 @@ export async function createIssueFile(title: string, content?: string): Promise<
 }
 
 /**
+ * 与 `createIssueFile` 类似，但不会在创建后自动打开编辑器。
+ * 供需要“创建但不打开”场景（例如后台填充）使用。
+ */
+export async function createIssueFileSilent(title: string, content?: string): Promise<vscode.Uri | null> {
+	const issueDir = getIssueDir();
+	if (!issueDir) {
+		vscode.window.showErrorMessage('问题目录未配置。');
+		return null;
+	}
+	const filename = generateFileName();
+	const filePath = vscode.Uri.file(path.join(issueDir, filename));
+
+	const finalContent = (typeof content === 'string' && content.length > 0) ? content : `# ${title}\n\n`;
+	const contentBytes = Buffer.from(finalContent, 'utf8');
+
+	await vscode.workspace.fs.writeFile(filePath, contentBytes);
+	// 注意：与 createIssueFile 不同，这里不调用 showTextDocument，从而实现“静默创建”。
+	return filePath;
+}
+
+/**
  * 将指定文件路径的多个 issue 添加到 tree.json 数据中。
  * @param issueUris 要添加的问题文件的 URI 数组
  * @param parentId 父节点的 ID，如果为 null 则作为根节点
