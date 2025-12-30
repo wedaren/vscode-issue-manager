@@ -54,7 +54,8 @@ export default defineBackground(() => {
   let messageIdCounter = 0;
   const pendingMessages = new Map<string, { resolve: (value: WebSocketMessage) => void; reject: (reason?: Error) => void }>();
   // 简单的 markdown 缓存与并发请求去重
-  const issueMarkdownCache = new Map<string, { content: string; mtime?: number; lastAccessed: number; sizeBytes: number }>();
+  // 使用 Map 的插入顺序实现 LRU：访问时删除后重插入，回收时删除 Map.keys().next().value
+  const issueMarkdownCache = new Map<string, { content: string; mtime?: number; sizeBytes: number }>();
   const pendingMarkdownRequests = new Map<string, Promise<{ success: boolean; content?: string; error?: string; mtime?: number }>>();
   const MAX_CACHE_ITEMS = 50; // 可配置
   
@@ -311,7 +312,9 @@ export default defineBackground(() => {
         // 检查缓存
         const cached = issueMarkdownCache.get(filePath);
         if (cached) {
-          cached.lastAccessed = Date.now();
+          // 将该缓存项移动到 Map 末尾，表示最近使用
+          issueMarkdownCache.delete(filePath);
+          issueMarkdownCache.set(filePath, { content: cached.content, mtime: cached.mtime, sizeBytes: cached.sizeBytes });
           return { success: true, content: cached.content, mtime: cached.mtime };
         }
 
@@ -326,25 +329,17 @@ export default defineBackground(() => {
           const mtime = data.mtime;
 
           // 缓存
-          try {
-            const sizeBytes = new TextEncoder().encode(content).length;
-            issueMarkdownCache.set(filePath, { content, mtime, lastAccessed: Date.now(), sizeBytes });
-            // 简单回收策略
-            if (issueMarkdownCache.size > MAX_CACHE_ITEMS) {
-              // 删除最旧的一项
-              let oldestKey: string | null = null;
-              let oldest = Infinity;
-              for (const [k, v] of issueMarkdownCache.entries()) {
-                if (v.lastAccessed < oldest) {
-                  oldest = v.lastAccessed;
-                  oldestKey = k;
-                }
+            try {
+              const sizeBytes = new TextEncoder().encode(content).length;
+              issueMarkdownCache.set(filePath, { content, mtime, sizeBytes });
+              // 简单回收策略：删除 Map 中最旧（最少使用）的键（Map 按插入顺序迭代）
+              if (issueMarkdownCache.size > MAX_CACHE_ITEMS) {
+                const oldestKey = issueMarkdownCache.keys().next().value as string | undefined;
+                if (oldestKey) issueMarkdownCache.delete(oldestKey);
               }
-              if (oldestKey) issueMarkdownCache.delete(oldestKey);
+            } catch (e) {
+              console.warn('[Background] Failed to update issue markdown cache:', e);  
             }
-          } catch (e) {
-            // ignore cache errors
-          }
 
           return { success: true, content, mtime };
         } else if (response && response.type === 'error') {
