@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline' %SCRIPT_URI%; style-src 'unsafe-inline' %STYLE_URI%; img-src data:; connect-src *;">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <link rel="stylesheet" href="%STYLE_URI%">
+  <title>英文阅读器</title>
+  <style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;}</style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <input id="url" placeholder="输入英文文章链接并回车" style="width:70%" />
+      <button id="load">加载</button>
+    </header>
+    <main>
+      <section id="info"></section>
+      <section id="segments"></section>
+    </main>
+    <footer>
+      <textarea id="prompt" placeholder="提问（例如：解释第2段是什么意思）" style="width:80%"></textarea>
+      <button id="ask">提问</button>
+      <div id="answer"></div>
+    </footer>
+  </div>
+  <script src="%SCRIPT_URI%"></script>
+</body>
+</html>

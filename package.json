@@ -386,6 +386,12 @@
         "icon": "$(hubot)"
       },
       {
+        "command": "issueManager.openEnglishReader",
+        "title": "打开英文阅读器",
+        "category": "Issue Manager",
+        "icon": "$(book)"
+      },
+      {
         "command": "issueManager.copilotDiffSend",
         "title": "Copilot: 发送并展示 Diff",
         "category": "Issue Manager",
@@ -1080,6 +1086,26 @@
           "type": "boolean",
           "default": true,
           "description": "是否启用新文章通知功能。"
+        },
+        "issueManager.englishReader.enable": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用英文阅读器功能（默认关闭）。"
+        },
+        "issueManager.englishReader.provider": {
+          "type": "string",
+          "default": "mock",
+          "description": "LLM 提供者（例如 openai, deepl, mock）。"
+        },
+        "issueManager.englishReader.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "用于调用外部 LLM 的 API Key（如果需要）。"
+        },
+        "issueManager.englishReader.maxSegmentSize": {
+          "type": "number",
+          "default": 1200,
+          "description": "文本分段的最大字符数。"
         },
         "issueManager.rss.feeds": {
           "type": "array",
