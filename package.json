@@ -167,7 +167,8 @@
       {
         "command": "issueManager.openIssueBesideEditor",
         "title": "在编辑器旁边打开问题",
-        "category": "Issue Manager"
+        "category": "Issue Manager",
+        "icon": "$(split-horizontal)"
       },
       {
         "command": "issueManager.pinRelatedView",

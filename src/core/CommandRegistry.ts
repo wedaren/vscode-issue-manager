@@ -150,12 +150,12 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 1. 注册基础问题管理命令
             this.registerBasicIssueCommands();
 
-                // 新命令：在激活的编辑器旁边打开问题（如果编辑器包含 issueId）
-                this.registerCommand(
-                    'issueManager.openIssueBesideEditor',
-                    createOpenIssueBesideEditorHandler(this.logger),
-                    '在编辑器旁边打开问题'
-                );
+            // 新命令：在激活的编辑器旁边打开问题（如果编辑器包含 issueId）
+            this.registerCommand(
+                'issueManager.openIssueBesideEditor',
+                createOpenIssueBesideEditorHandler(this.logger),
+                '在编辑器旁边打开问题'
+            );
 
             // 2. 设置视图提供者并注册视图命令
             this.viewCommandRegistry.setProviders({
