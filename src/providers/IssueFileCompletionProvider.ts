@@ -71,7 +71,7 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
             const insertMode = config.get<string>('insertMode', 'relativePath');
             const focusedData = await readFocused();
             
-            // 尝试推断当前上下文的 parentId（如果文档对应某个节点，则取该节点的父节点作为推断目标）
+            // 尝试推断当前上下文的 parentId（如果文档对应某个节点，则使用该节点作为父节点）
             let inferredParentId: string | null = null;
             try {
                 const issueDirPath = getIssueDir();
