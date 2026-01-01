@@ -174,13 +174,10 @@ export class CommandRegistry extends BaseCommandRegistry {
                                     } catch (e) {
                                         // ignore
                                     }
-                                } else if (typeof first === 'object' && first !== null) {
-                                    // 可能是 vscode.Uri-like
-                                    const maybeUri = first as vscode.Uri;
-                                    if ((maybeUri as any).fsPath || (maybeUri as any).scheme) {
-                                        sourceUri = maybeUri as vscode.Uri;
-                                        issueId = getIssueIdFromUri(sourceUri) || undefined;
-                                    }
+                                } else if (typeof first === 'object' && first !== null && ('fsPath' in first || 'scheme' in first)) {
+                                    // 可能是 vscode.Uri-like（使用 in 操作符进行安全的属性检查，避免 any）
+                                    sourceUri = first as vscode.Uri;
+                                    issueId = getIssueIdFromUri(sourceUri) || undefined;
                                 }
                             }
 
