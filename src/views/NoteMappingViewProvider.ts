@@ -134,8 +134,8 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                 // 设置点击命令打开 issue，使用 node.id
                 if (element.issueId) {
                     item.command = {
-                        command: 'issueManager.openNoteByNodeId',
-                        title: '打开笔记',
+                        command: 'issueManager.openIssueBesideEditor',
+                        title: '在侧边打开问题',
                         arguments: [element.issueId]
                     };
                 }
@@ -318,7 +318,8 @@ export class NoteMappingViewProvider implements vscode.TreeDataProvider<NoteMapp
                 type: 'issue',
                 label: title,
                 description: issueId,
-                issueId: issueId
+                issueId: issueId,
+                filePath: targetFilePath
             });
         }
         

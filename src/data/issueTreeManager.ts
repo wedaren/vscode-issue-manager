@@ -157,6 +157,13 @@ export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueTreeNode
   });
   return uriMap.get(uri.fsPath);
 };
+
+
+export const getIssueNodeById = async (id: string): Promise<IssueTreeNode|undefined> => {
+  const { issueIdMap } = await getIssueData();
+  return issueIdMap.get(id);
+};
+
 const cache = {mtime: 0, issueIdMap:new Map<string, IssueTreeNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
 
 async function getIssueData(){

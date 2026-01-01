@@ -165,6 +165,12 @@
         "title": "在问题总览中查看"
       },
       {
+        "command": "issueManager.openIssueBesideEditor",
+        "title": "在编辑器旁边打开问题",
+        "category": "Issue Manager",
+        "icon": "$(split-horizontal)"
+      },
+      {
         "command": "issueManager.pinRelatedView",
         "title": "锁定相关联问题视图",
         "icon": "$(pin)"
