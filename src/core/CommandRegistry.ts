@@ -311,9 +311,8 @@ export class CommandRegistry extends BaseCommandRegistry {
                                 if (hasTrigger) {
                                     insertText = `${title}]]`;
                                 } else {
-                                    // 使用 command 链接以便 Cmd+Click 调用我们的侧边打开命令
-                                    const cmdArgs = encodeURIComponent(JSON.stringify([uri.fsPath, newNodeId]));
-                                    insertText = `[${title}](command:issueManager.openUriBeside?${cmdArgs})`;
+                                    // 恢复为相对路径链接并带 issueId 查询（与其他补全项一致）
+                                        insertText = `[${title}](${relativePath}${newNodeId ? '?issueId=' + encodeURIComponent(newNodeId) : ''})`;
                                 }
                                 break;
                             case 'filename':
