@@ -208,10 +208,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                                 }
                             }
 
-                            // 最终目标 URI 如果仍然不存在，则使用 sourceUri（可能包含 issueId 查询）
-                            if (!targetUri && sourceUri) {
-                                targetUri = sourceUri;
-                            }
+                            // 最终目标 URI 已由 sourceUri 或从树中查找得到，若仍不存在则处理为错误
 
                             if (!targetUri) {
                                 vscode.window.showWarningMessage('无法确定要打开的目标问题文件。');
