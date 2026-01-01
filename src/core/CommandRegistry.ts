@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
 import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById } from '../data/issueTreeManager';
 import { isIssueTreeNode } from '../utils/treeUtils';
@@ -34,6 +35,7 @@ import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { executeCreateIssueFromCompletion } from '../commands/createIssueFromCompletion';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { moveIssuesTo } from '../commands/moveTo';
@@ -246,10 +248,44 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 快速新建命令（QuickPick 三选项实现）
         this.registerCommand(
             'issueManager.quickCreateIssue',
-            async () => {
-                await quickCreateIssue();
+            async (...args: unknown[]) => {
+                // 允许外部传入 parentId（或其他可选参数的扩展），若无则为默认 null
+                const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : null;
+                await quickCreateIssue(parentId);
             },
             '快速新建问题'
+        );
+
+        // 支持从补全直接创建问题（CompletionItem 直接调用，无 QuickPick）
+        this.registerCommand(
+            'issueManager.createIssueFromCompletion',
+            executeCreateIssueFromCompletion,
+            '从补全直接创建问题'
+        );
+
+        // 命令：通过文件路径在侧边打开（供 markdown 中的 command: 链接使用）
+        this.registerCommand(
+            'issueManager.openUriBeside',
+            async (...args: unknown[]) => {
+                try {
+                    const fsPath = args && args.length > 0 && typeof args[0] === 'string' ? args[0] as string : undefined;
+                    const issueId = args && args.length > 1 && typeof args[1] === 'string' ? args[1] as string : undefined;
+                    if (!fsPath) { return; }
+                    let uri = vscode.Uri.file(fsPath);
+                    if (issueId) {
+                        uri = uri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
+                    }
+                    try {
+                        await vscode.window.showTextDocument(uri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+                    } catch (e) {
+                        await vscode.window.showTextDocument(uri, { preview: false });
+                    }
+                } catch (error) {
+                    console.error('openUriBeside 执行失败:', error);
+                    throw error;
+                }
+            },
+            '在侧边打开 URI'
         );
 
         // 问题移动命令 
