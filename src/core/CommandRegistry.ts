@@ -218,9 +218,8 @@ export class CommandRegistry extends BaseCommandRegistry {
                                 return;
                             }
 
-                            // 决定在哪个 viewColumn 打开：如果有激活编辑器就打开到旁边，否则默认旁侧
-                            const baseColumn = editor?.viewColumn;
-                            const viewColumn = baseColumn ? (baseColumn + 1) as vscode.ViewColumn : vscode.ViewColumn.Beside;
+                            // 决定在哪个 viewColumn 打开：始终使用 API 提供的安全枚举值在侧边打开
+                            const viewColumn = vscode.ViewColumn.Beside;
 
                             const finalUri = issueId ? targetUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }) : targetUri;
                             await vscode.window.showTextDocument(finalUri, { preview: false, viewColumn });
