@@ -71,14 +71,48 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
             const insertMode = config.get<string>('insertMode', 'relativePath');
             const focusedData = await readFocused();
             
+            // 尝试推断当前上下文的 parentId（如果文档对应某个节点，则取该节点的父节点作为推断目标）
+            let inferredParentId: string | null = null;
+            try {
+                const issueDirPath = getIssueDir();
+                if (issueDirPath) {
+                    const docRel = path.relative(issueDirPath, document.uri.fsPath);
+                    const matched = flatNodes.find(n => n.filePath === docRel);
+                    if (matched) {
+                        // 使用当前文档对应的节点作为父节点（即在该节点下创建新问题）
+                        inferredParentId = matched.id;
+                    }
+                }
+            } catch (e) {
+                inferredParentId = null;
+            }
+
             // 转换为补全项
             const items = await Promise.all(
                 filteredNodes.map((node, index) => 
-                    this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index)
+                    this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index+2)
                 )
             );
-            
-            return items;
+
+            // 在数组前插入两条常驻项：前台创建 & 后台创建（调用现有 quickCreateIssue QuickPick）
+            const createItem = new vscode.CompletionItem('新建问题', vscode.CompletionItemKind.Keyword);
+            createItem.detail = '快速新建问题';
+            createItem.insertText = '';
+            createItem.sortText = '000000';
+            createItem.filterText = filterResult.keyword ?? '';
+            // 直接调用专门的 completion 命令（避免弹出 QuickPick）
+            createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [inferredParentId, filterResult.keyword ?? undefined, false, insertMode, filterResult.hasTrigger] };
+
+            const createBackground = new vscode.CompletionItem('新建问题（后台）', vscode.CompletionItemKind.Keyword);
+            createBackground.detail = '后台创建并由 AI 填充（不打开）';
+            createBackground.insertText = '';
+            createBackground.sortText = '000001';
+            createBackground.filterText = filterResult.keyword ?? '';
+            // 这里也复用 quickCreateIssue，QuickPick 会根据用户选择走后台路径；保留未来可直接调用后台命令的空间
+            // 直接在后台创建，不弹出 QuickPick
+            createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [inferredParentId, filterResult.keyword ?? undefined, true, insertMode, filterResult.hasTrigger] };
+
+            return [createItem, createBackground, ...items];
         } catch (error) {
             console.error('补全提供器错误:', error);
             return undefined;
@@ -154,9 +188,12 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
         const absolutePath = issueDir ? path.join(issueDir, node.filePath) : node.filePath;
         const relativePath = path.relative(currentDir, absolutePath);
         
-        // 创建补全项
+        // 创建补全项，优先把父路径放到 label.description 以便在紧凑视图中展示
+        const parentPathStr = node.parentPath && node.parentPath.length > 0 ? node.parentPath.map(n => n.title).join(' / ') : undefined;
+        const labelObj: vscode.CompletionItemLabel = { label: displayTitle, description: parentPathStr };
+
         const item = new vscode.CompletionItem(
-            displayTitle,
+            labelObj,
             vscode.CompletionItemKind.Reference
         ) as CompletionItemWithNode;
         
@@ -196,8 +233,10 @@ export class IssueFileCompletionProvider implements vscode.CompletionItemProvide
                     // 如果有触发前缀（如 [[），插入 wiki 风格链接
                     item.insertText = `${title}]]`;
                 } else {
-                    // 普通 markdown 链接
-                    item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`
+                    // 普通 markdown 链接：恢复为相对路径并带 issueId 查询
+                    item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`;
+                    // 在用户接受该补全项后，在侧边打开对应的 markdown 文件
+                    item.command = { command: 'issueManager.openUriBeside', title: '在侧边打开', arguments: [absolutePath, node.id] };
                 }
                 break;
             
