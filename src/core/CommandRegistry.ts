@@ -149,6 +149,90 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 1. 注册基础问题管理命令
             this.registerBasicIssueCommands();
 
+                // 新命令：在激活的编辑器旁边打开问题（如果编辑器包含 issueId）
+                this.registerCommand(
+                    'issueManager.openIssueBesideEditor',
+                    async (...args: unknown[]) => {
+                        try {
+                            // 支持多种参数：IssueTreeNode、vscode.Uri、string URL；若未提供，则使用激活编辑器
+                            let sourceUri: vscode.Uri | undefined;
+                            let issueId: string | undefined;
+                            const first = args && args.length > 0 ? args[0] : undefined;
+
+                            if (first) {
+                                // IssueTreeNode
+                                if (isIssueTreeNode(first)) {
+                                    const node = first as IssueTreeNode;
+                                    issueId = stripFocusedId(node.id);
+                                    sourceUri = node.resourceUri;
+                                } else if (typeof first === 'string') {
+                                    // 尝试解析为 URI 字符串
+                                    try {
+                                        const parsed = vscode.Uri.parse(first as string);
+                                        sourceUri = parsed;
+                                        issueId = getIssueIdFromUri(parsed) || undefined;
+                                    } catch (e) {
+                                        // ignore
+                                    }
+                                } else if (typeof first === 'object' && first !== null) {
+                                    // 可能是 vscode.Uri-like
+                                    const maybeUri = first as vscode.Uri;
+                                    if ((maybeUri as any).fsPath || (maybeUri as any).scheme) {
+                                        sourceUri = maybeUri as vscode.Uri;
+                                        issueId = getIssueIdFromUri(sourceUri) || undefined;
+                                    }
+                                }
+                            }
+
+                            // 若未从参数确定，则退回到激活编辑器
+                            const editor = vscode.window.activeTextEditor;
+                            if ((!sourceUri || !issueId) && editor) {
+                                const uri = editor.document.uri;
+                                const idFromEditor = getIssueIdFromUri(uri);
+                                if (!sourceUri) sourceUri = uri;
+                                if (!issueId && idFromEditor) issueId = idFromEditor;
+                            }
+
+                            if (!sourceUri && !issueId) {
+                                vscode.window.showInformationMessage('请提供问题的 URL 或从视图中选择问题，或激活包含 issueId 的编辑器。');
+                                return;
+                            }
+
+                            // 如果只有 issueId，尝试从树中找到对应的 resourceUri
+                            let targetUri: vscode.Uri | undefined = sourceUri;
+                            if (issueId && !targetUri) {
+                                const tree = await readTree();
+                                const found = findNodeById(tree.rootNodes, issueId);
+                                if (found && found.node && found.node.resourceUri) {
+                                    targetUri = found.node.resourceUri;
+                                }
+                            }
+
+                            // 最终目标 URI 如果仍然不存在，则使用 sourceUri（可能包含 issueId 查询）
+                            if (!targetUri && sourceUri) {
+                                targetUri = sourceUri;
+                            }
+
+                            if (!targetUri) {
+                                vscode.window.showWarningMessage('无法确定要打开的目标问题文件。');
+                                return;
+                            }
+
+                            // 决定在哪个 viewColumn 打开：如果有激活编辑器就打开到旁边，否则默认旁侧
+                            const baseColumn = editor?.viewColumn;
+                            const viewColumn = baseColumn ? (baseColumn + 1) as vscode.ViewColumn : vscode.ViewColumn.Beside;
+
+                            const finalUri = issueId ? targetUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }) : targetUri;
+                            await vscode.window.showTextDocument(finalUri, { preview: false, viewColumn });
+
+                        } catch (error) {
+                            this.logger.error('在编辑器旁边打开问题失败', error);
+                            vscode.window.showErrorMessage('在编辑器旁边打开问题失败');
+                        }
+                    },
+                    '在编辑器旁边打开问题'
+                );
+
             // 2. 设置视图提供者并注册视图命令
             this.viewCommandRegistry.setProviders({
                 focusedIssuesProvider,
