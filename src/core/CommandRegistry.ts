@@ -54,7 +54,7 @@ import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff'
 import {registerGenerateTitleCommand} from '../commands/generateTitle';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
-import { createOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
+import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
 
 
 
@@ -153,7 +153,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 新命令：在激活的编辑器旁边打开问题（如果编辑器包含 issueId）
             this.registerCommand(
                 'issueManager.openIssueBesideEditor',
-                createOpenIssueBesideEditorHandler(this.logger),
+                registerOpenIssueBesideEditorHandler,
                 '在编辑器旁边打开问题'
             );
 
