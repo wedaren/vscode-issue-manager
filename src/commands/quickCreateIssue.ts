@@ -41,13 +41,38 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
 
         // 交由 VS Code QuickPick 自身做过滤：不在这里按输入过滤扁平节点
         const flatItems: ActionQuickPickItem[] = latestFlat
-            .map(n => ({
-                label: n.title,
-                description: n.parentPath && n.parentPath.length > 0 ? '/' + n.parentPath.map(p => p.title).join(' / ') : undefined,
-                // 使用 action/payload 传递节点 id 以便后续能直接定位到 tree 节点
-                action: 'open-existing',
-                payload: n.id
-            } as ActionQuickPickItem));
+            .map(n => {
+                const desc = n.parentPath && n.parentPath.length > 0
+                    ? '/' + n.parentPath.map(p => p.title).join(' / ')
+                    : undefined;
+                const words = value.split(' ')
+                    .map(k => (k || '').trim())
+                    .filter(k => k.length > 0);
+                // 要求 label 或 description 都包含 value 的所有词组
+                const shouldShow = words.length > 1 && words.every(k => n.title.includes(k) || (desc && desc.includes(k)));
+
+                const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                let highlightedLabel = n.title;
+                let highlightedDesc = desc;
+                if (words.length > 0) {
+                    for (const k of words) {
+                        const re = new RegExp(escapeRegExp(k), 'g');
+                        highlightedLabel = highlightedLabel.replace(re, `【${k}】`);
+                        if (highlightedDesc) {
+                            highlightedDesc = highlightedDesc.replace(re, `【${k}】`);
+                        }
+                    }
+                }
+
+                return {
+                    label: shouldShow ? highlightedLabel : n.title,
+                    description: shouldShow ? highlightedDesc : desc,
+                    // 使用 action/payload 传递节点 id 以便后续能直接定位到 tree 节点
+                    action: 'open-existing',
+                    payload: n.id,
+                    alwaysShow: shouldShow
+                } as ActionQuickPickItem;
+            });
 
         quickPick.items = [direct, background, ...flatItems];
     });
