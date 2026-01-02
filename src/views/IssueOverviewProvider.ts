@@ -111,8 +111,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     
     item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
     
-    const {paraCategory} = this.paraCategoryCache.getParaMetadata(element.id);
-    item.iconPath = getIssueNodeIconPath(focusIndex, paraCategory);
+    item.iconPath = await getIssueNodeIconPath(element.id);
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',

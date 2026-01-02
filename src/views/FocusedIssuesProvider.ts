@@ -95,8 +95,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     const isFirstLevelNode = isFocusedRootId(element.id);
     // 第一个关注的根节点，不显示置顶
     item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, isFirstLevelNode ?  focusIndex === 0 ? 'focusedNodeFirst' : 'focusedNode' : 'issueNode');
-    const {paraCategory} = this.paraCategoryCache.getParaMetadata(element.id);
-    item.iconPath = getIssueNodeIconPath(isFirstLevelNode ? focusIndex : undefined, paraCategory);
+    item.iconPath = await getIssueNodeIconPath(realId);
 
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',

@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { getIssueMarkdownTitle } from './IssueMarkdowns';
-import { ParaCategory, getCategoryIcon } from './paraManager';
+import { getCategoryIcon, findIssueCategory } from './paraManager';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -668,8 +668,19 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
  * @param focusIndex 关注列表中的索引
  */
 
-export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategory?: ParaCategory): vscode.ThemeIcon | undefined {
-  // 根据关注索引返回对应的图标，使用 switch 语句提升可读性和维护性
+export async function getIssueNodeIconPath(issueId?: string): Promise<vscode.ThemeIcon | undefined> {
+  // 先尝试从聚焦列表中读取 focusIndex
+  let focusIndex: number = -1;
+  try {
+    if (issueId) {
+      const focused = await readFocused();
+      focusIndex = focused.focusList.indexOf(issueId);
+    }
+  } catch (e) {
+    console.error('读取 focused.json 失败:', e);
+  }
+
+  // 根据关注索引返回对应的图标
   switch (focusIndex) {
     case 0:
       return new vscode.ThemeIcon('star-full');
@@ -681,8 +692,17 @@ export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategor
     case 5:
       return new vscode.ThemeIcon('star-empty');
   }
-  if (paraCategory) {
-    return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+
+  // 当提供 issueId 时，尝试异步查询其 PARA 分类并使用分类图标
+  if (issueId) {
+    try {
+      const paraCategory = await findIssueCategory(issueId);
+      if (paraCategory) {
+        return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+      }
+    } catch (e) {
+      console.error('查询 PARA 分类失败:', e);
+    }
   }
 
   if (focusIndex && focusIndex !== -1) {
