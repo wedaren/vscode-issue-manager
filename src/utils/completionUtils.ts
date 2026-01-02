@@ -16,9 +16,10 @@ export interface FilterKeywordResult {
 /**
  * 从光标位置提取过滤关键字
  * 规则：
- * 1. 如果检测到触发前缀（如 [[ 或 @issue:），则从触发前缀之后开始提取
- * 2. 否则从最后一个空白字符之后开始提取
- * 3. 清理两端标点符号
+ * 1. 如果有选中内容，则优先使用选中文本作为关键字
+ * 2. 如果检测到触发前缀（如 [[ 或 @issue:），则从触发前缀之后开始提取
+ * 3. 如果没有触发前缀，则不提取任何关键字（返回空字符串）
+ * 4. 清理两端标点符号
  * 
  * @param document 文档
  * @param position 光标位置
@@ -36,6 +37,17 @@ export function extractFilterKeyword(
     // 获取光标之前的文本
     const prefix = lineText.slice(0, position.character);
 
+    // 如果有选中内容，则优先使用选中文本（优先级最高）
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && activeEditor.document === document && !activeEditor.selection.isEmpty) {
+        let keyword = document.getText(activeEditor.selection);
+        keyword = cleanKeyword(keyword, maxLength);
+        return {
+            keyword,
+            hasTrigger: false
+        };
+    }
+
     // 检查是否有触发前缀
     for (const trigger of triggers) {
         const triggerIndex = prefix.lastIndexOf(trigger);
@@ -51,11 +63,8 @@ export function extractFilterKeyword(
         }
     }
 
-    // 没有触发前缀，使用默认规则：找到最后一个空白字符
-    const lastWhitespaceMatch = prefix.match(/\s(?=\S*$)/);
-    const lastWhitespaceIndex = lastWhitespaceMatch ? lastWhitespaceMatch.index! + 1 : 0;
-    
-    let keyword = prefix.slice(lastWhitespaceIndex);
+    // 没有触发前缀：不再从最后空白处提取，直接返回空关键字
+    let keyword = prefix;
     keyword = cleanKeyword(keyword, maxLength);
 
     return {

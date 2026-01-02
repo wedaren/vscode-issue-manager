@@ -94,7 +94,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
 
             // 在数组前插入两条常驻项：前台创建 & 后台创建（调用现有 quickCreateIssue QuickPick）
             const createItem = new vscode.CompletionItem('新建问题', vscode.CompletionItemKind.Keyword);
-            createItem.detail = '快速新建问题';
+            createItem.detail = `快速新建问题:${filterResult.keyword ?? ''}`;
             createItem.insertText = '';
             createItem.sortText = '000000';
             createItem.filterText = filterResult.keyword ?? '';
@@ -102,7 +102,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [inferredParentId, filterResult.keyword ?? undefined, false, insertMode, filterResult.hasTrigger] };
 
             const createBackground = new vscode.CompletionItem('新建问题（后台）', vscode.CompletionItemKind.Keyword);
-            createBackground.detail = '后台创建并由 AI 填充（不打开）';
+            createBackground.detail = `后台创建并由 AI 填充（不打开）:${filterResult.keyword ?? ''}`;
             createBackground.insertText = '';
             createBackground.sortText = '000001';
             createBackground.filterText = filterResult.keyword ?? '';
@@ -110,7 +110,8 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             // 直接在后台创建，不弹出 QuickPick
             createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [inferredParentId, filterResult.keyword ?? undefined, true, insertMode, filterResult.hasTrigger] };
 
-            return [createItem, createBackground, ...items];
+            // 返回 CompletionList 并设置 isIncomplete=true，确保用户继续输入时会重新构建 items
+            return new vscode.CompletionList([createItem, createBackground, ...items], true);
         } catch (error) {
             console.error('补全提供器错误:', error);
             return undefined;
@@ -162,7 +163,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
         const title = node.title;
         
         // 获取图标（与问题总览一致）
-        const iconPath = await getIssueNodeIconPath(node.id);
+        // const iconPath = await getIssueNodeIconPath(node.id);
         
         // 构建显示标题：路径反序显示（最具体的节点在前）
         // 例如：/学习/node/vue -> vue/node/学习
@@ -172,10 +173,10 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             const parentTitles = node.parentPath.map(n => n.title);
             // 反序：当前节点在前，父节点在后
             const reversedPath = [title, ...parentTitles.reverse()].join('/');
-            displayTitle = iconPath ? `$(${iconPath.id}) ${reversedPath}` : reversedPath;
+            displayTitle = reversedPath;
         } else {
             // 一级节点直接显示
-            displayTitle = iconPath ? `$(${iconPath.id}) ${title}` : title;
+            displayTitle = title;
         }
         
         // 计算相对路径（相对于当前文档所在目录）
