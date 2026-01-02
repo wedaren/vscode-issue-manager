@@ -3,7 +3,7 @@ import { ExtensionInitializer } from './core/ExtensionInitializer';
 import { GitSyncService } from './services/GitSyncService';
 import { ChromeIntegrationServer } from './integration/ChromeIntegrationServer';
 import { SharedConfig } from './config/SharedConfig';
-import { IssueFileCompletionProvider } from './providers/IssueFileCompletionProvider';
+import { IssueNodeCompletionProvider } from './providers/IssueNodeCompletionProvider';
 import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
 import { NoteMappingService } from './services/noteMapping/NoteMappingService';
 import { EditorMappingContextUpdater } from './services/EditorMappingContextUpdater';
@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
 	void ChromeIntegrationServer.getInstance().start(context);
 	
 	// 注册 Issue 文件补全提供器
-	const completionProvider = new IssueFileCompletionProvider(context);
+	const completionProvider = new IssueNodeCompletionProvider(context);
 	// 从配置读取触发器并提取首字符，避免硬编码
 	const completionConfig = vscode.workspace.getConfiguration('issueManager.completion');
 	const triggers = completionConfig.get<string[]>('triggers', ['[[']);

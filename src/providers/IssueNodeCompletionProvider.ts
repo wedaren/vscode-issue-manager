@@ -18,7 +18,7 @@ interface CompletionItemWithNode extends vscode.CompletionItem {
  * Issue 文件补全提供器
  * 复用 searchIssuesInFocused 的逻辑，从问题总览树获取数据
  */
-export class IssueFileCompletionProvider implements vscode.CompletionItemProvider {
+export class IssueNodeCompletionProvider implements vscode.CompletionItemProvider {
     private paraCategoryCache: ParaCategoryCache;
 
     constructor(context: vscode.ExtensionContext) {
