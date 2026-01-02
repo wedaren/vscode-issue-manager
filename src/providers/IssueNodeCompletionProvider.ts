@@ -3,7 +3,8 @@ import * as path from 'path';
 import { getFlatTree, FlatTreeNode, FocusedData } from '../data/issueTreeManager';
 import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completionUtils';
 import { getIssueDir } from '../config';
-import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
+import { readFocused } from '../data/focusedManager';
+import { getIssueNodeIconPath } from '../data/issueTreeManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 /**

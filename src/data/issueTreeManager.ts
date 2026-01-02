@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { getIssueMarkdownTitle } from './IssueMarkdowns';
+import { ParaCategory, getCategoryIcon } from './paraManager';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -662,3 +663,31 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
     vscode.window.showErrorMessage(`写入 quickPickData.json 失败: ${error}`);
   }
 };
+/**
+ * 根据关注索引返回对应的图标
+ * @param focusIndex 关注列表中的索引
+ */
+
+export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategory?: ParaCategory): vscode.ThemeIcon | undefined {
+  // 根据关注索引返回对应的图标，使用 switch 语句提升可读性和维护性
+  switch (focusIndex) {
+    case 0:
+      return new vscode.ThemeIcon('star-full');
+    case 1:
+    case 2:
+      return new vscode.ThemeIcon('star-half');
+    case 3:
+    case 4:
+    case 5:
+      return new vscode.ThemeIcon('star-empty');
+  }
+  if (paraCategory) {
+    return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+  }
+
+  if (focusIndex && focusIndex !== -1) {
+    return new vscode.ThemeIcon('sparkle');
+  }
+
+  return new vscode.ThemeIcon('symbol-file');
+}

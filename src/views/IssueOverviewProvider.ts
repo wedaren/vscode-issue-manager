@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
-import { getIssueNodeIconPath, readFocused } from '../data/focusedManager';
+import { readFocused } from '../data/focusedManager';
+import { getIssueNodeIconPath } from '../data/issueTreeManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 import { getIssueMarkdownTitle, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 

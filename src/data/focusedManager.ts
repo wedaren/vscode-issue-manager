@@ -13,7 +13,6 @@ import * as vscode from 'vscode';
 import { getUri } from '../utils/fileUtils';
 import { getIssueDir, getFocusedMaxItems } from '../config';
 import { FocusedData } from './issueTreeManager';
-import { getCategoryIcon, ParaCategory } from './paraManager';
 import { ChromeIntegrationServer } from '../integration/ChromeIntegrationServer';
 import { Logger } from '../core/utils/Logger';
 
@@ -189,30 +188,3 @@ export async function trimFocusedToMaxItems(): Promise<number> {
   return 0;
 }
 
-/**
- * 根据关注索引返回对应的图标
- * @param focusIndex 关注列表中的索引
- */
-export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategory?: ParaCategory): vscode.ThemeIcon | undefined {
-  // 根据关注索引返回对应的图标，使用 switch 语句提升可读性和维护性
-  switch (focusIndex) {
-    case 0:
-      return new vscode.ThemeIcon('star-full');
-    case 1:
-    case 2:
-      return new vscode.ThemeIcon('star-half');
-    case 3:
-    case 4:
-    case 5:
-      return new vscode.ThemeIcon('star-empty');
-  }
-  if (paraCategory) {
-    return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
-  }
-
-  if (focusIndex && focusIndex !== -1) {
-    return new vscode.ThemeIcon('sparkle');
-  }
-
-  return new vscode.ThemeIcon('symbol-file');
-}

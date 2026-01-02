@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
 import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById } from '../data/issueTreeManager';
-import { getIssueNodeIconPath, readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
+import { readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
+import { getIssueNodeIconPath } from '../data/issueTreeManager';
 import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
