@@ -5,7 +5,6 @@ import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completion
 import { getIssueDir } from '../config';
 import { readFocused } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
-import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 /**
  * 带节点信息的补全项
@@ -20,10 +19,8 @@ interface CompletionItemWithNode extends vscode.CompletionItem {
  * 复用 searchIssuesInFocused 的逻辑，从问题总览树获取数据
  */
 export class IssueNodeCompletionProvider implements vscode.CompletionItemProvider {
-    private paraCategoryCache: ParaCategoryCache;
 
     constructor(context: vscode.ExtensionContext) {
-        this.paraCategoryCache = ParaCategoryCache.getInstance(context);
     }
     
     async provideCompletionItems(
@@ -165,9 +162,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
         const title = node.title;
         
         // 获取图标（与问题总览一致）
-        const focusIndex = focusedData.focusList.indexOf(node.id);
-        const { paraCategory } = this.paraCategoryCache.getParaMetadata(node.id);
-        const iconPath = getIssueNodeIconPath(focusIndex !== -1 ? focusIndex : undefined, paraCategory);
+        const iconPath = await getIssueNodeIconPath(node.id);
         
         // 构建显示标题：路径反序显示（最具体的节点在前）
         // 例如：/学习/node/vue -> vue/node/学习

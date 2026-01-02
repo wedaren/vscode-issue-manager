@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { getIssueMarkdownTitle } from './IssueMarkdowns';
-import { ParaCategory, getCategoryIcon } from './paraManager';
+import { getCategoryIcon, findIssueCategory } from './paraManager';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -486,6 +486,9 @@ const defaultFocusedData: FocusedData = {
   focusList: [],
 };
 
+// focused.json 缓存，使用 mtime 避免重复读取
+const focusedCache: { mtime: number; data: FocusedData } = { mtime: 0, data: { ...defaultFocusedData } };
+
 /**
  * 读取 focused.json 文件。
  * @returns FocusedData 对象，若不存在或损坏则返回默认结构。
@@ -495,17 +498,31 @@ export const readFocused = async (): Promise<FocusedData> => {
   if (!focusedPath) {
     return { ...defaultFocusedData };
   }
+
   try {
+    // 先尝试获取文件状态以比较 mtime
+    const stat = await vscode.workspace.fs.stat(vscode.Uri.file(focusedPath));
+    if (focusedCache.mtime === stat.mtime) {
+      return focusedCache.data;
+    }
+
     const content = await vscode.workspace.fs.readFile(vscode.Uri.file(focusedPath));
     const data = JSON.parse(content.toString());
     // 简单校验
     if (!Array.isArray(data.focusList)) { throw new Error('focusList 必须为数组'); }
-    return {
+
+    const res: FocusedData = {
       version: typeof data.version === 'string' ? data.version : '1.0.0',
-      focusList: data.focusList.filter((id: any) => typeof id === 'string'),
+      focusList: data.focusList.filter((id: unknown): id is string => typeof id === 'string'),
     };
+
+    // 更新缓存
+    focusedCache.mtime = stat.mtime;
+    focusedCache.data = res;
+
+    return res;
   } catch (error) {
-    // 文件不存在或解析失败，返回默认
+    // 文件不存在或解析失败，返回默认并不更新缓存
     return { ...defaultFocusedData };
   }
 };
@@ -668,8 +685,19 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
  * @param focusIndex 关注列表中的索引
  */
 
-export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategory?: ParaCategory): vscode.ThemeIcon | undefined {
-  // 根据关注索引返回对应的图标，使用 switch 语句提升可读性和维护性
+export async function getIssueNodeIconPath(issueId?: string): Promise<vscode.ThemeIcon | undefined> {
+  // 先尝试从聚焦列表中读取 focusIndex
+  let focusIndex: number = -1;
+  try {
+    if (issueId) {
+      const focused = await readFocused();
+      focusIndex = focused.focusList.indexOf(issueId);
+    }
+  } catch (e) {
+    console.error('读取 focused.json 失败:', e);
+  }
+
+  // 根据关注索引返回对应的图标
   switch (focusIndex) {
     case 0:
       return new vscode.ThemeIcon('star-full');
@@ -681,8 +709,17 @@ export function getIssueNodeIconPath(focusIndex: number | undefined, paraCategor
     case 5:
       return new vscode.ThemeIcon('star-empty');
   }
-  if (paraCategory) {
-    return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+
+  // 当提供 issueId 时，尝试异步查询其 PARA 分类并使用分类图标
+  if (issueId) {
+    try {
+      const paraCategory = await findIssueCategory(issueId);
+      if (paraCategory) {
+        return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+      }
+    } catch (e) {
+      console.error('查询 PARA 分类失败:', e);
+    }
   }
 
   if (focusIndex && focusIndex !== -1) {
