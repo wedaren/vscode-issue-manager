@@ -83,22 +83,49 @@ const defaultParaData: ParaData = {
 /**
  * 读取 para.json 文件
  */
+// para.json 缓存，基于 mtime 避免重复读取
+const paraCache: { mtime: number; data: ParaData } = { mtime: 0, data: { ...defaultParaData } };
+
 export const readPara = async (): Promise<ParaData> => {
   const paraPath = await getParaDataPath();
   if (!paraPath) {
     return { ...defaultParaData };
   }
 
+  const uri = vscode.Uri.file(paraPath);
   try {
-    const uri = vscode.Uri.file(paraPath);
+    // 尝试读取文件状态以判断是否需要刷新缓存
+    const stat = await vscode.workspace.fs.stat(uri);
+    if (paraCache.mtime === stat.mtime) {
+      return paraCache.data;
+    }
+
     const content = await vscode.workspace.fs.readFile(uri);
-    const data = JSON.parse(Buffer.from(content).toString('utf8'));
+    const data = JSON.parse(Buffer.from(content).toString('utf8')) as ParaData;
+
+    // 简单结构校验，保证各字段存在并为数组
+    if (!data || typeof data !== 'object') {
+      throw new Error('para.json 内容格式不正确');
+    }
+    data.projects = Array.isArray(data.projects) ? data.projects : [];
+    data.areas = Array.isArray(data.areas) ? data.areas : [];
+    data.resources = Array.isArray(data.resources) ? data.resources : [];
+    data.archives = Array.isArray(data.archives) ? data.archives : [];
+    data.version = typeof data.version === 'string' ? data.version : '1.0.0';
+    data.lastModified = typeof data.lastModified === 'string' ? data.lastModified : new Date().toISOString();
+
+    // 更新缓存
+    paraCache.mtime = stat.mtime;
+    paraCache.data = data;
+
     return data;
   } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'FileNotFound') {
-      // 文件不存在，返回默认数据
-      return { ...defaultParaData };
-    }
+    // 如果是文件不存在，返回默认；其他错误也返回默认并记录
+    try {
+      if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'FileNotFound') {
+        return { ...defaultParaData };
+      }
+    } catch (_) {}
     console.error('读取 para.json 失败:', error);
     return { ...defaultParaData };
   }

@@ -486,6 +486,9 @@ const defaultFocusedData: FocusedData = {
   focusList: [],
 };
 
+// focused.json 缓存，使用 mtime 避免重复读取
+const focusedCache: { mtime: number; data: FocusedData } = { mtime: 0, data: { ...defaultFocusedData } };
+
 /**
  * 读取 focused.json 文件。
  * @returns FocusedData 对象，若不存在或损坏则返回默认结构。
@@ -495,17 +498,31 @@ export const readFocused = async (): Promise<FocusedData> => {
   if (!focusedPath) {
     return { ...defaultFocusedData };
   }
+
   try {
+    // 先尝试获取文件状态以比较 mtime
+    const stat = await vscode.workspace.fs.stat(vscode.Uri.file(focusedPath));
+    if (focusedCache.mtime === stat.mtime) {
+      return focusedCache.data;
+    }
+
     const content = await vscode.workspace.fs.readFile(vscode.Uri.file(focusedPath));
     const data = JSON.parse(content.toString());
     // 简单校验
     if (!Array.isArray(data.focusList)) { throw new Error('focusList 必须为数组'); }
-    return {
+
+    const res: FocusedData = {
       version: typeof data.version === 'string' ? data.version : '1.0.0',
       focusList: data.focusList.filter((id: any) => typeof id === 'string'),
     };
+
+    // 更新缓存
+    focusedCache.mtime = stat.mtime;
+    focusedCache.data = res;
+
+    return res;
   } catch (error) {
-    // 文件不存在或解析失败，返回默认
+    // 文件不存在或解析失败，返回默认并不更新缓存
     return { ...defaultFocusedData };
   }
 };
