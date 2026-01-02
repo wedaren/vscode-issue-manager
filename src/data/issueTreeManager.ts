@@ -513,7 +513,7 @@ export const readFocused = async (): Promise<FocusedData> => {
 
     const res: FocusedData = {
       version: typeof data.version === 'string' ? data.version : '1.0.0',
-      focusList: data.focusList.filter((id: any) => typeof id === 'string'),
+      focusList: data.focusList.filter((id: unknown): id is string => typeof id === 'string'),
     };
 
     // 更新缓存
