@@ -5,7 +5,6 @@ import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completion
 import { getIssueDir } from '../config';
 import { readFocused } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
-import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 /**
  * 带节点信息的补全项
@@ -20,10 +19,8 @@ interface CompletionItemWithNode extends vscode.CompletionItem {
  * 复用 searchIssuesInFocused 的逻辑，从问题总览树获取数据
  */
 export class IssueNodeCompletionProvider implements vscode.CompletionItemProvider {
-    private paraCategoryCache: ParaCategoryCache;
 
     constructor(context: vscode.ExtensionContext) {
-        this.paraCategoryCache = ParaCategoryCache.getInstance(context);
     }
     
     async provideCompletionItems(
