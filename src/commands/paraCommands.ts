@@ -3,7 +3,7 @@ import {
   ParaCategory,
   getCategoryLabel,
   addIssueToCategory,
-  findIssueCategory
+  getIssueCategory
 } from '../data/paraManager';
 
 /**
@@ -24,7 +24,7 @@ export async function addIssueToParaCategory(
 
   try {
     // 检查问题是否已在某个分类中
-    const currentCategory = await findIssueCategory(issueId);
+    const currentCategory = await getIssueCategory(issueId);
     
     // 添加到指定分类（会自动从其他分类移除）
     await addIssueToCategory(category, issueId);

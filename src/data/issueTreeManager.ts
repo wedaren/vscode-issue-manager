@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { getIssueMarkdownTitle } from './IssueMarkdowns';
-import { getCategoryIcon, findIssueCategory } from './paraManager';
+import { getCategoryIcon, getIssueCategory } from './paraManager';
 
 /**
  * 获取文件相对于 issueDir 的路径。
@@ -713,7 +713,7 @@ export async function getIssueNodeIconPath(issueId?: string): Promise<vscode.The
   // 当提供 issueId 时，尝试异步查询其 PARA 分类并使用分类图标
   if (issueId) {
     try {
-      const paraCategory = await findIssueCategory(issueId);
+      const paraCategory = await getIssueCategory(issueId);
       if (paraCategory) {
         return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
       }

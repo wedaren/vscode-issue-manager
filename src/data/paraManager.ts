@@ -192,7 +192,7 @@ export const removeIssueFromCategory = async (
  * 查找问题所在的分类
  * @param issueId 问题节点的 id（不是 filePath）
  */
-export const findIssueCategory = async (issueId: string): Promise<ParaCategory | null> => {
+export const getIssueCategory = async (issueId: string): Promise<ParaCategory | null> => {
   const data = await readPara();
 
   if (data.projects.includes(issueId)) {
