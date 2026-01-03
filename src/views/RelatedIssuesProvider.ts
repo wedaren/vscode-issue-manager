@@ -129,7 +129,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     }
 
     /** 渲染 TreeItem */
-    async getTreeItem(element: RelatedIssueNode){
+    async getTreeItem(element: RelatedIssueNode): Promise<vscode.TreeItem> {
         const item = new vscode.TreeItem(element.label, element.children && element.children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
         item.tooltip = element.tooltip;
         item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
