@@ -62,20 +62,40 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
         }
 
         const issueId = stripFocusedId(node.id);
-        const { removedNode, success } = removeNode(treeData, issueId) as { removedNode: IssueTreeNode | null, success: boolean };
+        const { removedNode, success } = removeNode(treeData, issueId);
 
         if (success) {
             await writeTree(treeData);
             vscode.commands.executeCommand('issueManager.refreshAllViews');
             await EditorContextService.getInstance()?.recheckCurrentEditor();
 
-            // 检查是否还有其他引用
+            // 检查是否还有其他引用 — 收集所有被移除的节点（包括子节点），按唯一文件路径去重后再提示删除
             try {
-                const filePath = removedNode?.filePath || (isIssueTreeNode(node) ? node.filePath : undefined);
-                if (filePath) {
+                const nodesToCheck: IssueTreeNode[] = [];
+                const collect = (n?: IssueTreeNode | null) => {
+                    if (!n) return;
+                    nodesToCheck.push(n);
+                    if (n.children && n.children.length > 0) {
+                        n.children.forEach(child => collect(child));
+                    }
+                };
+
+                collect(removedNode ?? (isIssueTreeNode(node) ? node : undefined));
+
+                const filePathSet = new Set<string>();
+                nodesToCheck.forEach(n => {
+                    if (n.filePath) filePathSet.add(n.filePath);
+                });
+
+                if (filePathSet.size > 0) {
                     const associated = await getAssociatedFiles();
-                    if (!associated.has(filePath)) {
-                        const fileName = path.basename(filePath);
+                    const orphanPaths: string[] = [];
+                    for (const p of filePathSet) {
+                        if (!associated.has(p)) orphanPaths.push(p);
+                    }
+
+                    for (const p of orphanPaths) {
+                        const fileName = path.basename(p);
                         const confirm = await vscode.window.showWarningMessage(
                             `问题 "${fileName}" 已没有任何关联引用，是否删除该问题文件？`,
                             { modal: false },
@@ -90,7 +110,7 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                                 return;
                             }
 
-                            const fullPath = path.join(issueDir, filePath);
+                            const fullPath = path.join(issueDir, p);
                             const fileUri = vscode.Uri.file(fullPath);
                             try {
                                 await vscode.workspace.fs.delete(fileUri);
