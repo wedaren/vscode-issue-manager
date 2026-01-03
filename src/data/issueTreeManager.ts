@@ -686,7 +686,7 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
  * @param baseContextValue 基础 contextValue（如 'issueNode'）
  * @returns 带有 PARA 元数据的 contextValue 字符串
  */
-export async function getContextValueWithParaMetadata(nodeId: string, baseContextValue: string): Promise<string> {
+export async function getIssueNodeContextValue(nodeId: string, baseContextValue: string): Promise<string> {
   const realId = stripFocusedId(nodeId);
   try {
     const paraCategory = await getIssueCategory(realId);

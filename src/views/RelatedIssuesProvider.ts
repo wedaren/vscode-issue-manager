@@ -3,7 +3,7 @@
  * 只读视图，动态展示某问题在知识库中的所有引用及上下文
  */
 import * as vscode from 'vscode';
-import { readTree, TreeData, IssueTreeNode, getContextValueWithParaMetadata } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueTreeNode, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
@@ -83,7 +83,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             tooltip: (await Promise.all(parentNodes.map(n => getIssueMarkdownTitle(n.filePath)))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
-            contextValue: await getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),
+            contextValue: await getIssueNodeContextValue(parentIssueNode.id, 'issueNode'),
         } : undefined;
 
         // 当前问题
@@ -93,7 +93,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             filePath: node.filePath,
             resourceUri: node.resourceUri,
             id: node.id,
-            contextValue: await getContextValueWithParaMetadata(node.id, 'issueNode'),
+            contextValue: await getIssueNodeContextValue(node.id, 'issueNode'),
             children: node.children ? await Promise.all(node.children.map(async (child: IssueTreeNode) => ({
                 label: await getNodeTitle(child),
                 type: 'child',
@@ -101,7 +101,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 children: [],
                 resourceUri: child.resourceUri,
                 id: child.id,
-                contextValue: await getContextValueWithParaMetadata(child.id, 'issueNode'),
+                contextValue: await getIssueNodeContextValue(child.id, 'issueNode'),
             }))) : [],
         };
 
@@ -136,7 +136,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         item.description = element.type === 'parent' ? element.tooltip : '';
         
         // 使用缓存的 contextValue 或计算新的 contextValue
-        item.contextValue = element.contextValue ?? await getContextValueWithParaMetadata(element.id, 'issueNode');
+        item.contextValue = element.contextValue ?? await getIssueNodeContextValue(element.id, 'issueNode');
         item.id = element.id;
         item.resourceUri = element.resourceUri;
         

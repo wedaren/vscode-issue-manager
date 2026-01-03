@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById, getContextValueWithParaMetadata } from '../data/issueTreeManager';
+import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
 
@@ -83,7 +83,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     const focusIndex = this.focusedData?.focusList.indexOf(realId);
     const isFirstLevelNode = isFocusedRootId(element.id);
     // 第一个关注的根节点，不显示置顶
-    item.contextValue = await getContextValueWithParaMetadata(element.id, isFirstLevelNode ? (focusIndex === 0 ? 'focusedNodeFirst' : 'focusedNode') : 'issueNode');
+    item.contextValue = await getIssueNodeContextValue(element.id, isFirstLevelNode ? (focusIndex === 0 ? 'focusedNodeFirst' : 'focusedNode') : 'issueNode');
     item.iconPath = await getIssueNodeIconPath(realId);
 
     item.command = {

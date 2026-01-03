@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById, getContextValueWithParaMetadata } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { readFocused } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
@@ -99,7 +99,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     item.id = element.id;
     item.resourceUri = uri;
     
-    item.contextValue = await getContextValueWithParaMetadata(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
+    item.contextValue = await getIssueNodeContextValue(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
     
     item.iconPath = await getIssueNodeIconPath(element.id);
     item.command = {
