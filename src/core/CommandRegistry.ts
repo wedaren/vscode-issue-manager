@@ -28,6 +28,7 @@ const EXPAND_ANIMATION_DELAY_MS = 100;
 
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand } from '../commands/openIssueDir';
+import { registerDisassociateIssueCommand } from '../commands/disassociateIssue';
 import { registerSearchIssuesCommand } from '../commands/searchIssues';
 import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
@@ -543,49 +544,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         );
 
 
-        // 解除问题关联命令
-        this.registerCommand(
-            'issueManager.disassociateIssue',
-            async (...args: unknown[]) => {
-                // 类型守卫，确保 node 是一个有效的 IssueTreeNode
-                const node = (Array.isArray(args) && args.length > 0) ? args[0] : null;
-
-                if (!node || !isIssueTreeNode(node) || node.id === 'placeholder-no-issues') {
-                    return;
-                }
-
-                // 判断是否有子节点  
-                if (node.children && node.children.length > 0) {
-                    const confirm = await vscode.window.showWarningMessage(
-                        '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
-                        { modal: true },
-                        '确定'
-                    );
-                    if (confirm !== '确定') {
-                        return;
-                    }
-                }
-
-                const treeData = await readTree();
-                if (!treeData) {
-                    vscode.window.showErrorMessage('无法读取问题树数据。');
-                    return;
-                }
-
-                const { success } = removeNode(treeData, stripFocusedId(node.id));
-
-                if (success) {
-                    await writeTree(treeData);
-                    vscode.commands.executeCommand('issueManager.refreshAllViews');
-                    
-                    // 重新检查当前编辑器的上下文，避免 issueId 仍然存在
-                    await EditorContextService.getInstance()?.recheckCurrentEditor();
-                } else {
-                    vscode.window.showWarningMessage('无法在树中找到该节点以解除关联。');
-                }
-            },
-            '解除问题关联'
-        );
+        // 解除问题关联命令（委托到独立模块实现）
+        registerDisassociateIssueCommand(this.context);
 
     }
 
