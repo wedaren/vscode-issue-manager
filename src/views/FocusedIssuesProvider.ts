@@ -1,13 +1,12 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById } from '../data/issueTreeManager';
+import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById, getContextValueWithParaMetadata } from '../data/issueTreeManager';
 import { readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
-import { ParaCategoryCache } from '../services/ParaCategoryCache';
 
 import * as path from 'path';
 import { getIssueDir } from '../config';
-import { getIssueMarkdownTitle, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 
 /**
  * 关注问题视图的 TreeDataProvider。
@@ -20,17 +19,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
   private filteredTreeCache: IssueTreeNode[] | null = null;
-  private paraCategoryCache: ParaCategoryCache;
-
   constructor(private context: vscode.ExtensionContext) {
-    // 获取 PARA 分类缓存服务
-    this.paraCategoryCache = ParaCategoryCache.getInstance(context);
-    
-    // 监听缓存更新，自动刷新视图
-    this.paraCategoryCache.onDidChangeCache(() => {
-      this._onDidChangeTreeData.fire();
-    });
-
     // 监听配置变更，当 maxItems 改变时裁剪列表并刷新视图
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration(async e => {
@@ -94,7 +83,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     const focusIndex = this.focusedData?.focusList.indexOf(realId);
     const isFirstLevelNode = isFocusedRootId(element.id);
     // 第一个关注的根节点，不显示置顶
-    item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, isFirstLevelNode ?  focusIndex === 0 ? 'focusedNodeFirst' : 'focusedNode' : 'issueNode');
+    item.contextValue = await getContextValueWithParaMetadata(element.id, isFirstLevelNode ? (focusIndex === 0 ? 'focusedNodeFirst' : 'focusedNode') : 'issueNode');
     item.iconPath = await getIssueNodeIconPath(realId);
 
     item.command = {

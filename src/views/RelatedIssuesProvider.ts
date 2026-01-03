@@ -3,8 +3,7 @@
  * 只读视图，动态展示某问题在知识库中的所有引用及上下文
  */
 import * as vscode from 'vscode';
-import { readTree, TreeData, IssueTreeNode } from '../data/issueTreeManager';
-import { ParaCategoryCache } from '../services/ParaCategoryCache';
+import { readTree, TreeData, IssueTreeNode, getContextValueWithParaMetadata } from '../data/issueTreeManager';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
@@ -13,17 +12,9 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     private contextUri: vscode.Uri | undefined;
     private treeData: TreeData | null = null;
-    private paraCategoryCache: ParaCategoryCache;
     private disposables: vscode.Disposable[] = [];
     
     constructor(private context: vscode.ExtensionContext) {
-        // 通过依赖注入的方式管理 ParaCategoryCache 实例
-        this.paraCategoryCache = ParaCategoryCache.getInstance(context);
-        
-        // 监听 PARA 分类缓存更新，自动刷新视图
-        this.disposables.push(this.paraCategoryCache.onDidChangeCache(() => {
-            this.refresh();
-        }));
     }
 
     /** 切换当前分析的问题 */
@@ -92,7 +83,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             tooltip: (await Promise.all(parentNodes.map(n => getIssueMarkdownTitle(n.filePath)))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
-            contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),
+            contextValue: await getContextValueWithParaMetadata(parentIssueNode.id, 'issueNode'),
         } : undefined;
 
         // 当前问题
@@ -102,7 +93,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             filePath: node.filePath,
             resourceUri: node.resourceUri,
             id: node.id,
-            contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(node.id, 'issueNode'),
+            contextValue: await getContextValueWithParaMetadata(node.id, 'issueNode'),
             children: node.children ? await Promise.all(node.children.map(async (child: IssueTreeNode) => ({
                 label: await getNodeTitle(child),
                 type: 'child',
@@ -110,7 +101,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 children: [],
                 resourceUri: child.resourceUri,
                 id: child.id,
-                contextValue: this.paraCategoryCache.getContextValueWithParaMetadata(child.id, 'issueNode'),
+                contextValue: await getContextValueWithParaMetadata(child.id, 'issueNode'),
             }))) : [],
         };
 
@@ -138,14 +129,14 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     }
 
     /** 渲染 TreeItem */
-    getTreeItem(element: RelatedIssueNode): vscode.TreeItem {
+    async getTreeItem(element: RelatedIssueNode){
         const item = new vscode.TreeItem(element.label, element.children && element.children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
         item.tooltip = element.tooltip;
         item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
         item.description = element.type === 'parent' ? element.tooltip : '';
         
         // 使用缓存的 contextValue 或计算新的 contextValue
-        item.contextValue = element.contextValue ?? this.paraCategoryCache.getContextValueWithParaMetadata(element.id, 'issueNode');
+        item.contextValue = element.contextValue ?? await getContextValueWithParaMetadata(element.id, 'issueNode');
         item.id = element.id;
         item.resourceUri = element.resourceUri;
         

@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById, getContextValueWithParaMetadata } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { readFocused } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
-import { ParaCategoryCache } from '../services/ParaCategoryCache';
-import { getIssueMarkdownTitle, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
   /**
@@ -51,17 +50,8 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
 
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
-  private paraCategoryCache: ParaCategoryCache;
 
   constructor(private context: vscode.ExtensionContext) {
-    // 获取 PARA 分类缓存服务
-    this.paraCategoryCache = ParaCategoryCache.getInstance(context);
-    
-    // 监听缓存更新，自动刷新视图
-    this.paraCategoryCache.onDidChangeCache(() => {
-      this._onDidChangeTreeData.fire();
-    });
-    
     this.loadData();
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('issueManager.issueDir')) {
@@ -109,7 +99,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     item.id = element.id;
     item.resourceUri = uri;
     
-    item.contextValue = this.paraCategoryCache.getContextValueWithParaMetadata(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
+    item.contextValue = await getContextValueWithParaMetadata(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
     
     item.iconPath = await getIssueNodeIconPath(element.id);
     item.command = {

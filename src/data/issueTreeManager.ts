@@ -681,6 +681,29 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
   }
 };
 /**
+ * 构造包含 PARA 元数据的 contextValue（异步版）。
+ * @param nodeId 节点 ID（支持带 focused 后缀的 ID）
+ * @param baseContextValue 基础 contextValue（如 'issueNode'）
+ * @returns 带有 PARA 元数据的 contextValue 字符串
+ */
+export async function getContextValueWithParaMetadata(nodeId: string, baseContextValue: string): Promise<string> {
+  const realId = stripFocusedId(nodeId);
+  try {
+    const paraCategory = await getIssueCategory(realId);
+    const segments: string[] = [baseContextValue];
+    if (paraCategory) {
+      segments.push(`paraAssigned:${paraCategory}`);
+    } else {
+      segments.push('paraAssignable');
+    }
+    return segments.join('|');
+  } catch (e) {
+    console.error('获取 PARA 分类失败:', e);
+    return `${baseContextValue}|paraAssignable`;
+  }
+}
+
+/**
  * 根据关注索引返回对应的图标
  * @param focusIndex 关注列表中的索引
  */
