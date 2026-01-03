@@ -491,6 +491,11 @@
         "icon": "$(link)"
       },
       {
+        "command": "issueManager.marker.openAssociated",
+        "title": "打开关联",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "issueManager.marker.jumpToMarker",
         "title": "跳转到标记",
         "icon": "$(go-to-file)"
@@ -963,9 +968,9 @@
           "group": "modification@1"
         },
         {
-          "command": "issueManager.marker.jumpToMarker",
-          "when": "view == issueManager.views.marker && viewItem == currentMarkerItem",
-          "group": "inline@1"
+          "command": "issueManager.marker.openAssociated",
+          "when": "view == issueManager.views.marker && (viewItem == currentTask || viewItem == archivedTask || viewItem == currentMarkerItem || viewItem == archivedMarkerItem)",
+          "group": "inline@2"
         },
         {
           "command": "issueManager.marker.associateMarker",

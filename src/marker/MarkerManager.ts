@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { quickCreateIssue } from '../commands/quickCreateIssue';
 
 /**
  * 标记项
@@ -408,7 +409,25 @@ export class MarkerManager {
      * 关联标记或任务到问题（占位函数）
      */
     async associate(target: MarkerItem | MarkerTask): Promise<void> {
-        vscode.window.showInformationMessage('关联功能即将推出');
-        // TODO: 实现关联逻辑
+        const issueId = await quickCreateIssue();
+        if (!issueId) {
+            // 用户取消或创建失败
+            return;
+        }
+
+        // 如果是单个标记
+        if ((target as MarkerItem).message !== undefined) {
+            const marker = target as MarkerItem;
+            marker.associatedIssueId = issueId;
+            await this.saveData();
+            vscode.window.showInformationMessage(`标记已关联到问题: ${issueId}`);
+            return;
+        }
+
+        // 如果是任务
+        const task = target as MarkerTask;
+        task.associatedIssueId = issueId;
+        await this.saveData();
+        vscode.window.showInformationMessage(`任务已关联到问题: ${issueId}`);
     }
 }

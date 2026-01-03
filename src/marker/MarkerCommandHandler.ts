@@ -93,6 +93,19 @@ export class MarkerCommandHandler {
             })
         );
 
+        // 打开关联
+        context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.marker.openAssociated', async (item) => {
+                if (item) {
+                    if ('marker' in item) {
+                        vscode.commands.executeCommand('issueManager.openIssueBesideEditor',item.marker.associatedIssueId);
+                    } else if ('task' in item) {
+                        vscode.commands.executeCommand('issueManager.openIssueBesideEditor',item.task.associatedIssueId);
+                    }
+                }
+            })
+        );
+
         // 跳转到标记
         context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.marker.jumpToMarker', async (marker: MarkerItem) => {
