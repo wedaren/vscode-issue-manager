@@ -1,0 +1,9 @@
+body { margin: 0; padding: 12px; }
+header { display:flex; gap:8px; margin-bottom:12px; }
+#segments { display:flex; flex-direction:column; gap:8px; }
+.segment { border:1px solid #ddd; padding:8px; border-radius:4px; display:flex; gap:8px; }
+.seg-index { width:36px; font-weight:600; }
+.seg-text { flex:1; }
+.seg-actions { width:120px; }
+footer { margin-top:12px; display:flex; gap:8px; align-items:flex-start; }
+#answer { margin-left:8px; white-space:pre-wrap; }
