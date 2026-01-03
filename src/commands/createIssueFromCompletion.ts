@@ -48,9 +48,9 @@ export async function createAndOpenIssue(title: string, parentId: string | null)
 
     try {
         const openUri = newNodeId ? uri.with({ query: `issueId=${encodeURIComponent(newNodeId)}` }) : uri;
-        await vscode.window.showTextDocument(openUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+        await vscode.window.showTextDocument(openUri, { preserveFocus:true, preview: true, viewColumn: vscode.ViewColumn.Beside });
     } catch (e) {
-        try { await vscode.window.showTextDocument(uri, { preview: false }); } catch {}
+        try { await vscode.window.showTextDocument(uri, { preserveFocus:true, preview: true }); } catch {}
     }
 
     return { uri, newNodeId };
@@ -85,6 +85,6 @@ async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscode.Uri, 
     await editor.edit(editBuilder => {
         const endLine = editor.selection.end.line;
         const currentLineEnd = editor.document.lineAt(endLine).range.end;
-        editBuilder.insert(currentLineEnd, '\n' + insertText);
+        editBuilder.insert(currentLineEnd, '\n' + insertText + '\n');
     });
 }

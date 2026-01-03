@@ -91,28 +91,32 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
                     this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index+2)
                 )
             );
+            // 获取当前行文本
+            const lineText = document.lineAt(position.line).text;
+            // 获取光标之前的文本
+            const prefix = lineText.slice(0, position.character);
 
             // 在数组前插入两条常驻项：前台创建 & 后台创建（调用现有 quickCreateIssue QuickPick）
             const createItem = new vscode.CompletionItem('新建问题', vscode.CompletionItemKind.Keyword);
-            createItem.detail = `快速新建问题:${filterResult.keyword ?? ''}`;
-            createItem.insertText = filterResult.keyword  ?? '';
+            createItem.detail = `快速新建问题:${prefix ?? ''}`;
+            createItem.insertText = prefix  ?? '';
             createItem.keepWhitespace = true;
             createItem.sortText = '\u0000';
             createItem.preselect = true;
-            createItem.filterText = filterResult.keyword ?? '';
+            createItem.filterText = prefix ?? '';
             // 直接调用专门的 completion 命令（避免弹出 QuickPick）
-            createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [inferredParentId, filterResult.keyword ?? undefined, false, insertMode, filterResult.hasTrigger] };
+            createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [inferredParentId, prefix ?? undefined, false, insertMode, false] };
 
             const createBackground = new vscode.CompletionItem('新建问题（后台）', vscode.CompletionItemKind.Keyword);
-            createBackground.detail = `后台创建并由 AI 填充（不打开）:${filterResult.keyword ?? ''}`;
-            createBackground.insertText = filterResult.keyword  ?? '';
+            createBackground.detail = `后台创建并由 AI 填充（不打开）:${prefix ?? ''}`;
+            createBackground.insertText = prefix  ?? '';
             createBackground.keepWhitespace = true;
             createBackground.sortText = '\u0001';
             createBackground.preselect = true;
-            createBackground.filterText = filterResult.keyword ?? '';
+            createBackground.filterText = prefix ?? '';
             // 这里也复用 quickCreateIssue，QuickPick 会根据用户选择走后台路径；保留未来可直接调用后台命令的空间
             // 直接在后台创建，不弹出 QuickPick
-            createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [inferredParentId, filterResult.keyword ?? undefined, true, insertMode, filterResult.hasTrigger] };
+            createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [inferredParentId, prefix ?? undefined, true, insertMode, false] };
 
             // 说明：
             // - 我们需要两个目标同时满足：确保这两项（“新建问题” / “新建问题（后台）”）在补全列表中被识别为匹配项以便靠前显示，
