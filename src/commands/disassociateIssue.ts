@@ -114,7 +114,6 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                             const fileUri = vscode.Uri.file(fullPath);
                             try {
                                 await vscode.workspace.fs.delete(fileUri);
-                                vscode.window.showInformationMessage(`已删除问题文件: ${fileName}`);
                             } catch (error) {
                                 vscode.window.showErrorMessage(`删除文件失败: ${error instanceof Error ? error.message : '未知错误'}`);
                             }
