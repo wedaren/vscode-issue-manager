@@ -139,7 +139,7 @@ type IssueMarkdownCacheEntry = {
 };
 
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
-const _issueMarkdownCache = new Map<string, IssueMarkdownCacheEntry>();
+const _issueMarkdownCache = new Map<vscode.Uri['fsPath'], IssueMarkdownCacheEntry>();
 
 // 尝试加载磁盘缓存（不阻塞启动流程）
 void (async () => {
@@ -163,7 +163,7 @@ export async function getIssueMarkdownFrontmatter(
     if (!uri) {
         return null;
     }
-    const key = uri.toString();
+    const key = uri.fsPath;
     try {
         const stat = await vscode.workspace.fs.stat(uri);
         const mtime = stat.mtime;
@@ -207,7 +207,7 @@ export async function updateIssueMarkdownFrontmatter(
     if (!uri) {
         return false;
     }
-    const key = uri.toString();
+    const key = uri.fsPath;
     try {
         const document = await vscode.workspace.openTextDocument(uri);
         const original = document.getText();
@@ -391,14 +391,15 @@ export async function getAllPrompts(): Promise<PromptFile[]> {
     const prompts = (await getAllIssueMarkdowns()).filter(m => m.frontmatter?.issue_prompt);
     const res: PromptFile[] = [];
     try {
-        for (const { frontmatter, uri } of prompts) {
+        for (const { uri } of prompts) {
             const data = await vscode.workspace.fs.readFile(uri);
             const text = Buffer.from(data).toString("utf8");
-            const { body } = extractFrontmatterAndBody(text);
+            const { body,frontmatter } = extractFrontmatterAndBody(text);
             const description = frontmatter?.issue_description;
+            const label = extractIssueTitleFromFrontmatter(frontmatter) ?? fallbackTitle(uri);
             res.push({
                 uri,
-                label: extractIssueTitleFromFrontmatter(frontmatter) ?? fallbackTitle(uri),
+                label,
                 description,
                 template: body.trim(),
                 systemPrompt: undefined,
