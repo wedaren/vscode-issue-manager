@@ -48,15 +48,15 @@ export async function createAndOpenIssue(title: string, parentId: string | null)
 
     try {
         const openUri = newNodeId ? uri.with({ query: `issueId=${encodeURIComponent(newNodeId)}` }) : uri;
-        await vscode.window.showTextDocument(openUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+        await vscode.window.showTextDocument(openUri, { preserveFocus:true, preview: true, viewColumn: vscode.ViewColumn.Beside });
     } catch (e) {
-        try { await vscode.window.showTextDocument(uri, { preview: false }); } catch {}
+        try { await vscode.window.showTextDocument(uri, { preserveFocus:true, preview: true }); } catch {}
     }
 
     return { uri, newNodeId };
 }
 
-export async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscode.Uri, title: string, newNodeId: string | undefined, insertMode = 'relativePath', hasTrigger = false): Promise<void> {
+async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscode.Uri, title: string, newNodeId: string | undefined, insertMode = 'relativePath', hasTrigger = false): Promise<void> {
     const currentDir = path.dirname(editor.document.uri.fsPath);
     const relativePath = path.relative(currentDir, uri.fsPath);
     let insertText: string;
@@ -78,7 +78,13 @@ export async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscod
             break;
     }
 
+    // 插入行为说明：
+    // - 不替换选中文本或触发词，而是把要插入的内容放到选区所在行的下一行。
+    // - 使用 `editor.selection.end.line` 可以保证当用户选中某段文本时，插入位置在选区末尾所在的行，而不是替换选中文本。
+    // - 通过在行尾插入一个换行再跟上 `insertText`，可以在原行下方新增内容，保持原有文本不被删除。
     await editor.edit(editBuilder => {
-        editBuilder.insert(editor.selection.active, insertText);
+        const endLine = editor.selection.end.line;
+        const currentLineEnd = editor.document.lineAt(endLine).range.end;
+        editBuilder.insert(currentLineEnd, '\n' + insertText + '\n');
     });
 }
