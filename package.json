@@ -592,6 +592,11 @@
           "group": "navigation@4"
         },
         {
+          "command": "issueManager.refreshAllViews",
+          "when": "view == issueManager.views.overview",
+          "group": "navigation@4"
+        },
+        {
           "command": "issueManager.rss.cleanupOldItems",
           "when": "view == issueManager.views.rss",
           "group": "navigation@5"
