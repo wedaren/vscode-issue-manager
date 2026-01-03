@@ -443,6 +443,62 @@
         "command": "issueManager.editNoteMapping",
         "title": "编辑笔记映射",
         "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.marker.createMarker",
+        "title": "新建标记",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.marker.archiveCurrentTask",
+        "title": "归档当前任务",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "issueManager.marker.clearCurrentTask",
+        "title": "清空当前任务",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "issueManager.marker.deleteArchived",
+        "title": "删除归档任务",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.marker.fillFromArchived",
+        "title": "填充到当前任务",
+        "icon": "$(export)"
+      },
+      {
+        "command": "issueManager.marker.renameMarker",
+        "title": "重命名标记",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.marker.deleteMarker",
+        "title": "删除标记",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.marker.batchDeleteMarkers",
+        "title": "批量删除标记",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.marker.associateMarker",
+        "title": "关联问题",
+        "icon": "$(link)"
+      },
+      {
+        "command": "issueManager.marker.jumpToMarker",
+        "title": "跳转到标记",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "issueManager.marker.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
       }
     ],
     "submenus": [
@@ -615,6 +671,26 @@
           "command": "issueManager.logicalTree.refresh",
           "when": "view == issueManager.views.logicalTree",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.marker.createMarker",
+          "when": "view == issueManager.views.marker",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.marker.archiveCurrentTask",
+          "when": "view == issueManager.views.marker",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.marker.clearCurrentTask",
+          "when": "view == issueManager.views.marker",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.marker.refresh",
+          "when": "view == issueManager.views.marker",
+          "group": "navigation@99"
         },
         {
           "command": "issueManager.logicalTree.addChild",
@@ -885,6 +961,41 @@
           "command": "issueManager.logicalTree.removeNode",
           "when": "view == issueManager.views.logicalTree && viewItem =~ /issueLogical/",
           "group": "modification@1"
+        },
+        {
+          "command": "issueManager.marker.jumpToMarker",
+          "when": "view == issueManager.views.marker && viewItem == currentMarkerItem",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.marker.associateMarker",
+          "when": "view == issueManager.views.marker && (viewItem == currentTask || viewItem == archivedTask || viewItem == currentMarkerItem || viewItem == archivedMarkerItem)",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.marker.renameMarker",
+          "when": "view == issueManager.views.marker && viewItem == currentMarkerItem",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.marker.deleteMarker",
+          "when": "view == issueManager.views.marker && viewItem == currentMarkerItem",
+          "group": "modification@2"
+        },
+        {
+          "command": "issueManager.marker.batchDeleteMarkers",
+          "when": "view == issueManager.views.marker && viewItem == currentTask",
+          "group": "modification@3"
+        },
+        {
+          "command": "issueManager.marker.deleteArchived",
+          "when": "view == issueManager.views.marker && viewItem == archivedTask",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.marker.fillFromArchived",
+          "when": "view == issueManager.views.marker && viewItem == archivedTask",
+          "group": "inline@2"
         }
       ],
       "editor/context": [
@@ -1011,6 +1122,12 @@
         "command": "issueManager.addWorkspaceMapping",
         "key": "ctrl+j ctrl+w",
         "mac": "cmd+j cmd+w",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.marker.createMarker",
+        "key": "ctrl+j ctrl+g",
+        "mac": "cmd+j cmd+g",
         "when": "issueManager.isDirConfigured"
       }
     ],
@@ -1337,6 +1454,11 @@
           "id": "issueManager.views.noteMapping",
           "name": "笔记映射",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.marker",
+          "name": "问题标记",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -1368,6 +1490,11 @@
       },
       {
         "view": "issueManager.views.para",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.marker",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
       },
