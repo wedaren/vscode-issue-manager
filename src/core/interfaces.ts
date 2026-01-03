@@ -5,6 +5,8 @@ import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
 import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaViewNode } from '../types';
+import { MarkerManager } from '../marker/MarkerManager';
+import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 
 /**
  * 视图提供者基础接口
@@ -117,6 +119,15 @@ export interface IViewRegistryResult {
     
     /** 笔记映射树视图实例 */
     noteMappingView: vscode.TreeView<vscode.TreeItem>;
+    
+    /** 标记管理器实例 */
+    markerManager: MarkerManager;
+    
+    /** 标记树视图提供者实例 */
+    markerTreeProvider: MarkerTreeProvider;
+    
+    /** 标记树视图实例 */
+    markerView: vscode.TreeView<vscode.TreeItem>;
 }
 
 /**

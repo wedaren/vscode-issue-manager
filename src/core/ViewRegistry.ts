@@ -11,6 +11,9 @@ import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
+import { MarkerManager } from '../marker/MarkerManager';
+import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
+import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueTreeNode } from '../data/issueTreeManager';
@@ -88,6 +91,9 @@ export class ViewRegistry {
         // 注册笔记映射视图
         const { noteMappingProvider, noteMappingView } = this.registerNoteMappingView();
         
+        // 注册标记视图
+        const { markerManager, markerTreeProvider, markerView } = this.registerMarkerView();
+        
         // 注册相关问题视图
         this.registerRelatedView();
         
@@ -110,7 +116,10 @@ export class ViewRegistry {
             paraViewProvider,
             paraView,
             noteMappingProvider,
-            noteMappingView
+            noteMappingView,
+            markerManager,
+            markerTreeProvider,
+            markerView
         };
     }
 
@@ -304,5 +313,30 @@ export class ViewRegistry {
     private registerRSSVirtualFileProvider(): void {
         const rssVirtualFileProvider = registerRSSVirtualFileProvider(this.context);
         this.context.subscriptions.push(rssVirtualFileProvider);
+    }
+
+    /**
+     * 注册标记视图
+     */
+    private registerMarkerView(): {
+        markerManager: MarkerManager;
+        markerTreeProvider: MarkerTreeProvider;
+        markerView: vscode.TreeView<vscode.TreeItem>;
+    } {
+        const markerManager = new MarkerManager(this.context);
+        const markerTreeProvider = new MarkerTreeProvider(markerManager);
+        
+        const markerView = vscode.window.createTreeView('issueManager.views.marker', {
+            treeDataProvider: markerTreeProvider,
+            dragAndDropController: markerTreeProvider
+        });
+        
+        this.context.subscriptions.push(markerView);
+        
+        // 注册标记命令
+        const commandHandler = new MarkerCommandHandler(markerManager, markerTreeProvider);
+        commandHandler.registerCommands(this.context);
+        
+        return { markerManager, markerTreeProvider, markerView };
     }
 }

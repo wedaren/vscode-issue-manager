@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById } from '../data/issueTreeManager';
+import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
 import { isIssueTreeNode } from '../utils/treeUtils';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
@@ -249,10 +249,24 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 快速新建命令（QuickPick 三选项实现）
         this.registerCommand(
             'issueManager.quickCreateIssue',
-            async (...args: unknown[]) => {
+                async (...args: unknown[]) => {
                 // 允许外部传入 parentId（或其他可选参数的扩展），若无则为默认 null
                 const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : null;
-                await quickCreateIssue(parentId);
+                const createdId = await quickCreateIssue(parentId);
+                // 如果返回了 issueId，则定位并打开该问题
+                if (createdId) {
+                    try {
+                        const node = await getIssueNodeById(createdId);
+                        if (node) {
+                            await vscode.commands.executeCommand('issueManager.openAndRevealIssue', node, 'overview');
+                        } else {
+                            // 若未找到节点，尝试刷新视图以同步状态
+                            vscode.commands.executeCommand('issueManager.refreshAllViews');
+                        }
+                    } catch (error) {
+                        this.logger.error('打开新建问题失败', error);
+                    }
+                }
             },
             '快速新建问题'
         );
