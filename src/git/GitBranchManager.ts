@@ -37,6 +37,9 @@ export class GitBranchManager {
 
     // 分支关联数据存储
     private branchAssociations: Map<string, string> = new Map();
+    
+    // 父分支缓存
+    private parentBranchCache: Map<string, string[]> = new Map();
 
     constructor(private context: vscode.ExtensionContext) {
         this.loadAssociations();
@@ -147,6 +150,11 @@ export class GitBranchManager {
             return [];
         }
 
+        // 检查缓存
+        if (this.parentBranchCache.has(branchName)) {
+            return this.parentBranchCache.get(branchName)!;
+        }
+
         try {
             const parents: string[] = [];
             
@@ -197,6 +205,9 @@ export class GitBranchManager {
                 parents.push(...candidates.slice(0, 3).map(c => c.name));
             }
 
+            // 缓存结果
+            this.parentBranchCache.set(branchName, parents);
+            
             return parents;
         } catch (error) {
             console.error(`获取分支 ${branchName} 的父分支失败:`, error);
@@ -269,6 +280,31 @@ export class GitBranchManager {
         }
 
         try {
+            // 检查是否有未合并的提交（非强制删除时）
+            if (!force) {
+                try {
+                    // 检查分支是否已经完全合并
+                    const mergedBranches = await this.git.branch(['--merged']);
+                    const isMerged = Object.keys(mergedBranches.branches).includes(branchName);
+                    
+                    if (!isMerged) {
+                        const result = await vscode.window.showWarningMessage(
+                            `分支 "${branchName}" 包含未合并的提交。是否强制删除？`,
+                            { modal: true },
+                            '强制删除',
+                            '取消'
+                        );
+                        
+                        if (result !== '强制删除') {
+                            return;
+                        }
+                        force = true;
+                    }
+                } catch (error) {
+                    // 如果检查失败，继续尝试删除
+                }
+            }
+            
             const deleteFlag = force ? '-D' : '-d';
             await this.git.branch([deleteFlag, branchName]);
             this._onDidChangeData.fire();
@@ -324,6 +360,8 @@ export class GitBranchManager {
      * 刷新数据
      */
     public refresh(): void {
+        // 清除缓存
+        this.parentBranchCache.clear();
         this._onDidChangeData.fire();
     }
 

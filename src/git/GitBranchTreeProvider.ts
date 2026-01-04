@@ -165,28 +165,20 @@ export class GitBranchTreeProvider implements vscode.TreeDataProvider<GitBranchT
      * 格式化合并分支的标签（多个分支指向同一 commit）
      */
     private formatMergedBranchLabel(currentBranch: GitBranchInfo, allBranches: GitBranchInfo[]): string {
-        // 获取其他分支的名称
-        const otherBranches = allBranches
-            .filter(b => b.fullName !== currentBranch.fullName)
-            .map(b => {
-                if (b.isCurrent) {
-                    return `HEAD → ${b.name}`;
-                }
-                return b.name;
-            });
+        // 构建所有分支的名称列表
+        const branchNames = allBranches.map(b => b.name).sort();
         
-        // 构建标签
-        if (currentBranch.isCurrent) {
-            if (otherBranches.length > 0) {
-                return `HEAD → ${currentBranch.name}, ${otherBranches.join(', ')}`;
-            }
-            return `HEAD → ${currentBranch.name}`;
-        } else {
-            if (otherBranches.length > 0) {
-                return `${currentBranch.name}, ${otherBranches.join(', ')}`;
-            }
-            return currentBranch.name;
+        // 查找是否有当前分支
+        const currentBranchInList = allBranches.find(b => b.isCurrent);
+        
+        if (currentBranchInList) {
+            // 找到当前分支的索引
+            const currentIndex = branchNames.indexOf(currentBranchInList.name);
+            // 将 HEAD → 插入到当前分支名称前
+            branchNames[currentIndex] = `HEAD → ${branchNames[currentIndex]}`;
         }
+        
+        return branchNames.join(', ');
     }
 
     getParent(element: GitBranchTreeItem): GitBranchTreeItem | undefined {
