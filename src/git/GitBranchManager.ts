@@ -140,6 +140,7 @@ export class GitBranchManager {
 
     /**
      * 获取父分支列表
+     * 简化实现：通过分支创建时的基础分支判断
      */
     private async getParentBranches(branchName: string): Promise<string[]> {
         if (!this.git) {
@@ -147,33 +148,75 @@ export class GitBranchManager {
         }
 
         try {
-            // 获取分支的合并基础
-            const allBranches = await this.git.branch(['-a']);
             const parents: string[] = [];
-
-            for (const [name] of Object.entries(allBranches.branches)) {
-                if (name === branchName) {
-                    continue;
-                }
-
-                try {
-                    // 检查 branchName 是否包含 name 的所有提交
-                    const mergeBase = await this.git.raw(['merge-base', branchName, name]);
-                    const branchCommit = await this.git.revparse([name]);
-                    
-                    // 如果 merge-base 等于 name 的 commit，说明 name 是父分支
-                    if (mergeBase.trim() === branchCommit.trim()) {
-                        parents.push(this.getBranchDisplayName(name));
+            
+            // 尝试从 Git 配置中获取分支的上游信息
+            try {
+                const upstream = await this.git.raw(['config', '--get', `branch.${branchName}.merge`]);
+                if (upstream && upstream.trim()) {
+                    const upstreamBranch = upstream.trim().replace('refs/heads/', '');
+                    if (upstreamBranch !== branchName) {
+                        parents.push(this.getBranchDisplayName(upstreamBranch));
                     }
-                } catch (error) {
-                    // 忽略错误，继续检查下一个分支
                 }
+            } catch (error) {
+                // 没有配置上游分支，继续尝试其他方法
+            }
+
+            // 如果没有找到父分支，尝试使用 merge-base 查找最近的共同祖先
+            if (parents.length === 0) {
+                const allBranches = await this.git.branch(['-a']);
+                const candidates: Array<{ name: string; distance: number }> = [];
+
+                for (const [name] of Object.entries(allBranches.branches)) {
+                    if (name === branchName) {
+                        continue;
+                    }
+
+                    try {
+                        // 获取共同祖先
+                        const mergeBase = await this.git.raw(['merge-base', branchName, name]);
+                        const branchCommit = await this.git.revparse([name]);
+                        
+                        // 如果 merge-base 等于 name 的 commit，说明 name 可能是父分支
+                        if (mergeBase.trim() === branchCommit.trim()) {
+                            // 计算距离（当前分支比该分支多多少提交）
+                            const distance = await this.getCommitDistance(mergeBase.trim(), branchName);
+                            candidates.push({ 
+                                name: this.getBranchDisplayName(name), 
+                                distance 
+                            });
+                        }
+                    } catch (error) {
+                        // 忽略错误，继续检查下一个分支
+                    }
+                }
+
+                // 排序并只保留距离最近的几个分支
+                candidates.sort((a, b) => a.distance - b.distance);
+                parents.push(...candidates.slice(0, 3).map(c => c.name));
             }
 
             return parents;
         } catch (error) {
             console.error(`获取分支 ${branchName} 的父分支失败:`, error);
             return [];
+        }
+    }
+
+    /**
+     * 获取两个提交之间的距离
+     */
+    private async getCommitDistance(fromCommit: string, toBranch: string): Promise<number> {
+        if (!this.git) {
+            return 0;
+        }
+
+        try {
+            const result = await this.git.raw(['rev-list', '--count', `${fromCommit}..${toBranch}`]);
+            return parseInt(result.trim()) || 0;
+        } catch (error) {
+            return 0;
         }
     }
 
