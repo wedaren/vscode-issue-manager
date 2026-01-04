@@ -504,6 +504,36 @@
         "command": "issueManager.marker.refresh",
         "title": "刷新",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.gitBranch.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.gitBranch.checkout",
+        "title": "检出分支",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "issueManager.gitBranch.create",
+        "title": "创建分支",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.gitBranch.delete",
+        "title": "删除分支",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.gitBranch.associateIssue",
+        "title": "关联 Issue",
+        "icon": "$(link)"
+      },
+      {
+        "command": "issueManager.gitBranch.disassociate",
+        "title": "取消关联",
+        "icon": "$(link-external)"
       }
     ],
     "submenus": [
@@ -706,6 +736,16 @@
           "command": "issueManager.para.refresh",
           "when": "view == issueManager.views.para",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.gitBranch.refresh",
+          "when": "view == issueManager.views.gitBranches",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.gitBranch.create",
+          "when": "view == issueManager.views.gitBranches",
+          "group": "navigation@2"
         }
       ],
       "issueManager.recentSortSubmenu": [
@@ -1001,6 +1041,31 @@
           "command": "issueManager.marker.fillFromArchived",
           "when": "view == issueManager.views.marker && viewItem == archivedTask",
           "group": "inline@2"
+        },
+        {
+          "command": "issueManager.gitBranch.checkout",
+          "when": "view == issueManager.views.gitBranches && (viewItem == localBranch || viewItem == remoteBranch)",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.gitBranch.associateIssue",
+          "when": "view == issueManager.views.gitBranches && (viewItem == localBranch || viewItem == remoteBranch)",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.gitBranch.create",
+          "when": "view == issueManager.views.gitBranches && (viewItem == localBranch || viewItem == remoteBranch)",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.gitBranch.delete",
+          "when": "view == issueManager.views.gitBranches && viewItem == localBranch",
+          "group": "modification@2"
+        },
+        {
+          "command": "issueManager.gitBranch.disassociate",
+          "when": "view == issueManager.views.gitBranches && (viewItem == localBranch || viewItem == remoteBranch)",
+          "group": "modification@3"
         }
       ],
       "editor/context": [
@@ -1463,6 +1528,11 @@
         {
           "id": "issueManager.views.marker",
           "name": "问题标记",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.gitBranches",
+          "name": "Git 分支",
           "icon": "resources/icon.svg"
         }
       ]

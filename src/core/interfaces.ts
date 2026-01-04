@@ -7,6 +7,8 @@ import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaViewNode } from '../types';
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
+import { GitBranchManager } from '../git/GitBranchManager';
+import { GitBranchTreeProvider } from '../git/GitBranchTreeProvider';
 
 /**
  * 视图提供者基础接口
@@ -128,6 +130,15 @@ export interface IViewRegistryResult {
     
     /** 标记树视图实例 */
     markerView: vscode.TreeView<vscode.TreeItem>;
+    
+    /** Git 分支管理器实例 */
+    gitBranchManager: GitBranchManager;
+    
+    /** Git 分支树视图提供者实例 */
+    gitBranchTreeProvider: GitBranchTreeProvider;
+    
+    /** Git 分支树视图实例 */
+    gitBranchView: vscode.TreeView<vscode.TreeItem>;
 }
 
 /**
