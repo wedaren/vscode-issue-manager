@@ -3,7 +3,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
-import { getIssueMarkdownTitle } from './IssueMarkdowns';
+import { getIssueMarkdownTitle, getIssueMarkdownTitleFromCache } from './IssueMarkdowns';
 import { getCategoryIcon, getIssueCategory } from './paraManager';
 
 /**
@@ -167,6 +167,10 @@ export const getIssueNodeById = async (id: string): Promise<IssueTreeNode|undefi
 
 const cache = {mtime: 0, issueIdMap:new Map<string, IssueTreeNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
 
+export function getIssueTitleSync(issueId:string){
+  const issueNode = cache.issueIdMap.get(issueId);
+  return issueNode?.resourceUri ? getIssueMarkdownTitleFromCache(issueNode?.filePath) : '[Unknown Issue: ' + issueId + ']';
+}
 async function getIssueData(){
   const treePath = getTreeDataPath();
   const issueDir = getIssueDir();

@@ -14,6 +14,9 @@ import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
+import { GitBranchManager } from '../gitBranch/GitBranchManager';
+import { GitBranchTreeProvider } from '../gitBranch/GitBranchTreeProvider';
+import { GitBranchCommandHandler } from '../gitBranch/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueTreeNode } from '../data/issueTreeManager';
@@ -93,6 +96,9 @@ export class ViewRegistry {
         
         // 注册标记视图
         const { markerManager, markerTreeProvider, markerView } = this.registerMarkerView();
+
+        // 注册 Git 分支视图
+        const { gitBranchManager, gitBranchProvider, gitBranchView } = this.registerGitBranchView();
         
         // 注册相关问题视图
         this.registerRelatedView();
@@ -119,8 +125,38 @@ export class ViewRegistry {
             noteMappingView,
             markerManager,
             markerTreeProvider,
-            markerView
+            markerView,
+            gitBranchManager,
+            gitBranchProvider,
+            gitBranchView
         };
+    }
+
+    /**
+     * 注册 Git 分支视图
+     */
+    private registerGitBranchView(): {
+        gitBranchManager: GitBranchManager;
+        gitBranchProvider: GitBranchTreeProvider;
+        gitBranchView: vscode.TreeView<vscode.TreeItem>;
+    } {
+        const gitBranchManager = new GitBranchManager(this.context);
+        const gitBranchProvider = new GitBranchTreeProvider(gitBranchManager);
+
+        const gitBranchView = vscode.window.createTreeView('issueManager.views.gitBranches', {
+            treeDataProvider: gitBranchProvider,
+            showCollapseAll: true
+        });
+
+        this.context.subscriptions.push(gitBranchView);
+
+        const commandHandler = new GitBranchCommandHandler(gitBranchManager, gitBranchProvider);
+        commandHandler.registerCommands(this.context);
+
+        // 首次刷新数据
+        void gitBranchManager.refresh();
+
+        return { gitBranchManager, gitBranchProvider, gitBranchView };
     }
 
     /**
