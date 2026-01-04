@@ -1577,6 +1577,11 @@
         "view": "issueManager.views.logicalTree",
         "contents": "当前文件没有 issue_root 字段。\n[为当前文件创建根节点](command:issueManager.logicalTree.createRoot)\n\n逻辑层级树基于当前活动文件的 Frontmatter 字段构建，显示该文件所属的完整层级结构。",
         "when": "issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.gitBranches",
+        "contents": "此工作区不是 Git 仓库。\n\nGit 分支视图需要工作区是一个有效的 Git 仓库。",
+        "when": "!git.state"
       }
     ]
   },
