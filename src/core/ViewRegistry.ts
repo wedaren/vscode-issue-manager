@@ -14,6 +14,9 @@ import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
+import { GitBranchManager } from '../git/GitBranchManager';
+import { GitBranchTreeProvider } from '../git/GitBranchTreeProvider';
+import { GitBranchCommandHandler } from '../git/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueTreeNode } from '../data/issueTreeManager';
@@ -94,6 +97,9 @@ export class ViewRegistry {
         // 注册标记视图
         const { markerManager, markerTreeProvider, markerView } = this.registerMarkerView();
         
+        // 注册 Git 分支视图
+        const { gitBranchManager, gitBranchTreeProvider, gitBranchView } = this.registerGitBranchView();
+        
         // 注册相关问题视图
         this.registerRelatedView();
         
@@ -119,7 +125,10 @@ export class ViewRegistry {
             noteMappingView,
             markerManager,
             markerTreeProvider,
-            markerView
+            markerView,
+            gitBranchManager,
+            gitBranchTreeProvider,
+            gitBranchView
         };
     }
 
@@ -338,5 +347,29 @@ export class ViewRegistry {
         commandHandler.registerCommands(this.context);
         
         return { markerManager, markerTreeProvider, markerView };
+    }
+
+    /**
+     * 注册 Git 分支视图
+     */
+    private registerGitBranchView(): {
+        gitBranchManager: GitBranchManager;
+        gitBranchTreeProvider: GitBranchTreeProvider;
+        gitBranchView: vscode.TreeView<vscode.TreeItem>;
+    } {
+        const gitBranchManager = new GitBranchManager(this.context);
+        const gitBranchTreeProvider = new GitBranchTreeProvider(gitBranchManager);
+        
+        const gitBranchView = vscode.window.createTreeView('issueManager.views.gitBranches', {
+            treeDataProvider: gitBranchTreeProvider
+        });
+        
+        this.context.subscriptions.push(gitBranchView);
+        
+        // 注册 Git 分支命令
+        const commandHandler = new GitBranchCommandHandler(this.context, gitBranchManager, gitBranchTreeProvider);
+        commandHandler.registerCommands();
+        
+        return { gitBranchManager, gitBranchTreeProvider, gitBranchView };
     }
 }
