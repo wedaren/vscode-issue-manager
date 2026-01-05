@@ -33,8 +33,9 @@ export class GitBranchManager {
 
     async refresh(): Promise<void> {
         try {
-            // 使用 for-each-ref 获取本地与远程 refs 的 commit 与日期
-            const fmt = '%(refname:short)%00%(objectname)%00%(committerdate:unix)';
+            // 使用 for-each-ref 获取本地与远程 refs 的完整 refname、短名、commit 与日期
+            // 这样我们可以精确判断某个 ref 是否属于 refs/remotes/*（远程），而不是仅凭短名中是否有 '/'。
+            const fmt = '%(refname)%00%(refname:short)%00%(objectname)%00%(committerdate:unix)';
             const raw = await this.git.raw([
                 'for-each-ref', `--format=${fmt}`, 'refs/heads', 'refs/remotes'
             ]);
@@ -44,13 +45,14 @@ export class GitBranchManager {
 
             for (const line of lines) {
                 const parts = line.split('\0');
-                if (parts.length < 3) continue;
-                const name = parts[0];
-                const hash = parts[1];
-                const unix = parseInt(parts[2], 10) * 1000;
-                const isRemote = name.startsWith('origin/') || name.includes('/');
+                if (parts.length < 4) { continue; }
+                const fullRef = parts[0]; // e.g. refs/heads/feature/x or refs/remotes/origin/main
+                const shortName = parts[1]; // e.g. feature/x or origin/main
+                const hash = parts[2];
+                const unix = parseInt(parts[3], 10) * 1000;
+                const isRemote = fullRef.startsWith('refs/remotes/');
 
-                items.push({ name, isRemote, commitHash: hash, commitTime: isNaN(unix) ? Date.now() : unix });
+                items.push({ name: shortName, isRemote, commitHash: hash, commitTime: isNaN(unix) ? Date.now() : unix });
             }
 
             // 找到 HEAD 指向的分支名（如果存在）
@@ -59,7 +61,7 @@ export class GitBranchManager {
                 const headName = head.trim();
                 if (headName) {
                     for (const it of items) {
-                        if (it.name === headName || it.name === `refs/heads/${headName}`) {
+                        if (it.name === headName) {
                             it.isHead = true;
                         }
                     }
@@ -136,7 +138,7 @@ export class GitBranchManager {
             // 获取 parent commit hash
             const parent = await this.git.raw(['rev-parse', `${entry.commitHash}^`]);
             const parentHash = parent.trim();
-            if (!parentHash) return [];
+            if (!parentHash) { return []; }
 
             const parents = this.data.filter(b => b.commitHash === parentHash);
             return parents;
@@ -180,7 +182,7 @@ export class GitBranchManager {
 
     /** 将分支与 issueId 关联并持久化 */
     async setAssociation(branchName: string, issueId: string | undefined): Promise<void> {
-        if (!branchName) return;
+        if (!branchName) { return; }
         if (issueId) {
             this.associations[branchName] = issueId;
         } else {
