@@ -53,13 +53,16 @@ export class GitBranchTreeProvider implements vscode.TreeDataProvider<BranchTree
             const ordered = [...locals, ...remotes];
 
             // 构建每个 branch 的标题：自身名优先，随后列出指向相同 commit 的其它分支名
+            const allBranches = this.manager.getBranches();
+            const branchMap = new Map(allBranches.map(x => [x.name, x]));
+
             const items: BranchTreeItem[] = await Promise.all(ordered.map(async b => {
                 const sameNames = this.manager.getBranchesByCommit(b.commitHash).filter(n => n !== b.name);
                 // 格式化名称：自身分支名先，其他分支名随后；若某分支为 HEAD，则显示为 "HEAD → name"
                 const allNames: string[] = [b.name].concat(sameNames);
                 const formatted = allNames.map(n => {
-                    // 查找对应 entry 是否为 HEAD
-                    const ent = this.manager.getBranches().find(x => x.name === n);
+                    // 查找对应 entry 是否为 HEAD (use prebuilt map for performance)
+                    const ent = branchMap.get(n);
                     if (ent && ent.isHead) {
                         return `HEAD → ${n}`;
                     }
@@ -84,11 +87,14 @@ export class GitBranchTreeProvider implements vscode.TreeDataProvider<BranchTree
 
         // 子节点：查找父分支（使用 manager 提供的启发式方法）
         const parents = await this.manager.getParentBranches(element.entry);
+        const allBranches = this.manager.getBranches();
+        const branchMap = new Map(allBranches.map(x => [x.name, x]));
+
         return await Promise.all(parents.map(async p => {
             const sameNames = this.manager.getBranchesByCommit(p.commitHash).filter(n => n !== p.name);
             const allNames: string[] = [p.name].concat(sameNames);
             const formatted = allNames.map(n => {
-                const ent = this.manager.getBranches().find(x => x.name === n);
+                const ent = branchMap.get(n);
                 if (ent && ent.isHead) {
                     return `HEAD → ${n}`;
                 }
