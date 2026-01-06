@@ -27,6 +27,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.quickCreateTask",
+        "title": "快速新建任务",
+        "icon": "$(tasklist)"
+      },
+      {
         "command": "issueManager.createIssueFromFocused",
         "title": "新建问题",
         "icon": "$(add)"
@@ -1229,6 +1234,12 @@
         "command": "issueManager.addWorkspaceMapping",
         "key": "ctrl+j ctrl+w",
         "mac": "cmd+j cmd+w",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.quickCreateTask",
+        "key": "ctrl+j ctrl+t",
+        "mac": "cmd+j cmd+t",
         "when": "issueManager.isDirConfigured"
       },
       {

@@ -238,7 +238,8 @@ export class ExtensionInitializer {
                 // views.issueStructureProvider,
                 // views.issueLogicalTreeProvider,
                 views.paraViewProvider,
-                views.paraView
+                views.paraView,
+                views.markerManager
             );
             this.logger.info('  ✓ 命令处理器注册成功');
         } catch (error) {

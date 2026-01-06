@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { getIssueTitle } from '../data/issueTreeManager';
 
 /**
  * 标记项
@@ -306,30 +307,40 @@ export class MarkerManager {
     /**
      * 归档当前任务
      */
-    async archiveCurrentTask(): Promise<void> {
+    async archiveCurrentTask(): Promise<MarkerTask | null> {
         if (this.data.currentTask.markers.length === 0) {
             vscode.window.showInformationMessage('当前任务中没有标记，无需归档');
-            return;
+            return null;
         }
 
-        const title = await vscode.window.showInputBox({
-            prompt: '请输入归档任务的标题',
-            validateInput: (value) => {
-                if (!value || value.trim() === '') {
-                    return '标题不能为空';
-                }
-                return undefined;
-            }
-        });
-
+        let title: string | undefined;  
+        const issueId = this.data.currentTask.associatedIssueId;
+        if (issueId) {  
+            try {  
+                title = await getIssueTitle(issueId);  
+            } catch {  }  
+        }  
         if (!title) {
-            return; // 用户取消
+            title = await vscode.window.showInputBox({
+                prompt: '请输入归档任务的标题',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return '标题不能为空';
+                    }
+                    return undefined;
+                }
+            });
+
+            if (!title) {
+                return null; // 用户取消
+            }
         }
 
         // 创建归档任务
         const archivedTask: MarkerTask = {
             title,
             markers: [...this.data.currentTask.markers],
+            associatedIssueId: issueId,
             createdAt: Date.now()
         };
 
@@ -341,6 +352,7 @@ export class MarkerManager {
 
         await this.saveData();
         vscode.window.showInformationMessage(`已归档任务: ${title}`);
+        return archivedTask;
     }
 
     /**
@@ -405,6 +417,7 @@ export class MarkerManager {
 
         // 复制归档任务的标记到当前任务
         this.data.currentTask.markers = task.markers.map(m => ({ ...m }));
+        this.data.currentTask.associatedIssueId = task.associatedIssueId;
         await this.saveData();
         
         vscode.window.showInformationMessage(`已从"${task.title}"填充 ${task.markers.length} 个标记到当前任务`);
@@ -462,5 +475,14 @@ export class MarkerManager {
         task.associatedIssueId = issueId;
         await this.saveData();
         vscode.window.showInformationMessage(`任务已关联到问题: ${issueId}`);
+    }
+
+    /**
+     * 将指定 issueId 关联到当前任务并保存
+     */
+    async associateIssueToCurrentTask(issueId: string): Promise<void> {
+        this.data.currentTask.associatedIssueId = issueId;
+        await this.saveData();
+        vscode.window.showInformationMessage(`当前任务已关联到问题: ${issueId}`);
     }
 }
