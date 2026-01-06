@@ -13,9 +13,16 @@ export interface MarkerItem {
     /** 文件路径（可选） */
     filePath?: string;
     /** 行号（可选，从0开始） */
+    // 兼容单点位置
     line?: number;
     /** 列号（可选，从0开始） */
     column?: number;
+
+    // 可选范围位置（优先使用范围，如果存在则表示选中区域）
+    startLine?: number;
+    startColumn?: number;
+    endLine?: number;
+    endColumn?: number;
     /** 关联的问题ID（可选） */
     associatedIssueId?: string;
     /** 创建时间 */
@@ -143,8 +150,9 @@ export class MarkerManager {
 
     /**
      * 创建新标记
+     * @param insertIndex 可选：插入的位置索引，未提供则追加到末尾
      */
-    async createMarker(message?: string, editor?: vscode.TextEditor): Promise<void> {
+    async createMarker(message?: string, editor?: vscode.TextEditor, insertIndex?: number): Promise<void> {
         // 如果没有提供 message，使用下一个序号
         if (!message) {
             message = this.getNextMarkerNumber();
@@ -174,11 +182,29 @@ export class MarkerManager {
         // 如果有编辑器，记录位置信息
         if (editor) {
             marker.filePath = editor.document.uri.fsPath;
-            marker.line = editor.selection.active.line;
-            marker.column = editor.selection.active.character;
+            // 如果用户有选中范围，则保存范围信息
+            if (!editor.selection.isEmpty) {
+                marker.startLine = editor.selection.start.line;
+                marker.startColumn = editor.selection.start.character;
+                marker.endLine = editor.selection.end.line;
+                marker.endColumn = editor.selection.end.character;
+
+                // 兼容旧字段，使用起始位置填充 line/column
+                marker.line = marker.startLine;
+                marker.column = marker.startColumn;
+            } else {
+                marker.line = editor.selection.active.line;
+                marker.column = editor.selection.active.character;
+            }
         }
 
-        this.data.currentTask.markers.push(marker);
+        // 插入到指定位置或追加
+        const markers = this.data.currentTask.markers;
+        if (insertIndex === undefined || insertIndex < 0 || insertIndex > markers.length) {
+            markers.push(marker);
+        } else {
+            markers.splice(insertIndex, 0, marker);
+        }
         await this.saveData();
         
         vscode.window.showInformationMessage(`已添加标记: ${input}`);
@@ -245,13 +271,16 @@ export class MarkerManager {
         const markers = this.data.currentTask.markers;
         const oldIndex = markers.indexOf(marker);
         
-        if (oldIndex === -1 || newIndex < 0 || newIndex >= markers.length) {
+        // 允许 newIndex 等于 markers.length（追加到末尾）
+        if (oldIndex === -1 || newIndex < 0 || newIndex > markers.length) {
             return;
         }
 
         // 移除并插入到新位置
         markers.splice(oldIndex, 1);
-        markers.splice(newIndex, 0, marker);
+        // 如果原位置在前且目标索引在删除后会向前偏移，需要调整
+        const adjustedIndex = oldIndex < newIndex ? newIndex - 1 : newIndex;
+        markers.splice(adjustedIndex, 0, marker);
 
         // 如果是数字序号，更新序号
         this.updateMarkerNumbers();
@@ -406,13 +435,17 @@ export class MarkerManager {
         try {
             const document = await vscode.workspace.openTextDocument(marker.filePath);
             const editor = await vscode.window.showTextDocument(document);
-            
-            const position = new vscode.Position(marker.line, marker.column || 0);
-            editor.selection = new vscode.Selection(position, position);
-            editor.revealRange(
-                new vscode.Range(position, position),
-                vscode.TextEditorRevealType.InCenter
-            );
+            // 如果有范围信息，则选中整个范围
+            if (marker.startLine !== undefined && marker.endLine !== undefined) {
+                const start = new vscode.Position(marker.startLine, marker.startColumn || 0);
+                const end = new vscode.Position(marker.endLine, marker.endColumn || 0);
+                editor.selection = new vscode.Selection(start, end);
+                editor.revealRange(new vscode.Range(start, end), vscode.TextEditorRevealType.InCenter);
+            } else {
+                const position = new vscode.Position(marker.line, marker.column || 0);
+                editor.selection = new vscode.Selection(position, position);
+                editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+            }
         } catch (error) {
             vscode.window.showErrorMessage(`无法打开文件: ${error}`);
         }
