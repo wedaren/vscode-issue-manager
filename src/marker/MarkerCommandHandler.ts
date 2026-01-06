@@ -117,7 +117,6 @@ export class MarkerCommandHandler {
         context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.marker.importAllEditors', async () => {
                 await this.markerManager.importAllOpenEditors();
-                this.treeProvider.refresh();
             })
         );
 

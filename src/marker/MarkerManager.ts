@@ -487,9 +487,9 @@ export class MarkerManager {
             for (const group of vscode.window.tabGroups.all) {
                 for (const tab of group.tabs) {
                     // TabInputText 有 uri 字段
-                    const input: any = tab.input;
-                    if (input && input.uri) {
-                        uris.push(input.uri as vscode.Uri);
+                    const input = tab.input as { uri?: vscode.Uri };
+                    if (input?.uri) {
+                        uris.push(input.uri);
                     }
                 }
             }
