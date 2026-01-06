@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
+import { Logger } from '../core/utils/Logger';
 
 /**
  * 从 Markdown 文件内容中提取第一个一级标题。
@@ -69,7 +70,7 @@ export function parseFrontmatter(content: string): FrontmatterData | null {
         // 如果解析结果不是对象，返回 null
         return null;
     } catch (error) {
-        console.error('解析 frontmatter 失败:', error);
+        Logger.getInstance().warn('解析 frontmatter 失败:', error);
         return null;
     }
 }
@@ -84,8 +85,13 @@ export async function getFrontmatter(fileUri: vscode.Uri): Promise<FrontmatterDa
         const contentBytes = await vscode.workspace.fs.readFile(fileUri);
         const content = Buffer.from(contentBytes).toString('utf-8');
         return parseFrontmatter(content);
-    } catch (error) {
-        console.error(`读取文件时出错 ${fileUri.fsPath}:`, error);
+    } catch (error: any) {
+        const isNotFound = error && (error.code === 'FileNotFound' || error.code === 'ENOENT' || (error.name && error.name.includes('FileNotFound')) || (error.message && error.message.includes('ENOENT')));
+        if (isNotFound) {
+            Logger.getInstance().warn(`读取文件失败（文件不存在） ${fileUri.fsPath}`);
+        } else {
+            Logger.getInstance().error(`读取文件时出错 ${fileUri.fsPath}:`, error);
+        }
         return null;
     }
 }

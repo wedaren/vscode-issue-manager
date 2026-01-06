@@ -339,8 +339,15 @@ export async function getIssueMarkdownTitle(uriOrPath: vscode.Uri | string): Pro
             _issueMarkdownCache.set(key, { ...cached, mtime });
             cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         }
-    } catch (error) {
-        Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
+    } catch (error: any) {
+        // 如果是文件不存在的常见情况，降为 warn 级别以避免日志噪音
+        const isNotFound = error && (error.code === 'FileNotFound' || error.code === 'ENOENT' || (error.name && error.name.includes('FileNotFound')) || (error.message && error.message.includes('ENOENT')));
+        if (isNotFound) {
+            // TODO ，避免基于 issueid 读取标题时报错
+            // Logger.getInstance().warn(`读取文件失败（文件不存在） ${uri.fsPath}`);
+        } else {
+            // Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
+        }
     }
     title = title ?? fallbackTitle(uri);
     return title;

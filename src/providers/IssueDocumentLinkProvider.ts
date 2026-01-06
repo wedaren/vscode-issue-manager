@@ -29,33 +29,60 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
 
         const links: vscode.DocumentLink[] = [];
         const text = document.getText();
-        
-        // 使用 matchAll 来匹配所有链接，避免正则状态问题
-        // 注意：此正则不处理转义字符，VSCode 的内置 markdown 引擎会处理这些情况
-        const linkPattern = /\x5B([^\]]+)\x5D\(([^\s)]+)\)/g;
-        const matches = text.matchAll(linkPattern);
-        
-        for (const match of matches) {
+
+        // 1) 处理常见的 markdown 内联链接 [text](path)
+        const inlineLinkPattern = /\x5B([^\]]+)\x5D\(([^\s)]+)\)/g;
+        for (const match of text.matchAll(inlineLinkPattern)) {
             if (token.isCancellationRequested) {
                 return [];
             }
 
             const linkPath = match[2]; // 链接路径（可能包含查询参数）
-            const startIndex = match.index! + match[1].length + 3; // ( 之后的位置, 等于 "[" + match[1] + "](".length
+            const startIndex = match.index! + match[1].length + 3;
             const endIndex = startIndex + linkPath.length;
 
-            // 解析路径和查询参数
             const parsed = this.parseLinkPath(linkPath, document, issueDir);
             if (parsed) {
                 const range = new vscode.Range(
                     document.positionAt(startIndex),
                     document.positionAt(endIndex)
                 );
-                
+
                 const link = new vscode.DocumentLink(range, parsed.uri);
                 link.tooltip = parsed.tooltip;
                 links.push(link);
             }
+        }
+
+        // 2) 处理自定义语法 [[file:...]]，使用 command URI 打开并分屏显示
+        const filePattern = /\[\[file:([^\]]+)\]\]/g;
+        for (const match of text.matchAll(filePattern)) {
+            if (token.isCancellationRequested) {
+                return [];
+            }
+
+            const filePath = match[1].trim();
+            if (!filePath) continue;
+
+            const startIndex = match.index! + '[[file:'.length;
+            const endIndex = startIndex + filePath.length;
+
+            // 将必要信息序列化为命令参数：包含原文档 uri 和目标路径字符串
+            const args = {
+                target: filePath,
+                source: document.uri.toString()
+            };
+
+            const cmdUri = vscode.Uri.parse(`command:extension.openInSplit?${encodeURIComponent(JSON.stringify([args]))}`);
+
+            const range = new vscode.Range(
+                document.positionAt(startIndex),
+                document.positionAt(endIndex)
+            );
+
+            const link = new vscode.DocumentLink(range, cmdUri);
+            link.tooltip = '在旁边打开文件';
+            links.push(link);
         }
 
         return links;
