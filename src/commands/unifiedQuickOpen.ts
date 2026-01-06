@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getFlatTree, FlatTreeNode } from '../data/issueTreeManager';
 
-type QuickPickItemWithId = vscode.QuickPickItem & { id?: string; commandId?: string };
+type QuickPickItemWithId = vscode.QuickPickItem & { id?: string; commandId?: string; resourceUri?: vscode.Uri };
 
 export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -17,26 +17,13 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             try {
                 const flatNodes = await getFlatTree();
 
-                async function getMtime(node: FlatTreeNode): Promise<number> {
-                    try {
-                        const uri = node.resourceUri || vscode.Uri.file(node.filePath);
-                        const stat = await vscode.workspace.fs.stat(uri);
-                        return stat.mtime;
-                    } catch {
-                        return 0;
-                    }
-                }
-
-                const nodesWithMtime = await Promise.all(flatNodes.map(async node => ({ ...(node as FlatTreeNode), mtime: await getMtime(node) })));
-                nodesWithMtime.sort((a, b) => b.mtime - a.mtime);
-
-                const issueItems: QuickPickItemWithId[] = nodesWithMtime.map(node => {
+                const issueItems: QuickPickItemWithId[] = flatNodes.map(node => {
                     let description = '';
                     if (node.parentPath && node.parentPath.length > 0) {
                         const parentTitles = node.parentPath.map(n => n.title);
                         description = ['', ...parentTitles].join(' / ');
                     }
-                    return { label: node.title, description, id: node.id } as QuickPickItemWithId;
+                    return { label: node.title, description, id: node.id, resourceUri: node.resourceUri } as QuickPickItemWithId;
                 });
 
                 // 命令模式项
@@ -89,7 +76,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         try {
                             const nodeId = selected.id;
                             // 尝试使用已有命令定位
-                            await vscode.commands.executeCommand('issueManager.openAndRevealIssue', { id: nodeId } as any, 'overview');
+                            await vscode.commands.executeCommand('issueManager.openAndRevealIssue', { id: nodeId, resourceUri: selected.resourceUri } as any, 'overview');
                         } catch (e) {
                             // fallback: 呼叫 searchIssues to handle
                             await vscode.commands.executeCommand('issueManager.searchIssues', 'overview');
