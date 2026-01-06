@@ -52,7 +52,7 @@ export class LLMService {
     /**
      * 选择模型并发送请求，若未找到模型则返回 null。
      */
-    private static async _request(
+    public static async _request(
         messages: vscode.LanguageModelChatMessage[],
         options?: { signal?: AbortSignal }
     ): Promise<{ text: string; modelFamily?: string } | null> {
