@@ -113,6 +113,13 @@ export class MarkerCommandHandler {
             })
         );
 
+        // 将所有打开的编辑器导入为标记并关闭
+        context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.marker.importAllEditors', async () => {
+                await this.markerManager.importAllOpenEditors();
+            })
+        );
+
         // 刷新视图
         context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.marker.refresh', () => {

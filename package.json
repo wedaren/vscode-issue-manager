@@ -479,6 +479,11 @@
         "icon": "$(archive)"
       },
       {
+        "command": "issueManager.marker.importAllEditors",
+        "title": "将所有编辑器加入当前任务并关闭",
+        "icon": "$(empty-window)"
+      },
+      {
         "command": "issueManager.marker.clearCurrentTask",
         "title": "清空当前任务",
         "icon": "$(clear-all)"
@@ -740,14 +745,24 @@
           "group": "navigation@1"
         },
         {
-          "command": "issueManager.marker.archiveCurrentTask",
+          "command": "issueManager.marker.importAllEditors",
           "when": "view == issueManager.views.marker",
           "group": "navigation@2"
         },
         {
-          "command": "issueManager.marker.clearCurrentTask",
+          "command": "issueManager.marker.archiveCurrentTask",
           "when": "view == issueManager.views.marker",
           "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.marker.clearCurrentTask",
+          "when": "view == issueManager.views.marker",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.quickCreateTask",
+          "when": "view == issueManager.views.marker",
+          "group": "navigation@4"
         },
         {
           "command": "issueManager.marker.refresh",
