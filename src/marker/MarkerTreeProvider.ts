@@ -19,7 +19,7 @@ class CurrentTaskItem extends vscode.TreeItem {
         if (task.associatedIssueId) {
             this.iconPath = new vscode.ThemeIcon('go-to-file');
         } else {
-            this.iconPath = new vscode.ThemeIcon('link');
+            this.iconPath = new vscode.ThemeIcon('git-commit');
         }
     }
 }
@@ -38,7 +38,7 @@ class ArchivedTaskItem extends vscode.TreeItem {
         if (task.associatedIssueId) {
             this.iconPath = new vscode.ThemeIcon('go-to-file');
         } else {
-            this.iconPath = new vscode.ThemeIcon('link');
+            this.iconPath = new vscode.ThemeIcon('tasklist');
         }
     }
 }
@@ -74,7 +74,7 @@ class MarkerItemTreeItem extends vscode.TreeItem {
         if (marker.associatedIssueId) {
             this.iconPath = new vscode.ThemeIcon('go-to-file');
         } else {
-            this.iconPath = new vscode.ThemeIcon('link');
+            this.iconPath = new vscode.ThemeIcon('git-commit');
         }
     }
 }
