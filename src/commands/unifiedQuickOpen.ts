@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getFlatTree, FlatTreeNode } from '../data/issueTreeManager';
 
-type QuickPickItemWithId = vscode.QuickPickItem & { id?: string };
+type QuickPickItemWithId = vscode.QuickPickItem & { id?: string; commandId?: string };
 
 export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -41,8 +41,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                 // 命令模式项
                 const commandItems: QuickPickItemWithId[] = [
-                    { label: '生成项目名', description: '基于活动编辑器内容生成项目名并复制' },
-                    { label: '生成 Git 分支名', description: '基于活动编辑器内容生成 git 分支名并复制' }
+                    { label: '生成项目名', description: '基于活动编辑器内容生成项目名并复制', commandId: 'issueManager.generateProjectName' },
+                    { label: '生成 Git 分支名', description: '基于活动编辑器内容生成 git 分支名并复制', commandId: 'issueManager.generateGitBranchName' }
                 ];
 
                 let inCommandMode = false;
@@ -80,10 +80,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     if (!selected) { quickPick.hide(); return; }
 
                     if (inCommandMode) {
-                        if (selected.label === '生成项目名') {
-                            await vscode.commands.executeCommand('issueManager.generateProjectName');
-                        } else if (selected.label === '生成 Git 分支名') {
-                            await vscode.commands.executeCommand('issueManager.generateGitBranchName');
+                        const cmd = selected.commandId;
+                        if (cmd) {
+                            await vscode.commands.executeCommand(cmd);
                         }
                     } else if (selected.id) {
                         // 定位并打开 issue
