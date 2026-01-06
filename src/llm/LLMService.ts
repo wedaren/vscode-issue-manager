@@ -55,7 +55,7 @@ export class LLMService {
     private static async _request(
         messages: vscode.LanguageModelChatMessage[],
         options?: { signal?: AbortSignal }
-    ): Promise<string | null> {
+    ): Promise<{ text: string; modelFamily?: string } | null> {
         if (options?.signal?.aborted) {
             throw new Error("请求已取消");
         }
@@ -68,7 +68,10 @@ export class LLMService {
             return null;
         }
 
-        return await this._sendRequestAndAggregate(model, messages, options);
+        const text = await this._sendRequestAndAggregate(model, messages, options);
+        // 尝试从 model 上提取 family 信息，类型系统可能无法保证该字段存在
+        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        return { text, modelFamily };
     }
 
     private static async selectModel(options?: {
@@ -145,14 +148,14 @@ ${JSON.stringify(
 `;
 
         try {
-            const fullResponse = await this._request(
+            const fullResp = await this._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
-            if (fullResponse === null) {
+            if (fullResp === null) {
                 return { optimized: [], similar: [] };
             }
-
+            const fullResponse = fullResp.text;
             Logger.getInstance().info("LLM Raw Response:", fullResponse); // 打印原始响应
 
             // 尝试从响应中提取 JSON 部分
@@ -203,13 +206,14 @@ ${JSON.stringify(
         const prompt = `请为以下文本生成一个简洁、精确的 Markdown 一级标题。仅返回 JSON 格式，内容如下：{ "title": "生成的标题文本" }。不要添加任何额外说明或标记。文本内容：『${text}』`;
 
         try {
-            const fullResponse = await this._request(
+            const fullResp = await this._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
-            if (fullResponse === null) {
+            if (fullResp === null) {
                 return "";
             }
+            const fullResponse = fullResp.text;
             Logger.getInstance().info("LLM generateTitle Raw Response:", fullResponse);
 
             // 1) 优先尝试提取 ```json``` 区块中的 JSON
@@ -304,13 +308,14 @@ ${JSON.stringify(
         const prompt = promptLines.join("\n");
 
         try {
-            const full = await this._request(
+            const fullResp = await this._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
-            if (full === null) {
+            if (fullResp === null) {
                 return "";
             }
+            const full = fullResp.text;
             Logger.getInstance().info("LLM generateTitleOptimized Raw Response:", full);
 
             // 1) 尝试提取 ```json ``` 区块
@@ -424,16 +429,18 @@ ${JSON.stringify(
 `;
 
         try {
-            const fullResponse = await this._request(
+            const fullResp = await this._request(
                 [
                     vscode.LanguageModelChatMessage.User(systemPrompt),
                     vscode.LanguageModelChatMessage.User(`用户主题：${prompt}`),
                 ],
                 options
             );
-            if (fullResponse === null) {
+            if (fullResp === null) {
                 return { title: "", content: "" };
             }
+            const fullResponse = fullResp.text;
+            const modelFamily = fullResp.modelFamily;
             Logger.getInstance().debug("LLM generateDocument Raw Response:", fullResponse);
 
             // 清理可能存在的 Markdown 代码块标记
@@ -464,7 +471,7 @@ ${JSON.stringify(
                 }
             }
 
-            return { title, content, modelFamily: `TODO:model.family` };
+            return { title, content, modelFamily };
         } catch (error) {
             if (options?.signal?.aborted) {
                 return { title: "", content: "" };
@@ -488,13 +495,14 @@ ${JSON.stringify(
         const prompt = `请基于下面的文本内容，生成 10 个适合作为项目名的候选。每个候选的 "name" 必须为驼峰命名（camelCase），仅使用英文单词或短语，不包含中文字符或额外标点；并为每个返回字段 "description"，该字段必须使用中文简要说明（解释为什么选择该名称、该名称与项目的关联或命名原因）。仅返回一个 Markdown 格式的 \`\`\`json\n[{"name":"...","description":"..."}, ...]\n\`\`\` 代码块，且不要添加任何其它说明或文本。文本：'''${text}'''`;
 
         try {
-            const full = await this._request(
+            const fullResp = await this._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
-            if (full === null) {
+            if (fullResp === null) {
                 return [];
             }
+            const full = fullResp.text;
 
             // 尝试提取 JSON
             const jsonBlockMatch = full.match(/```json\s*([\s\S]*?)\s*```/i);
@@ -570,16 +578,17 @@ ${JSON.stringify(
             return [];
         }
 
-        const prompt = `请基于下面的文本内容，生成 10 个规范的 git 分支名建议（例如 feature/xxx, fix/xxx, chore/xxx 等），同时为每个分支名提供一句简短的原因说明。仅返回一个 Markdown 格式的 \`\`\`json\n[{{"name":"feature/...","description":"..."}}, ...]\n\`\`\` 代码块，且不要添加任何其它说明或文本。文本：'''${text}'''`;
+        const prompt = `请基于下面的文本内容，生成 10 个规范的 git 分支名建议（例如 feature/xxx, fix/xxx, chore/xxx 等），同时为每个分支名提供一句简短的原因说明。仅返回一个 Markdown 格式的 \`\`\`json\n[{"name":"feature/...","description":"..."}, ...]\n\`\`\` 代码块，且不要添加任何其它说明或文本。文本：'''${text}'''`;
 
         try {
-            const full = await this._request(
+            const fullResp = await this._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
-            if (full === null) {
+            if (fullResp === null) {
                 return [];
             }
+            const full = fullResp.text;
 
             const jsonBlockMatch = full.match(/```json\s*([\s\S]*?)\s*```/i);
             let jsonCandidate = "";
@@ -651,10 +660,11 @@ ${JSON.stringify(
         }
 
         try {
-            const full = await this._request([vscode.LanguageModelChatMessage.User(text)], options);
-            if (full === null) {
+            const fullResp = await this._request([vscode.LanguageModelChatMessage.User(text)], options);
+            if (fullResp === null) {
                 return "";
             }
+            const full = fullResp.text;
 
             // 清理可能的 ```markdown ``` 包裹
             const codeBlockMatch = full.match(/```(?:markdown)?\s*([\s\S]*?)\s*```/i);
