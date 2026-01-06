@@ -1,8 +1,14 @@
 import * as vscode from 'vscode';
 import { quickCreateIssue } from './quickCreateIssue';
-import { getIssueNodeById, getIssueTitle } from '../data/issueTreeManager';
+import { getIssueNodeById } from '../data/issueTreeManager';
 import { MarkerManager } from '../marker/MarkerManager';
 
+/**  
+ * 快速创建一个新任务（问题），并提供将当前标记任务归档并关联到新问题的选项。  
+ * @param markerManager MarkerManager 实例，用于处理标记任务。  
+ * @param parentId 可选的父问题 ID，新问题将作为其子问题。  
+ * @returns 返回创建的问题 ID，如果创建失败或取消则返回 null。  
+ */  
 export async function quickCreateTask(markerManager: MarkerManager | undefined, parentId: string | null = null): Promise<string | null> {
     const createdId = await quickCreateIssue(parentId);
     if (!createdId) { return null; }

@@ -283,8 +283,14 @@ export class MarkerManager {
             vscode.window.showInformationMessage('当前任务中没有标记，无需归档');
             return null;
         }
+
+        let title: string | undefined;  
         const issueId = this.data.currentTask.associatedIssueId;
-        let title = issueId ? await getIssueTitle(issueId) : undefined;
+        if (issueId) {  
+            try {  
+                title = await getIssueTitle(issueId);  
+            } catch {  }  
+        }  
         if (!title) {
             title = await vscode.window.showInputBox({
                 prompt: '请输入归档任务的标题',
