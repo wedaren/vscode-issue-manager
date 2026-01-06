@@ -28,7 +28,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 }
 
                 const nodesWithMtime = await Promise.all(flatNodes.map(async node => ({ ...(node as FlatTreeNode), mtime: await getMtime(node) })));
-                nodesWithMtime.sort((a, b) => (b as any).mtime - (a as any).mtime);
+                nodesWithMtime.sort((a, b) => b.mtime - a.mtime);
 
                 const issueItems: QuickPickItemWithId[] = nodesWithMtime.map(node => {
                     let description = '';
