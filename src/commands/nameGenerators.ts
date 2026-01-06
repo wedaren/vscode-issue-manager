@@ -13,8 +13,10 @@ export function registerGenerateProjectNameCommand(context: vscode.ExtensionCont
             const content = editor.document.getText();
 
             const items = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在生成项目名...', cancellable: true }, async (progress, token) => {
+                const abortController = new AbortController();
+                token.onCancellationRequested(() => abortController.abort());
                 try {
-                    const results = await LLMService.generateProjectNames(content, { signal: token as unknown as AbortSignal });
+                    const results = await LLMService.generateProjectNames(content, { signal: abortController.signal });
                     return results.map(r => ({ label: r.name, description: r.description } as vscode.QuickPickItem));
                 } catch (e) {
                     return [];
@@ -55,8 +57,10 @@ export function registerGenerateGitBranchCommand(context: vscode.ExtensionContex
             const content = editor.document.getText();
 
             const items = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在生成 Git 分支名...', cancellable: true }, async (progress, token) => {
+                const abortController = new AbortController();
+                token.onCancellationRequested(() => abortController.abort());
                 try {
-                    const results = await LLMService.generateGitBranchNames(content, { signal: token as unknown as AbortSignal });
+                    const results = await LLMService.generateGitBranchNames(content, { signal: abortController.signal });
                     return results.map(r => ({ label: r.name, description: r.description } as vscode.QuickPickItem));
                 } catch (e) {
                     return [];
