@@ -478,6 +478,63 @@ export class MarkerManager {
     }
 
     /**
+     * 将所有打开的编辑器依次加入当前任务，并关闭这些编辑器
+     */
+    async importAllOpenEditors(): Promise<void> {
+        // 尝试通过 tabGroups 获取所有打开的 tab URI（保留分组顺序）
+        const uris: vscode.Uri[] = [];
+        try {
+            for (const group of vscode.window.tabGroups.all) {
+                for (const tab of group.tabs) {
+                    // TabInputText 有 uri 字段
+                    const input: any = tab.input;
+                    if (input && input.uri) {
+                        uris.push(input.uri as vscode.Uri);
+                    }
+                }
+            }
+        } catch (e) {
+            // 在旧版 API 上可能失败，回退到 visibleTextEditors
+        }
+
+        if (uris.length === 0) {
+            // 回退：使用可见编辑器
+            const seen = new Set<string>();
+            for (const ed of vscode.window.visibleTextEditors) {
+                const u = ed.document.uri;
+                if (!seen.has(u.toString())) {
+                    uris.push(u);
+                    seen.add(u.toString());
+                }
+            }
+        }
+
+        if (uris.length === 0) {
+            vscode.window.showInformationMessage('没有打开的编辑器可导入');
+            return;
+        }
+
+        // 依次打开、创建标记并关闭
+        for (const uri of uris) {
+            try {
+                const doc = await vscode.workspace.openTextDocument(uri);
+                const editor = await vscode.window.showTextDocument(doc, { preview: false });
+
+                // 创建标记（追加到末尾）
+                await this.createMarker(undefined, editor);
+
+                // 关闭当前活动编辑器（刚打开的那个）
+                await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+            } catch (error) {
+                // 继续处理下一个
+                console.warn('importAllOpenEditors error for', uri.toString(), error);
+            }
+        }
+
+        vscode.window.showInformationMessage(`已导入 ${uris.length} 个编辑器为标记并关闭它们`);
+    }
+
+    /**
      * 将指定 issueId 关联到当前任务并保存
      */
     async associateIssueToCurrentTask(issueId: string): Promise<void> {
