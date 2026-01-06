@@ -149,9 +149,6 @@ export class MarkerManager {
 
     /**
      * 创建新标记
-     */
-    /**
-     * 创建新标记
      * @param insertIndex 可选：插入的位置索引，未提供则追加到末尾
      */
     async createMarker(message?: string, editor?: vscode.TextEditor, insertIndex?: number): Promise<void> {

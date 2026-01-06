@@ -244,11 +244,8 @@ export class MarkerTreeProvider implements vscode.TreeDataProvider<MarkerTreeIte
         // 确定目标位置
         let targetIndex: number;
         
-        if (!target) {
+        if (!target || target instanceof CurrentTaskItem) {
             // 拖到根节点，移动到末尾（追加）
-            targetIndex = this.markerManager.getCurrentTask().markers.length;
-        } else if (target instanceof CurrentTaskItem) {
-            // 拖到当前任务节点，追加到末尾
             targetIndex = this.markerManager.getCurrentTask().markers.length;
         } else if (target instanceof MarkerItemTreeItem && !target.isArchived) {
             // 拖到另一个标记上，插入到该标记之前
