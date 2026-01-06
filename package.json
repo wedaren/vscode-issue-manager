@@ -83,6 +83,24 @@
         "icon": "$(pencil)"
       },
       {
+        "command": "issueManager.generateProjectName",
+        "title": "生成项目名",
+        "category": "Issue Manager",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "issueManager.generateGitBranchName",
+        "title": "生成 Git 分支名",
+        "category": "Issue Manager",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "issueManager.unifiedQuickOpen",
+        "title": "Issue Manager: 统一入口",
+        "category": "Issue Manager",
+        "icon": "$(search)"
+      },
+      {
         "command": "issueManager.focusIssue",
         "title": "添加关注"
       },
@@ -1212,6 +1230,13 @@
         "command": "issueManager.marker.createMarker",
         "key": "ctrl+j ctrl+g",
         "mac": "cmd+j cmd+g",
+        "when": "issueManager.isDirConfigured"
+      }
+      ,
+      {
+        "command": "issueManager.unifiedQuickOpen",
+        "key": "ctrl+j ctrl+p",
+        "mac": "cmd+j cmd+p",
         "when": "issueManager.isDirConfigured"
       }
     ],
