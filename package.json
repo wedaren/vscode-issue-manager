@@ -1085,6 +1085,11 @@
           "group": "modification@2"
         },
         {
+          "command": "issueManager.marker.deleteMarker",
+          "when": "view == issueManager.views.marker && viewItem == currentMarkerItem",
+          "group": "inline@1"
+        },
+        {
           "command": "issueManager.marker.batchDeleteMarkers",
           "when": "view == issueManager.views.marker && viewItem == currentTask",
           "group": "modification@3"
