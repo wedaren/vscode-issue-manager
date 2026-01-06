@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { getFlatTree, FlatTreeNode } from '../data/issueTreeManager';
+import { getFlatTree, FlatTreeNode, getIssueNodeById } from '../data/issueTreeManager';
 
-type QuickPickItemWithId = vscode.QuickPickItem & { id?: string; commandId?: string; resourceUri?: vscode.Uri };
+type QuickPickItemWithId = vscode.QuickPickItem & { id?: string; commandId?: string;};
 
 export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -23,7 +23,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         const parentTitles = node.parentPath.map(n => n.title);
                         description = ['', ...parentTitles].join(' / ');
                     }
-                    return { label: node.title, description, id: node.id, resourceUri: node.resourceUri } as QuickPickItemWithId;
+                    return { label: node.title, description, id: node.id } as QuickPickItemWithId;
                 });
 
                 // 命令模式项
@@ -74,9 +74,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     } else if (selected.id) {
                         // 定位并打开 issue
                         try {
-                            const nodeId = selected.id;
+                            const node = await getIssueNodeById(selected.id);
                             // 尝试使用已有命令定位
-                            await vscode.commands.executeCommand('issueManager.openAndRevealIssue', { id: nodeId, resourceUri: selected.resourceUri } as any, 'overview');
+                            await vscode.commands.executeCommand('issueManager.openAndRevealIssue', node, 'overview');
                         } catch (e) {
                             // fallback: 呼叫 searchIssues to handle
                             await vscode.commands.executeCommand('issueManager.searchIssues', 'overview');
