@@ -60,7 +60,7 @@ export class LLMService {
             throw new Error("请求已取消");
         }
 
-        const model = await this.selectModel(options);
+        const model = await LLMService.selectModel(options);
         if (!model) {
             vscode.window.showErrorMessage(
                 "未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。"
@@ -68,7 +68,7 @@ export class LLMService {
             return null;
         }
 
-        const text = await this._sendRequestAndAggregate(model, messages, options);
+        const text = await LLMService._sendRequestAndAggregate(model, messages, options);
         // 尝试从 model 上提取 family 信息，类型系统可能无法保证该字段存在
         const modelFamily = (model as any)?.family || (model as any)?.model?.family;
         return { text, modelFamily };
@@ -148,7 +148,7 @@ ${JSON.stringify(
 `;
 
         try {
-            const fullResp = await this._request(
+            const fullResp = await LLMService._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
@@ -206,7 +206,7 @@ ${JSON.stringify(
         const prompt = `请为以下文本生成一个简洁、精确的 Markdown 一级标题。仅返回 JSON 格式，内容如下：{ "title": "生成的标题文本" }。不要添加任何额外说明或标记。文本内容：『${text}』`;
 
         try {
-            const fullResp = await this._request(
+            const fullResp = await LLMService._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
@@ -308,7 +308,7 @@ ${JSON.stringify(
         const prompt = promptLines.join("\n");
 
         try {
-            const fullResp = await this._request(
+            const fullResp = await LLMService._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
@@ -429,7 +429,7 @@ ${JSON.stringify(
 `;
 
         try {
-            const fullResp = await this._request(
+            const fullResp = await LLMService._request(
                 [
                     vscode.LanguageModelChatMessage.User(systemPrompt),
                     vscode.LanguageModelChatMessage.User(`用户主题：${prompt}`),
@@ -495,7 +495,7 @@ ${JSON.stringify(
         const prompt = `请基于下面的文本内容，生成 10 个适合作为项目名的候选。每个候选的 "name" 必须为驼峰命名（camelCase），仅使用英文单词或短语，不包含中文字符或额外标点；并为每个返回字段 "description"，该字段必须使用中文简要说明（解释为什么选择该名称、该名称与项目的关联或命名原因）。仅返回一个 Markdown 格式的 \`\`\`json\n[{"name":"...","description":"..."}, ...]\n\`\`\` 代码块，且不要添加任何其它说明或文本。文本：'''${text}'''`;
 
         try {
-            const fullResp = await this._request(
+            const fullResp = await LLMService._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
@@ -581,7 +581,7 @@ ${JSON.stringify(
         const prompt = `请基于下面的文本内容，生成 10 个规范的 git 分支名建议（例如 feature/xxx, fix/xxx, chore/xxx 等），同时为每个分支名提供一句简短的原因说明。仅返回一个 Markdown 格式的 \`\`\`json\n[{"name":"feature/...","description":"..."}, ...]\n\`\`\` 代码块，且不要添加任何其它说明或文本。文本：'''${text}'''`;
 
         try {
-            const fullResp = await this._request(
+            const fullResp = await LLMService._request(
                 [vscode.LanguageModelChatMessage.User(prompt)],
                 options
             );
@@ -660,7 +660,7 @@ ${JSON.stringify(
         }
 
         try {
-            const fullResp = await this._request([vscode.LanguageModelChatMessage.User(text)], options);
+            const fullResp = await LLMService._request([vscode.LanguageModelChatMessage.User(text)], options);
             if (fullResp === null) {
                 return "";
             }
