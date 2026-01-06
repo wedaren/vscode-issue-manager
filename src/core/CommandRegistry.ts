@@ -36,6 +36,7 @@ import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { quickCreateTask } from '../commands/quickCreateTask';
 import { executeCreateIssueFromCompletion } from '../commands/createIssueFromCompletion';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
@@ -45,6 +46,7 @@ import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
 import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
+import { MarkerManager } from '../marker/MarkerManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
 import { registerEditNoteMappingCommand } from '../commands/editNoteMapping';
@@ -123,6 +125,7 @@ export class CommandRegistry extends BaseCommandRegistry {
     }
 
     private paraView?: vscode.TreeView<ParaViewNode>;
+    private markerManager?: MarkerManager;
 
     /**
      * 设置视图提供者并注册所有命令
@@ -145,10 +148,13 @@ export class CommandRegistry extends BaseCommandRegistry {
         // issueStructureProvider: IssueStructureProvider,
         // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
-        paraView?: vscode.TreeView<ParaViewNode>
+        paraView?: vscode.TreeView<ParaViewNode>,
+        markerManager?: MarkerManager
     ): void {
         // 保存 paraView 引用
         this.paraView = paraView;
+        // 保存 markerManager 引用（可选）
+        this.markerManager = markerManager;
         this.logger.info('🔧 开始注册命令...');
 
         try {
@@ -271,6 +277,16 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             },
             '快速新建问题'
+        );
+
+        // 快速新建任务（委托到 commands/quickCreateTask.ts）
+        this.registerCommand(
+            'issueManager.quickCreateTask',
+            async (...args: unknown[]) => {
+                const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : null;
+                await quickCreateTask(this.markerManager, parentId);
+            },
+            '快速新建任务'
         );
 
         // 支持从补全直接创建问题（CompletionItem 直接调用，无 QuickPick）
