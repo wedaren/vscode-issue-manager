@@ -24,6 +24,24 @@ export function registerOpenInSplit(context: vscode.ExtensionContext) {
 				fragment = target.substring(hashIdx + 1);
 			}
 
+			// 兼容以冒号附带行/列的写法，例如 /path/to/file.py:316 或 /path/to/file.py:316:5 或 /path/to/file.py:10-12 或 /path/to/file.py:10:5-12:8
+			if (!fragment) {
+				// 仅当最后一个冒号位于最后一个路径分隔符之后时才作为 fragment 处理，避免在 Windows 驱动器或其他路径中的误判
+				const lastSlash = Math.max(rawPath.lastIndexOf('/'), rawPath.lastIndexOf('\\'));
+				// 使用正则从路径末尾匹配完整的 fragment，支持多个形式：
+				// L257:2-L259:5, 316:5, 10-12, 10:5-12:8 等
+				const fragRegex = /(L?\d+(?::\d+)?(?:-L?\d+(?::\d+)?)?)$/;
+				const fragMatch = rawPath.match(fragRegex);
+				if (fragMatch) {
+					const matchStart = rawPath.length - fragMatch[0].length;
+					// 确保前导字符是 ':' 且该 ':' 在最后一个路径分隔符之后
+					if (matchStart > 0 && rawPath.charAt(matchStart - 1) === ':' && matchStart - 1 > lastSlash) {
+						fragment = fragMatch[0];
+						rawPath = rawPath.substring(0, matchStart - 1);
+					}
+				}
+			}
+
 			// 解析相对路径的基准目录
 			let resolvedPath: string;
 			const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -65,18 +83,27 @@ export function registerOpenInSplit(context: vscode.ExtensionContext) {
 			const doc = await vscode.workspace.openTextDocument(fileUri);
 			const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
 
-			// 解析 fragment 并定位（支持 L10 / L10-L12 / 10 / 10-12 / 10:5）
+			// 解析 fragment 并定位与选择（支持以下格式）:
+			// L10, 10, L10-L12, 10-12, 10:5, 10:5-12:8
 			if (fragment) {
-				// L 开头的行号格式
-				let m = fragment.match(/^L?(\d+)(?:-L?(\d+))?(?::(\d+))?(?::(\d+))?$/);
+				const m = fragment.match(/^L?(\d+)(?::(\d+))?(?:-L?(\d+)(?::(\d+))?)?$/);
 				if (m) {
 					const startLine = Math.max(0, parseInt(m[1], 10) - 1);
-					const endLine = m[2] ? Math.max(0, parseInt(m[2], 10) - 1) : startLine;
-					const startChar = m[3] ? Math.max(0, parseInt(m[3], 10) - 1) : 0;
-					const endChar = Math.min(doc.lineAt(endLine).text.length, startChar + 1);
-					const range = new vscode.Range(startLine, startChar, endLine, endChar);
+					const startChar = m[2] ? Math.max(0, parseInt(m[2], 10) - 1) : 0;
+					const endLine = m[3] ? Math.max(0, parseInt(m[3], 10) - 1) : startLine;
+					let endChar: number;
+					if (m[4]) {
+						endChar = Math.max(0, parseInt(m[4], 10) - 1);
+					} else if (endLine === startLine) {
+						// 如果同一行且未指定 endChar，选中到行末
+						endChar = doc.lineAt(endLine).text.length;
+					} else {
+						// 不同的结束行且未指定 endChar，则为结束行行末
+						endChar = doc.lineAt(endLine).text.length;
+					}
+					const range = new vscode.Range(startLine, startChar, endLine, Math.min(endChar, doc.lineAt(endLine).text.length));
 					editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-					editor.selection = new vscode.Selection(range.start, range.start);
+					editor.selection = new vscode.Selection(range.start, range.end);
 				}
 			}
 		} catch (err) {
