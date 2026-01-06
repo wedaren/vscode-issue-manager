@@ -58,23 +58,13 @@ function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => voi
  * @returns 扁平化后的节点数组，每个节点包含 title 属性
  */
 export async function getFlatTree(): Promise<FlatTreeNode[]> {
-  const tree = await readTree();
+  const {treeData} = await getIssueData();
   
-  // 1. 收集所有路径以批量获取标题
-  const paths = new Set<string>();
-  walkTree(tree.rootNodes, node => paths.add(node.filePath));
-  
-  // 2. 批量获取标题
-  const pathArray = Array.from(paths);
-  const titles = await Promise.all(pathArray.map(p => getIssueMarkdownTitle(p)));
-  const titleMap = new Map(pathArray.map((p, i) => [p, titles[i]]));
-  
-  // 3. 递归构建扁平化节点
   const result: FlatTreeNode[] = [];
   
-  function buildFlatNodes(nodes: IssueTreeNode[], parents: FlatTreeNode[]) {
+  async function buildFlatNodes(nodes: IssueTreeNode[], parents: FlatTreeNode[]) {
     for (const node of nodes) {
-      const title = titleMap.get(node.filePath) || path.basename(node.filePath, '.md');
+      const title = await getIssueMarkdownTitle(node.filePath);
       
       // 创建 FlatTreeNode，parentPath 指向已创建的父节点（即 FlatTreeNode 类型）
       const flatNode: FlatTreeNode = {
@@ -86,12 +76,11 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
       result.push(flatNode);
       
       if (node.children && node.children.length > 0) {
-        buildFlatNodes(node.children, [...parents, flatNode]);
+        await buildFlatNodes(node.children, [...parents, flatNode]);
       }
     }
   }
-  
-  buildFlatNodes(tree.rootNodes, []);
+  await buildFlatNodes(treeData.rootNodes, []);
   return result;
 }
 
@@ -100,9 +89,9 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
  * @returns A set of relative file paths.
  */
 export async function getAssociatedFiles(): Promise<Set<string>> {
-  const tree = await readTree();
+  const { treeData } = await getIssueData();
   const associatedFiles = new Set<string>();
-  walkTree(tree.rootNodes, (node) => {
+  walkTree(treeData.rootNodes, (node) => {
     associatedFiles.add(node.filePath);
   });
   return associatedFiles;
@@ -203,6 +192,7 @@ async function getIssueData(){
     // 确保 filePath 存在再创建 Uri
     if (node.filePath) {
       node.resourceUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), node.filePath);
+      getIssueMarkdownTitleFromCache(node.id); // 预加载标题到缓存
     }
     issueIdMap.set(node.id, node);
   });
