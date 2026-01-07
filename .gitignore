@@ -23,3 +23,6 @@ node_modules
 
 # 注意：.env、.env.development 等文件应该提交到仓库
 # 因为它们不包含敏感信息，只有默认配置
+
+
+.soul

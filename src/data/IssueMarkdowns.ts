@@ -23,6 +23,20 @@ export interface FrontmatterData {
     issue_root_file?: string;
     issue_parent_file?: string | null;
     issue_children_files?: string[];
+    /**
+     * 与该 issue 关联的外部文件列表（通常为工作文件/笔记）。
+     * - 存储为 wiki-link 形式，带 `file:` 前缀，例如: `[[file:notes/foo.md]]` 或 `[[file:/abs/path/to/file.md]]`。
+        * - 可选地包含行范围片段，例如 `[[file:notes/foo.md#L10-L12]]` 或 `[[file:/abs/path/to/file.md#L5]]`。
+     * - 优先以相对于 `issueDir` 的相对路径存储（例如 `notes/foo.md`），再使用 `file:` 前缀；如果文件不在 `issueDir` 内，则使用绝对路径并加 `file:` 前缀。
+     * - 用途：记录该问题关联的工作文件、参考笔记或其它资源，供 UI 展示或自动化脚本使用。
+     */
+    issue_linked_files?: string[];
+    /**
+     * 与该 issue 关联的工作区或项目路径（用于快速在新窗口或当前窗口打开工作区）。
+     * - 存储为 `file:` 前缀的路径或 workspace 文件路径，例如 `file:/Users/me/project` 或 `/path/to/project.code-workspace`。
+     * - 建议存储相对路径或绝对路径，UI 会将其渲染为可点击的 `[[workspace:...]]` 链接。
+     */
+    issue_linked_workspace?: string[];
     issue_title?: string[] | string;
     issue_description?: string;
     issue_prompt?: boolean;
