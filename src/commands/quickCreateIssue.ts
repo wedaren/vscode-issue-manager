@@ -117,7 +117,12 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
                 } as ActionQuickPickItem;
             });
 
-        quickPick.items = [direct, background, ...flatItems];
+        // 当用户没有输入内容时，默认只显示按最近访问排序的已有项；当有输入时，将新问题项放到最前
+        if (v.trim().length === 0) {
+            quickPick.items = flatItems;
+        } else {
+            quickPick.items = [direct, background, ...flatItems];
+        }
     });
     // quickPick.onDidHide 已在上面 Promise 中处理
     // 初始化显示
