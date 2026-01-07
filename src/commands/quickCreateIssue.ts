@@ -125,11 +125,54 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
         }
     });
     // quickPick.onDidHide 已在上面 Promise 中处理
-    // 初始化显示
-    quickPick.items = [
-        { label: '新问题标题', description: '直接创建并打开', alwaysShow: true },
-        { label: '新问题标题（后台）', description: '后台创建并由 AI 填充（不打开）', alwaysShow: true }
-    ];
+    // 初始化显示：展示按最近访问排序的已有项（不包含新建项），避免用户打开时仍看到“新问题标题”在最前
+    try {
+        const initFileTimes = await Promise.all(latestFlat.map(async n => {
+            const absPath = n.resourceUri?.fsPath || (getIssueDir() ? path.join(getIssueDir()!, n.filePath) : n.filePath);
+            let t = 0;
+            try {
+                if (fileAccessTracker) {
+                    const s = fileAccessTracker.getFileAccessStats(absPath);
+                    if (s && s.lastViewTime) {
+                        t = s.lastViewTime;
+                    }
+                }
+                if (!t && n.resourceUri) {
+                    const stat = await vscode.workspace.fs.stat(n.resourceUri);
+                    t = stat.mtime || 0;
+                }
+            } catch (e) {
+                // ignore
+            }
+            return { node: n, time: t };
+        }));
+
+        initFileTimes.sort((a, b) => (b.time || 0) - (a.time || 0));
+        const initSorted = initFileTimes.map(ft => ft.node);
+        const initialItems: ActionQuickPickItem[] = initSorted.map(n => {
+            const desc = n.parentPath && n.parentPath.length > 0
+                ? '/' + n.parentPath.map(p => p.title).join(' / ')
+                : undefined;
+            let finalDesc = desc;
+            if (activeIssueId && n.id === activeIssueId) {
+                finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : '当前编辑器';
+            }
+            return {
+                label: n.title,
+                description: finalDesc,
+                action: 'open-existing',
+                payload: n.id,
+                alwaysShow: true
+            } as ActionQuickPickItem;
+        });
+        quickPick.items = initialItems;
+    } catch (e) {
+        // 回退到显示新建选项（极端情况）
+        quickPick.items = [
+            { label: '新问题标题', description: '直接创建并打开', alwaysShow: true },
+            { label: '新问题标题（后台）', description: '后台创建并由 AI 填充（不打开）', alwaysShow: true }
+        ];
+    }
     quickPick.show();
 
     // 包装为 Promise，以便在 QuickPick 操作完成后返回新建或选中问题的 id
