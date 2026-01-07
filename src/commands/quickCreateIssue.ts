@@ -98,11 +98,6 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
 
     let latestFlat: FlatTreeNode[] = [];
 
-    interface ActionQuickPickItem extends vscode.QuickPickItem {
-        action: 'create' | 'create-background' | 'open-existing';
-        payload?: any;
-    }
-
     async function refreshFlatTree() {
         try {
             latestFlat = await getFlatTree();
@@ -131,7 +126,7 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
         const background: ActionQuickPickItem = { label: v || '新问题标题（后台）', description: '后台创建并由 AI 填充（不打开）', alwaysShow: true, action: 'create-background', payload: v || '新问题标题' };
 
         // 使用复用函数构建排序后的项
-        const flatItems = await buildSortedFlatItems(v);
+        const flatItems = await buildSortedFlatItemsHelper(latestFlat, v, fileAccessTracker, activeIssueId);
 
         // 当用户没有输入内容时，默认只显示按最近访问排序的已有项；当有输入时，将新问题项放到最前
         if (v.trim().length === 0) {
@@ -142,7 +137,7 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
     });
     // quickPick.onDidHide 已在上面 Promise 中处理
     // 初始化显示：展示按最近访问排序的已有项（不包含新建项），避免用户打开时仍看到“新问题标题”在最前
-    const initialItems = await buildSortedFlatItems('');
+    const initialItems = await buildSortedFlatItemsHelper(latestFlat, '', fileAccessTracker, activeIssueId);
     quickPick.items = initialItems;
     quickPick.show();
 
