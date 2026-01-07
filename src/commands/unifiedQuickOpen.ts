@@ -29,7 +29,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 // 命令模式项
                 const commandItems: QuickPickItemWithId[] = [
                     { label: '生成项目名', description: '基于活动编辑器内容生成项目名并复制', commandId: 'issueManager.generateProjectName' },
-                    { label: '生成 Git 分支名', description: '基于活动编辑器内容生成 git 分支名并复制', commandId: 'issueManager.generateGitBranchName' }
+                    { label: '生成 Git 分支名', description: '基于活动编辑器内容生成 git 分支名并复制', commandId: 'issueManager.generateGitBranchName' },
+                    { label: '获取图标标识符', description: '基于输入的想法生成图标标识符建议', commandId: 'issueManager.getIconIdentifier' },
                 ];
 
                 let inCommandMode = false;
