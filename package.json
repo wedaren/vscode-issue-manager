@@ -1119,8 +1119,7 @@
           "command": "issueManager.attachToFromEditor",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@8"
-        },
-        
+        }
       ]
     },
     "keybindings": [
@@ -1465,8 +1464,7 @@
           "type": "string",
           "default": "gpt-4.1",
           "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
-        },
-        
+        }
       }
     },
     "viewsContainers": {
