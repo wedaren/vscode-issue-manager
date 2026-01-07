@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { getIssueDir } from '../config';
 import { createIssueFileSilent, addIssueToTree } from './issueFileUtils';
 import { getFlatTree, FlatTreeNode, stripFocusedId } from '../data/issueTreeManager';
 import { backgroundFillIssue } from '../llm/backgroundFill';
+import { getIssueIdFromUri } from '../utils/uriUtils';
+import { FileAccessTracker } from '../services/FileAccessTracker';
 
 export async function quickCreateIssue(parentId: string | null = null): Promise<string | null> {
     const issueDir = getIssueDir();
@@ -34,13 +37,48 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
 
     await refreshFlatTree();
 
+    // 尝试获取当前编辑器对应的 issueId（如果有）
+    const activeIssueId = getIssueIdFromUri(vscode.window.activeTextEditor?.document?.uri);
+    let fileAccessTracker: FileAccessTracker | undefined;
+    try {
+        fileAccessTracker = FileAccessTracker.getInstance();
+    } catch (e) {
+        // 如果尚未初始化，则忽略追踪器（降级为文件修改时间）
+        fileAccessTracker = undefined;
+    }
+
     quickPick.onDidChangeValue(async (value) => {
         const v = value || '';
         const direct: ActionQuickPickItem = { label: v || '新问题标题', description: '直接创建并打开', alwaysShow: true, action: 'create', payload: v || '新问题标题' };
         const background: ActionQuickPickItem = { label: v || '新问题标题（后台）', description: '后台创建并由 AI 填充（不打开）', alwaysShow: true, action: 'create-background', payload: v || '新问题标题' };
 
         // 交由 VS Code QuickPick 自身做过滤：不在这里按输入过滤扁平节点
-        const flatItems: ActionQuickPickItem[] = latestFlat
+        // 按最近访问时间排序：优先使用 FileAccessTracker 的访问时间，其次回退到文件修改时间
+        const fileTimes = await Promise.all(latestFlat.map(async n => {
+            const absPath = n.resourceUri?.fsPath || (getIssueDir() ? path.join(getIssueDir()!, n.filePath) : n.filePath);
+            let t = 0;
+            try {
+                if (fileAccessTracker) {
+                    const s = fileAccessTracker.getFileAccessStats(absPath);
+                    if (s && s.lastViewTime) {
+                        t = s.lastViewTime;
+                    }
+                }
+                if (!t && n.resourceUri) {
+                    const stat = await vscode.workspace.fs.stat(n.resourceUri);
+                    t = stat.mtime || 0;
+                }
+            } catch (e) {
+                // 忽略任意错误，保留 t = 0
+            }
+            return { node: n, time: t };
+        }));
+
+        fileTimes.sort((a, b) => (b.time || 0) - (a.time || 0));
+
+        const sortedFlat = fileTimes.map(ft => ft.node);
+
+        const flatItems: ActionQuickPickItem[] = sortedFlat
             .map(n => {
                 const desc = n.parentPath && n.parentPath.length > 0
                     ? '/' + n.parentPath.map(p => p.title).join(' / ')
@@ -64,13 +102,18 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
                     }
                 }
 
+                // 如果当前编辑器正打开该 issue，则在描述中标注，方便用户通过输入“当前”快速定位
+                let finalDesc = shouldShow ? highlightedDesc : desc;
+                if (activeIssueId && n.id === activeIssueId) {
+                    finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : '当前编辑器';
+                }
+
                 return {
                     label: shouldShow ? highlightedLabel : n.title,
-                    description: shouldShow ? highlightedDesc : desc,
-                    // 使用 action/payload 传递节点 id 以便后续能直接定位到 tree 节点
+                    description: finalDesc,
                     action: 'open-existing',
                     payload: n.id,
-                    alwaysShow: shouldShow
+                    alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId)
                 } as ActionQuickPickItem;
             });
 
