@@ -114,11 +114,7 @@ export interface IViewRegistryResult {
     /** PARA 树视图实例 */
     paraView: vscode.TreeView<ParaViewNode>;
     
-    /** 笔记映射视图提供者实例 */
-    noteMappingProvider: IIssueViewProvider<vscode.TreeItem>;
-    
-    /** 笔记映射树视图实例 */
-    noteMappingView: vscode.TreeView<vscode.TreeItem>;
+    // 笔记映射视图已移除
     
     /** 标记管理器实例 */
     markerManager: MarkerManager;

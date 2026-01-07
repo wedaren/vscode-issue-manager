@@ -10,7 +10,7 @@ import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
 import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
-import { NoteMappingViewProvider } from '../views/NoteMappingViewProvider';
+// NoteMappingViewProvider 已移除，不再导入
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
@@ -91,8 +91,7 @@ export class ViewRegistry {
         // 注册 PARA 视图
         const { paraViewProvider, paraView } = this.registerParaView();
         
-        // 注册笔记映射视图
-        const { noteMappingProvider, noteMappingView } = this.registerNoteMappingView();
+        // 笔记映射视图已移除（不再注册）
         
         // 注册标记视图
         const { markerManager, markerTreeProvider, markerView } = this.registerMarkerView();
@@ -121,8 +120,8 @@ export class ViewRegistry {
             // logicalTreeView,
             paraViewProvider,
             paraView,
-            noteMappingProvider,
-            noteMappingView,
+            // noteMappingProvider, // removed
+            // noteMappingView,     // removed
             markerManager,
             markerTreeProvider,
             markerView,
@@ -321,19 +320,11 @@ export class ViewRegistry {
      * 注册笔记映射视图
      */
     private registerNoteMappingView(): {
-        noteMappingProvider: NoteMappingViewProvider;
+        noteMappingProvider: any;
         noteMappingView: vscode.TreeView<vscode.TreeItem>;
     } {
-        const noteMappingProvider = new NoteMappingViewProvider(this.context);
-        
-        const noteMappingView = vscode.window.createTreeView('issueManager.views.noteMapping', {
-            treeDataProvider: noteMappingProvider
-        });
-        
-        this.context.subscriptions.push(noteMappingView);
-        this.context.subscriptions.push(noteMappingProvider);
-        
-        return { noteMappingProvider, noteMappingView };
+        // 已移除笔记映射视图的具体实现，保留占位签名以避免调用处类型错误
+        throw new Error('NoteMapping view has been removed');
     }
 
     /**

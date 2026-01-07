@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { NoteMappingService } from '../services/noteMapping/NoteMappingService';
 import { getIssueDir } from '../config';
 import { getFlatTree, FlatTreeNode, getIssueTitle } from '../data/issueTreeManager';
 
@@ -16,10 +15,8 @@ interface IssueQuickPickItem extends vscode.QuickPickItem {
  * Issue 选择器
  */
 export class QuickPickNoteSelector {
-  private mappingService: NoteMappingService;
-
   constructor() {
-    this.mappingService = NoteMappingService.getInstance();
+    // NoteMappingService 已移除，不需要初始化
   }
 
   /**
