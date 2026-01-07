@@ -7,6 +7,82 @@ import { backgroundFillIssue } from '../llm/backgroundFill';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { FileAccessTracker } from '../services/FileAccessTracker';
 
+// 模块级的 QuickPick 项接口，供辅助函数与主函数共享
+interface ActionQuickPickItem extends vscode.QuickPickItem {
+    action: 'create' | 'create-background' | 'open-existing';
+    payload?: any;
+}
+
+/**
+ * 构建按最近访问排序并高亮匹配词的 QuickPick 项
+ * 抽离成独立函数以便测试和阅读性
+ */
+export async function buildSortedFlatItemsHelper(
+    latestFlat: FlatTreeNode[],
+    value: string,
+    fileAccessTracker?: FileAccessTracker,
+    activeIssueId?: string
+): Promise<ActionQuickPickItem[]> {
+    const fileTimes = await Promise.all(latestFlat.map(async n => {
+        const absPath = n.resourceUri?.fsPath || (getIssueDir() ? path.join(getIssueDir()!, n.filePath) : n.filePath);
+        let t = 0;
+        try {
+            if (fileAccessTracker) {
+                const s = fileAccessTracker.getFileAccessStats(absPath);
+                if (s && s.lastViewTime) {
+                    t = s.lastViewTime;
+                }
+            }
+            if (!t && n.resourceUri) {
+                const stat = await vscode.workspace.fs.stat(n.resourceUri);
+                t = stat.mtime || 0;
+            }
+        } catch (e) {
+            // 忽略任意错误，保留 t = 0
+        }
+        return { node: n, time: t };
+    }));
+
+    fileTimes.sort((a, b) => (b.time || 0) - (a.time || 0));
+    const sortedFlat = fileTimes.map(ft => ft.node);
+
+    const words = (value || '').split(' ').map(k => (k || '').trim()).filter(k => k.length > 0);
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+
+    return sortedFlat.map(n => {
+        const desc = n.parentPath && n.parentPath.length > 0
+            ? '/' + n.parentPath.map(p => p.title).join(' / ')
+            : undefined;
+
+        const shouldShow = words.length > 1 && words.every(k => n.title.includes(k) || (desc && desc.includes(k)));
+
+        let highlightedLabel = n.title;
+        let highlightedDesc = desc;
+        if (words.length > 0) {
+            for (const k of words) {
+                const re = new RegExp(escapeRegExp(k), 'g');
+                highlightedLabel = highlightedLabel.replace(re, `【${k}】`);
+                if (highlightedDesc) {
+                    highlightedDesc = highlightedDesc.replace(re, `【${k}】`);
+                }
+            }
+        }
+
+        let finalDesc = shouldShow ? highlightedDesc : desc;
+        if (activeIssueId && n.id === activeIssueId) {
+            finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : '当前编辑器';
+        }
+
+        return {
+            label: shouldShow ? highlightedLabel : n.title,
+            description: finalDesc,
+            action: 'open-existing',
+            payload: n.id,
+            alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId)
+        } as ActionQuickPickItem;
+    });
+}
+
 export async function quickCreateIssue(parentId: string | null = null): Promise<string | null> {
     const issueDir = getIssueDir();
     if (!issueDir) {
@@ -47,67 +123,7 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
         fileAccessTracker = undefined;
     }
 
-    // 构建按最近访问排序的扁平项（可复用，避免重复代码）
-    async function buildSortedFlatItems(value: string): Promise<ActionQuickPickItem[]> {
-        const fileTimes = await Promise.all(latestFlat.map(async n => {
-            const absPath = n.resourceUri?.fsPath || (getIssueDir() ? path.join(getIssueDir()!, n.filePath) : n.filePath);
-            let t = 0;
-            try {
-                if (fileAccessTracker) {
-                    const s = fileAccessTracker.getFileAccessStats(absPath);
-                    if (s && s.lastViewTime) {
-                        t = s.lastViewTime;
-                    }
-                }
-                if (!t && n.resourceUri) {
-                    const stat = await vscode.workspace.fs.stat(n.resourceUri);
-                    t = stat.mtime || 0;
-                }
-            } catch (e) {
-                // 忽略任意错误，保留 t = 0
-            }
-            return { node: n, time: t };
-        }));
-
-        fileTimes.sort((a, b) => (b.time || 0) - (a.time || 0));
-        const sortedFlat = fileTimes.map(ft => ft.node);
-
-        const words = (value || '').split(' ').map(k => (k || '').trim()).filter(k => k.length > 0);
-        const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&');
-
-        return sortedFlat.map(n => {
-            const desc = n.parentPath && n.parentPath.length > 0
-                ? '/' + n.parentPath.map(p => p.title).join(' / ')
-                : undefined;
-
-            const shouldShow = words.length > 1 && words.every(k => n.title.includes(k) || (desc && desc.includes(k)));
-
-            let highlightedLabel = n.title;
-            let highlightedDesc = desc;
-            if (words.length > 0) {
-                for (const k of words) {
-                    const re = new RegExp(escapeRegExp(k), 'g');
-                    highlightedLabel = highlightedLabel.replace(re, `【${k}】`);
-                    if (highlightedDesc) {
-                        highlightedDesc = highlightedDesc.replace(re, `【${k}】`);
-                    }
-                }
-            }
-
-            let finalDesc = shouldShow ? highlightedDesc : desc;
-            if (activeIssueId && n.id === activeIssueId) {
-                finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : '当前编辑器';
-            }
-
-            return {
-                label: shouldShow ? highlightedLabel : n.title,
-                description: finalDesc,
-                action: 'open-existing',
-                payload: n.id,
-                alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId)
-            } as ActionQuickPickItem;
-        });
-    }
+        // 使用提取出的模块级辅助函数构建排序项
 
     quickPick.onDidChangeValue(async (value) => {
         const v = value || '';
