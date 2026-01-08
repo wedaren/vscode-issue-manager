@@ -22,7 +22,7 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
         }
 
         if (editor) {
-            await insertLinkIntoEditor(editor, uri, title, newNodeId, insertMode, hasTrigger);
+            await insertLinkIntoEditor(editor, uri, title, newNodeId, insertMode, hasTrigger, background);
         }
     } catch (error) {
         console.error('createIssueFromCompletion 执行失败:', error);
@@ -56,7 +56,7 @@ export async function createAndOpenIssue(title: string, parentId: string | null)
     return { uri, newNodeId };
 }
 
-async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscode.Uri, title: string, newNodeId: string | undefined, insertMode = 'relativePath', hasTrigger = false): Promise<void> {
+async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscode.Uri, title: string, newNodeId: string | undefined, insertMode = 'relativePath', hasTrigger = false, background = false): Promise<void> {
     const currentDir = path.dirname(editor.document.uri.fsPath);
     const relativePath = path.relative(currentDir, uri.fsPath);
     let insertText: string;
@@ -80,11 +80,45 @@ async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscode.Uri, 
 
     // 插入行为说明：
     // - 不替换选中文本或触发词，而是把要插入的内容放到选区所在行的下一行。
-    // - 使用 `editor.selection.end.line` 可以保证当用户选中某段文本时，插入位置在选区末尾所在的行，而不是替换选中文本。
+    // - 使用保存下来的选区信息可以保证在插入后把光标/选区恢复到原先位置，而不是停留在插入位置。
     // - 通过在行尾插入一个换行再跟上 `insertText`，可以在原行下方新增内容，保持原有文本不被删除。
+    const previousSelection = editor.selection;
+    const doc = editor.document;
+    const targetLine = previousSelection.active.line;
+    const line = doc.lineAt(targetLine);
+
+    // 统一判断：当需要保留选区时（background 或 光标不在行尾），在当前行下新增；否则替换整行并移到下一行首
+    const cursorIsAtLineEnd = previousSelection.isEmpty && previousSelection.active.isEqual(line.range.end);
+    const preserveSelection = background || !cursorIsAtLineEnd;
+
+    if (preserveSelection) {
+        await editor.edit(editBuilder => {
+            const currentLineEnd = line.range.end;
+            editBuilder.insert(currentLineEnd, '\n' + insertText + '\n');
+        });
+
+        try {
+            editor.selection = previousSelection;
+            editor.revealRange(previousSelection, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+        } catch (e) {
+            // 忽略恢复错误
+        }
+
+        return;
+    }
+
+    // 否则：替换整行并把光标移动到下一行首
     await editor.edit(editBuilder => {
-        const endLine = editor.selection.end.line;
-        const currentLineEnd = editor.document.lineAt(endLine).range.end;
-        editBuilder.insert(currentLineEnd, '\n' + insertText + '\n');
+        editBuilder.replace(line.range, insertText + '\n');
     });
+
+    try {
+        const updatedDoc = editor.document;
+        const newLine = Math.min(updatedDoc.lineCount - 1, targetLine + 1);
+        const pos = new vscode.Position(newLine, 0);
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    } catch (e) {
+        // 忽略恢复失败
+    }
 }
