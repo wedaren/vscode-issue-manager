@@ -438,35 +438,7 @@
         "category": "Issue Manager",
         "icon": "$(type-hierarchy)"
       },
-      {
-        "command": "issueManager.addWorkspaceMapping",
-        "title": "添加工作区笔记映射",
-        "category": "Issue Manager",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.removeWorkspaceMapping",
-        "title": "移除工作区笔记映射",
-        "category": "Issue Manager",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "issueManager.addFileMapping",
-        "title": "添加文件笔记映射",
-        "category": "Issue Manager",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.removeFileMapping",
-        "title": "移除文件笔记映射",
-        "category": "Issue Manager",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "issueManager.editNoteMapping",
-        "title": "编辑笔记映射",
-        "category": "Issue Manager"
-      },
+      
       {
         "command": "issueManager.marker.createMarker",
         "title": "新建标记",
@@ -642,11 +614,7 @@
     ],
     "menus": {
       "view/title": [
-        {
-          "command": "issueManager.addWorkspaceMapping",
-          "when": "view == issueManager.views.noteMapping",
-          "group": "navigation@1"
-        },
+        
         {
           "command": "issueManager.searchIssuesInOverview",
           "when": "view == issueManager.views.overview",
@@ -818,26 +786,7 @@
         }
       ],
       "view/item/context": [
-        {
-          "command": "issueManager.addWorkspaceMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == workspaceMapping",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.removeWorkspaceMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == workspaceIssue",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.addFileMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == fileMapping",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.removeFileMapping",
-          "when": "view == issueManager.views.noteMapping && viewItem == fileIssue",
-          "group": "inline@1"
-        },
+        
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/",
@@ -1184,11 +1133,6 @@
           "command": "issueManager.attachToFromEditor",
           "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && issueManager.editorHasIssueId",
           "group": "0_issueManager@8"
-        },
-        {
-          "command": "issueManager.addFileMapping",
-          "when": "issueManager.isDirConfigured",
-          "group": "1_noteMapping@1"
         }
       ]
     },
@@ -1259,12 +1203,7 @@
         "mac": "cmd+j cmd+b",
         "when": "issueManager.isDirConfigured"
       },
-      {
-        "command": "issueManager.addWorkspaceMapping",
-        "key": "ctrl+j ctrl+w",
-        "mac": "cmd+j cmd+w",
-        "when": "issueManager.isDirConfigured"
-      },
+      
       {
         "command": "issueManager.quickCreateTask",
         "key": "ctrl+j ctrl+t",
@@ -1546,31 +1485,6 @@
           "type": "string",
           "default": "gpt-4.1",
           "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
-        },
-        "issueManager.noteMapping.fallbackBehavior": {
-          "type": "string",
-          "default": "ask",
-          "enum": [
-            "none",
-            "noteRoot",
-            "ask"
-          ],
-          "enumDescriptions": [
-            "无回退：如果没有映射则不执行任何操作",
-            "笔记根目录：回退到笔记根目录",
-            "询问：询问用户如何处理"
-          ],
-          "description": "当文件没有映射的笔记时的回退行为。"
-        },
-        "issueManager.noteMapping.requireInNoteRoot": {
-          "type": "boolean",
-          "default": true,
-          "description": "是否要求映射的笔记路径必须在笔记根目录（issueDir）内。启用此选项可增强安全性。"
-        },
-        "issueManager.noteMapping.autoUpdateContext": {
-          "type": "boolean",
-          "default": true,
-          "description": "是否在切换编辑器时自动更新笔记映射上下文（用于控制菜单显示）。"
         }
       }
     },
@@ -1610,11 +1524,7 @@
           "name": "PARA",
           "icon": "resources/icon.svg"
         },
-        {
-          "id": "issueManager.views.noteMapping",
-          "name": "笔记映射",
-          "icon": "resources/icon.svg"
-        },
+        
         {
           "id": "issueManager.views.marker",
           "name": "问题标记",

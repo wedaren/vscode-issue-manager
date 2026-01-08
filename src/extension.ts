@@ -8,9 +8,6 @@ import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider
 import { registerOpenInSplit } from './commands/openInSplit';
 import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
 import { registerLinkWorkspaceToIssue } from './commands/linkWorkspaceToIssue';
-import { NoteMappingService } from './services/noteMapping/NoteMappingService';
-import { EditorMappingContextUpdater } from './services/EditorMappingContextUpdater';
-import { ensureGitignoreForMappings } from './data/noteMappingStorage';
 import { copilotDocumentProvider } from './virtual/CopilotDocumentProvider';
 
 // 当您的扩展被激活时,将调用此方法
@@ -19,12 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
 	SharedConfig.initialize(context);
 	
 	const initializer = new ExtensionInitializer(context);
-	// 预加载笔记映射服务（不阻塞激活流程）
-	void NoteMappingService.getInstance().preload();
-	// 初始化编辑器映射上下文更新器
-	new EditorMappingContextUpdater(context);
-	// 确保 .gitignore 包含映射文件（不阻塞激活流程）
-	void ensureGitignoreForMappings();
+	// 笔记映射功能已移除：不再预加载相关服务或更新上下文
 	// 启动 Chrome 集成本地服务与 URI Handler（不阻塞激活流程）
 	void ChromeIntegrationServer.getInstance().start(context);
 	

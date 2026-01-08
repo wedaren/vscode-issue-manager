@@ -49,12 +49,7 @@ import { ParaViewProvider } from '../views/ParaViewProvider';
 import { MarkerManager } from '../marker/MarkerManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { selectLLMModel } from '../commands/llmCommands';
-import { registerEditNoteMappingCommand } from '../commands/editNoteMapping';
-import { registerAddWorkspaceMappingCommand } from '../commands/addWorkspaceMapping';
-import { registerRemoveWorkspaceMappingCommand } from '../commands/removeWorkspaceMapping';
-import { registerAddFileMappingCommand } from '../commands/addFileMapping';
-import { registerRemoveFileMappingCommand } from '../commands/removeFileMapping';
-import { registerOpenNoteByNodeIdCommand } from '../commands/openNoteByNodeId';
+// note mapping commands removed
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
 import {registerGenerateTitleCommand} from '../commands/generateTitle';
 import { registerGenerateProjectNameCommand, registerGenerateGitBranchCommand } from '../commands/nameGenerators';
@@ -228,8 +223,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 10. 注册 LLM 相关命令
             this.registerLLMCommands();
 
-            // 11. 注册笔记映射命令
-            this.registerNoteMappingCommands();
+            // 笔记映射命令已移除
 
             this.logger.info('✅ 所有命令注册完成');
 
@@ -963,14 +957,5 @@ export class CommandRegistry extends BaseCommandRegistry {
     /**
      * 注册笔记映射命令
      */
-    private registerNoteMappingCommands(): void {
-        this.logger.info('🔗 注册笔记映射命令...');
-
-        registerEditNoteMappingCommand(this.context);
-        registerAddWorkspaceMappingCommand(this.context);
-        registerRemoveWorkspaceMappingCommand(this.context);
-        registerAddFileMappingCommand(this.context);
-        registerRemoveFileMappingCommand(this.context);
-        registerOpenNoteByNodeIdCommand(this.context);
-    }
+    // 笔记映射命令与视图已移除
 }
