@@ -170,7 +170,7 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
                     const title = sel.payload || input || sel.label;
                     const uri = await createIssueFileSilent(title);
                     if (uri) {
-                        const nodes = await addIssueToTree([uri], parentId);
+                        const nodes = await addIssueToTree([uri], parentId, false);
                         if (nodes && nodes.length > 0) {
                             resolve(stripFocusedId(nodes[0].id));
                             break;
@@ -183,7 +183,7 @@ export async function quickCreateIssue(parentId: string | null = null): Promise<
                     const title = sel.payload || input || sel.label.replace('（后台）','');
                     const uri = await createIssueFileSilent(title);
                     if (uri) {
-                        const nodes = await addIssueToTree([uri], parentId);
+                        const nodes = await addIssueToTree([uri], parentId, false);
                         if (nodes && nodes.length > 0) {
                             // 启动后台填充（不阻塞 UI）
                             backgroundFillIssue(uri, title, { timeoutMs: 60000 }).then(() => {}).catch(()=>{});
