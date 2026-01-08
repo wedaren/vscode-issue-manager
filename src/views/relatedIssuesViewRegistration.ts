@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
+import { onTitleUpdate } from '../data/IssueMarkdowns';
 import { ViewContextManager } from '../services/ViewContextManager';
 import { EditorEventManager } from '../services/EditorEventManager';
 
@@ -62,4 +63,12 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
     }
   });
   context.subscriptions.push(subscription);
+
+  // 当 issue 文件的 frontmatter/title 更新时刷新视图（例如 updateIssueMarkdownFrontmatter 后）
+  const titleSub = onTitleUpdate(() => {
+    if (!isPinned) {
+      relatedIssuesProvider.refresh();
+    }
+  });
+  context.subscriptions.push(titleSub);
 }

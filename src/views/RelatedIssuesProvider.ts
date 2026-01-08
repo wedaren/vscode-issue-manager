@@ -4,7 +4,7 @@
  */
 import * as vscode from 'vscode';
 import { readTree, TreeData, IssueTreeNode, getIssueNodeContextValue } from '../data/issueTreeManager';
-import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
+import { getIssueMarkdownTitle, findNotesLinkedToFile } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
@@ -36,8 +36,23 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             return [];
         }
         if (!element) {
-            // 查找所有引用该文件的节点
-            return this.findAllReferences(this.contextUri);
+            // 查找所有引用该文件的节点（包括 tree.json 中的引用与 frontmatter 中的关联）
+            const treeRefs = await this.findAllReferences(this.contextUri);
+            const fmNotes = await findNotesLinkedToFile(this.contextUri);
+            const fmNodes: RelatedIssueNode[] = [];
+            for (const note of fmNotes) {
+                const label = await getIssueMarkdownTitle(note.uri);
+                fmNodes.push({
+                    label,
+                    type: 'external',
+                    filePath: note.uri.fsPath,
+                    children: [],
+                    resourceUri: note.uri,
+                    id: note.uri.toString() + ':fm',
+                    contextValue: await getIssueNodeContextValue(note.uri.toString(), 'issueNode'),
+                } as RelatedIssueNode);
+            }
+            return [...treeRefs, ...fmNodes];
         }
         // 返回子节点
         return element.children || [];
@@ -132,7 +147,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     async getTreeItem(element: RelatedIssueNode): Promise<vscode.TreeItem> {
         const item = new vscode.TreeItem(element.label, element.children && element.children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
         item.tooltip = element.tooltip;
-        item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
+        item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : (element.type === 'external' ? new vscode.ThemeIcon('link-external') : undefined);
         item.description = element.type === 'parent' ? element.tooltip : '';
         
         // 使用缓存的 contextValue 或计算新的 contextValue
@@ -163,7 +178,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
  */
 export interface RelatedIssueNode extends IssueTreeNode{
     label: string;
-    type: 'parent' | 'current' | 'sibling' | 'child';
+    type: 'parent' | 'current' | 'sibling' | 'child' | 'external';
     tooltip?: string;
     icon?: string;
     children: RelatedIssueNode[];
