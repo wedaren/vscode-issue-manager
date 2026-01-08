@@ -512,11 +512,12 @@
       {
         "command": "issueManager.gitBranch.checkout",
         "title": "检出分支",
-        "icon": "$(git-branch)"
+        "icon": "$(git-fetch)"
       },
       {
         "command": "issueManager.gitBranch.createBranchFrom",
-        "title": "基于该分支新建分支"
+        "title": "基于该分支新建分支",
+        "icon": "$(git-pull-request-create)"
       },
       {
         "command": "issueManager.gitBranch.delete",
@@ -874,6 +875,11 @@
         },
         {
           "command": "issueManager.gitBranch.checkout",
+          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*BranchDeletable/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.gitBranch.createBranchFrom",
           "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*BranchDeletable/",
           "group": "inline"
         },
