@@ -64,6 +64,14 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   });
   context.subscriptions.push(subscription);
 
+  // 也订阅 VS Code 的活动编辑器变化，以支持外部文件或任意文件的关联展示
+  const editorSub = vscode.window.onDidChangeActiveTextEditor((editor) => {
+    if (!isPinned) {
+      relatedIssuesProvider.updateContext(editor?.document.uri);
+    }
+  });
+  context.subscriptions.push(editorSub);
+
   // 当 issue 文件的 frontmatter/title 更新时刷新视图（例如 updateIssueMarkdownFrontmatter 后）
   const titleSub = onTitleUpdate(() => {
     if (!isPinned) {
