@@ -85,6 +85,35 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             links.push(link);
         }
 
+        // 3) 处理自定义语法 [[workspace:...]]，点击时打开工作区/文件夹
+        const workspacePattern = /\[\[workspace:([^\]]+)\]\]/g;
+        for (const match of text.matchAll(workspacePattern)) {
+            if (token.isCancellationRequested) {
+                return [];
+            }
+
+            const workspacePath = match[1].trim();
+            if (!workspacePath) continue;
+
+            const startIndex = match.index! + '[[workspace:'.length;
+            const endIndex = startIndex + workspacePath.length;
+
+            // 生成 command URI 使用 vscode.openFolder
+            // 参数格式为 [ Uri, { forceNewWindow: boolean } ]
+            const folderUri = workspacePath.startsWith('/') || workspacePath.match(/^[a-zA-Z]:\\/) ? vscode.Uri.file(workspacePath) : vscode.Uri.file(path.join(getIssueDir() || '', workspacePath));
+            // forceNewWindow 留空或按需要设为 true/false，这里使用 false（在当前窗口打开）
+            const cmdUri = vscode.Uri.parse(`command:vscode.openFolder?${encodeURIComponent(JSON.stringify([folderUri, { forceNewWindow: false }]))}`);
+
+            const range = new vscode.Range(
+                document.positionAt(startIndex),
+                document.positionAt(endIndex)
+            );
+
+            const link = new vscode.DocumentLink(range, cmdUri);
+            link.tooltip = '在当前窗口打开工作区/文件夹';
+            links.push(link);
+        }
+
         return links;
     }
 

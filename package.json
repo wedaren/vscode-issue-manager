@@ -539,6 +539,20 @@
         "title": "解除关联",
         "icon": "$(close)"
       }
+      ,
+      {
+        "command": "issueManager.linkCurrentFileToIssue",
+        "title": "将当前编辑器文件关联到问题",
+        "category": "Issue Manager",
+        "icon": "$(link)"
+      }
+      ,
+      {
+        "command": "issueManager.linkWorkspaceToIssue",
+        "title": "将工作区/文件夹关联到问题",
+        "category": "Issue Manager",
+        "icon": "$(link)"
+      }
     ],
     "submenus": [
       {
@@ -1206,6 +1220,13 @@
         "command": "issueManager.unifiedQuickOpen",
         "key": "ctrl+j ctrl+p",
         "mac": "cmd+j cmd+p",
+        "when": "issueManager.isDirConfigured"
+      }
+      ,
+      {
+        "command": "issueManager.linkCurrentFileToIssue",
+        "key": "ctrl+j ctrl+k",
+        "mac": "cmd+j cmd+k",
         "when": "issueManager.isDirConfigured"
       }
     ],
