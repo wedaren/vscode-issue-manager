@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "3.0.22",
+  "version": "3.0.23",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -438,7 +438,6 @@
         "category": "Issue Manager",
         "icon": "$(type-hierarchy)"
       },
-      
       {
         "command": "issueManager.marker.createMarker",
         "title": "新建标记",
@@ -538,15 +537,13 @@
         "command": "issueManager.gitBranch.disassociate",
         "title": "解除关联",
         "icon": "$(close)"
-      }
-      ,
+      },
       {
         "command": "issueManager.linkCurrentFileToIssue",
         "title": "将当前编辑器文件关联到问题",
         "category": "Issue Manager",
         "icon": "$(link)"
-      }
-      ,
+      },
       {
         "command": "issueManager.linkWorkspaceToIssue",
         "title": "将工作区/文件夹关联到问题",
@@ -614,7 +611,6 @@
     ],
     "menus": {
       "view/title": [
-        
         {
           "command": "issueManager.searchIssuesInOverview",
           "when": "view == issueManager.views.overview",
@@ -786,7 +782,6 @@
         }
       ],
       "view/item/context": [
-        
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/",
@@ -1203,7 +1198,6 @@
         "mac": "cmd+j cmd+b",
         "when": "issueManager.isDirConfigured"
       },
-      
       {
         "command": "issueManager.quickCreateTask",
         "key": "ctrl+j ctrl+t",
@@ -1221,8 +1215,7 @@
         "key": "ctrl+j ctrl+p",
         "mac": "cmd+j cmd+p",
         "when": "issueManager.isDirConfigured"
-      }
-      ,
+      },
       {
         "command": "issueManager.linkCurrentFileToIssue",
         "key": "ctrl+j ctrl+k",
@@ -1524,7 +1517,6 @@
           "name": "PARA",
           "icon": "resources/icon.svg"
         },
-        
         {
           "id": "issueManager.views.marker",
           "name": "问题标记",
