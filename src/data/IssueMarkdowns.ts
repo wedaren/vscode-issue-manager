@@ -453,24 +453,29 @@ function normalizeFsPath(p: string): string {
 export function parseLinkedFileString(raw: string): LinkedFileParseResult {
     const res: LinkedFileParseResult = { raw, linkPath: raw };
     let s = raw.trim();
-    // 去掉 [[ ]]\n    if (s.startsWith("[[") && s.endsWith("]]")) {
+
+    // 支持 [[...|display]] 形式，取 | 前面的真实路径
+    if (s.startsWith("[[") && s.endsWith("]]")) {
         s = s.slice(2, -2).trim();
+        const pipeIdx = s.indexOf("|");
+        if (pipeIdx !== -1) {
+            s = s.slice(0, pipeIdx).trim();
+        }
     }
-    // 如果以 file: 开头，去掉前缀
+
+    // 如果以 file: 开头，尝试解析为 file URI
     if (s.startsWith("file:")) {
-        const after = s.slice(5);
-        // file:/path 或 file:///path
-        // 对于 file: URI，尝试用 vscode.Uri.parse
         try {
             const u = vscode.Uri.parse(s);
-            if (u && u.fsPath) {
-                // 可能带 fragment
-                const withoutFrag = u.fsPath;
-                s = withoutFrag + (u.fragment ? `#${u.fragment}` : "");
+            if (u && u.scheme === 'file' && u.fsPath) {
+                // 使用 fsPath 并保留 fragment（如果有）
+                s = u.fsPath + (u.fragment ? `#${u.fragment}` : "");
+            } else {
+                // 如果解析不成功，剥离前缀继续作为普通路径处理
+                s = s.slice(5);
             }
         } catch {
-            // fallback
-            s = after;
+            s = s.slice(5);
         }
     }
 
@@ -479,16 +484,15 @@ export function parseLinkedFileString(raw: string): LinkedFileParseResult {
     let frag = "";
     const hashIndex = s.indexOf("#");
     if (hashIndex !== -1) {
-        pathPart = s.slice(0, hashIndex);
-        frag = s.slice(hashIndex + 1);
+        pathPart = s.slice(0, hashIndex).trim();
+        frag = s.slice(hashIndex + 1).trim();
     }
 
     res.linkPath = pathPart;
 
-    // 解析 fragment 中的行范围，如 L10 或 L10-L12
+    // 解析 fragment 中的行范围，支持 L10, L10-L12, 10-12 等形式
     if (frag) {
-        // 可能形如 L10-L12 或 L10
-        const m = frag.match(/L(\d+)(?:-L?(\d+))?/);
+        const m = frag.match(/(?:L)?(\d+)(?:-(?:L)?(\d+))?/i);
         if (m) {
             res.lineStart = parseInt(m[1], 10);
             if (m[2]) {
@@ -497,9 +501,9 @@ export function parseLinkedFileString(raw: string): LinkedFileParseResult {
         }
     }
 
-    // fsPath 仅在 linkPath 看起来像绝对路径时填充（以 / 开头或 windows 驱动器等）
+    // 如果 linkPath 看起来是绝对路径或以 / 开头，则填充 fsPath
     try {
-        if (res.linkPath.startsWith(path.sep) || path.isAbsolute(res.linkPath)) {
+        if (res.linkPath && (path.isAbsolute(res.linkPath) || res.linkPath.startsWith(path.sep))) {
             res.fsPath = normalizeFsPath(res.linkPath);
         }
     } catch (e) {
