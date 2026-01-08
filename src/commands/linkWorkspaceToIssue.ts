@@ -19,10 +19,21 @@ export async function linkWorkspaceToIssue(): Promise<void> {
     if (!picked) return;
 
     let workspacePath: string | undefined;
-    if (picked.description && picked.description.length > 0) {
+    if (picked.description) {
       workspacePath = picked.description;
     } else {
-      const input = await vscode.window.showInputBox({ prompt: '请输入工作区或文件夹的绝对路径或 .code-workspace 文件路径' });
+      const input = await vscode.window.showInputBox({
+        prompt: '请输入工作区或文件夹的绝对路径或 .code-workspace 文件路径',
+        validateInput: (value) => {
+          if (!value.trim()) {
+            return '路径不能为空。';
+          }
+          if (!path.isAbsolute(value.trim())) {
+            return '必须输入绝对路径。';
+          }
+          return null; // valid
+        }
+      });
       if (!input) return;
       workspacePath = input.trim();
     }
@@ -76,4 +87,3 @@ export function registerLinkWorkspaceToIssue(context: vscode.ExtensionContext) {
   context.subscriptions.push(disposable);
 }
 
-export default registerLinkWorkspaceToIssue;

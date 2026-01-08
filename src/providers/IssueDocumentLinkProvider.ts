@@ -101,7 +101,6 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             // 生成 command URI 使用 vscode.openFolder
             // 参数格式为 [ Uri, { forceNewWindow: boolean } ]
             const folderUri = workspacePath.startsWith('/') || workspacePath.match(/^[a-zA-Z]:\\/) ? vscode.Uri.file(workspacePath) : vscode.Uri.file(path.join(getIssueDir() || '', workspacePath));
-            const args = [folderUri];
             // forceNewWindow 留空或按需要设为 true/false，这里使用 false（在当前窗口打开）
             const cmdUri = vscode.Uri.parse(`command:vscode.openFolder?${encodeURIComponent(JSON.stringify([folderUri, { forceNewWindow: false }]))}`);
 

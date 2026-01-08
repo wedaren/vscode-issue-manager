@@ -1288,7 +1288,7 @@
         "command": "issueManager.linkCurrentFileToIssue",
         "key": "ctrl+j ctrl+k",
         "mac": "cmd+j cmd+k",
-        "when": "resourceLangId == 'markdown' && issueManager.isDirConfigured && editorLangId == 'markdown'"
+        "when": "issueManager.isDirConfigured"
       }
     ],
     "configuration": {

@@ -26,26 +26,21 @@ export async function linkCurrentFileToIssue(): Promise<void> {
     const storedPath = rel !== undefined && rel !== '' ? rel : currentFilePath;
 
     // 支持记录当前编辑器选区或光标范围为 fragment（例如 #L10 或 #L10-L12）
-    let fragment = '';
-    try {
-      const sel = editor.selection;
-      if (sel && !sel.isEmpty) {
-        const startLine = sel.start.line + 1;
-        const endLine = sel.end.line + 1;
-        if (startLine === endLine) {
-          fragment = `#L${startLine}`;
-        } else {
-          fragment = `#L${startLine}-L${endLine}`;
-        }
-      } else if (editor.selection) {
-        // 光标处无选区，记录光标所在行
-        const line = editor.selection.active.line + 1;
-        fragment = `#L${line}`;
+    let fragment = '';  
+    const sel = editor.selection;
+    if (sel && !sel.isEmpty) {
+      const startLine = sel.start.line + 1;
+      const endLine = sel.end.line + 1;
+      if (startLine === endLine) {
+        fragment = `#L${startLine}`;
+      } else {
+        fragment = `#L${startLine}-L${endLine}`;
       }
-    } catch (e) {
-      fragment = '';
+    } else if (editor.selection) {
+      // 光标处无选区，记录光标所在行
+      const line = editor.selection.active.line + 1;
+      fragment = `#L${line}`;
     }
-
     // 使用双中括号 wiki-link 结构存储，并在路径前加上 `file:` 前缀，带可选 fragment
     // 例如: [[file:notes/foo.md#L10-L12]] 或 [[file:/abs/path/to/file.md#L10]]
     const linkValue = `[[file:${storedPath}${fragment}]]`;
@@ -117,4 +112,3 @@ export function registerLinkCurrentFileToIssue(context: vscode.ExtensionContext)
   context.subscriptions.push(disposable);
 }
 
-export default registerLinkCurrentFileToIssue;
