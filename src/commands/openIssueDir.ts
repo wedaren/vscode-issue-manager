@@ -43,3 +43,14 @@ export function registerOpenvscodeIssueManagerDirCommand(context: vscode.Extensi
     });
     context.subscriptions.push(disposable);
 };
+
+export function registerOpenVscodeSIEMDirCommand(context: vscode.ExtensionContext) {
+    const disposable = vscode.commands.registerCommand('issueManager.openvscodeSIEM', async () => {
+        try {
+            const dirUri = vscode.Uri.file('/Users/wedaren/work-siem');
+            // 在 VS Code 中打开文件夹
+            await vscode.commands.executeCommand('vscode.openFolder', dirUri, { forceNewWindow: true });
+        } catch {}
+    });
+    context.subscriptions.push(disposable);
+};
