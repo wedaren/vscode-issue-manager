@@ -316,16 +316,7 @@ export class ViewRegistry {
         return { paraViewProvider, paraView };
     }
 
-    /**
-     * 注册笔记映射视图
-     */
-    private registerNoteMappingView(): {
-        noteMappingProvider: any;
-        noteMappingView: vscode.TreeView<vscode.TreeItem>;
-    } {
-        // 已移除笔记映射视图的具体实现，保留占位签名以避免调用处类型错误
-        throw new Error('NoteMapping view has been removed');
-    }
+
 
     /**
      * 注册相关问题视图
