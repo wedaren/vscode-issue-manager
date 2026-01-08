@@ -6,6 +6,8 @@ import { SharedConfig } from './config/SharedConfig';
 import { IssueNodeCompletionProvider } from './providers/IssueNodeCompletionProvider';
 import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
 import { registerOpenInSplit } from './commands/openInSplit';
+import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
+import { registerLinkWorkspaceToIssue } from './commands/linkWorkspaceToIssue';
 import { NoteMappingService } from './services/noteMapping/NoteMappingService';
 import { EditorMappingContextUpdater } from './services/EditorMappingContextUpdater';
 import { ensureGitignoreForMappings } from './data/noteMappingStorage';
@@ -50,6 +52,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 在 commands 目录中注册 openInSplit 命令
 	registerOpenInSplit(context);
+
+	// 注册 将当前编辑器文件关联到 issue 的命令
+	registerLinkCurrentFileToIssue(context);
+
+	// 注册 将工作区/文件夹关联到 issue 的命令
+	registerLinkWorkspaceToIssue(context);
 
 	// 注册 Copilot 虚拟文档提供者（用于展示不提示保存的虚拟编辑窗口）
 	const providerDisposable = vscode.workspace.registerTextDocumentContentProvider('copilot', copilotDocumentProvider);
