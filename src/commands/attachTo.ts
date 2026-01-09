@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { readTree, writeTree, IssueNode, stripFocusedId } from '../data/issueTreeManager';
-import { convertTreeItemToTreeNode, isTreeItem, showTargetPicker, buildTopLevelNodes, insertNodesAtPick } from './moveHelpers';
+import { convertTreeItemToTreeNode, isTreeItem, pickTargetWithQuickCreate, buildTopLevelNodes, insertNodesAtPick } from './moveHelpers';
 import { v4 as uuidv4 } from 'uuid';
 
 function cloneNodeWithNewIds(node: IssueNode): IssueNode {
@@ -42,7 +42,7 @@ export async function attachIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem
     const allNodesToProcess = [...treeNodes, ...convertedNodes];
     allNodesToProcess.forEach(i => i.id = stripFocusedId(i.id));
 
-    const pick = await showTargetPicker(tree.rootNodes, treeNodes);
+    const pick = await pickTargetWithQuickCreate(tree.rootNodes, treeNodes);
     if (!pick) return;
 
     const topLevelTreeNodes = buildTopLevelNodes(tree.rootNodes, treeNodes);

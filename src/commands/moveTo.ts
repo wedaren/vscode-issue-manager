@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { readTree, writeTree, IssueNode, removeNode, stripFocusedId } from '../data/issueTreeManager';
-import { isTreeItem, convertTreeItemToTreeNode, showTargetPicker, buildTopLevelNodes, insertNodesAtPick } from './moveHelpers';
+import { isTreeItem, convertTreeItemToTreeNode, pickTargetWithQuickCreate, buildTopLevelNodes, insertNodesAtPick } from './moveHelpers';
 
 /**
  * "移动到..." 与 "添加到..." 命令实现：支持多选节点移动到指定父节点，防止循环引用。
@@ -34,7 +34,7 @@ export async function moveIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem)[
     const allNodesToMove = [...treeNodes, ...convertedNodes];
     allNodesToMove.forEach(i => i.id = stripFocusedId(i.id));
 
-    const pick = await showTargetPicker(tree.rootNodes, treeNodes);
+    const pick = await pickTargetWithQuickCreate(tree.rootNodes, treeNodes);
     if (!pick) return;
 
     // 执行移动：只移除原处的顶层选中节点，然后在目标处插入原节点/文件节点

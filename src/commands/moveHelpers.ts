@@ -3,7 +3,8 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
-import { IssueNode } from '../data/issueTreeManager';
+import { IssueNode, stripFocusedId, readTree } from '../data/issueTreeManager';
+import { quickCreateIssue } from './quickCreateIssue';
 
 export function isTreeItem(node: unknown): node is vscode.TreeItem {
     return node !== null && typeof node === 'object' && 'resourceUri' in node && 'label' in node && !('id' in node);
@@ -82,6 +83,42 @@ export async function showTargetPicker(treeRootNodes: IssueNode[], treeNodesToEx
     });
 
     return pick;
+}
+
+// 使用 quickCreateIssue 作为选择或新建目标的复用入口。
+// 返回与 showTargetPicker 相同形状的对象 `{ node: IssueNode | null }` 或 `undefined`（用户取消）
+export async function pickTargetWithQuickCreate(treeRootNodes: IssueNode[], treeNodesToExclude: IssueNode[]) {
+    // 构建被排除的 stripped id 集合，防止选择自身或子节点
+    const excludeStripped = new Set<string>();
+    function collect(node: IssueNode) {
+        excludeStripped.add(stripFocusedId(node.id));
+        if (node.children) node.children.forEach(collect);
+    }
+    treeNodesToExclude.forEach(collect);
+
+    const targetId = await quickCreateIssue();
+    if (!targetId) return undefined;
+
+    if (excludeStripped.has(targetId)) {
+        vscode.window.showWarningMessage('不能将节点移到自身或其子节点，请选择其他目标。');
+        return undefined;
+    }
+
+    // 重新读取树以捕获 quickCreateIssue 可能新增的节点
+    const tree = await readTree();
+    function find(nodes: IssueNode[]): IssueNode | null {
+        for (const n of nodes) {
+            if (stripFocusedId(n.id) === targetId) return n;
+            if (n.children) {
+                const f = find(n.children);
+                if (f) return f;
+            }
+        }
+        return null;
+    }
+
+    const found = find(tree.rootNodes);
+    return { node: found } as { node: IssueNode | null };
 }
 
 // 构建父映射并返回顶层选中节点（父节点未被选中的那些）
