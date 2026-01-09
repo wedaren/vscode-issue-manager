@@ -16,7 +16,10 @@ export function getRelativePath(filePath: string): string | null {
   return getRelativePathToIssueDir(filePath);
 }
 
-// 定义树节点和树数据的结构
+/**
+ * Issue, 其背后是 IssueMarkdwon ，即 filePath 所指向的文件。
+ * 一个 IssueMarkdown 可能对应多个 IssueNode。
+ */
 export interface IssueNode {
   id: string;
   filePath: string; // 相对于 issueDir 的路径
