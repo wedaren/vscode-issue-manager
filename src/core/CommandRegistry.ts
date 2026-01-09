@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
-import { isIssueTreeNode } from '../utils/treeUtils';
+import { IssueNode, readTree, isIssueNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -321,9 +320,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const [node, nodes] = args;
                 if (nodes && Array.isArray(nodes) && nodes.length > 0) {
-                    const validNodes = nodes.filter(isIssueTreeNode);
+                    const validNodes = nodes.filter(isIssueNode);
                     await moveIssuesTo(validNodes);
-                } else if (node && isIssueTreeNode(node)) {
+                } else if (node && isIssueNode(node)) {
                     await moveIssuesTo([node]);
                 } else {
                     this.logger.warn('moveTo 命令需要一个有效的树节点参数。');
@@ -339,9 +338,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const [node, nodes] = args;
                 if (nodes && Array.isArray(nodes) && nodes.length > 0) {
-                    const validNodes = nodes.filter(isIssueTreeNode);
+                    const validNodes = nodes.filter(isIssueNode);
                     await attachIssuesTo(validNodes);
-                } else if (node && isIssueTreeNode(node)) {
+                } else if (node && isIssueNode(node)) {
                     await attachIssuesTo([node]);
                 } else {
                     this.logger.warn('attachTo 命令需要一个有效的树节点参数。');
@@ -654,7 +653,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             (displayName: string) => `添加问题到 ${displayName}`,
             async (category: ParaCategory, args: unknown[]) => {
                 const node = args[0];
-                if (node && isIssueTreeNode(node)) {
+                if (node && isIssueNode(node)) {
                     const id = stripFocusedId(node.id);
                     await addIssueToParaCategory(category, id);
                 }
@@ -691,7 +690,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             (displayName: string) => `在 ${displayName} 中查看`,
             async (category: ParaCategory, args: unknown[]) => {
                 const node = args[0];
-                if (node && isIssueTreeNode(node)) {
+                if (node && isIssueNode(node)) {
                     await this.revealInParaView(node, category);
                 }
             }

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IssueNode, readTree, removeNode, stripFocusedId, writeTree, getAssociatedFiles } from '../data/issueTreeManager';
-import { isIssueTreeNode } from '../utils/treeUtils';
+import { IssueNode, isIssueNode, readTree, removeNode, stripFocusedId, writeTree, getAssociatedFiles } from '../data/issueTreeManager';
 import { EditorContextService } from '../services/EditorContextService';
 import { getIssueDir } from '../config';
 
@@ -39,7 +38,7 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
     const command = vscode.commands.registerCommand('issueManager.disassociateIssue', async (...args: unknown[]) => {
         const node = (Array.isArray(args) && args.length > 0) ? args[0] : null;
 
-        if (!node || !isIssueTreeNode(node) || node.id === 'placeholder-no-issues') {
+        if (!node || !isIssueNode(node) || node.id === 'placeholder-no-issues') {
             return;
         }
 
@@ -80,7 +79,7 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                     }
                 };
 
-                collect(removedNode ?? (isIssueTreeNode(node) ? node : undefined));
+                collect(removedNode ?? (isIssueNode(node) ? node : undefined));
 
                 const filePathSet = new Set<string>();
                 nodesToCheck.forEach(n => {

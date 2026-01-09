@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import { IssueNode, stripFocusedId } from '../data/issueTreeManager';
-import { isIssueTreeNode } from '../utils/treeUtils';
+import { isIssueNode, stripFocusedId } from '../data/issueTreeManager';
 import { smartCreateIssue } from './smartCreateIssue';
 import { Logger } from '../core/utils/Logger';
 
@@ -8,7 +7,7 @@ export function registerCreateSubIssueCommand(context: vscode.ExtensionContext):
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.createSubIssue', async (...args: unknown[]) => {
             const node = args[0];
-                if (node && isIssueTreeNode(node)) {
+                if (node && isIssueNode(node)) {
                 const id = stripFocusedId(node.id);
                 await smartCreateIssue(id, { addToTree: true });
             } else {

@@ -745,3 +745,13 @@ export async function getIssueNodeIconPath(issueId?: string): Promise<vscode.The
 
   return new vscode.ThemeIcon('symbol-file');
 }
+
+/**
+ * 类型守卫：判断对象是否为 IssueNode
+ * 目的：避免在多个文件中重复实现相同的检查逻辑
+ */
+
+export function isIssueNode(item: unknown): item is IssueNode {
+    return !!item && typeof item === 'object' && 'id' in item && 'filePath' in item;
+}
+
