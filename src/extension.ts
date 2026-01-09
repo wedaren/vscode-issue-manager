@@ -9,6 +9,7 @@ import { registerOpenInSplit } from './commands/openInSplit';
 import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
 import { registerLinkWorkspaceToIssue } from './commands/linkWorkspaceToIssue';
 import { copilotDocumentProvider } from './virtual/CopilotDocumentProvider';
+import { registerOpenEnglishReaderCommand } from './commands/openReader';
 
 // 当您的扩展被激活时,将调用此方法
 export function activate(context: vscode.ExtensionContext) {
@@ -55,6 +56,8 @@ export function activate(context: vscode.ExtensionContext) {
 	const providerDisposable = vscode.workspace.registerTextDocumentContentProvider('copilot', copilotDocumentProvider);
 	context.subscriptions.push(providerDisposable);
 
+	// 注册 英文阅读器 命令
+	registerOpenEnglishReaderCommand(context);
 
 	// 当 Copilot 虚拟文档被关闭时，清理提供者中的缓存以避免内存泄漏
 	const closeDisposable = vscode.workspace.onDidCloseTextDocument((doc) => {
