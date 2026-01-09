@@ -651,6 +651,8 @@ ${JSON.stringify(
         }
     }
 
+    
+
     public static async rewriteContent(
         text: string,
         options?: { signal?: AbortSignal }

@@ -52,6 +52,7 @@ import { selectLLMModel } from '../commands/llmCommands';
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
 import {registerGenerateTitleCommand} from '../commands/generateTitle';
 import { registerGenerateProjectNameCommand, registerGenerateGitBranchCommand } from '../commands/nameGenerators';
+import { registerGetIconIdentifierCommand } from '../commands/iconIdentifier';
 import { registerUnifiedQuickOpenCommand } from '../commands/unifiedQuickOpen';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
@@ -949,6 +950,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 注册生成名称相关命令和统一入口
         registerGenerateProjectNameCommand(this.context);
         registerGenerateGitBranchCommand(this.context);
+        // 注册获取 Icon Identifier 命令
+        registerGetIconIdentifierCommand(this.context);
         registerUnifiedQuickOpenCommand(this.context);
 
         // note: copilotDiffSaveResult command was removed per user request
