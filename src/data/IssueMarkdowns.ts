@@ -572,7 +572,7 @@ export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Prom
             if (s.startsWith("[[") && s.endsWith("]]")) {
                 s = s.slice(2, -2).trim();
             }
-            if (s.startsWith("file:")) {
+            if (s.startsWith("workspace:")) {
                 try {
                     const u = vscode.Uri.parse(s);
                     if (u && u.fsPath) s = u.fsPath;

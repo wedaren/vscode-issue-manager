@@ -32,13 +32,14 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     /** 获取根节点 */
     async getChildren(element?: RelatedIssueNode): Promise<RelatedIssueNode[]> {
-        if (!this.contextUri) {
+        const ctx = vscode.window.activeTextEditor?.document.uri ?? this.contextUri;
+        if (!ctx) {
             return [];
         }
         if (!element) {
             // 查找所有引用该文件的节点（包括 tree.json 中的引用与 frontmatter 中的关联）
-            const treeRefs = await this.findAllReferences(this.contextUri);
-            const fmNotes = await findNotesLinkedToFile(this.contextUri);
+            const treeRefs = await this.findAllReferences(ctx);
+            const fmNotes = await findNotesLinkedToFile(ctx);
             const fmNodes: RelatedIssueNode[] = [];
             for (const note of fmNotes) {
                 const label = await getIssueMarkdownTitle(note.uri);
@@ -55,26 +56,19 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
             // 检查当前上下文所属的 workspace（若有），并查找与 workspace 关联的 issue
             const workspaceNodes: RelatedIssueNode[] = [];
-            try {
-                const wf = vscode.workspace.getWorkspaceFolder(this.contextUri!);
-                if (wf) {
-                    const wsNotes = await findNotesLinkedToWorkspace(wf.uri);
-                    for (const note of wsNotes) {
-                        const label = await getIssueMarkdownTitle(note.uri);
-                        workspaceNodes.push({
-                            label,
-                            type: 'workspace',
-                            filePath: note.uri.fsPath,
-                            children: [],
-                            resourceUri: note.uri,
-                            id: note.uri.toString() + ':ws',
-                            contextValue: await getIssueNodeContextValue(note.uri.toString(), 'issueNode'),
-                        } as RelatedIssueNode);
-                    }
+                const wsNotes = await findNotesLinkedToWorkspace(ctx);
+                for (const note of wsNotes) {
+                    const label = await getIssueMarkdownTitle(note.uri);
+                    workspaceNodes.push({
+                        label,
+                        type: 'workspace',
+                        filePath: note.uri.fsPath,
+                        children: [],
+                        resourceUri: note.uri,
+                        id: note.uri.toString() + ':ws',
+                        contextValue: await getIssueNodeContextValue(note.uri.toString(), 'issueNode'),
+                    } as RelatedIssueNode);
                 }
-            } catch (e) {
-                // ignore workspace lookup errors
-            }
 
             return [...treeRefs, ...fmNodes, ...workspaceNodes];
         }
