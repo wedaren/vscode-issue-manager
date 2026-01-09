@@ -20,13 +20,13 @@ export async function attachIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem
 
     const tree = await readTree();
     const issueFileNodes: vscode.TreeItem[] = [];
-    const treeNodes: IssueNode[] = [];
+    const selectedTreeNodes: IssueNode[] = [];
 
     selectedNodes.forEach(node => {
         if (isTreeItem(node)) {
             issueFileNodes.push(node);
         } else {
-            treeNodes.push(node as IssueNode);
+            selectedTreeNodes.push(node as IssueNode);
         }
     });
 
@@ -39,13 +39,12 @@ export async function attachIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem
         return;
     }
 
-    const allNodesToProcess = [...treeNodes, ...convertedNodes];
+    const allNodesToProcess = [...selectedTreeNodes, ...convertedNodes];
     allNodesToProcess.forEach(i => i.id = stripFocusedId(i.id));
 
-    const pick = await pickTargetWithQuickCreate(treeNodes);
+    const pick = await pickTargetWithQuickCreate(selectedTreeNodes);
     if (!pick) return;
-
-    const topLevelTreeNodes = buildTopLevelNodes(tree.rootNodes, treeNodes);
+    const topLevelTreeNodes = buildTopLevelNodes(tree.rootNodes, selectedTreeNodes);
     const clonedTopLevelNodes = topLevelTreeNodes.map(n => cloneNodeWithNewIds(n));
 
     const allTopLevelNodesToInsert = [...clonedTopLevelNodes, ...convertedNodes];
@@ -55,7 +54,7 @@ export async function attachIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem
     vscode.commands.executeCommand('issueManager.refreshAllViews');
 
     if (issueFileNodes.length > 0) {
-        vscode.window.showInformationMessage(`已在目标处关联 ${issueFileNodes.length} 个问题文件和 ${treeNodes.length} 个问题节点。`);
+        vscode.window.showInformationMessage(`已在目标处关联 ${issueFileNodes.length} 个问题文件和 ${selectedTreeNodes.length} 个问题节点。`);
     } else {
         vscode.window.showInformationMessage('节点已成功关联。');
     }
