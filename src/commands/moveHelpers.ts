@@ -3,7 +3,8 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
-import { IssueNode } from '../data/issueTreeManager';
+import { IssueNode, stripFocusedId, readTree, getIssueNodeById } from '../data/issueTreeManager';
+import { quickCreateIssue } from './quickCreateIssue';
 
 export function isTreeItem(node: unknown): node is vscode.TreeItem {
     return node !== null && typeof node === 'object' && 'resourceUri' in node && 'label' in node && !('id' in node);
@@ -26,62 +27,27 @@ export function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueNode {
     };
 }
 
-// 将指定的 treeNodes 收集为 excludeIds，然后展示可选目标的 QuickPick
-export async function showTargetPicker(treeRootNodes: IssueNode[], treeNodesToExclude: IssueNode[]) {
-    const excludeIds = new Set<string>();
-    function collectIds(node: IssueNode) {
-        excludeIds.add(node.id);
-        if (node.children) node.children.forEach(collectIds);
-    }
-    treeNodesToExclude.forEach(collectIds);
 
-    interface FlatNode extends IssueNode {
-        parentPath: IssueNode[];
-        hasChildren: boolean;
+// 使用 quickCreateIssue 作为选择或新建目标的复用入口。
+export async function pickTargetWithQuickCreate(treeNodesToExclude: IssueNode[]) {
+    // 构建被排除的 stripped id 集合，防止选择自身或子节点
+    const excludeStripped = new Set<string>();
+    function collect(node: IssueNode) {
+        excludeStripped.add(stripFocusedId(node.id));
+        if (node.children) node.children.forEach(collect);
     }
+    treeNodesToExclude.forEach(collect);
 
-    function flatten(nodes: IssueNode[], parentNodes: IssueNode[] = []): FlatNode[] {
-        let result: FlatNode[] = [];
-        for (const node of nodes) {
-            if (!excludeIds.has(node.id)) {
-                const hasChildren = !!(node.children && node.children.length > 0);
-                result.push({ ...node, parentPath: [...parentNodes], hasChildren });
-                if (hasChildren) result.push(...flatten(node.children, [...parentNodes, node]));
-            }
-        }
-        return result;
+    const targetId = await quickCreateIssue();
+    if (!targetId) return undefined;
+
+    if (excludeStripped.has(targetId)) {
+        vscode.window.showWarningMessage('不能将节点移到自身或其子节点，请选择其他目标。');
+        return undefined;
     }
 
-    const flatNodes = flatten(treeRootNodes);
-
-    const rootItem = {
-        iconPath: new vscode.ThemeIcon('root-folder'),
-        label: '根目录',
-        description: '',
-        node: null as FlatNode | null
-    };
-
-    const items = [rootItem, ...await Promise.all(flatNodes.map(async node => {
-        const title = await getIssueMarkdownTitle(node.filePath);
-        let description = '';
-        if (node.parentPath.length > 0) {
-            const parentTitles = await Promise.all(node.parentPath.map(n => getIssueMarkdownTitle(n.filePath)));
-            description = ['', ...parentTitles].join(' / ');
-        }
-        return {
-            iconPath: node.hasChildren ? new vscode.ThemeIcon('find-collapsed') : new vscode.ThemeIcon('markdown'),
-            label: title,
-            description,
-            node
-        };
-    }))];
-
-    const pick = await vscode.window.showQuickPick(items, {
-        placeHolder: '搜索并选择目标父节点...',
-        matchOnDescription: true
-    });
-
-    return pick;
+    const found = await getIssueNodeById(targetId);
+    return { node: found };
 }
 
 // 构建父映射并返回顶层选中节点（父节点未被选中的那些）
@@ -103,7 +69,7 @@ export function buildTopLevelNodes(treeRootNodes: IssueNode[], selectedTreeNodes
     return topLevel;
 }
 
-export function insertNodesAtPick(tree: { rootNodes: IssueNode[] }, pick: { node: IssueNode | null } | undefined, nodesToInsert: IssueNode[]) {
+export function insertNodesAtPick(tree: { rootNodes: IssueNode[] }, pick: { node?: IssueNode } | undefined, nodesToInsert: IssueNode[]) {
     if (!pick || !pick.node) {
         tree.rootNodes.unshift(...nodesToInsert);
     } else {
