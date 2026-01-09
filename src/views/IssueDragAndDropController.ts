@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { TreeData, IssueTreeNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/issueTreeManager';
+import { TreeData, IssueNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/issueTreeManager';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { FocusedIssuesProvider } from './FocusedIssuesProvider';
 import { RecentIssuesProvider } from './RecentIssuesProvider';
@@ -13,9 +13,9 @@ import { RSSItem, RSSService } from '../services/RSSService';
 const ISSUE_MIME_TYPE = 'application/vnd.code.tree.issue-manager';
 const RSS_MIME_TYPE = 'application/vnd.code.tree.rss-issue-manager';
 
-type DraggedItem = IssueTreeNode | vscode.TreeItem;
+type DraggedItem = IssueNode | vscode.TreeItem;
 
-export class IssueDragAndDropController implements vscode.TreeDragAndDropController<IssueTreeNode | vscode.TreeItem> {
+export class IssueDragAndDropController implements vscode.TreeDragAndDropController<IssueNode | vscode.TreeItem> {
     public dropMimeTypes: string[] = [];
     public dragMimeTypes: string[] = [];
 
@@ -30,7 +30,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
     }
 
     public async handleDrag(
-        source: readonly (IssueTreeNode | vscode.TreeItem)[],
+        source: readonly (IssueNode | vscode.TreeItem)[],
         treeDataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
@@ -51,7 +51,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
      * 需统一判断类型，必要时 JSON.parse
      */
     public async handleDrop(
-        target: IssueTreeNode | undefined,
+        target: IssueNode | undefined,
         dataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
@@ -77,7 +77,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
 
             for (const dragged of draggedItems) {
                 // Case 1: Dragged from a tree view (overview, focused, recent)
-                if (dragged.id) { // It's an IssueTreeNode
+                if (dragged.id) { // It's an IssueNode
                     const sourceNode = this.findNode(treeData.rootNodes, stripFocusedId(dragged.id));
                     if (sourceNode && this.isAncestor(sourceNode, targetNodeInTree)) {
                         vscode.window.showWarningMessage('无法将一个节点移动到它自己的子节点下。');
@@ -96,7 +96,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 else if (dragged.resourceUri) { // It's a TreeItem (like an isolated issue)
                     const resourceUri = vscode.Uri.parse(String(dragged.resourceUri));
                     const relativePath = path.relative(issueDir, resourceUri.fsPath);
-                    const nodeToMove: IssueTreeNode = {
+                    const nodeToMove: IssueNode = {
                         id: uuidv4(),
                         filePath: relativePath,
                         children: [],
@@ -120,7 +120,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                     continue;
                 }
                 const relativePath = path.relative(issueDir, absPath);
-                const nodeToAdd: IssueTreeNode = {
+                const nodeToAdd: IssueNode = {
                     id: uuidv4(),
                     filePath: relativePath,
                     children: [],
@@ -141,7 +141,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
     /**
      * 处理RSS拖拽项目
      */
-    private async handleRSSDropItems(rssItems: vscode.DataTransferItem, targetNodeInTree: IssueTreeNode | undefined, treeData: TreeData): Promise<void> {
+    private async handleRSSDropItems(rssItems: vscode.DataTransferItem, targetNodeInTree: IssueNode | undefined, treeData: TreeData): Promise<void> {
         try {
             const rssService = RSSService.getInstance();
             const rssItemsString = await rssItems.asString();
@@ -163,7 +163,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                     const issueDir = getIssueDir();
                     if (issueDir) {
                         const relativePath = path.relative(issueDir, markdownUri.fsPath);
-                        const nodeToAdd: IssueTreeNode = {
+                        const nodeToAdd: IssueNode = {
                             id: uuidv4(),
                             filePath: relativePath,
                             children: [],
@@ -181,7 +181,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         }
     }
 
-    private addNodeToTree(treeData: TreeData, nodeToAdd: IssueTreeNode, target: IssueTreeNode | null | undefined): void {
+    private addNodeToTree(treeData: TreeData, nodeToAdd: IssueNode, target: IssueNode | null | undefined): void {
         if (target) {
             if (!target.children) {
                 target.children = [];
@@ -206,7 +206,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         }
     }
 
-    private findNode(nodes: IssueTreeNode[], id: string): IssueTreeNode | null {
+    private findNode(nodes: IssueNode[], id: string): IssueNode | null {
         for (const node of nodes) {
             if (node.id === id) {
                 return node;
@@ -219,7 +219,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         return null;
     }
 
-    private findAndRemoveNode(nodes: IssueTreeNode[], id: string): IssueTreeNode | null {
+    private findAndRemoveNode(nodes: IssueNode[], id: string): IssueNode | null {
         for (let i = 0; i < nodes.length; i++) {
             if (nodes[i].id === id) {
                 const [removedNode] = nodes.splice(i, 1);
@@ -235,7 +235,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         return null;
     }
 
-    private isAncestor(potentialAncestor: IssueTreeNode, potentialDescendant: IssueTreeNode | null | undefined): boolean {
+    private isAncestor(potentialAncestor: IssueNode, potentialDescendant: IssueNode | null | undefined): boolean {
         if (!potentialDescendant) {
             return false;
         }

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { IssueTreeNode } from '../data/issueTreeManager';
+import { IssueNode } from '../data/issueTreeManager';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
 import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
@@ -31,7 +31,7 @@ export interface IIssueViewProvider<T = vscode.TreeItem> extends vscode.TreeData
  * 扩展基础视图提供者，添加关注问题特有的功能，
  * 包括数据加载和节点查找功能。
  */
-export interface IFocusedIssuesProvider extends IIssueViewProvider<IssueTreeNode> {
+export interface IFocusedIssuesProvider extends IIssueViewProvider<IssueNode> {
     /**
      * 加载关注问题数据
      * 
@@ -51,7 +51,7 @@ export interface IFocusedIssuesProvider extends IIssueViewProvider<IssueTreeNode
      * @param id 问题节点的唯一标识符
      * @returns 查找结果，包含节点和父级列表，未找到则返回null
      */
-    findFirstFocusedNodeById(id: string): { node: IssueTreeNode; parentList: IssueTreeNode[] } | null;
+    findFirstFocusedNodeById(id: string): { node: IssueNode; parentList: IssueNode[] } | null;
 }
 
 /**
@@ -60,7 +60,7 @@ export interface IFocusedIssuesProvider extends IIssueViewProvider<IssueTreeNode
  * 专门用于问题总览视图的接口定义，目前继承基础功能，
  * 为将来可能的扩展预留接口空间。
  */
-export interface IIssueOverviewProvider extends IIssueViewProvider<IssueTreeNode> {
+export interface IIssueOverviewProvider extends IIssueViewProvider<IssueNode> {
     // 问题总览视图的特有方法可以在这里定义
     // 目前使用基础接口功能即可
 }
@@ -82,10 +82,10 @@ export interface IViewRegistryResult {
     recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
     
     /** 问题总览树视图实例 */
-    overviewView: vscode.TreeView<IssueTreeNode>;
+    overviewView: vscode.TreeView<IssueNode>;
     
     /** 关注问题树视图实例 */
-    focusedView: vscode.TreeView<IssueTreeNode>;
+    focusedView: vscode.TreeView<IssueNode>;
     
     /** 最近问题树视图实例 */
     recentIssuesView: vscode.TreeView<vscode.TreeItem>;

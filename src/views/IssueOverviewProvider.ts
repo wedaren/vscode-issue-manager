@@ -1,21 +1,21 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueTreeNode, FocusedData, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueNode, FocusedData, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { readFocused } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
 import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 
-export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeNode> {
+export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode> {
   /**
    * 根据文件 URI 查找树节点
    * @param uri vscode.Uri
    */
-  public findNodeByUri(uri: vscode.Uri): IssueTreeNode | undefined {
+  public findNodeByUri(uri: vscode.Uri): IssueNode | undefined {
     if (!this.treeData || !uri) { return undefined; }
     const fsPath = uri.fsPath;
     // 递归查找
-    const findNode = (node: IssueTreeNode): IssueTreeNode | undefined => {
+    const findNode = (node: IssueNode): IssueNode | undefined => {
       const issueDir = getIssueDir();
       if (!issueDir) { return undefined; }
       // 计算节点绝对路径
@@ -39,14 +39,14 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
    * 获取指定元素的父节点。  
    * 此方法是 TreeDataProvider 接口的一部分，用于支持 `reveal` 等操作。  
    * @param element 要查找其父节点的元素。  
-   * @returns 父节点 `IssueTreeNode`，如果元素是根节点或未找到，则返回 `null`。  
+   * @returns 父节点 `IssueNode`，如果元素是根节点或未找到，则返回 `null`。  
    */  
-  getParent(element: IssueTreeNode): IssueTreeNode | null {
+  getParent(element: IssueNode): IssueNode | null {
     if (!this.treeData) { return null; }
     return findParentNodeById(this.treeData.rootNodes, element.id);
   }
-  private _onDidChangeTreeData: vscode.EventEmitter<IssueTreeNode | undefined | null | void> = new vscode.EventEmitter<IssueTreeNode | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<IssueTreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
+  private _onDidChangeTreeData: vscode.EventEmitter<IssueNode | undefined | null | void> = new vscode.EventEmitter<IssueNode | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<IssueNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
@@ -75,7 +75,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     this.loadData();
   }
 
-  async getTreeItem(element: IssueTreeNode): Promise<vscode.TreeItem> {
+  async getTreeItem(element: IssueNode): Promise<vscode.TreeItem> {
     const issueDir = getIssueDir();
     if (!issueDir) {
       throw new Error("Issue directory is not configured.");
@@ -112,7 +112,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueTreeN
     return item;
   }
 
-  getChildren(element?: IssueTreeNode): vscode.ProviderResult<IssueTreeNode[]> {
+  getChildren(element?: IssueNode): vscode.ProviderResult<IssueNode[]> {
     if (element) {
       return [...element.children];
     }

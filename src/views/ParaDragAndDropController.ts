@@ -4,7 +4,7 @@ import {
   ParaCategory,
   getCategoryLabel
 } from '../data/paraManager';
-import { readTree, IssueTreeNode, TreeData } from '../data/issueTreeManager';
+import { readTree, IssueNode, TreeData } from '../data/issueTreeManager';
 import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { ParaViewNode } from '../types';
 
@@ -184,7 +184,7 @@ export class ParaDragAndDropController implements vscode.TreeDragAndDropControll
   private findNodeIdsByFilePath(treeData: TreeData, filePath: string): string[] {
     const ids: string[] = [];
 
-    const findInNode = (node: IssueTreeNode): void => {
+    const findInNode = (node: IssueNode): void => {
       if (node.filePath === filePath) {
         ids.push(node.id);
       }

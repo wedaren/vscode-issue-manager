@@ -3,7 +3,7 @@
  * 只读视图，动态展示某问题在知识库中的所有引用及上下文
  */
 import * as vscode from 'vscode';
-import { readTree, TreeData, IssueTreeNode, getIssueNodeContextValue } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueNode, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
@@ -47,7 +47,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     private async findAllReferences(resourceUri: vscode.Uri): Promise<RelatedIssueNode[]> {
         this.treeData = await readTree();
         const nodes: RelatedIssueNode[] = [];
-        const traverse = async (node: IssueTreeNode, parentNodes: IssueTreeNode[] = []) => {
+        const traverse = async (node: IssueNode, parentNodes: IssueNode[] = []) => {
             if (node.resourceUri?.fsPath === resourceUri.fsPath) {
                 // 构建引用上下文树
                 nodes.push(await this.buildReferenceNode(node, parentNodes));
@@ -67,11 +67,11 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     }
 
     /** 构建单个引用节点的上下文树 */
-    private async buildReferenceNode(node: IssueTreeNode, parentNodes: IssueTreeNode[]): Promise<RelatedIssueNode> {
+    private async buildReferenceNode(node: IssueNode, parentNodes: IssueNode[]): Promise<RelatedIssueNode> {
         // 父路径（祖先链）
         const parentIssueNode = parentNodes.pop();
         // 辅助方法：获取节点标题（缓存优先，未命中回退为文件名）
-        const getNodeTitle = async (n: IssueTreeNode) => {
+        const getNodeTitle = async (n: IssueNode) => {
             return getIssueMarkdownTitle(n.filePath);
         };
 
@@ -94,7 +94,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             resourceUri: node.resourceUri,
             id: node.id,
             contextValue: await getIssueNodeContextValue(node.id, 'issueNode'),
-            children: node.children ? await Promise.all(node.children.map(async (child: IssueTreeNode) => ({
+            children: node.children ? await Promise.all(node.children.map(async (child: IssueNode) => ({
                 label: await getNodeTitle(child),
                 type: 'child',
                 filePath: child.filePath,
@@ -161,7 +161,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 /**
  * 相关联问题节点类型
  */
-export interface RelatedIssueNode extends IssueTreeNode{
+export interface RelatedIssueNode extends IssueNode{
     label: string;
     type: 'parent' | 'current' | 'sibling' | 'child';
     tooltip?: string;

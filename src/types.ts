@@ -5,7 +5,7 @@
  */
 
 import { ParaCategory } from './data/paraManager';
-import { IssueTreeNode } from './data/issueTreeManager';
+import { IssueNode } from './data/issueTreeManager';
 
 /**
  * PARA 视图节点类型
@@ -20,7 +20,7 @@ export type ParaViewNode =
       type: 'issue'; 
       id: string; 
       category: ParaCategory; 
-      treeNode: IssueTreeNode; 
+      treeNode: IssueNode; 
       isTopLevel?: boolean; // 可选属性,用于标识是否为顶层问题
       indexInCategory?: number; // 可选: 在所属分类中的 1-based 序号，仅用于渲染
     };
@@ -50,7 +50,7 @@ export function isParaIssueNode(item: unknown): item is {
   type: 'issue'; 
   id: string; 
   category: ParaCategory; 
-  treeNode: IssueTreeNode;
+  treeNode: IssueNode;
   isTopLevel?: boolean;
   indexInCategory?: number;
 } {

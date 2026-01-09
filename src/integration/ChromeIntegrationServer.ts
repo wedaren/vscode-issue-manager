@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createIssueFromHtml } from '../commands/createIssueFromHtml';
 import { Logger } from '../core/utils/Logger';
 import { readFocused } from '../data/focusedManager';
-import { readTree, IssueTreeNode } from '../data/issueTreeManager';
+import { readTree, IssueNode } from '../data/issueTreeManager';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { SharedConfig } from '../config/SharedConfig';
@@ -276,8 +276,8 @@ export class ChromeIntegrationServer {
               }
 
               // 构建 id 到节点的映射
-              const idToNode = new Map<string, IssueTreeNode>();
-              const collectMap = (nodes: IssueTreeNode[]) => {
+              const idToNode = new Map<string, IssueNode>();
+              const collectMap = (nodes: IssueNode[]) => {
                 for (const node of nodes) {
                   idToNode.set(node.id, node);
                   if (node.children) { 
@@ -289,7 +289,7 @@ export class ChromeIntegrationServer {
 
               
               // 递归构建树节点，包含子节点和 markdown 内容
-              const buildTreeNode = async (node: IssueTreeNode): Promise<IssueTreeFullNode> => {
+              const buildTreeNode = async (node: IssueNode): Promise<IssueTreeFullNode> => {
                 const title = await getIssueMarkdownTitle(node.filePath);
                 const absolutePath = path.join(issueDir, node.filePath);
                 
@@ -323,7 +323,7 @@ export class ChromeIntegrationServer {
               const focusedTrees = await Promise.all(
                 focusedData.focusList
                   .map(id => idToNode.get(id))
-                  .filter((node): node is IssueTreeNode => node !== undefined)
+                  .filter((node): node is IssueNode => node !== undefined)
                   .map(node => buildTreeNode(node))
               );
 
@@ -353,7 +353,7 @@ export class ChromeIntegrationServer {
               }
 
 
-              const buildMeta = async (node: IssueTreeNode): Promise<IssueTreeMetaNode> => {
+              const buildMeta = async (node: IssueNode): Promise<IssueTreeMetaNode> => {
                 const title = await getIssueMarkdownTitle(node.filePath);
                 const children: IssueTreeMetaNode[] = node.children && node.children.length > 0
                   ? await Promise.all(node.children.map(child => buildMeta(child)))

@@ -17,23 +17,23 @@ export function getRelativePath(filePath: string): string | null {
 }
 
 // 定义树节点和树数据的结构
-export interface IssueTreeNode {
+export interface IssueNode {
   id: string;
   filePath: string; // 相对于 issueDir 的路径
   expanded?: boolean;
-  children: IssueTreeNode[];
+  children: IssueNode[];
   resourceUri?: vscode.Uri; // 运行时属性，不持久化
 }
 export interface TreeData {
   version: string;
   lastModified: string;
-  rootNodes: IssueTreeNode[];
+  rootNodes: IssueNode[];
 }
 
 /**
  * 扁平化树节点接口，包含父节点路径和标题
  */
-export interface FlatTreeNode extends IssueTreeNode {
+export interface FlatTreeNode extends IssueNode {
   parentPath: FlatTreeNode[];
   title: string;
 }
@@ -43,7 +43,7 @@ export interface FlatTreeNode extends IssueTreeNode {
  * @param nodes 节点数组。
  * @param callback 回调函数。
  */
-function walkTree(nodes: IssueTreeNode[], callback: (node: IssueTreeNode) => void) {
+function walkTree(nodes: IssueNode[], callback: (node: IssueNode) => void) {
   for (const node of nodes) {
     callback(node);
     if (node.children) {
@@ -62,7 +62,7 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   
   const result: FlatTreeNode[] = [];
   
-  async function buildFlatNodes(nodes: IssueTreeNode[], parents: FlatTreeNode[]) {
+  async function buildFlatNodes(nodes: IssueNode[], parents: FlatTreeNode[]) {
     for (const node of nodes) {
       const title = await getIssueMarkdownTitle(node.filePath);
       
@@ -135,9 +135,9 @@ export const readTree = async (): Promise<TreeData> => {
   return treeData;
 };
 
-export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueTreeNode[]|undefined> => {
+export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[]|undefined> => {
   const { issueIdMap } = await getIssueData();
-  const uriMap = new Map<string, IssueTreeNode[]>();
+  const uriMap = new Map<string, IssueNode[]>();
   issueIdMap.forEach((node) => {
     if (node.resourceUri?.fsPath) {
       const arr = uriMap.get(node.resourceUri?.fsPath) || [];
@@ -149,12 +149,12 @@ export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueTreeNode
 };
 
 
-export const getIssueNodeById = async (id: string): Promise<IssueTreeNode|undefined> => {
+export const getIssueNodeById = async (id: string): Promise<IssueNode|undefined> => {
   const { issueIdMap } = await getIssueData();
   return issueIdMap.get(id);
 };
 
-const cache = {mtime: 0, issueIdMap:new Map<string, IssueTreeNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
+const cache = {mtime: 0, issueIdMap:new Map<string, IssueNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
 
 export function getIssueTitleSync(issueId:string){
   const issueNode = cache.issueIdMap.get(issueId);
@@ -165,7 +165,7 @@ async function getIssueData(){
   const issueDir = getIssueDir();
 
   if (!treePath || !issueDir) {
-    return {treeData: { ...defaultTreeData, rootNodes: [] }, issueIdMap: new Map<string, IssueTreeNode>()};
+    return {treeData: { ...defaultTreeData, rootNodes: [] }, issueIdMap: new Map<string, IssueNode>()};
   }
 
   const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
@@ -186,7 +186,7 @@ async function getIssueData(){
     // 如果文件不存在或解析失败，返回默认数据
     treeData = { ...defaultTreeData, rootNodes: [] };
   }
-  const issueIdMap = new Map<string, IssueTreeNode>();
+  const issueIdMap = new Map<string, IssueNode>();
   // 运行时动态添加 resourceUri
   walkTree(treeData.rootNodes, (node) => {
     // 确保 filePath 存在再创建 Uri
@@ -249,13 +249,13 @@ export const writeTree = async (data: TreeData): Promise<void> => {
  * @param parentId The id of the parent node. If null, adds to root.
  * @returns The newly created node or null if parent not found.
  */
-export function addNode(tree: TreeData, filePaths: string[], parentId: string | null): IssueTreeNode[] | null {
+export function addNode(tree: TreeData, filePaths: string[], parentId: string | null): IssueNode[] | null {
   const issueDir = getIssueDir();
   if (!issueDir) {
     return null;
   }
 
-  const newNodes: IssueTreeNode[] = filePaths.map(filePath => ({
+  const newNodes: IssueNode[] = filePaths.map(filePath => ({
     id: uuidv4(),
     filePath,
     children: [],
@@ -283,7 +283,7 @@ export function addNode(tree: TreeData, filePaths: string[], parentId: string | 
  * @param nodeId The id of the node to remove.
  * @returns An object containing the removed node and a success flag.
  */
-export function removeNode(tree: TreeData, nodeId: string): { removedNode: IssueTreeNode | null, success: boolean } {
+export function removeNode(tree: TreeData, nodeId: string): { removedNode: IssueNode | null, success: boolean } {
   const found = findNodeById(tree.rootNodes, nodeId);
   if (!found) {
     return { removedNode: null, success: false };
@@ -335,7 +335,7 @@ export function moveNode(tree: TreeData, sourceId: string, targetParentId: strin
  * @param id The id of the node to find.
  * @returns An object containing the found node and its parent list, or null if not found.
  */
-export function findNodeById(nodes: IssueTreeNode[], id: string): { node: IssueTreeNode, parentList: IssueTreeNode[] } | null {
+export function findNodeById(nodes: IssueNode[], id: string): { node: IssueNode, parentList: IssueNode[] } | null {
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
     if (node.id === id) {
@@ -357,7 +357,7 @@ export function findNodeById(nodes: IssueTreeNode[], id: string): { node: IssueT
  * @param nodeId 节点 ID
  * @returns 匹配的节点，若未找到则返回 null
  */
-export function getTreeNodeById(tree: TreeData, nodeId: string): IssueTreeNode | null {
+export function getTreeNodeById(tree: TreeData, nodeId: string): IssueNode | null {
   const result = findNodeById(tree.rootNodes, nodeId);
   return result ? result.node : null;
 }
@@ -421,11 +421,11 @@ export function isAncestor(tree: TreeData, potentialAncestorId: string, nodeId: 
  * @param tree 完整的树数据。
  * @returns 一个包含所有祖先节点的数组，从根节点到直接父节点排序。
  */
-export function getAncestors(nodeId: string, tree: TreeData): IssueTreeNode[] {
-  const ancestors: IssueTreeNode[] = [];
+export function getAncestors(nodeId: string, tree: TreeData): IssueNode[] {
+  const ancestors: IssueNode[] = [];
 
   // 查找从根到一个节点的路径
-  const findPath = (nodes: IssueTreeNode[], path: IssueTreeNode[]): boolean => {
+  const findPath = (nodes: IssueNode[], path: IssueNode[]): boolean => {
     for (const node of nodes) {
       const currentPath = [...path, node];
       if (node.id === nodeId) {
@@ -574,7 +574,7 @@ export function isFocusedRootId(id: string): boolean {
  * @param expanded 展开状态
  * @returns 是否找到并更新
  */
-export function updateNodeExpanded(nodes: IssueTreeNode[], id: string, expanded: boolean): boolean {
+export function updateNodeExpanded(nodes: IssueNode[], id: string, expanded: boolean): boolean {
   for (const node of nodes) {
     if (node.id === id) {
       node.expanded = expanded;

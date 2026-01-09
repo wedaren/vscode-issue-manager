@@ -43,13 +43,13 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
             let targetUri: vscode.Uri | undefined;
             try {
                 // 支持三种来源：
-                // 1. 传入 TreeItem / IssueTreeNode（含 resourceUri）
+                // 1. 传入 TreeItem / IssueNode（含 resourceUri）
                 // 2. 传入 vscode.Uri
 
                 if (args && args.length > 0) {
                     const firstArg = args[0];
 
-                    // 1. 检查是否为 TreeItem/IssueTreeNode (包含 resourceUri)
+                    // 1. 检查是否为 TreeItem/IssueNode (包含 resourceUri)
                     if (typeof firstArg === 'object' && firstArg !== null && 'resourceUri' in firstArg) {
                         const { resourceUri } = firstArg as { resourceUri?: unknown };
                         if (resourceUri instanceof vscode.Uri) {

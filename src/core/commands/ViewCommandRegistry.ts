@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { BaseCommandRegistry } from './BaseCommandRegistry';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from '../interfaces';
-import { IssueTreeNode } from '../../data/issueTreeManager';
+import { IssueNode } from '../../data/issueTreeManager';
 import { ParaViewProvider } from '../../views/ParaViewProvider';
 
 /**
@@ -15,8 +15,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private issueOverviewProvider?: IIssueOverviewProvider;
     private recentIssuesProvider?: IIssueViewProvider;
     private paraViewProvider?: ParaViewProvider;
-    private overviewView?: vscode.TreeView<IssueTreeNode>;
-    private focusedView?: vscode.TreeView<IssueTreeNode>;
+    private overviewView?: vscode.TreeView<IssueNode>;
+    private focusedView?: vscode.TreeView<IssueNode>;
 
     /**
      * 设置视图提供者实例
@@ -28,8 +28,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         issueOverviewProvider: IIssueOverviewProvider;
         recentIssuesProvider: IIssueViewProvider;
         paraViewProvider?: ParaViewProvider;
-        overviewView: vscode.TreeView<IssueTreeNode>;
-        focusedView: vscode.TreeView<IssueTreeNode>;
+        overviewView: vscode.TreeView<IssueNode>;
+        focusedView: vscode.TreeView<IssueNode>;
     }): void {
         this.focusedIssuesProvider = providers.focusedIssuesProvider;
         this.issueOverviewProvider = providers.issueOverviewProvider;
@@ -184,14 +184,14 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
      */
     private registerViewRevealCommands(): void {
         this.registerCommand('issueManager.views.overview.reveal', async (...args: unknown[]) => {
-            const [node, options] = args as [IssueTreeNode, { select: boolean, focus: boolean, expand: boolean } | undefined];
+            const [node, options] = args as [IssueNode, { select: boolean, focus: boolean, expand: boolean } | undefined];
             if (this.overviewView && node) {
                 await this.overviewView.reveal(node, options);
             }
         }, '在总览视图中定位');
 
         this.registerCommand('issueManager.views.focused.reveal', async (...args: unknown[]) => {
-            const [node, options] = args as [IssueTreeNode, { select: boolean, focus: boolean, expand: boolean } | undefined];
+            const [node, options] = args as [IssueNode, { select: boolean, focus: boolean, expand: boolean } | undefined];
             if (this.focusedView && node) {
                 await this.focusedView.reveal(node, options);
             }

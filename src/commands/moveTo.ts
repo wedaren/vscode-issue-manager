@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
-import { readTree, writeTree, IssueTreeNode, removeNode, stripFocusedId } from '../data/issueTreeManager';
+import { readTree, writeTree, IssueNode, removeNode, stripFocusedId } from '../data/issueTreeManager';
 import { isTreeItem, convertTreeItemToTreeNode, showTargetPicker, buildTopLevelNodes, insertNodesAtPick } from './moveHelpers';
 
 /**
  * "移动到..." 与 "添加到..." 命令实现：支持多选节点移动到指定父节点，防止循环引用。
- * 支持 IssueTreeNode 和 vscode.TreeItem 两种类型的输入。
+ * 支持 IssueNode 和 vscode.TreeItem 两种类型的输入。
  */
-export async function moveIssuesTo(selectedNodes: (IssueTreeNode | vscode.TreeItem)[]) {
+export async function moveIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem)[]) {
     if (!selectedNodes || selectedNodes.length === 0) {
         vscode.window.showWarningMessage('请先选择要移动的节点。');
         return;
@@ -14,15 +14,15 @@ export async function moveIssuesTo(selectedNodes: (IssueTreeNode | vscode.TreeIt
 
     const tree = await readTree();
     const issueFileNodes: vscode.TreeItem[] = [];
-    const treeNodes: IssueTreeNode[] = [];
+    const treeNodes: IssueNode[] = [];
 
     selectedNodes.forEach(node => {
         if (isTreeItem(node)) issueFileNodes.push(node);
-        else treeNodes.push(node as IssueTreeNode);
+        else treeNodes.push(node as IssueNode);
     });
 
     // 将问题文件转换为树节点
-    let convertedNodes: IssueTreeNode[];
+    let convertedNodes: IssueNode[];
     try {
         convertedNodes = issueFileNodes.map(item => convertTreeItemToTreeNode(item));
     } catch (error: unknown) {

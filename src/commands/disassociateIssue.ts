@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, getAssociatedFiles } from '../data/issueTreeManager';
+import { IssueNode, readTree, removeNode, stripFocusedId, writeTree, getAssociatedFiles } from '../data/issueTreeManager';
 import { isIssueTreeNode } from '../utils/treeUtils';
 import { EditorContextService } from '../services/EditorContextService';
 import { getIssueDir } from '../config';
@@ -71,8 +71,8 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
 
             // 检查是否还有其他引用 — 收集所有被移除的节点（包括子节点），按唯一文件路径去重后再提示删除
             try {
-                const nodesToCheck: IssueTreeNode[] = [];
-                const collect = (n?: IssueTreeNode | null) => {
+                const nodesToCheck: IssueNode[] = [];
+                const collect = (n?: IssueNode | null) => {
                     if (!n) return;
                     nodesToCheck.push(n);
                     if (n.children && n.children.length > 0) {

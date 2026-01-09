@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
+import { IssueNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
 import { isIssueTreeNode } from '../utils/treeUtils';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
@@ -138,8 +138,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         focusedIssuesProvider: IFocusedIssuesProvider,
         issueOverviewProvider: IIssueOverviewProvider,
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
-        overviewView: vscode.TreeView<IssueTreeNode>,
-        focusedView: vscode.TreeView<IssueTreeNode>,
+        overviewView: vscode.TreeView<IssueNode>,
+        focusedView: vscode.TreeView<IssueNode>,
         // issueStructureProvider: IssueStructureProvider,
         // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
@@ -186,7 +186,7 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 6. 注册“打开并定位”命令
             this.context.subscriptions.push(
-                vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode, type: 'focused' | 'overview') => {
+                vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueNode, type: 'focused' | 'overview') => {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
                     const uri = node.resourceUri;
@@ -773,7 +773,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      * @param treeNode 已存在的树节点实例
      * @param category PARA类别
      */
-    private async revealInParaView(treeNode: IssueTreeNode, category: ParaCategory): Promise<void> {
+    private async revealInParaView(treeNode: IssueNode, category: ParaCategory): Promise<void> {
 
         try {
             if (!this.paraView) {

@@ -3,13 +3,13 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
-import { IssueTreeNode } from '../data/issueTreeManager';
+import { IssueNode } from '../data/issueTreeManager';
 
 export function isTreeItem(node: unknown): node is vscode.TreeItem {
     return node !== null && typeof node === 'object' && 'resourceUri' in node && 'label' in node && !('id' in node);
 }
 
-export function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueTreeNode {
+export function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueNode {
     const issueDir = getIssueDir();
     if (!issueDir) {
         throw new Error('问题目录未配置，无法转换孤立问题节点');
@@ -27,20 +27,20 @@ export function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueTreeNode 
 }
 
 // 将指定的 treeNodes 收集为 excludeIds，然后展示可选目标的 QuickPick
-export async function showTargetPicker(treeRootNodes: IssueTreeNode[], treeNodesToExclude: IssueTreeNode[]) {
+export async function showTargetPicker(treeRootNodes: IssueNode[], treeNodesToExclude: IssueNode[]) {
     const excludeIds = new Set<string>();
-    function collectIds(node: IssueTreeNode) {
+    function collectIds(node: IssueNode) {
         excludeIds.add(node.id);
         if (node.children) node.children.forEach(collectIds);
     }
     treeNodesToExclude.forEach(collectIds);
 
-    interface FlatNode extends IssueTreeNode {
-        parentPath: IssueTreeNode[];
+    interface FlatNode extends IssueNode {
+        parentPath: IssueNode[];
         hasChildren: boolean;
     }
 
-    function flatten(nodes: IssueTreeNode[], parentNodes: IssueTreeNode[] = []): FlatNode[] {
+    function flatten(nodes: IssueNode[], parentNodes: IssueNode[] = []): FlatNode[] {
         let result: FlatNode[] = [];
         for (const node of nodes) {
             if (!excludeIds.has(node.id)) {
@@ -85,10 +85,10 @@ export async function showTargetPicker(treeRootNodes: IssueTreeNode[], treeNodes
 }
 
 // 构建父映射并返回顶层选中节点（父节点未被选中的那些）
-export function buildTopLevelNodes(treeRootNodes: IssueTreeNode[], selectedTreeNodes: IssueTreeNode[]) {
+export function buildTopLevelNodes(treeRootNodes: IssueNode[], selectedTreeNodes: IssueNode[]) {
     const selectedIds = new Set(selectedTreeNodes.map(n => n.id));
     const parentMap = new Map<string, string | null>();
-    function buildParentMap(nodes: IssueTreeNode[], parentId: string | null) {
+    function buildParentMap(nodes: IssueNode[], parentId: string | null) {
         for (const node of nodes) {
             parentMap.set(node.id, parentId);
             if (node.children) buildParentMap(node.children, node.id);
@@ -103,7 +103,7 @@ export function buildTopLevelNodes(treeRootNodes: IssueTreeNode[], selectedTreeN
     return topLevel;
 }
 
-export function insertNodesAtPick(tree: { rootNodes: IssueTreeNode[] }, pick: { node: IssueTreeNode | null } | undefined, nodesToInsert: IssueTreeNode[]) {
+export function insertNodesAtPick(tree: { rootNodes: IssueNode[] }, pick: { node: IssueNode | null } | undefined, nodesToInsert: IssueNode[]) {
     if (!pick || !pick.node) {
         tree.rootNodes.unshift(...nodesToInsert);
     } else {
