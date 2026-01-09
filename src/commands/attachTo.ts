@@ -42,7 +42,7 @@ export async function attachIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem
     const allNodesToProcess = [...treeNodes, ...convertedNodes];
     allNodesToProcess.forEach(i => i.id = stripFocusedId(i.id));
 
-    const pick = await pickTargetWithQuickCreate(tree.rootNodes, treeNodes);
+    const pick = await pickTargetWithQuickCreate(treeNodes);
     if (!pick) return;
 
     const topLevelTreeNodes = buildTopLevelNodes(tree.rootNodes, treeNodes);

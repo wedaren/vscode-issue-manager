@@ -34,7 +34,7 @@ export async function moveIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem)[
     const allNodesToMove = [...treeNodes, ...convertedNodes];
     allNodesToMove.forEach(i => i.id = stripFocusedId(i.id));
 
-    const pick = await pickTargetWithQuickCreate(tree.rootNodes, treeNodes);
+    const pick = await pickTargetWithQuickCreate(treeNodes);
     if (!pick) return;
 
     // 执行移动：只移除原处的顶层选中节点，然后在目标处插入原节点/文件节点

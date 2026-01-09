@@ -87,7 +87,7 @@ export async function showTargetPicker(treeRootNodes: IssueNode[], treeNodesToEx
 
 // 使用 quickCreateIssue 作为选择或新建目标的复用入口。
 // 返回与 showTargetPicker 相同形状的对象 `{ node: IssueNode | null }` 或 `undefined`（用户取消）
-export async function pickTargetWithQuickCreate(treeRootNodes: IssueNode[], treeNodesToExclude: IssueNode[]) {
+export async function pickTargetWithQuickCreate(treeNodesToExclude: IssueNode[]) {
     // 构建被排除的 stripped id 集合，防止选择自身或子节点
     const excludeStripped = new Set<string>();
     function collect(node: IssueNode) {
