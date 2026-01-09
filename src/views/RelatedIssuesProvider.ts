@@ -45,12 +45,11 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 const label = await getIssueMarkdownTitle(note.uri);
                 fmNodes.push({
                     label,
-                    type: 'external',
+                    type: 'markdown',
                     filePath: note.uri.fsPath,
                     children: [],
                     resourceUri: note.uri,
                     id: note.uri.toString() + ':fm',
-                    contextValue: await getIssueNodeContextValue(note.uri.toString(), 'issueNode'),
                 } as RelatedIssueNode);
             }
 
@@ -61,12 +60,11 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                     const label = await getIssueMarkdownTitle(note.uri);
                     workspaceNodes.push({
                         label,
-                        type: 'workspace',
+                        type: 'markdown',
                         filePath: note.uri.fsPath,
                         children: [],
                         resourceUri: note.uri,
                         id: note.uri.toString() + ':ws',
-                        contextValue: await getIssueNodeContextValue(note.uri.toString(), 'issueNode'),
                     } as RelatedIssueNode);
                 }
 
@@ -165,19 +163,26 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     async getTreeItem(element: RelatedIssueNode): Promise<vscode.TreeItem> {
         const item = new vscode.TreeItem(element.label, element.children && element.children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
         item.tooltip = element.tooltip;
-        item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : (element.type === 'external' ? new vscode.ThemeIcon('link-external') : (element.type === 'workspace' ? new vscode.ThemeIcon('folder') : undefined));
+        item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : (element.type === 'markdown' ? new vscode.ThemeIcon('markdown') : undefined);
         item.description = element.type === 'parent' ? element.tooltip : '';
         
         // 使用缓存的 contextValue 或计算新的 contextValue
         item.contextValue = element.contextValue ?? await getIssueNodeContextValue(element.id, 'issueNode');
         item.id = element.id;
         item.resourceUri = element.resourceUri;
-        
-        item.command = element.resourceUri ? {
-            command: 'issueManager.openAndRevealIssue',
-            title: '打开并定位问题',
-            arguments: [element, 'overview']
-        } : undefined;
+        if(element.type === 'markdown'){
+            item.command = {
+                command: 'vscode.open',
+                title: '打开关联笔记',
+                arguments: [element.resourceUri]
+            };
+        } else {
+            item.command = element.resourceUri ? {
+                command: 'issueManager.openAndRevealIssue',
+                title: '打开并定位问题',
+                arguments: [element, 'overview']
+            } : undefined;
+        }
         return item;
     }
 
@@ -196,7 +201,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
  */
 export interface RelatedIssueNode extends IssueTreeNode{
     label: string;
-    type: 'parent' | 'current' | 'sibling' | 'child' | 'external' | 'workspace';
+    type: 'parent' | 'current' | 'sibling' | 'child' | 'markdown';
     tooltip?: string;
     icon?: string;
     children: RelatedIssueNode[];
