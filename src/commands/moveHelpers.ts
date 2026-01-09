@@ -27,66 +27,8 @@ export function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueNode {
     };
 }
 
-// 将指定的 treeNodes 收集为 excludeIds，然后展示可选目标的 QuickPick
-export async function showTargetPicker(treeRootNodes: IssueNode[], treeNodesToExclude: IssueNode[]) {
-    const excludeIds = new Set<string>();
-    function collectIds(node: IssueNode) {
-        excludeIds.add(node.id);
-        if (node.children) node.children.forEach(collectIds);
-    }
-    treeNodesToExclude.forEach(collectIds);
-
-    interface FlatNode extends IssueNode {
-        parentPath: IssueNode[];
-        hasChildren: boolean;
-    }
-
-    function flatten(nodes: IssueNode[], parentNodes: IssueNode[] = []): FlatNode[] {
-        let result: FlatNode[] = [];
-        for (const node of nodes) {
-            if (!excludeIds.has(node.id)) {
-                const hasChildren = !!(node.children && node.children.length > 0);
-                result.push({ ...node, parentPath: [...parentNodes], hasChildren });
-                if (hasChildren) result.push(...flatten(node.children, [...parentNodes, node]));
-            }
-        }
-        return result;
-    }
-
-    const flatNodes = flatten(treeRootNodes);
-
-    const rootItem = {
-        iconPath: new vscode.ThemeIcon('root-folder'),
-        label: '根目录',
-        description: '',
-        node: null as FlatNode | null
-    };
-
-    const items = [rootItem, ...await Promise.all(flatNodes.map(async node => {
-        const title = await getIssueMarkdownTitle(node.filePath);
-        let description = '';
-        if (node.parentPath.length > 0) {
-            const parentTitles = await Promise.all(node.parentPath.map(n => getIssueMarkdownTitle(n.filePath)));
-            description = ['', ...parentTitles].join(' / ');
-        }
-        return {
-            iconPath: node.hasChildren ? new vscode.ThemeIcon('find-collapsed') : new vscode.ThemeIcon('markdown'),
-            label: title,
-            description,
-            node
-        };
-    }))];
-
-    const pick = await vscode.window.showQuickPick(items, {
-        placeHolder: '搜索并选择目标父节点...',
-        matchOnDescription: true
-    });
-
-    return pick;
-}
 
 // 使用 quickCreateIssue 作为选择或新建目标的复用入口。
-// 返回与 showTargetPicker 相同形状的对象 `{ node: IssueNode | null }` 或 `undefined`（用户取消）
 export async function pickTargetWithQuickCreate(treeNodesToExclude: IssueNode[]) {
     // 构建被排除的 stripped id 集合，防止选择自身或子节点
     const excludeStripped = new Set<string>();
