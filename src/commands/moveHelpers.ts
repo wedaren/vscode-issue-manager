@@ -3,7 +3,7 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
-import { IssueNode, stripFocusedId, readTree } from '../data/issueTreeManager';
+import { IssueNode, stripFocusedId, readTree, getIssueNodeById } from '../data/issueTreeManager';
 import { quickCreateIssue } from './quickCreateIssue';
 
 export function isTreeItem(node: unknown): node is vscode.TreeItem {
@@ -46,21 +46,8 @@ export async function pickTargetWithQuickCreate(treeNodesToExclude: IssueNode[])
         return undefined;
     }
 
-    // 重新读取树以捕获 quickCreateIssue 可能新增的节点
-    const tree = await readTree();
-    function find(nodes: IssueNode[]): IssueNode | null {
-        for (const n of nodes) {
-            if (stripFocusedId(n.id) === targetId) return n;
-            if (n.children) {
-                const f = find(n.children);
-                if (f) return f;
-            }
-        }
-        return null;
-    }
-
-    const found = find(tree.rootNodes);
-    return { node: found } as { node: IssueNode | null };
+    const found = await getIssueNodeById(targetId);
+    return { node: found };
 }
 
 // 构建父映射并返回顶层选中节点（父节点未被选中的那些）
@@ -82,7 +69,7 @@ export function buildTopLevelNodes(treeRootNodes: IssueNode[], selectedTreeNodes
     return topLevel;
 }
 
-export function insertNodesAtPick(tree: { rootNodes: IssueNode[] }, pick: { node: IssueNode | null } | undefined, nodesToInsert: IssueNode[]) {
+export function insertNodesAtPick(tree: { rootNodes: IssueNode[] }, pick: { node?: IssueNode } | undefined, nodesToInsert: IssueNode[]) {
     if (!pick || !pick.node) {
         tree.rootNodes.unshift(...nodesToInsert);
     } else {

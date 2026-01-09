@@ -12,7 +12,6 @@ export async function moveIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem)[
         return;
     }
 
-    const tree = await readTree();
     const issueFileNodes: vscode.TreeItem[] = [];
     const selectedTreeNodes: IssueNode[] = [];
 
@@ -37,6 +36,7 @@ export async function moveIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem)[
     const pick = await pickTargetWithQuickCreate(selectedTreeNodes);
     if (!pick) return;
 
+    const tree = await readTree();
     // 执行移动：只移除原处的顶层选中节点，然后在目标处插入原节点/文件节点
     const topLevelTreeNodes = buildTopLevelNodes(tree.rootNodes, selectedTreeNodes);
     topLevelTreeNodes.forEach(node => removeNode(tree, node.id));
