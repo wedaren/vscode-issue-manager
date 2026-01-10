@@ -4,7 +4,7 @@
  */
 import * as vscode from 'vscode';
 import { readTree, TreeData, IssueNode, getIssueNodeContextValue } from '../data/issueTreeManager';
-import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
+import { findNotesLinkedToFile, findNotesLinkedToWorkspace, getIssueMarkdownContextValues, getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
@@ -32,12 +32,45 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     /** 获取根节点 */
     async getChildren(element?: RelatedIssueNode): Promise<RelatedIssueNode[]> {
-        if (!this.contextUri) {
+        const ctx = vscode.window.activeTextEditor?.document.uri ?? this.contextUri;
+        if (!ctx) {
             return [];
         }
         if (!element) {
-            // 查找所有引用该文件的节点
-            return this.findAllReferences(this.contextUri);
+            // 查找所有引用该文件的节点（包括 tree.json 中的引用与 frontmatter 中的关联）
+            const treeRefs = await this.findAllReferences(ctx);
+            const fmNotes = await findNotesLinkedToFile(ctx);
+            const fmNodes: RelatedIssueNode[] = [];
+            for (const note of fmNotes) {
+                const label = await getIssueMarkdownTitle(note.uri);
+                fmNodes.push({
+                    label,
+                    type: 'markdown',
+                    filePath: note.uri.fsPath,
+                    children: [],
+                    resourceUri: note.uri,
+                    id: note.uri.toString() + ':fm',
+                    contextValue: getIssueMarkdownContextValues(),
+                } as RelatedIssueNode);
+            }
+
+            // 检查当前上下文所属的 workspace（若有），并查找与 workspace 关联的 issue
+            const workspaceNodes: RelatedIssueNode[] = [];
+                const wsNotes = await findNotesLinkedToWorkspace(ctx);
+                for (const note of wsNotes) {
+                    const label = await getIssueMarkdownTitle(note.uri);
+                    workspaceNodes.push({
+                        label,
+                        type: 'markdown',
+                        filePath: note.uri.fsPath,
+                        children: [],
+                        resourceUri: note.uri,
+                        id: note.uri.toString() + ':ws',
+                        contextValue: getIssueMarkdownContextValues(),
+                    } as RelatedIssueNode);
+                }
+
+            return [...treeRefs, ...fmNodes, ...workspaceNodes];
         }
         // 返回子节点
         return element.children || [];
@@ -132,19 +165,26 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     async getTreeItem(element: RelatedIssueNode): Promise<vscode.TreeItem> {
         const item = new vscode.TreeItem(element.label, element.children && element.children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
         item.tooltip = element.tooltip;
-        item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : undefined;
+        item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : (element.type === 'markdown' ? new vscode.ThemeIcon('markdown') : undefined);
         item.description = element.type === 'parent' ? element.tooltip : '';
         
         // 使用缓存的 contextValue 或计算新的 contextValue
         item.contextValue = element.contextValue ?? await getIssueNodeContextValue(element.id, 'issueNode');
         item.id = element.id;
         item.resourceUri = element.resourceUri;
-        
-        item.command = element.resourceUri ? {
-            command: 'issueManager.openAndRevealIssue',
-            title: '打开并定位问题',
-            arguments: [element, 'overview']
-        } : undefined;
+        if(element.type === 'markdown'){
+            item.command = {
+                command: 'vscode.open',
+                title: '在侧边打开关联笔记',
+                arguments: [element.resourceUri, { viewColumn: vscode.ViewColumn.Beside }]
+            };
+        } else {
+            item.command = element.resourceUri ? {
+                command: 'issueManager.openAndRevealIssue',
+                title: '打开并定位问题',
+                arguments: [element, 'overview']
+            } : undefined;
+        }
         return item;
     }
 
@@ -163,9 +203,9 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
  */
 export interface RelatedIssueNode extends IssueNode{
     label: string;
-    type: 'parent' | 'current' | 'sibling' | 'child';
+    type: 'parent' | 'current' | 'sibling' | 'child' | 'markdown';
     tooltip?: string;
     icon?: string;
     children: RelatedIssueNode[];
-    contextValue?: string; // 缓存的上下文值，用于优化性能
+    contextValue?: string;
 }

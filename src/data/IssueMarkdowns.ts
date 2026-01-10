@@ -431,3 +431,163 @@ export async function getAllPrompts(): Promise<PromptFile[]> {
     }
     return res;
 }
+
+// -------------------- Related notes lookup helpers --------------------
+export type LinkedFileParseResult = {
+    raw: string;
+    linkPath: string; // path portion after file: prefix and without fragment
+    fsPath?: string; // resolved absolute fsPath if possible
+    lineStart?: number;
+    lineEnd?: number;
+};
+
+function normalizeFsPath(p: string): string {
+    // Normalize and resolve path separators
+    return path.normalize(p);
+}
+
+/**
+ * 解析可能的 wiki-link 或文件路径，返回 path 与可选行范围
+ * 支持格式：[[file:notes/foo.md#L10-L12]]、[[notes/foo.md#L5]]、file:/abs/path、/abs/path、notes/foo.md
+ */
+export function parseLinkedFileString(raw: string): LinkedFileParseResult {
+    const res: LinkedFileParseResult = { raw, linkPath: raw };
+    let s = raw.trim();
+
+    // 支持 [[...|display]] 形式，取 | 前面的真实路径
+    if (s.startsWith("[[") && s.endsWith("]]")) {
+        s = s.slice(2, -2).trim();
+        const pipeIdx = s.indexOf("|");
+        if (pipeIdx !== -1) {
+            s = s.slice(0, pipeIdx).trim();
+        }
+    }
+
+    // 如果以 file: 开头，尝试解析为 file URI
+    if (s.startsWith("file:")) {
+        try {
+            const u = vscode.Uri.parse(s);
+            if (u && u.scheme === 'file' && u.fsPath) {
+                // 使用 fsPath 并保留 fragment（如果有）
+                s = u.fsPath + (u.fragment ? `#${u.fragment}` : "");
+            } else {
+                // 如果解析不成功，剥离前缀继续作为普通路径处理
+                s = s.slice(5);
+            }
+        } catch {
+            s = s.slice(5);
+        }
+    }
+
+    // 分离 fragment (#)
+    let pathPart = s;
+    let frag = "";
+    const hashIndex = s.indexOf("#");
+    if (hashIndex !== -1) {
+        pathPart = s.slice(0, hashIndex).trim();
+        frag = s.slice(hashIndex + 1).trim();
+    }
+
+    res.linkPath = pathPart;
+
+    // 解析 fragment 中的行范围，支持 L10, L10-L12, 10-12 等形式
+    if (frag) {
+        const m = frag.match(/(?:L)?(\d+)(?:-(?:L)?(\d+))?/i);
+        if (m) {
+            res.lineStart = parseInt(m[1], 10);
+            if (m[2]) {
+                res.lineEnd = parseInt(m[2], 10);
+            }
+        }
+    }
+
+    // 如果 linkPath 看起来是绝对路径或以 / 开头，则填充 fsPath
+    try {
+        if (res.linkPath && (path.isAbsolute(res.linkPath) || res.linkPath.startsWith(path.sep))) {
+            res.fsPath = normalizeFsPath(res.linkPath);
+        }
+    } catch (e) {
+        // ignore
+    }
+
+    return res;
+}
+
+/**
+ * 查找所有把指定文件作为关联写入 frontmatter.issue_linked_files 的 issue markdown
+ */
+export async function findNotesLinkedToFile(fileUri: vscode.Uri): Promise<IssueMarkdown[]> {
+    const targetFs = normalizeFsPath(fileUri.fsPath);
+    const all = await getAllIssueMarkdowns();
+    const res: IssueMarkdown[] = [];
+
+    for (const issue of all) {
+        const fm = issue.frontmatter;
+        if (!fm || !fm.issue_linked_files || fm.issue_linked_files.length === 0) continue;
+        const issueDir = path.dirname(issue.uri.fsPath);
+        for (const raw of fm.issue_linked_files) {
+            try {
+                const parsed = parseLinkedFileString(raw);
+                let candidateFs: string | undefined;
+                if (parsed.fsPath) {
+                    candidateFs = parsed.fsPath;
+                } else if (parsed.linkPath) {
+                    // 相对路径相对于 issue 文件目录解析
+                    const maybe = path.resolve(issueDir, parsed.linkPath);
+                    candidateFs = normalizeFsPath(maybe);
+                }
+
+                if (!candidateFs) continue;
+                if (candidateFs === targetFs) {
+                    res.push(issue);
+                    break;
+                }
+            } catch (e) {
+                // ignore individual parse errors
+            }
+        }
+    }
+
+    return res;
+}
+
+/**
+ * 查找所有在 frontmatter.issue_linked_workspace 中包含指定 workspace 路径或其父路径的 issue markdown
+ */
+export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Promise<IssueMarkdown[]> {
+    const targetFs = normalizeFsPath(workspaceUri.fsPath);
+    const all = await getAllIssueMarkdowns();
+    const res: IssueMarkdown[] = [];
+
+    for (const issue of all) {
+        const fm = issue.frontmatter;
+        if (!fm || !fm.issue_linked_workspace || fm.issue_linked_workspace.length === 0) continue;
+        for (const raw of fm.issue_linked_workspace) {
+            let s = raw.trim();
+            if (s.startsWith("[[") && s.endsWith("]]")) {
+                s = s.slice(2, -2).trim();
+            }
+            if (s.startsWith("workspace:")) {
+                try {
+                    const u = vscode.Uri.parse(s);
+                    if (u && u.fsPath) s = u.fsPath;
+                } catch {}
+            }
+            try {
+                const candidate = normalizeFsPath(s);
+                // 匹配相等或 target 包含 candidate（candidate 是父路径）
+                if (candidate === targetFs || targetFs.startsWith(candidate + path.sep)) {
+                    res.push(issue);
+                    break;
+                }
+            } catch {}
+        }
+    }
+
+    return res;
+}
+
+
+export function getIssueMarkdownContextValues(){
+    return 'issueMarkdown';
+}
