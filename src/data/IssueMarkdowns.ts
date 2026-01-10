@@ -542,11 +542,6 @@ export async function findNotesLinkedToFile(fileUri: vscode.Uri): Promise<IssueM
                     res.push(issue);
                     break;
                 }
-                // 兜底：按文件名匹配
-                if (path.basename(candidateFs) === path.basename(targetFs)) {
-                    res.push(issue);
-                    break;
-                }
             } catch (e) {
                 // ignore individual parse errors
             }
@@ -590,4 +585,9 @@ export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Prom
     }
 
     return res;
+}
+
+
+export function getIssueMarkdownContextValues(){
+    return 'issueMarkdown';
 }

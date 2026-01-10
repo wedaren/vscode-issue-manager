@@ -4,7 +4,7 @@
  */
 import * as vscode from 'vscode';
 import { readTree, TreeData, IssueTreeNode, getIssueNodeContextValue } from '../data/issueTreeManager';
-import { getIssueMarkdownTitle, findNotesLinkedToFile, findNotesLinkedToWorkspace } from '../data/IssueMarkdowns';
+import { getIssueMarkdownTitle, findNotesLinkedToFile, findNotesLinkedToWorkspace, getIssueMarkdownContextValues } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
@@ -50,6 +50,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                     children: [],
                     resourceUri: note.uri,
                     id: note.uri.toString() + ':fm',
+                    contextValue: getIssueMarkdownContextValues(),
                 } as RelatedIssueNode);
             }
 
@@ -65,6 +66,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                         children: [],
                         resourceUri: note.uri,
                         id: note.uri.toString() + ':ws',
+                        contextValue: getIssueMarkdownContextValues(),
                     } as RelatedIssueNode);
                 }
 
@@ -173,8 +175,8 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         if(element.type === 'markdown'){
             item.command = {
                 command: 'vscode.open',
-                title: '打开关联笔记',
-                arguments: [element.resourceUri]
+                title: '在侧边打开关联笔记',
+                arguments: [element.resourceUri, { viewColumn: vscode.ViewColumn.Beside }]
             };
         } else {
             item.command = element.resourceUri ? {
@@ -205,5 +207,5 @@ export interface RelatedIssueNode extends IssueTreeNode{
     tooltip?: string;
     icon?: string;
     children: RelatedIssueNode[];
-    contextValue?: string; // 缓存的上下文值，用于优化性能
+    contextValue?: string;
 }
