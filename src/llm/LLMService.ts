@@ -664,13 +664,13 @@ ${JSON.stringify(
             if (fullResp === null) {
                 return "";
             }
-            const full = fullResp.text;
+            return fullResp.text;
 
-            // 清理可能的 ```markdown ``` 包裹
-            const codeBlockMatch = full.match(/```(?:markdown)?\s*([\s\S]*?)\s*```/i);
-            const clean = codeBlockMatch && codeBlockMatch[1] ? codeBlockMatch[1] : full;
+            // // 清理可能的 ```markdown ``` 包裹
+            // const codeBlockMatch = full.match(/```(?:markdown)?\s*([\s\S]*?)\s*```/i);
+            // const clean = codeBlockMatch && codeBlockMatch[1] ? codeBlockMatch[1] : full;
 
-            return clean.trim();
+            // return clean.trim();
         } catch (error) {
             if (options?.signal?.aborted) {
                 return "";

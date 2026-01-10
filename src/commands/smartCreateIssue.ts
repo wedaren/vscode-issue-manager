@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { LLMService } from '../llm/LLMService';
 import { createIssueFile, addIssueToTree } from './issueFileUtils';
-import { readQuickPickData, writeQuickPickData, QuickPickPersistedData, IssueTreeNode } from '../data/issueTreeManager';
+import { readQuickPickData, writeQuickPickData, QuickPickPersistedData, IssueNode } from '../data/issueTreeManager';
 import { debounce } from '../utils/debounce';
 import { GitSyncService } from '../services/git-sync';
 import * as path from 'path';
@@ -84,7 +84,7 @@ async function processUris(
 ) {
     if (uris.length === 0) { return; }
 
-    let lastAdded: IssueTreeNode | null = null;
+    let lastAdded: IssueNode | null = null;
     if (addToTree) {
         try {
             const addedNodes = await addIssueToTree(uris, parentId, addToFocused);

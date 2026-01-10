@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { BaseCommandRegistry } from './BaseCommandRegistry';
-import { IssueTreeNode, readTree, writeTree, updateNodeExpanded, stripFocusedId } from '../../data/issueTreeManager';
+import { IssueNode, readTree, writeTree, updateNodeExpanded, stripFocusedId } from '../../data/issueTreeManager';
 import { debounce, DebouncedFunction } from '../../utils/debounce';
 import { Logger } from '../utils/Logger';
 
@@ -31,8 +31,8 @@ export class StateCommandRegistry extends BaseCommandRegistry {
      * @param focusedView 关注问题树视图
      */
     public registerExpandCollapseSync(
-        overviewView: vscode.TreeView<IssueTreeNode>,
-        focusedView: vscode.TreeView<IssueTreeNode>
+        overviewView: vscode.TreeView<IssueNode>,
+        focusedView: vscode.TreeView<IssueNode>
     ): void {
         if (!this.expandCollapseHandler) {
             this.expandCollapseHandler = new ExpandCollapseHandler();
@@ -169,7 +169,7 @@ class ExpandCollapseHandler {
      * @param treeView 要注册的树视图
      * @param viewName 视图名称，用于日志记录
      */
-    public registerTreeView(treeView: vscode.TreeView<IssueTreeNode>, viewName: string): void {
+    public registerTreeView(treeView: vscode.TreeView<IssueNode>, viewName: string): void {
         // 展开事件监听
         treeView.onDidExpandElement((e) => {
             this.handleExpandCollapse(e.element.id, true, viewName);

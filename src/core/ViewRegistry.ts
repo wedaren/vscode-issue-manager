@@ -19,7 +19,7 @@ import { GitBranchTreeProvider } from '../gitBranch/GitBranchTreeProvider';
 import { GitBranchCommandHandler } from '../gitBranch/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
-import { IssueTreeNode } from '../data/issueTreeManager';
+import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
@@ -163,7 +163,7 @@ export class ViewRegistry {
      */
     private registerOverviewView(): {
         issueOverviewProvider: IssueOverviewProvider;
-        overviewView: vscode.TreeView<IssueTreeNode>;
+        overviewView: vscode.TreeView<IssueNode>;
     } {
         const issueOverviewProvider = new IssueOverviewProvider(this.context);
         
@@ -172,7 +172,7 @@ export class ViewRegistry {
             dragAndDropController: new IssueDragAndDropController(issueOverviewProvider, 'overview'),
             canSelectMany: true,
             showCollapseAll: true
-        }) as vscode.TreeView<IssueTreeNode>;
+        }) as vscode.TreeView<IssueNode>;
         
         this.context.subscriptions.push(overviewView);
         
@@ -187,7 +187,7 @@ export class ViewRegistry {
      */
     private registerFocusedView(): {
         focusedIssuesProvider: FocusedIssuesProvider;
-        focusedView: vscode.TreeView<IssueTreeNode>;
+        focusedView: vscode.TreeView<IssueNode>;
     } {
         const focusedIssuesProvider = new FocusedIssuesProvider(this.context);
         
@@ -196,7 +196,7 @@ export class ViewRegistry {
             dragAndDropController: new IssueDragAndDropController(focusedIssuesProvider, 'focused'),
             canSelectMany: true,
             showCollapseAll: true
-        }) as vscode.TreeView<IssueTreeNode>;
+        }) as vscode.TreeView<IssueNode>;
         
         this.context.subscriptions.push(focusedView);
         

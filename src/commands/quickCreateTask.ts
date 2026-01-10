@@ -39,7 +39,17 @@ export async function quickCreateTask(markerManager: MarkerManager | undefined, 
                 await markerManager.archiveCurrentTask();
                 await markerManager.associateIssueToCurrentTask(createdId);
             }
-        } 
+        } else if (currentTask && currentTask.associatedIssueId) {
+            const choice = await vscode.window.showInformationMessage(
+                '当前标记任务已关联一个问题。是否将其关联更新为新建的问题？',
+                { modal: true },
+                '更新关联',
+            );
+
+            if (choice === '更新关联') {
+                await markerManager.associateIssueToCurrentTask(createdId);
+            }
+        }
     } catch (e) {
         console.error('处理标记视图归档/关联时出错', e);
     }

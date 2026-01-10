@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { generateFileName } from '../utils/fileUtils';
-import { readTree, addNode, writeTree, IssueTreeNode } from '../data/issueTreeManager';
+import { readTree, addNode, writeTree, IssueNode } from '../data/issueTreeManager';
 import { addFocus } from '../data/focusedManager';
 
 /**
@@ -57,7 +57,7 @@ export async function createIssueFileSilent(title: string, content?: string): Pr
  * @param parentId 父节点的 ID，如果为 null 则作为根节点
  * @param isAddToFocused 是否将新添加的节点添加到关注列表
  */
-export async function addIssueToTree(issueUris: vscode.Uri[], parentId: string | null, isAddToFocused: boolean = true): Promise<IssueTreeNode[] | null> {
+export async function addIssueToTree(issueUris: vscode.Uri[], parentId: string | null, isAddToFocused: boolean = true): Promise<IssueNode[] | null> {
 	const issueDir = getIssueDir();
 	if (!issueDir) { return null; } // 安全检查
 

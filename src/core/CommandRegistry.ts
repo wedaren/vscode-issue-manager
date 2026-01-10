@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueTreeNode, readTree, removeNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
-import { isIssueTreeNode } from '../utils/treeUtils';
+import { IssueNode, readTree, isIssueNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -27,7 +26,7 @@ const VIEW_REVEAL_DELAY_MS = 300;
 const EXPAND_ANIMATION_DELAY_MS = 100;
 
 // 重新导入外部命令注册函数
-import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand } from '../commands/openIssueDir';
+import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand, registerOpenVscodeSIEMDirCommand } from '../commands/openIssueDir';
 import { registerDisassociateIssueCommand } from '../commands/disassociateIssue';
 import { registerSearchIssuesCommand } from '../commands/searchIssues';
 import { registerDeleteIssueCommand } from '../commands/deleteIssue';
@@ -138,8 +137,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         focusedIssuesProvider: IFocusedIssuesProvider,
         issueOverviewProvider: IIssueOverviewProvider,
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
-        overviewView: vscode.TreeView<IssueTreeNode>,
-        focusedView: vscode.TreeView<IssueTreeNode>,
+        overviewView: vscode.TreeView<IssueNode>,
+        focusedView: vscode.TreeView<IssueNode>,
         // issueStructureProvider: IssueStructureProvider,
         // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
@@ -186,7 +185,7 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 6. 注册“打开并定位”命令
             this.context.subscriptions.push(
-                vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueTreeNode, type: 'focused' | 'overview') => {
+                vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueNode, type: 'focused' | 'overview') => {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
                     const uri = node.resourceUri;
@@ -321,9 +320,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const [node, nodes] = args;
                 if (nodes && Array.isArray(nodes) && nodes.length > 0) {
-                    const validNodes = nodes.filter(isIssueTreeNode);
+                    const validNodes = nodes.filter(isIssueNode);
                     await moveIssuesTo(validNodes);
-                } else if (node && isIssueTreeNode(node)) {
+                } else if (node && isIssueNode(node)) {
                     await moveIssuesTo([node]);
                 } else {
                     this.logger.warn('moveTo 命令需要一个有效的树节点参数。');
@@ -339,9 +338,9 @@ export class CommandRegistry extends BaseCommandRegistry {
             async (...args: unknown[]) => {
                 const [node, nodes] = args;
                 if (nodes && Array.isArray(nodes) && nodes.length > 0) {
-                    const validNodes = nodes.filter(isIssueTreeNode);
+                    const validNodes = nodes.filter(isIssueNode);
                     await attachIssuesTo(validNodes);
-                } else if (node && isIssueTreeNode(node)) {
+                } else if (node && isIssueNode(node)) {
                     await attachIssuesTo([node]);
                 } else {
                     this.logger.warn('attachTo 命令需要一个有效的树节点参数。');
@@ -515,6 +514,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 这些命令在其他模块中定义，直接调用注册函数
         registerOpenIssueDirCommand(this.context);
         registerOpenvscodeIssueManagerDirCommand(this.context);
+        registerOpenVscodeSIEMDirCommand(this.context);
         registerSearchIssuesCommand(this.context);
         registerDeleteIssueCommand(this.context);
         registerFocusCommands(this.context);
@@ -653,7 +653,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             (displayName: string) => `添加问题到 ${displayName}`,
             async (category: ParaCategory, args: unknown[]) => {
                 const node = args[0];
-                if (node && isIssueTreeNode(node)) {
+                if (node && isIssueNode(node)) {
                     const id = stripFocusedId(node.id);
                     await addIssueToParaCategory(category, id);
                 }
@@ -690,7 +690,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             (displayName: string) => `在 ${displayName} 中查看`,
             async (category: ParaCategory, args: unknown[]) => {
                 const node = args[0];
-                if (node && isIssueTreeNode(node)) {
+                if (node && isIssueNode(node)) {
                     await this.revealInParaView(node, category);
                 }
             }
@@ -772,7 +772,7 @@ export class CommandRegistry extends BaseCommandRegistry {
      * @param treeNode 已存在的树节点实例
      * @param category PARA类别
      */
-    private async revealInParaView(treeNode: IssueTreeNode, category: ParaCategory): Promise<void> {
+    private async revealInParaView(treeNode: IssueNode, category: ParaCategory): Promise<void> {
 
         try {
             if (!this.paraView) {

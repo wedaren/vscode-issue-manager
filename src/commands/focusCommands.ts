@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { addFocus, pinFocus, removeFocus } from '../data/focusedManager';
-import { IssueTreeNode, stripFocusedId, getFlatTree } from '../data/issueTreeManager';
+import { IssueNode, stripFocusedId, getFlatTree } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { addIssueToTree } from './issueFileUtils';
 import { getIssueIdFromUri } from '../utils/uriUtils';
@@ -12,7 +12,7 @@ import { GitSyncService } from '../services/git-sync';
  */
 export function registerFocusCommands(context: vscode.ExtensionContext) {
     // 注册"添加到关注"命令
-    const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueTreeNode) => {
+    const focusIssueCommand = vscode.commands.registerCommand('issueManager.focusIssue', async (node: IssueNode) => {
         const issueDir = getIssueDir();
         if (!issueDir) { return; }
         if (!node || !node.id) {
@@ -73,7 +73,7 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
 
 
     // 注册"移除关注"命令
-    const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueTreeNode) => {
+    const removeFocusCommand = vscode.commands.registerCommand('issueManager.removeFocus', async (node: IssueNode) => {
         if (!node?.id) {
             vscode.window.showErrorMessage('未找到要移除关注的问题节点。');
             return;
@@ -86,7 +86,7 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
     context.subscriptions.push(removeFocusCommand);
 
     // 注册"置顶关注"命令
-    context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', async (node: IssueTreeNode) => {
+    context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinFocus', async (node: IssueNode) => {
         if (node?.id) {
             const realId = stripFocusedId(node.id);
             await pinFocus(realId);

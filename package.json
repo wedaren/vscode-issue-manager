@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "3.0.23",
+  "version": "3.0.28",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -512,11 +512,12 @@
       {
         "command": "issueManager.gitBranch.checkout",
         "title": "检出分支",
-        "icon": "$(git-branch)"
+        "icon": "$(git-fetch)"
       },
       {
         "command": "issueManager.gitBranch.createBranchFrom",
-        "title": "基于该分支新建分支"
+        "title": "基于该分支新建分支",
+        "icon": "$(git-pull-request-create)"
       },
       {
         "command": "issueManager.gitBranch.delete",
@@ -878,6 +879,11 @@
           "group": "inline"
         },
         {
+          "command": "issueManager.gitBranch.createBranchFrom",
+          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*BranchDeletable/",
+          "group": "inline"
+        },
+        {
           "command": "issueManager.gitBranch.delete",
           "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*BranchDeletable/",
           "group": "inline"
@@ -1142,6 +1148,12 @@
         "command": "issueManager.openRecentView",
         "key": "ctrl+j ctrl+r",
         "mac": "cmd+j cmd+r",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.openvscodeSIEM",
+        "key": "ctrl+j ctrl+s",
+        "mac": "cmd+j cmd+s",
         "when": "issueManager.isDirConfigured"
       },
       {

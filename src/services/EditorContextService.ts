@@ -3,7 +3,7 @@ import * as path from 'path';
 import { Logger } from '../core/utils/Logger';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { getIssueDir } from '../config';
-import { readTree, type IssueTreeNode } from '../data/issueTreeManager';
+import { readTree, type IssueNode } from '../data/issueTreeManager';
 
 /**
  * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。
@@ -109,7 +109,7 @@ export class EditorContextService implements vscode.Disposable {
             this.validIssueIds.clear();
             
             // 递归收集所有节点的 ID
-            const collectIds = (nodes: IssueTreeNode[]) => {
+            const collectIds = (nodes: IssueNode[]) => {
                 for (const node of nodes) {
                     if (node.id) {
                         this.validIssueIds.add(node.id);

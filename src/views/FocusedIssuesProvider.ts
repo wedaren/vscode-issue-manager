@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
-import { readTree, IssueTreeNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
+import { readTree, IssueNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
 
@@ -12,13 +12,13 @@ import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
  * 关注问题视图的 TreeDataProvider。
  * 仅实现基础框架，后续补充过滤树逻辑。
  */
-export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
-  private _onDidChangeTreeData: EventEmitter<IssueTreeNode | undefined | void> = new EventEmitter<IssueTreeNode | undefined | void>();
-  readonly onDidChangeTreeData: Event<IssueTreeNode | undefined | void> = this._onDidChangeTreeData.event;
+export class FocusedIssuesProvider implements TreeDataProvider<IssueNode> {
+  private _onDidChangeTreeData: EventEmitter<IssueNode | undefined | void> = new EventEmitter<IssueNode | undefined | void>();
+  readonly onDidChangeTreeData: Event<IssueNode | undefined | void> = this._onDidChangeTreeData.event;
 
   private treeData: TreeData | null = null;
   private focusedData: FocusedData | null = null;
-  private filteredTreeCache: IssueTreeNode[] | null = null;
+  private filteredTreeCache: IssueNode[] | null = null;
   constructor(private context: vscode.ExtensionContext) {
     // 监听配置变更，当 maxItems 改变时裁剪列表并刷新视图
     context.subscriptions.push(
@@ -56,7 +56,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   }
 
 
-  async getTreeItem(element: IssueTreeNode): Promise<vscode.TreeItem> {
+  async getTreeItem(element: IssueNode): Promise<vscode.TreeItem> {
     const issueDir = getIssueDir();
     if (!issueDir || !this.treeData) {
       throw new Error("Issue directory or tree data is not available.");
@@ -106,11 +106,11 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
    * 构建关注过滤树：focusList 中每个节点都独立作为顶层，完整展示其子树。
    * 为避免 VS Code TreeView id 冲突，顶层节点 id 加特殊后缀。
    */
-  private buildFilteredTree(): IssueTreeNode[] {
+  private buildFilteredTree(): IssueNode[] {
     if (!this.treeData || !this.focusedData) { return []; }
-    const idToNode = new Map<string, IssueTreeNode>();
+    const idToNode = new Map<string, IssueNode>();
     // 建立 id 到节点的映射
-    const collectMap = (nodes: IssueTreeNode[]) => {
+    const collectMap = (nodes: IssueNode[]) => {
       for (const node of nodes) {
         idToNode.set(node.id, node);
         if (node.children) { collectMap(node.children); }
@@ -119,8 +119,8 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
     collectMap(this.treeData.rootNodes);
 
     // 每个 focusList 节点都独立收集其完整子树，顶层节点 id 加后缀
-    const result: IssueTreeNode[] = [];
-    const collectDescendants = (node: IssueTreeNode, rootId: string): IssueTreeNode => {
+    const result: IssueNode[] = [];
+    const collectDescendants = (node: IssueNode, rootId: string): IssueNode => {
       return {
         ...node,
         id: toFocusedId(node.id, rootId),
@@ -131,7 +131,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
       const node = idToNode.get(id);
       if (node) {
         // 顶层节点 id 加后缀，避免与树中其他位置重复
-        const topNode: IssueTreeNode = {
+        const topNode: IssueNode = {
           ...collectDescendants(node, id),
           id: toFocusedId(id, id),
         };
@@ -145,16 +145,16 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
    * 获取指定元素的父节点。
    * 此方法是 TreeDataProvider 接口的一部分，用于支持 `reveal` 等操作。
    * @param element 要查找其父节点的元素。
-   * @returns 父节点 `IssueTreeNode`，如果元素是根节点或未找到，则返回 `null`。
+   * @returns 父节点 `IssueNode`，如果元素是根节点或未找到，则返回 `null`。
    */
-  getParent(element: IssueTreeNode): IssueTreeNode | null {
+  getParent(element: IssueNode): IssueNode | null {
     if (!this.treeData || !this.focusedData) { return null; }
     const filtered = this.getFilteredTreeFromCache();
     return findParentNodeById(filtered, element.id, (child, target) => stripFocusedId(child.id) === stripFocusedId(target));
   }
-  findFirstFocusedNodeById(id: string): { node: IssueTreeNode, parentList: IssueTreeNode[] } | null {
+  findFirstFocusedNodeById(id: string): { node: IssueNode, parentList: IssueNode[] } | null {
 
-    function findFirstNodeById(nodes: IssueTreeNode[], id: string): { node: IssueTreeNode, parentList: IssueTreeNode[] } | null {
+    function findFirstNodeById(nodes: IssueNode[], id: string): { node: IssueNode, parentList: IssueNode[] } | null {
       for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
         if (stripFocusedId(node.id) === stripFocusedId(id)) {
@@ -175,17 +175,17 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueTreeNode> {
   }
 
 
-  getFilteredTreeFromCache(): IssueTreeNode[] {
+  getFilteredTreeFromCache(): IssueNode[] {
     if (!this.filteredTreeCache) {
       this.filteredTreeCache = this.buildFilteredTree();
     }
     return this.filteredTreeCache;
   }
-  setFilteredTreeCache(filteredTree: IssueTreeNode[]): void {
+  setFilteredTreeCache(filteredTree: IssueNode[]): void {
     this.filteredTreeCache = filteredTree;
   }
 
-  getChildren(element?: IssueTreeNode): Thenable<IssueTreeNode[]> {
+  getChildren(element?: IssueNode): Thenable<IssueNode[]> {
     if (!this.treeData || !this.focusedData) { return Promise.resolve([]); }
     if (!element) {
       const filtered = this.buildFilteredTree();

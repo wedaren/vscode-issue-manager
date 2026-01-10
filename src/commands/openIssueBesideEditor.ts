@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
-import { isIssueTreeNode } from "../utils/treeUtils";
-import { readTree, findNodeById, stripFocusedId, getIssueNodeById } from "../data/issueTreeManager";
+import { isIssueNode, stripFocusedId, getIssueNodeById } from "../data/issueTreeManager";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 
 export async function registerOpenIssueBesideEditorHandler(...args: unknown[]) {
@@ -10,7 +9,7 @@ export async function registerOpenIssueBesideEditorHandler(...args: unknown[]) {
         const first = args && args.length > 0 ? args[0] : undefined;
 
         if (first) {
-            if (isIssueTreeNode(first)) {
+            if (isIssueNode(first)) {
                 const node = first as any;
                 issueId = stripFocusedId(node.id);
                 sourceUri = node.resourceUri;
