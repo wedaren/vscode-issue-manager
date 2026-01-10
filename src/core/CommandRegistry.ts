@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
-import { IssueNode, readTree, isIssueNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById } from '../data/issueTreeManager';
+import { IssueNode, readTree, isIssueNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById, createIssueNodes } from '../data/issueTreeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
 import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
@@ -56,6 +56,7 @@ import { registerUnifiedQuickOpenCommand } from '../commands/unifiedQuickOpen';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
+import { getIssueMarkdown } from '../data/IssueMarkdowns';
 
 
 
@@ -400,27 +401,12 @@ export class CommandRegistry extends BaseCommandRegistry {
 
                 const uri = editor.document.uri;
                 const issueId = getIssueIdFromUri(uri);
-                
-                if (!issueId) {
-                    vscode.window.showWarningMessage('当前文档不包含问题 ID，无法执行关联操作。');
-                    return;
-                }
-
-                try {
-                    // 从树结构中查找节点
-                    const tree = await readTree();
-                    const result = findNodeById(tree.rootNodes, issueId);
-                    
-                    if (!result) {
-                        vscode.window.showWarningMessage('未在问题树中找到当前问题的节点。');
-                        return;
-                    }
-
-                    // 调用关联命令
-                    await attachIssuesTo([result.node]);
-                } catch (error) {
-                    this.logger.error('从编辑器关联问题失败', error);
-                    vscode.window.showErrorMessage(`关联问题失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                if(issueId) {
+                    const node = await getIssueNodeById(issueId);
+                    node && await attachIssuesTo([node]);
+                } else {
+                    const nodes = await createIssueNodes([uri]);
+                    nodes && await attachIssuesTo(nodes);
                 }
             },
             '从编辑器关联问题'

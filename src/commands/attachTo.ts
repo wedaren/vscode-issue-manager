@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { readTree, writeTree, IssueNode, stripFocusedId } from '../data/issueTreeManager';
-import { convertTreeItemToTreeNode, isTreeItem, pickTargetWithQuickCreate, buildTopLevelNodes, insertNodesAtPick } from './moveHelpers';
+import { readTree, writeTree, IssueNode, stripFocusedId, isAncestor } from '../data/issueTreeManager';
+import { pickTargetWithQuickCreate } from './moveHelpers';
 import { v4 as uuidv4 } from 'uuid';
 
 function cloneNodeWithNewIds(node: IssueNode): IssueNode {
@@ -12,50 +12,49 @@ function cloneNodeWithNewIds(node: IssueNode): IssueNode {
     };
 }
 
-export async function attachIssuesTo(selectedNodes: (IssueNode | vscode.TreeItem)[]) {
-    if (!selectedNodes || selectedNodes.length === 0) {
-        vscode.window.showWarningMessage('请先选择要关联的节点。');
+export async function attachIssuesTo(selectedNodes: (IssueNode)[]) {
+    if (selectedNodes.length === 0) {
         return;
     }
 
-    const tree = await readTree();
-    const issueFileNodes: vscode.TreeItem[] = [];
-    const selectedTreeNodes: IssueNode[] = [];
+    selectedNodes.forEach(i => i.id = stripFocusedId(i.id));
 
-    selectedNodes.forEach(node => {
-        if (isTreeItem(node)) {
-            issueFileNodes.push(node);
-        } else {
-            selectedTreeNodes.push(node as IssueNode);
-        }
-    });
-
-    let convertedNodes: IssueNode[];
-    try {
-        convertedNodes = issueFileNodes.map(item => convertTreeItemToTreeNode(item));
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        vscode.window.showErrorMessage(`关联问题失败: ${message}`);
-        return;
+    // 当 source 包含 IssueNode 时，若存在子节点，询问是否同时关联子节点
+    let includeChildren = true;
+    const hasChildren = selectedNodes.some(n => n.children && n.children.length > 0);
+    if (hasChildren) {
+        const choice = await vscode.window.showWarningMessage(
+            '所选问题包含子问题，是否同时将子问题一起关联到目标？',
+            { modal: true },
+            '是',
+            '否'
+        );
+        if (!choice) return; // 取消
+        includeChildren = choice === '是';
     }
 
-    const allNodesToProcess = [...selectedTreeNodes, ...convertedNodes];
-    allNodesToProcess.forEach(i => i.id = stripFocusedId(i.id));
-
-    const pick = await pickTargetWithQuickCreate(selectedTreeNodes);
+    const pick = await pickTargetWithQuickCreate(selectedNodes);
     if (!pick) return;
-    const topLevelTreeNodes = buildTopLevelNodes(tree.rootNodes, selectedTreeNodes);
-    const clonedTopLevelNodes = topLevelTreeNodes.map(n => cloneNodeWithNewIds(n));
-
-    const allTopLevelNodesToInsert = [...clonedTopLevelNodes, ...convertedNodes];
-    insertNodesAtPick(tree, pick, allTopLevelNodesToInsert);
-
-    await writeTree(tree);
-    vscode.commands.executeCommand('issueManager.refreshAllViews');
-
-    if (issueFileNodes.length > 0) {
-        vscode.window.showInformationMessage(`已在目标处关联 ${issueFileNodes.length} 个问题文件和 ${selectedTreeNodes.length} 个问题节点。`);
-    } else {
+    
+    const tree = await readTree();
+    // 额外校验：确保目标不是自身或其子节点（双重保险）
+    if (pick.node) {
+        const targetId = stripFocusedId(pick.node.id);
+        for (const sel of selectedNodes) {
+            const selId = sel.id;
+            if (selId === targetId || isAncestor(tree, selId, targetId)) {
+                vscode.window.showWarningMessage('不能将节点关联到自身或其子节点，请选择其他目标。');
+                return;
+            }
+        }
+        const clonedNodes = selectedNodes.map(n => cloneNodeWithNewIds(includeChildren ? n : { ...n, children: [] }));
+        if (pick.node?.children) {
+            pick.node.children.unshift(...clonedNodes);
+        } else {
+            pick.node.children = clonedNodes;
+        }
+        await writeTree(tree);
+        vscode.commands.executeCommand('issueManager.refreshAllViews');
         vscode.window.showInformationMessage('节点已成功关联。');
     }
 }
