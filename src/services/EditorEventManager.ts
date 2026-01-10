@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isIssueMarkdownFile } from '../utils/fileUtils';
+import { isIssueMarkdownFile } from '../data/IssueMarkdowns';
 
 /**
  * 编辑器事件管理器

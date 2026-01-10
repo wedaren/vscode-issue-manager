@@ -2,19 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { getRelativePathToIssueDir } from '../utils/fileUtils';
 import { getIssueMarkdownTitle, getIssueMarkdownTitleFromCache } from './IssueMarkdowns';
 import { getCategoryIcon, getIssueCategory } from './paraManager';
-
-/**
- * 获取文件相对于 issueDir 的路径。
- * @param filePath 文件的绝对路径。
- * @returns 相对于 issueDir 的路径，如果文件不在 issueDir 内则返回 null。
- * @deprecated 请使用 getRelativePathToIssueDir 函数替代
- */
-export function getRelativePath(filePath: string): string | null {
-  return getRelativePathToIssueDir(filePath);
-}
 
 /**
  * Issue, 其背后是 IssueMarkdwon ，即 filePath 所指向的文件。

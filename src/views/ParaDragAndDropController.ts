@@ -5,7 +5,7 @@ import {
   getCategoryLabel
 } from '../data/paraManager';
 import { readTree, IssueNode, TreeData } from '../data/issueTreeManager';
-import { getRelativePathToIssueDir } from '../utils/fileUtils';
+import { getIssueFilePath } from '../data/IssueMarkdowns';
 import { ParaViewNode } from '../types';
 
 /**
@@ -147,7 +147,7 @@ export class ParaDragAndDropController implements vscode.TreeDragAndDropControll
       let movedCount = 0;
       for (const uriString of uris) {
         const uri = vscode.Uri.parse(uriString);
-        const relativePath = getRelativePathToIssueDir(uri.fsPath);
+        const relativePath = getIssueFilePath(uri);
         
         if (!relativePath) {
           continue;
