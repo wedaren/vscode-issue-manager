@@ -21,18 +21,16 @@ export async function attachIssuesTo(selectedNodes: (IssueNode)[]) {
 
     // 当 source 包含 IssueNode 时，若存在子节点，询问是否同时关联子节点
     let includeChildren = true;
-    if (selectedNodes.length > 0) {
-        const hasChildren = selectedNodes.some(n => n.children && n.children.length > 0);
-        if (hasChildren) {
-            const choice = await vscode.window.showWarningMessage(
-                '所选问题包含子问题，是否同时将子问题一起关联到目标？',
-                { modal: true },
-                '是',
-                '否'
-            );
-            if (!choice) return; // 取消
-            includeChildren = choice === '是';
-        }
+    const hasChildren = selectedNodes.some(n => n.children && n.children.length > 0);
+    if (hasChildren) {
+        const choice = await vscode.window.showWarningMessage(
+            '所选问题包含子问题，是否同时将子问题一起关联到目标？',
+            { modal: true },
+            '是',
+            '否'
+        );
+        if (!choice) return; // 取消
+        includeChildren = choice === '是';
     }
 
     const pick = await pickTargetWithQuickCreate(selectedNodes);
@@ -49,10 +47,11 @@ export async function attachIssuesTo(selectedNodes: (IssueNode)[]) {
                 return;
             }
         }
-        if(pick.node?.children){
-            pick.node.children.unshift(...selectedNodes.map(n=>cloneNodeWithNewIds(n)));
-        } else  {
-            pick.node.children = selectedNodes.map(n=>cloneNodeWithNewIds(n));
+        const clonedNodes = selectedNodes.map(n => cloneNodeWithNewIds(includeChildren ? n : { ...n, children: [] }));
+        if (pick.node?.children) {
+            pick.node.children.unshift(...clonedNodes);
+        } else {
+            pick.node.children = clonedNodes;
         }
         await writeTree(tree);
         vscode.commands.executeCommand('issueManager.refreshAllViews');
