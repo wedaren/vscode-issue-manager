@@ -129,6 +129,20 @@ export type IssueMarkdown = {
     frontmatter?: FrontmatterData | null;
 };
 
+
+/**
+ * 类型守卫：判断对象是否为 IssueMarkdown
+ * 目的：避免在多个文件中重复实现相同的检查逻辑
+ */
+export function isIssueMarkdown(item: unknown): item is IssueMarkdown {
+    return !!item && typeof item === 'object' && 'title' in item && 'uri' in item;
+}
+
+export async function getIssueMarkdown(file: vscode.Uri): Promise<IssueMarkdown> {
+    const title = await getIssueMarkdownTitle(file);
+    const frontmatter = await getIssueMarkdownFrontmatter(file);
+    return { title, uri: file, frontmatter };
+}
 /**
  * 获取问题目录中所有 Markdown 文件的标题和 URI。
  * @returns 包含标题和 URI 的对象数组。
@@ -138,9 +152,8 @@ export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
     const issues: IssueMarkdown[] = [];
 
     for (const file of files) {
-        const title = await getIssueMarkdownTitle(file);
-        const frontmatter = await getIssueMarkdownFrontmatter(file);
-        issues.push({ title, uri: file, frontmatter });
+        const issueMarkdown = await getIssueMarkdown(file);
+        issues.push(issueMarkdown);
     }
 
     return issues;
