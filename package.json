@@ -1230,6 +1230,13 @@
         "when": "issueManager.isDirConfigured"
       },
       {
+        "command": "issueManager.unifiedQuickOpen",
+        "key": "ctrl+j ctrl+shift+l",
+        "mac": "cmd+j cmd+shift+l",
+        "when": "issueManager.isDirConfigured",
+        "args": { "mode": "llm" }
+      },
+      {
         "command": "issueManager.linkCurrentFileToIssue",
         "key": "ctrl+j ctrl+k",
         "mac": "cmd+j cmd+k",
