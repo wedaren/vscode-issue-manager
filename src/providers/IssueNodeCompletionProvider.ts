@@ -5,6 +5,7 @@ import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completion
 import { getIssueDir } from '../config';
 import { readFocused } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
+import { getIssueFilePath } from '../data/IssueMarkdowns';
 
 /**
  * 带节点信息的补全项
@@ -203,11 +204,9 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             displayTitle = title;
         }
         
-        // 计算相对路径（相对于当前文档所在目录）
-        const currentDir = path.dirname(document.uri.fsPath);
         const issueDir = getIssueDir();
         const absolutePath = issueDir ? path.join(issueDir, node.filePath) : node.filePath;
-        const relativePath = path.relative(currentDir, absolutePath);
+        const relativePath = node.filePath;
         
         // 创建补全项，优先把父路径放到 label.description 以便在紧凑视图中展示
         const parentPathStr = node.parentPath && node.parentPath.length > 0 ? node.parentPath.map(n => n.title).join(' / ') : undefined;

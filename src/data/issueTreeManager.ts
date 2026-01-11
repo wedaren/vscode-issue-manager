@@ -28,6 +28,7 @@ export interface TreeData {
 export interface FlatTreeNode extends IssueNode {
   parentPath: FlatTreeNode[];
   title: string;
+  resourceUri: vscode.Uri;
 }
 
 /**
@@ -62,7 +63,8 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
       const flatNode: FlatTreeNode = {
         ...node,
         title,
-        parentPath: [...parents]
+        parentPath: [...parents],
+        resourceUri: node.resourceUri!,
       };
       
       result.push(flatNode);

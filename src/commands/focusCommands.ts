@@ -33,7 +33,7 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage('未找到要关注的问题文件。');
             return;
         }
-        await addIssueToTree([node.resourceUri], null, true);
+        await addIssueToTree([node.resourceUri], undefined, true);
         vscode.window.showInformationMessage('已添加到关注问题。');
         // 触发同步
         GitSyncService.getInstance().triggerSync();
@@ -63,7 +63,7 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             vscode.commands.executeCommand('issueManager.refreshAllViews');
         } else {
             // 如果没有 issueId（孤立问题），先添加到问题总览再添加到关注视图
-            await addIssueToTree([uri], null, true);
+            await addIssueToTree([uri], undefined, true);
         }
         vscode.window.showInformationMessage('已添加到关注问题。');
         // 触发同步

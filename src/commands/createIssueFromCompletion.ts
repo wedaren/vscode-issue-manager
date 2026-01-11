@@ -30,8 +30,8 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
     }
 }
 
-export function parseCreateIssueArgs(args: unknown[]): { parentId: string | null; titleArg?: string; background: boolean; insertMode: string; hasTrigger: boolean } {
-    const parentId = args && args.length > 0 && (typeof args[0] === 'string' ? args[0] as string : null) || null;
+export function parseCreateIssueArgs(args: unknown[]): { parentId?: string | undefined; titleArg?: string; background: boolean; insertMode: string; hasTrigger: boolean } {
+    const parentId = args && args.length > 0 && (typeof args[0] === 'string' ? args[0] as string : undefined) || undefined;
     const titleArg = args && args.length > 1 && typeof args[1] === 'string' ? args[1] as string : undefined;
     const background = args && args.length > 2 && typeof args[2] === 'boolean' ? args[2] as boolean : false;
     const insertMode = args && args.length > 3 && typeof args[3] === 'string' ? args[3] as string : 'relativePath';
@@ -39,7 +39,7 @@ export function parseCreateIssueArgs(args: unknown[]): { parentId: string | null
     return { parentId, titleArg, background, insertMode, hasTrigger };
 }
 
-export async function createAndOpenIssue(title: string, parentId: string | null): Promise<{ uri?: vscode.Uri; newNodeId?: string | undefined }> {
+export async function createAndOpenIssue(title: string, parentId?: string): Promise<{ uri?: vscode.Uri; newNodeId?: string | undefined }> {
     const uri = await createIssueFileSilent(title);
     if (!uri) { return { }; }
 

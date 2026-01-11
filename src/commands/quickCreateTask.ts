@@ -9,7 +9,7 @@ import { MarkerManager } from '../marker/MarkerManager';
  * @param parentId 可选的父问题 ID，新问题将作为其子问题。  
  * @returns 返回创建的问题 ID，如果创建失败或取消则返回 null。  
  */  
-export async function quickCreateTask(markerManager: MarkerManager | undefined, parentId: string | null = null): Promise<string | null> {
+export async function quickCreateTask(markerManager: MarkerManager | undefined, parentId: string | undefined = undefined): Promise<string | null> {
     const createdId = await quickCreateIssue(parentId);
     if (!createdId) { return null; }
 
