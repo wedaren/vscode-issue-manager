@@ -35,7 +35,6 @@ import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { quickCreateIssue } from '../commands/quickCreateIssue';
-import { quickCreateTask } from '../commands/quickCreateTask';
 import { executeCreateIssueFromCompletion } from '../commands/createIssueFromCompletion';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
@@ -56,7 +55,6 @@ import { registerUnifiedQuickOpenCommand } from '../commands/unifiedQuickOpen';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
-import { getIssueMarkdown } from '../data/IssueMarkdowns';
 
 
 
@@ -273,15 +271,6 @@ export class CommandRegistry extends BaseCommandRegistry {
             '快速新建问题'
         );
 
-        // 快速新建任务（委托到 commands/quickCreateTask.ts）
-        this.registerCommand(
-            'issueManager.quickCreateTask',
-            async (...args: unknown[]) => {
-                const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : undefined;
-                await quickCreateTask(this.markerManager, parentId);
-            },
-            '快速新建任务'
-        );
 
         // 支持从补全直接创建问题（CompletionItem 直接调用，无 QuickPick）
         this.registerCommand(
@@ -939,9 +928,4 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // note: copilotDiffSaveResult command was removed per user request
     }
-
-    /**
-     * 注册笔记映射命令
-     */
-    // 笔记映射命令与视图已移除
 }

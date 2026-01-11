@@ -514,14 +514,28 @@ export class MarkerManager {
             return;
         }
 
+        // 计算已存在的文件路径，用于去重（避免重复为同一文件创建标记）
+        const existingPaths = new Set<string>(this.data.currentTask.markers.map(m => m.filePath || ''));
+        let importedCount = 0;
+
         // 依次打开、创建标记并关闭
         for (const uri of uris) {
             try {
+                const fsPath = uri.fsPath || uri.toString();
+                if (existingPaths.has(fsPath)) {
+                    // 已存在相同文件的标记，跳过
+                    continue;
+                }
+
                 const doc = await vscode.workspace.openTextDocument(uri);
                 const editor = await vscode.window.showTextDocument(doc, { preview: false });
 
                 // 创建标记（追加到末尾）
                 await this.createMarker(undefined, editor);
+
+                // 记录已导入的路径，避免重复导入同一文件
+                existingPaths.add(fsPath);
+                importedCount++;
 
                 // 关闭当前活动编辑器（刚打开的那个）
                 await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
@@ -531,7 +545,104 @@ export class MarkerManager {
             }
         }
 
-        vscode.window.showInformationMessage(`已导入 ${uris.length} 个编辑器为标记并关闭它们`);
+        vscode.window.showInformationMessage(`已导入 ${importedCount} 个编辑器为标记并关闭它们`);
+    }
+
+    /**
+     * 将所有打开的编辑器静默加入当前任务（使用编号作为标记文本），并关闭这些编辑器
+     */
+    async importAllOpenEditorsSilent(): Promise<void> {
+        const uris: vscode.Uri[] = [];
+        try {
+            for (const group of vscode.window.tabGroups.all) {
+                for (const tab of group.tabs) {
+                    const input = tab.input as { uri?: vscode.Uri };
+                    if (input?.uri) {
+                        uris.push(input.uri);
+                    }
+                }
+            }
+        } catch (e) {
+            // ignore
+        }
+
+        if (uris.length === 0) {
+            const seen = new Set<string>();
+            for (const ed of vscode.window.visibleTextEditors) {
+                const u = ed.document.uri;
+                if (!seen.has(u.toString())) {
+                    uris.push(u);
+                    seen.add(u.toString());
+                }
+            }
+        }
+
+        if (uris.length === 0) {
+            vscode.window.showInformationMessage('没有打开的编辑器可导入');
+            return;
+        }
+
+        // 基于当前任务已存在的 filePath 做去重，避免重复为同一文件创建标记
+        const existingPaths = new Set<string>(this.data.currentTask.markers.map(m => m.filePath || ''));
+        let importedCount = 0;
+
+        for (const uri of uris) {
+            try {
+                const fsPath = uri.fsPath || uri.toString();
+                if (existingPaths.has(fsPath)) {
+                    // 已存在相同文件的标记，跳过
+                    continue;
+                }
+
+                const doc = await vscode.workspace.openTextDocument(uri);
+                const editor = await vscode.window.showTextDocument(doc, { preview: false });
+
+                // 构造静默标记，使用下一个序号作为文本
+                const message = this.getNextMarkerNumber();
+                const marker: MarkerItem = {
+                    message,
+                    filePath: uri.fsPath,
+                    createdAt: Date.now(),
+                };
+
+                // 如果有选区信息，从 editor 获取
+                if (editor && !editor.selection.isEmpty) {
+                    marker.startLine = editor.selection.start.line;
+                    marker.startColumn = editor.selection.start.character;
+                    marker.endLine = editor.selection.end.line;
+                    marker.endColumn = editor.selection.end.character;
+                    marker.line = marker.startLine;
+                    marker.column = marker.startColumn;
+                } else if (editor) {
+                    marker.line = editor.selection.active.line;
+                    marker.column = editor.selection.active.character;
+                }
+
+                // 直接插入，不弹出输入框
+                this.insertMarkerDirect(marker);
+
+                // 记录已导入路径，避免重复导入同一文件
+                existingPaths.add(fsPath);
+                importedCount++;
+
+                // 关闭刚打开的编辑器
+                await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+            } catch (error) {
+                console.warn('importAllOpenEditorsSilent error for', uri.toString(), error);
+            }
+        }
+
+        await this.saveData();
+        vscode.window.showInformationMessage(`已静默导入 ${importedCount} 个编辑器为标记并关闭它们`);
+    }
+
+    /**
+     * 直接插入标记到当前任务并不弹出任何 UI
+     */
+    private insertMarkerDirect(marker: MarkerItem): void {
+        const markers = this.data.currentTask.markers;
+        markers.push(marker);
+        // 不在此处调用 saveData，调用者可在批量操作后统一保存
     }
 
     /**
