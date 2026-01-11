@@ -173,11 +173,26 @@ export class MarkerCommandHandler {
 
             const hasOpenEditors = importableEditors.length > 0;
             let doImport = false;
+            let closeOnly = false;
             if (hasOpenEditors) {
-                // 仅提供“是/否”两项，移除显式的“取消”按钮（用户可按 Esc 取消，返回 undefined）
-                const choice = await vscode.window.showInformationMessage('将所有打开的编辑器加入当前任务并关闭？', { modal: true }, '是', '否');
+                // 提供三项：'导入并关闭'、'仅关闭'、'取消'（用户可按 Esc 取消）
+                const choice = await vscode.window.showInformationMessage(
+                    '将所有打开的编辑器加入当前任务并关闭？',
+                    { modal: true },
+                    '导入并关闭',
+                    '仅关闭',
+                    '取消'
+                );
                 if (!choice) { return; }
-                doImport = choice === '是';
+                if (choice === '导入并关闭') {
+                    doImport = true;
+                } else if (choice === '仅关闭') {
+                    doImport = false;
+                    closeOnly = true;
+                } else if (choice === '取消') {
+                    // 显式取消，结束整个流程
+                    return;
+                }
             } else {
                 // 无可导入的编辑器，直接跳过导入步骤
                 doImport = false;
@@ -188,6 +203,7 @@ export class MarkerCommandHandler {
             }
 
             // 在开启新任务前，关闭所有当前的编辑器以清理工作区
+            // （无论是刚刚导入的还是用户选择仅关闭，都在此处统一关闭）
             await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 
             // 3. 归档当前任务并设置新任务
@@ -225,8 +241,8 @@ export class MarkerCommandHandler {
                         await vscode.commands.executeCommand('vscode.setEditorLayout', {
                             orientation: 0,
                             groups: [
-                                { size: 0.3 },
-                                { size: 0.7 }
+                                { size: 0.1 },
+                                { size: 0.9 }
                             ]
                         });
                     } catch (layoutErr) {
