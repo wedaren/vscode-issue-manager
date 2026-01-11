@@ -83,7 +83,7 @@ export async function buildSortedFlatItemsHelper(
     });
 }
 
-export async function quickCreateIssue(parentId: string | null = null): Promise<string | null> {
+export async function quickCreateIssue(parentId?: string): Promise<string | null> {
     const issueDir = getIssueDir();
     if (!issueDir) {
         vscode.window.showErrorMessage('请先配置 issue 目录 (issueManager.issueDir)。');

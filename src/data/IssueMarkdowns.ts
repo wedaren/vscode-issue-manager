@@ -297,7 +297,7 @@ export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
     if (!uri) {
         return uriOrPath.toString();
     }
-    const key = uri.toString();
+    const key = uri.fsPath;
     const cached = _issueMarkdownCache.get(key);
     // 触发异步预热，但不等待
     getIssueMarkdownTitle(uri);
@@ -321,7 +321,7 @@ export async function getIssueMarkdownTitle(uriOrPath: vscode.Uri | string): Pro
     }
 
     let title: string | undefined;
-    const key = uri.toString();
+    const key = uri.fsPath;
     try {
         const stat = await vscode.workspace.fs.stat(uri);
         const mtime = stat.mtime;
@@ -603,4 +603,33 @@ export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Prom
 
 export function getIssueMarkdownContextValues(){
     return 'issueMarkdown';
+}
+/**
+ * 获取 IssueMarkdown 相对于问题目录的路径
+ * @param uri 文件的 URI
+ * @returns 相对于问题目录的路径，如果文件不在问题目录内则返回 null
+ */
+
+export function getIssueFilePath(uri: vscode.Uri): string | null {
+  const issueDir = getIssueDir();
+  if (!issueDir) {
+    return null;
+  }
+
+  const relativePath = path.relative(issueDir, uri.fsPath);
+  // 如果 relativePath 不以 '..' 开头，并且不是绝对路径，则说明文件在 issueDir 目录内
+  return !relativePath.startsWith('..') && !path.isAbsolute(relativePath) ? relativePath : null;
+}
+/**
+ * 检查文件是否为问题目录下的 Markdown 文件
+ * @param fileUri 文件的 URI
+ * @returns 如果是问题目录下的 Markdown 文件返回 true，否则返回 false
+ */
+
+export function isIssueMarkdownFile(fileUri: vscode.Uri): boolean {
+  if (fileUri.scheme !== 'file' || !fileUri.fsPath.endsWith('.md')) {
+    return false;
+  }
+
+  return getIssueFilePath(fileUri) !== null;
 }

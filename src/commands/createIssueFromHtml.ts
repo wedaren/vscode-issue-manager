@@ -129,7 +129,7 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
         if (uri) {
             // 将新创建的问题添加到树和关注列表
             try {
-                await addIssueToTree([uri], null, true);
+                await addIssueToTree([uri], undefined, true);
             } catch (e) {
                 Logger.getInstance().error('添加问题到关注列表失败:', e);
                 // 不影响主流程，仅记录错误

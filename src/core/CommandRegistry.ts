@@ -252,8 +252,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.quickCreateIssue',
                 async (...args: unknown[]) => {
-                // 允许外部传入 parentId（或其他可选参数的扩展），若无则为默认 null
-                const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : null;
+                // 允许外部传入 parentId（或其他可选参数的扩展），若无则为默认 undefined
+                const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : undefined;
                 const createdId = await quickCreateIssue(parentId);
                 // 如果返回了 issueId，则定位并打开该问题
                 if (createdId) {
@@ -277,7 +277,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.quickCreateTask',
             async (...args: unknown[]) => {
-                const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : null;
+                const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : undefined;
                 await quickCreateTask(this.markerManager, parentId);
             },
             '快速新建任务'
@@ -521,7 +521,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                 this.registerCommand(
             'issueManager.createIssueFromFocused',
             async () => {
-                await smartCreateIssue(null, { addToTree: true, addToFocused: true });
+                await smartCreateIssue(undefined, { addToTree: true, addToFocused: true });
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从关注问题视图创建新问题'
@@ -531,7 +531,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         this.registerCommand(
             'issueManager.createIssueFromOverview',
             async () => {
-                await smartCreateIssue(null, { addToTree: true });
+                await smartCreateIssue(undefined, { addToTree: true });
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从问题总览创建新问题'

@@ -75,7 +75,7 @@ async function openUriIfNeeded(uri: vscode.Uri, openFlag: boolean, issueId?: str
 // 通用处理：将一组 URI 添加到树（可选）、打开（可选）、在资源管理器中定位（可选），并在需要时触发 git 同步
 async function processUris(
     uris: vscode.Uri[],
-    parentId: string | null,
+    parentId: string | undefined = undefined,
     addToTree: boolean,
     addToFocused: boolean,
     reveal: boolean,
@@ -154,7 +154,7 @@ async function persistQuickPickData() {
  * @returns Promise<vscode.Uri[]> 用户最终选择的所有 item 对应的 URI 数组，没有则返回空数组
  */
 export async function smartCreateIssue(
-    parentId: string | null | undefined = null,
+    parentId: string | undefined = undefined,
     options?: {
         addToTree?: boolean;
         addToFocused?: boolean;
@@ -292,13 +292,13 @@ export async function smartCreateIssue(
             if (selectedItems.length > 0) {
                 // 用户勾选了至少一项并点击了"确定"
                 updateHistory(currentValue);
-                const uris = await handleBatchSelection(selectedItems, parentId || null, addToTree, addToFocused, reveal, open);
+                const uris = await handleBatchSelection(selectedItems, parentId, addToTree, addToFocused, reveal, open);
                 resolve(uris);
                 quickPick.dispose();
             } else if (currentValue) {
                 // 用户没有勾选任何项，但在输入框有值的情况下直接按 Enter
                 updateHistory(currentValue);
-                const uri = await handleDefaultCreation(currentValue, parentId || null, addToTree, addToFocused, reveal, open);
+                const uri = await handleDefaultCreation(currentValue, parentId, addToTree, addToFocused, reveal, open);
                 resolve(uri ? [uri] : []);
                 quickPick.dispose();
             }
@@ -328,7 +328,7 @@ export async function smartCreateIssue(
  */
 async function handleBatchSelection(
     selectedItems: readonly vscode.QuickPickItem[],
-    parentId: string | null,
+    parentId: string | undefined = undefined,
     isAddToTree: boolean,
     isAddToFocused: boolean,
     isReveal: boolean = false,
@@ -383,7 +383,7 @@ async function handleBatchSelection(
  */
 async function handleDefaultCreation(
     title: string,
-    parentId: string | null,
+    parentId: string | undefined = undefined,
     isAddToTree: boolean,
     isAddToFocused: boolean,
     isReveal: boolean = false,
