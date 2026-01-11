@@ -224,16 +224,24 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
         item.sortText = sortIndex.toString().padStart(6, '0');
         
         // 设置过滤文本（包含完整路径，支持通过任意层级路径过滤）
-        // 包含：文件名、节点标题、完整路径（正序和反序）
+        // 包含：文件名、节点标题、完整路径（正序和反序）以及带空格的分词版本，改善中文或无分隔符字符串的中间匹配
+        const spacefy = (s: string) => s.split('').join(' ');
+        const parts: string[] = [];
+        const basename = path.basename(node.filePath);
+        parts.push(basename, title);
+
         if (node.parentPath.length > 0) {
             const parentTitles = node.parentPath.map(n => n.title);
-            // 包含正序路径（学习/node/vue）和反序路径（vue/node/学习），以及各个部分
             const forwardPath = [...parentTitles, title].join('/');
             const reversedPath = [title, ...parentTitles.reverse()].join('/');
-            item.filterText = `${path.basename(node.filePath)} ${title} ${forwardPath} ${reversedPath}`;
+            parts.push(forwardPath, reversedPath);
+            // 带空格的变体，帮助 VS Code 对中文或连续字符的匹配（例如：'问题标记' -> '问 题 标 记'）
+            parts.push(spacefy(title), spacefy(basename), spacefy(forwardPath), spacefy(reversedPath));
         } else {
-            item.filterText = `${path.basename(node.filePath)} ${title}`;
+            parts.push(spacefy(title), spacefy(basename));
         }
+
+        item.filterText = parts.join(' ');
 
         // 设置详情（显示相对路径）
         item.detail = relativePath;
