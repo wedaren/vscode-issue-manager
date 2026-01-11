@@ -78,7 +78,7 @@ export class MarkerManager {
             // 文件不存在或解析失败，返回默认数据
             return {
                 currentTask: {
-                    title: '当前标记任务合集',
+                    title: '当前任务',
                     markers: [],
                     createdAt: Date.now()
                 },
