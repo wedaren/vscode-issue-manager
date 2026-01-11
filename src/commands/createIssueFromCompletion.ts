@@ -31,11 +31,11 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
 }
 
 export function parseCreateIssueArgs(args: unknown[]): { parentId?: string | undefined; titleArg?: string; background: boolean; insertMode: string; hasTrigger: boolean } {
-    const parentId = args && args.length > 0 && (typeof args[0] === 'string' ? args[0] as string : undefined) || undefined;
-    const titleArg = args && args.length > 1 && typeof args[1] === 'string' ? args[1] as string : undefined;
-    const background = args && args.length > 2 && typeof args[2] === 'boolean' ? args[2] as boolean : false;
-    const insertMode = args && args.length > 3 && typeof args[3] === 'string' ? args[3] as string : 'relativePath';
-    const hasTrigger = args && args.length > 4 && typeof args[4] === 'boolean' ? args[4] as boolean : false;
+    const parentId = typeof args?.[0] === 'string' ? args[0] : undefined;
+    const titleArg = typeof args?.[1] === 'string' ? args[1] : undefined;
+    const background = typeof args?.[2] === 'boolean' ? args[2] : false;
+    const insertMode = typeof args?.[3] === 'string' ? args[3] : 'relativePath';
+    const hasTrigger = typeof args?.[4] === 'boolean' ? args[4] : false;
     return { parentId, titleArg, background, insertMode, hasTrigger };
 }
 

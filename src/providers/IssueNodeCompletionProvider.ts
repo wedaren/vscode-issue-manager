@@ -233,7 +233,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
         if (node.parentPath.length > 0) {
             const parentTitles = node.parentPath.map(n => n.title);
             const forwardPath = [...parentTitles, title].join('/');
-            const reversedPath = [title, ...parentTitles.reverse()].join('/');
+            const reversedPath = [title, ...[...parentTitles].reverse()].join('/');
             parts.push(forwardPath, reversedPath);
             // 带空格的变体，帮助 VS Code 对中文或连续字符的匹配（例如：'问题标记' -> '问 题 标 记'）
             parts.push(spacefy(title), spacefy(basename), spacefy(forwardPath), spacefy(reversedPath));
