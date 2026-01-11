@@ -29,6 +29,7 @@
       {
         "command": "issueManager.quickCreateTask",
         "title": "快速新建任务",
+        "description": "使用快速创建问题并可选择将当前打开的编辑器导入为任务标记、归档并关联到新问题（会提示保存未保存编辑器）",
         "icon": "$(tasklist)"
       },
       {

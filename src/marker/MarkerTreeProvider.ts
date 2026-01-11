@@ -7,17 +7,20 @@ import { getIssueTitle, getIssueTitleSync } from '../data/issueTreeManager';
  */
 type MarkerTreeItem = CurrentTaskItem | ArchivedTaskItem | MarkerItemTreeItem;
 
+function currentTaskLabel(task: MarkerTask): string {
+    if (task.associatedIssueId) {
+        const issueTitle = getIssueTitleSync(task.associatedIssueId);
+        return `当前任务（${issueTitle}）`;
+    }
+    return '当前任务';
+}
 /**
  * 当前任务节点
  */
 class CurrentTaskItem extends vscode.TreeItem {
     constructor(public readonly task: MarkerTask) {
         // 计算动态标签：默认 "当前任务"，若关联 issue 则显示为 "当前任务（IssueTitle）"
-        let label = '当前任务';
-        if (task.associatedIssueId) {
-            const issueTitle = getIssueTitleSync(task.associatedIssueId);
-            label = `当前任务（${issueTitle}）`;
-        }
+        let label = currentTaskLabel(task);
 
         super(label, vscode.TreeItemCollapsibleState.Expanded);
         this.contextValue = 'currentTask';
@@ -130,10 +133,15 @@ export class MarkerTreeProvider implements vscode.TreeDataProvider<MarkerTreeIte
             
             // 添加当前任务
             const currentTask = this.markerManager.getCurrentTask();
-            items.push(new CurrentTaskItem(currentTask));
+            const item = new CurrentTaskItem(currentTask);
+            items.push(item);
             // 如果有关联的 issue，异步加载标题并在加载完成后刷新视图（避免订阅全局事件）
             if (currentTask.associatedIssueId) {
-                void getIssueTitle(currentTask.associatedIssueId).then(() => this.refresh());
+                void getIssueTitle(currentTask.associatedIssueId).then(() => {
+                    if (currentTaskLabel(currentTask) !== item.label) {
+                        this.refresh();
+                    }
+                });
             }
             
             // 添加归档任务
