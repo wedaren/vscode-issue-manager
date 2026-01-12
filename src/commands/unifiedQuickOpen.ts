@@ -11,11 +11,11 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             quickPick.matchOnDetail = false;
             const cmdButton: vscode.QuickInputButton = {
                 iconPath: new vscode.ThemeIcon("terminal"),
-                tooltip: "切换到问题列表",
+                tooltip: "切换到命令模式",
             };
             const issueButton: vscode.QuickInputButton = {
                 iconPath: new vscode.ThemeIcon("list-tree"),
-                tooltip: "切换到命令列表",
+                tooltip: "切换到问题模式",
             };
             const ampButton: vscode.QuickInputButton = {
                 iconPath: new vscode.ThemeIcon("search"),
@@ -26,7 +26,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 tooltip: "各模式说明",
             };
             // 命令模式项
-            const commandItems: QuickPickItemWithId[] = [
+            const COMMAND_ITEMS: QuickPickItemWithId[] = [
                 {
                     label: "生成项目名",
                     description: "基于活动编辑器内容生成项目名并复制",
@@ -45,7 +45,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             let suppressChange = false; // 忽略程序性 value 变更
 
             // 默认显示命令项
-            quickPick.items = commandItems;
+            quickPick.items = COMMAND_ITEMS;
             quickPick.placeholder =
                 "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
             quickPick.value = "";
@@ -62,7 +62,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
             // 加载扁平化树并展示为默认项（与 searchIssues 行为一致）
             try {
-                if (commandItems.length > 0) quickPick.activeItems = [commandItems[0]];
+                if (COMMAND_ITEMS.length > 0) quickPick.activeItems = [COMMAND_ITEMS[0]];
 
                 const flatNodes = await getFlatTree();
 
@@ -89,7 +89,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 };
 
                 // 帮助项与模式切换复用逻辑
-                const helpItems = [
+                const HELP_ITEMS = [
                     { label: '命令模式', description: "输入关键词过滤并执行命令（支持空格多词匹配）" },
                     { label: '问题模式', description: "搜索并定位问题节点（用于导航/打开问题）" },
                     { label: '& 模式', description: "同时在命令和问题中搜索，方便模糊查找" },
@@ -102,12 +102,12 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     if (label === '命令模式') {
                         inCommandMode = true;
                         suppressChange = true;
-                        quickPick.items = commandItems;
+                        quickPick.items = COMMAND_ITEMS;
                         quickPick.placeholder =
                             "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
                         quickPick.value = text;
-                        if (commandItems.length > 0) quickPick.activeItems = [commandItems[0]];
+                        if (COMMAND_ITEMS.length > 0) quickPick.activeItems = [COMMAND_ITEMS[0]];
                     } else if (label === '问题模式') {
                         inCommandMode = false;
                         suppressChange = true;
@@ -120,7 +120,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     } else if (label === '& 模式') {
                         inCommandMode = false;
                         suppressChange = true;
-                        const combined = commandItems.concat(issueItems);
+                        const combined = COMMAND_ITEMS.concat(issueItems);
                         quickPick.items = filterItems(combined, text);
                         quickPick.placeholder = "& 模式：同时搜索命令与问题";
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
@@ -130,7 +130,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         // 示例性的 LLM 模式：目前表现为合并搜索，可以扩展为调用实际 LLM
                         inCommandMode = false;
                         suppressChange = true;
-                        const combined = commandItems.concat(issueItems);
+                        const combined = COMMAND_ITEMS.concat(issueItems);
                         quickPick.items = filterItems(combined, text);
                         quickPick.placeholder = "LLM 模式：使用 LLM 辅助搜索（示例）";
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
@@ -147,7 +147,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         inCommandMode = true;
                         suppressChange = true;
                         quickPick.value = text;
-                        quickPick.items = filterItems(commandItems, text);
+                        quickPick.items = filterItems(COMMAND_ITEMS, text);
                         if (quickPick.items.length > 0) quickPick.activeItems = [quickPick.items[0]];
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
                     }
@@ -189,7 +189,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 const openHelpInQuickPick = (text = "") => {
                     inHelpMode = true;
                     suppressChange = true;
-                    quickPick.items = helpItems as QuickPickItemWithId[];
+                    quickPick.items = HELP_ITEMS as QuickPickItemWithId[];
                     quickPick.placeholder = '选择查看模式说明（输入搜索或按 Esc 关闭）';
                     quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
                     quickPick.value = text;
@@ -253,7 +253,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                                 return;
                             }
                         }
-                        const filtered = filterItems(helpItems as QuickPickItemWithId[], v);
+                        const filtered = filterItems(HELP_ITEMS as QuickPickItemWithId[], v);
                         quickPick.items = filtered;
                         if (filtered.length > 0) quickPick.activeItems = [filtered[0]];
                         return;
@@ -279,7 +279,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     }
 
                     if (inCommandMode) {
-                        const filtered = filterItems(commandItems, v);
+                        const filtered = filterItems(COMMAND_ITEMS, v);
                         quickPick.items = filtered;
                         if (filtered.length > 0) quickPick.activeItems = [filtered[0]];
                     } else {
