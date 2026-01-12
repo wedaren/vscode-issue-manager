@@ -174,10 +174,21 @@ export class MarkerCommandHandler {
             const hasOpenEditors = importableEditors.length > 0;
             let doImport = false;
             if (hasOpenEditors) {
-                // 仅提供“是/否”两项，移除显式的“取消”按钮（用户可按 Esc 取消，返回 undefined）
-                const choice = await vscode.window.showInformationMessage('将所有打开的编辑器加入当前任务并关闭？', { modal: true }, '是', '否');
-                if (!choice) { return; }
-                doImport = choice === '是';
+                // 提供三项：'导入并关闭'、'仅关闭'、'取消'（用户可按 Esc 取消）
+                const IMPORT_AND_CLOSE = '导入并关闭';
+                const CLOSE_ONLY = '仅关闭';
+                const CANCEL = '取消';
+                const choice = await vscode.window.showInformationMessage(
+                    '将所有打开的编辑器加入当前任务并关闭？',
+                    { modal: true },
+                    IMPORT_AND_CLOSE,
+                    CLOSE_ONLY,
+                    CANCEL
+                );
+                if (!choice || choice === CANCEL) {
+                    return; // 用户按 Esc 或选择取消
+                }
+                doImport = choice === IMPORT_AND_CLOSE;
             } else {
                 // 无可导入的编辑器，直接跳过导入步骤
                 doImport = false;
@@ -188,6 +199,7 @@ export class MarkerCommandHandler {
             }
 
             // 在开启新任务前，关闭所有当前的编辑器以清理工作区
+            // （无论是刚刚导入的还是用户选择仅关闭，都在此处统一关闭）
             await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 
             // 3. 归档当前任务并设置新任务
@@ -225,8 +237,8 @@ export class MarkerCommandHandler {
                         await vscode.commands.executeCommand('vscode.setEditorLayout', {
                             orientation: 0,
                             groups: [
-                                { size: 0.3 },
-                                { size: 0.7 }
+                                { size: 0.1 },
+                                { size: 0.9 }
                             ]
                         });
                     } catch (layoutErr) {
