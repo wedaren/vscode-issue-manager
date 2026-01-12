@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "3.0.30",
+  "version": "3.0.31",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -1234,7 +1234,9 @@
         "key": "ctrl+j ctrl+shift+l",
         "mac": "cmd+j cmd+shift+l",
         "when": "issueManager.isDirConfigured",
-        "args": { "mode": "llm" }
+        "args": {
+          "mode": "llm"
+        }
       },
       {
         "command": "issueManager.linkCurrentFileToIssue",
