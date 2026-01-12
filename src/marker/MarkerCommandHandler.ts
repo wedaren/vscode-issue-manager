@@ -173,26 +173,22 @@ export class MarkerCommandHandler {
 
             const hasOpenEditors = importableEditors.length > 0;
             let doImport = false;
-            let closeOnly = false;
             if (hasOpenEditors) {
                 // 提供三项：'导入并关闭'、'仅关闭'、'取消'（用户可按 Esc 取消）
+                const IMPORT_AND_CLOSE = '导入并关闭';
+                const CLOSE_ONLY = '仅关闭';
+                const CANCEL = '取消';
                 const choice = await vscode.window.showInformationMessage(
                     '将所有打开的编辑器加入当前任务并关闭？',
                     { modal: true },
-                    '导入并关闭',
-                    '仅关闭',
-                    '取消'
+                    IMPORT_AND_CLOSE,
+                    CLOSE_ONLY,
+                    CANCEL
                 );
-                if (!choice) { return; }
-                if (choice === '导入并关闭') {
-                    doImport = true;
-                } else if (choice === '仅关闭') {
-                    doImport = false;
-                    closeOnly = true;
-                } else if (choice === '取消') {
-                    // 显式取消，结束整个流程
-                    return;
+                if (!choice || choice === CANCEL) {
+                    return; // 用户按 Esc 或选择取消
                 }
+                doImport = choice === IMPORT_AND_CLOSE;
             } else {
                 // 无可导入的编辑器，直接跳过导入步骤
                 doImport = false;
