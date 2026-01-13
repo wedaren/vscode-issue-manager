@@ -496,6 +496,12 @@
         "icon": "$(go-to-file)"
       },
       {
+        "command": "issueManager.marker.insertMarksToAssociatedIssue",
+        "title": "插入 marks 到关联问题",
+        "category": "Issue Manager",
+        "icon": "$(link)"
+      },
+      {
         "command": "issueManager.marker.jumpToMarker",
         "title": "跳转到标记",
         "icon": "$(go-to-file)"

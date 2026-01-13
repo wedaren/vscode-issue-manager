@@ -52,6 +52,7 @@ import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff'
 import {registerGenerateTitleCommand} from '../commands/generateTitle';
 import { registerGenerateProjectNameCommand, registerGenerateGitBranchCommand } from '../commands/nameGenerators';
 import { registerUnifiedQuickOpenCommand } from '../commands/unifiedQuickOpen';
+import { registerInsertMarksCommand } from '../commands/insertMarksCommand';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
@@ -925,6 +926,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerGenerateProjectNameCommand(this.context);
         registerGenerateGitBranchCommand(this.context);
         registerUnifiedQuickOpenCommand(this.context);
+        // marker 插入到关联问题的命令
+        registerInsertMarksCommand(this.context, this.markerManager);
 
         // note: copilotDiffSaveResult command was removed per user request
     }

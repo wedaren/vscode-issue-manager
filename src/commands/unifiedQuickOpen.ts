@@ -33,6 +33,11 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     commandId: "issueManager.generateProjectName",
                 },
                 {
+                    label: "插入 marks 到关联问题",
+                    description: "将当前任务的 marks 写入到关联的问题 Markdown 中",
+                    commandId: "issueManager.marker.insertMarksToAssociatedIssue",
+                },
+                {
                     label: "生成 Git 分支名",
                     description: "基于活动编辑器内容生成 git 分支名并复制",
                     commandId: "issueManager.generateGitBranchName",
@@ -54,15 +59,15 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             quickPick.show();
             // 解析 initialArg（可以是字符串或 {mode,text}）
             const initialRequest = (() => {
-                if (!initialArg) return undefined;
-                if (typeof initialArg === "string") return { mode: initialArg, text: "" };
-                if (typeof initialArg === "object") return { mode: initialArg.mode, text: initialArg.text || "" };
+                if (!initialArg) { return undefined; }
+                if (typeof initialArg === "string") { return { mode: initialArg, text: "" }; }
+                if (typeof initialArg === "object") { return { mode: initialArg.mode, text: initialArg.text || "" }; }
                 return undefined;
             })();
 
             // 加载扁平化树并展示为默认项（与 searchIssues 行为一致）
             try {
-                if (COMMAND_ITEMS.length > 0) quickPick.activeItems = [COMMAND_ITEMS[0]];
+                if (COMMAND_ITEMS.length > 0) { quickPick.activeItems = [COMMAND_ITEMS[0]]; }
 
                 const flatNodes = await getFlatTree();
 
@@ -80,7 +85,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     items: QuickPickItemWithId[],
                     searchText: string
                 ): QuickPickItemWithId[] => {
-                    if (!searchText || !searchText.trim()) return items;
+                    if (!searchText || !searchText.trim()) { return items; }
                     const keywords = searchText.trim().toLowerCase().split(/\s+/);
                     return items.filter(item => {
                         const hay = [item.label, item.description || ""].join(" ").toLowerCase();
@@ -107,7 +112,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
                         quickPick.value = text;
-                        if (COMMAND_ITEMS.length > 0) quickPick.activeItems = [COMMAND_ITEMS[0]];
+                        if (COMMAND_ITEMS.length > 0) { quickPick.activeItems = [COMMAND_ITEMS[0]]; }
                     } else if (label === '问题模式') {
                         inCommandMode = false;
                         suppressChange = true;
@@ -148,7 +153,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         suppressChange = true;
                         quickPick.value = text;
                         quickPick.items = filterItems(COMMAND_ITEMS, text);
-                        if (quickPick.items.length > 0) quickPick.activeItems = [quickPick.items[0]];
+                        if (quickPick.items.length > 0) { quickPick.activeItems = [quickPick.items[0]]; }
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
                     }
                 };
@@ -174,12 +179,12 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 if (initialRequest && initialRequest.mode) {
                     // 支持多种写法：'command'|'issue'|'amp'|'llm' 等，或标签形式
                     const m = (initialRequest.mode || "").toString().toLowerCase();
-                    if (m === 'command' || m === 'cmd' || m === '>' ) enterMode('command', initialRequest.text);
-                    else if (m === 'issue' || m === 'list' || m === ';') enterMode('issue', initialRequest.text);
-                    else if (m === 'amp' || m === '&') enterMode('amp', initialRequest.text);
-                    else if (m === 'llm') enterMode('llm', initialRequest.text);
-                    else if (m === 'greater' || m === '>') enterMode('greater', initialRequest.text);
-                    else if (m === 'semicolon' || m === ';') enterMode('semicolon', initialRequest.text);
+                    if (m === 'command' || m === 'cmd' || m === '>' ) { enterMode('command', initialRequest.text); }
+                    else if (m === 'issue' || m === 'list' || m === ';') { enterMode('issue', initialRequest.text); }
+                    else if (m === 'amp' || m === '&') { enterMode('amp', initialRequest.text); }
+                    else if (m === 'llm') { enterMode('llm', initialRequest.text); }
+                    else if (m === 'greater' || m === '>') { enterMode('greater', initialRequest.text); }
+                    else if (m === 'semicolon' || m === ';') { enterMode('semicolon', initialRequest.text); }
                 }
 
                 // 是否处于 help 模式（使用当前 quickPick 展示帮助项）
@@ -255,7 +260,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         }
                         const filtered = filterItems(HELP_ITEMS as QuickPickItemWithId[], v);
                         quickPick.items = filtered;
-                        if (filtered.length > 0) quickPick.activeItems = [filtered[0]];
+                        if (filtered.length > 0) { quickPick.activeItems = [filtered[0]]; }
                         return;
                     }
 
@@ -263,7 +268,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     if (v && v.length > 0) {
                         const keys = Object.keys(prefixHandlers).sort((a, b) => b.length - a.length);
                         for (const key of keys) {
-                            if (!v.startsWith(key)) continue;
+                            if (!v.startsWith(key)) { continue; }
                             // 如果前缀是多字母（如 'llm'），要求后续字符为空白或字符串结束，避免误触
                             const isAlphaKey = /^[A-Za-z]+$/.test(key);
                             if (isAlphaKey && key.length > 1) {
@@ -281,7 +286,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     if (inCommandMode) {
                         const filtered = filterItems(COMMAND_ITEMS, v);
                         quickPick.items = filtered;
-                        if (filtered.length > 0) quickPick.activeItems = [filtered[0]];
+                        if (filtered.length > 0) { quickPick.activeItems = [filtered[0]]; }
                     } else {
                         quickPick.items = issueItems;
                         quickPick.activeItems = [];
@@ -289,11 +294,11 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 });
 
                 const handleAccept = async (selected?: QuickPickItemWithId) => {
-                    if (!selected) return;
+                    if (!selected) { return; }
 
                     if (inCommandMode) {
                         const cmd = selected.commandId;
-                        if (cmd) await vscode.commands.executeCommand(cmd);
+                        if (cmd) { await vscode.commands.executeCommand(cmd); }
                         return;
                     }
 
