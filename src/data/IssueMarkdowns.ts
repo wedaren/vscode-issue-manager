@@ -138,10 +138,14 @@ export function isIssueMarkdown(item: unknown): item is IssueMarkdown {
     return !!item && typeof item === 'object' && 'title' in item && 'uri' in item;
 }
 
-export async function getIssueMarkdown(file: vscode.Uri): Promise<IssueMarkdown> {
-    const title = await getIssueMarkdownTitle(file);
-    const frontmatter = await getIssueMarkdownFrontmatter(file);
-    return { title, uri: file, frontmatter };
+export async function getIssueMarkdown(file: vscode.Uri): Promise<IssueMarkdown|null> {
+    if(isIssueMarkdownFile(file)){
+        const title = await getIssueMarkdownTitle(file);
+        const frontmatter = await getIssueMarkdownFrontmatter(file);
+        return { title, uri: file, frontmatter };
+    } else {
+        return null;
+    }
 }
 /**
  * 获取问题目录中所有 Markdown 文件的标题和 URI。
@@ -153,7 +157,9 @@ export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
 
     for (const file of files) {
         const issueMarkdown = await getIssueMarkdown(file);
-        issues.push(issueMarkdown);
+        if (issueMarkdown) {
+            issues.push(issueMarkdown);
+        }
     }
 
     return issues;

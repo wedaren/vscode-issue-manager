@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
-import { updateIssueMarkdownFrontmatter, getIssueMarkdownFrontmatter, onTitleUpdate } from '../data/IssueMarkdowns';
+import { updateIssueMarkdownFrontmatter, getIssueMarkdownFrontmatter, onTitleUpdate, isIssueMarkdown, getIssueMarkdown } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
 import { getIssueMarkdownTitle, getIssueMarkdownContent } from '../data/IssueMarkdowns';
 import { Logger } from '../core/utils/Logger';
@@ -45,6 +45,8 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                 // 支持三种来源：
                 // 1. 传入 TreeItem / IssueNode（含 resourceUri）
                 // 2. 传入 vscode.Uri
+                // 3. 当前激活的编辑器
+
 
                 if (args && args.length > 0) {
                     const firstArg = args[0];
@@ -60,7 +62,14 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     else if (firstArg instanceof vscode.Uri) {
                         targetUri = firstArg as vscode.Uri;
                     }
+                }
 
+                // 3. 使用当前激活的编辑器
+                if (!targetUri && vscode.window.activeTextEditor) {
+                    const issueMarkdown = await getIssueMarkdown(vscode.window.activeTextEditor.document.uri);
+                    if (issueMarkdown) {
+                        targetUri = issueMarkdown.uri;
+                    }
                 }
 
                 if (!targetUri) {
