@@ -2,8 +2,14 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { getIssueDir } from "../config";
 import { getIssueNodeById } from "../data/issueTreeManager";
-import { MarkerManager } from "../marker/MarkerManager";
+import { MarkerItem, MarkerManager } from "../marker/MarkerManager";
 
+
+/**  
+ * 注册“插入 marks 到关联问题”的命令。  
+ * @param context 扩展上下文  
+ * @param markerManager Marker 管理器实例  
+ */  
 export function registerInsertMarksCommand(context: vscode.ExtensionContext, markerManager?: MarkerManager) {
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.marker.insertMarksToAssociatedIssue', async () => {
@@ -32,7 +38,7 @@ export function registerInsertMarksCommand(context: vscode.ExtensionContext, mar
                 }
 
                 const issueDir = getIssueDir();
-                const markers: Array<any> = Array.isArray(current.markers) ? current.markers : [];
+                const markers: Array<MarkerItem> = Array.isArray(current.markers) ? current.markers : [];
 
                 const lines: string[] = [];
                 for (const m of markers) {
