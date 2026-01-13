@@ -881,7 +881,7 @@
         },
         {
           "command": "issueManager.gitBranch.createBranchFrom",
-          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*BranchDeletable/",
+          "when": "view == 'issueManager.views.gitBranches'",
           "group": "inline"
         },
         {
