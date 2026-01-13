@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
-import { createIssueFile } from '../commands/issueFileUtils';
+import { createIssueMarkdown } from '../data/IssueMarkdowns';
 import { LLMService } from '../llm/LLMService';
 import { getFlatTree } from '../data/issueTreeManager';
 import * as path from 'path';
@@ -192,7 +192,7 @@ export class IssueChatParticipant {
         }
 
         // 创建问题文件
-        const uri = await createIssueFile(optimizedTitle);
+        const uri = await createIssueMarkdown(optimizedTitle);
         
         if (uri) {
             const filename = path.basename(uri.fsPath);
@@ -324,7 +324,7 @@ export class IssueChatParticipant {
             stream.markdown(`💡 已生成文档: **${title}** (使用模型: ${modelFamily || '未知'})\n\n`);
             
             // 创建问题文件
-            const uri = await createIssueFile(title, content);
+            const uri = await createIssueMarkdown(title, content);
             
             if (uri) {
                 const filename = path.basename(uri.fsPath);

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { LLMService } from '../llm/LLMService';
-import { createIssueFile, addIssueToTree } from './issueFileUtils';
+import { addIssueToTree } from '../data/IssueMarkdowns';
+import { createIssueMarkdown } from '../data/IssueMarkdowns';
 import { readQuickPickData, writeQuickPickData, QuickPickPersistedData, IssueNode } from '../data/issueTreeManager';
 import { debounce } from '../utils/debounce';
 import { GitSyncService } from '../services/git-sync';
@@ -341,7 +342,7 @@ async function handleBatchSelection(
     for (const item of selectedItems as readonly HistoryQuickPickItem[]) {
         if (item.action === 'create' && item.payload) {
             // 创建新笔记
-            const uri = await createIssueFile(item.payload);
+            const uri = await createIssueMarkdown(item.payload);
             if (uri) {
                 uris.push(uri);
                 hasCreatedIssue = true;
@@ -390,7 +391,7 @@ async function handleDefaultCreation(
     isOpen: boolean = false
 ): Promise<vscode.Uri | null> {
     if (title) {
-        const uri = await createIssueFile(title);
+        const uri = await createIssueMarkdown(title);
         if (uri) {
             const uris = [uri];
             await processUris(uris, parentId, isAddToTree, isAddToFocused, isReveal, isOpen, true);

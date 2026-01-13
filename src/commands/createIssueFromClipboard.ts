@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
-import { createIssueFile } from './issueFileUtils';
+import { createIssueMarkdown } from '../data/IssueMarkdowns';
 import { GitSyncService } from '../services/git-sync';
 
 /**
@@ -89,7 +89,7 @@ export async function createIssueFromClipboard(): Promise<void> {
             finalContent = `# ${filenameTitle}\n\n${clipboard}`;
         }
 
-        const uri = await createIssueFile(filenameTitle || '', finalContent);
+        const uri = await createIssueMarkdown(filenameTitle || '', finalContent);
         if (!uri) {
             // createIssueFile 已经会弹错信息
             return;

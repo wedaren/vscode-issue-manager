@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { addFocus, pinFocus, removeFocus } from '../data/focusedManager';
 import { IssueNode, stripFocusedId, getFlatTree } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
-import { addIssueToTree } from './issueFileUtils';
+import { addIssueToTree } from '../data/IssueMarkdowns';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { GitSyncService } from '../services/git-sync';
 

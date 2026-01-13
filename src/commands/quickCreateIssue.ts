@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
-import { createIssueFileSilent, addIssueToTree } from './issueFileUtils';
+import { addIssueToTree } from '../data/IssueMarkdowns';
+import { createIssueMarkdownSilent } from '../data/IssueMarkdowns';
 import { getFlatTree, FlatTreeNode, stripFocusedId } from '../data/issueTreeManager';
 import { backgroundFillIssue } from '../llm/backgroundFill';
 import { getIssueIdFromUri } from '../utils/uriUtils';
@@ -149,7 +150,7 @@ export async function quickCreateIssue(parentId?: string): Promise<string | null
             if (!sel) {
                 // 直接按 Enter，静默创建并返回 id（不在此处打开）
                 if (input) {
-                    const uri = await createIssueFileSilent(input);
+                    const uri = await createIssueMarkdownSilent(input);
                     if (uri) {
                         const nodes = await addIssueToTree([uri], parentId, true);
                         if (nodes && nodes.length > 0) {
@@ -168,7 +169,7 @@ export async function quickCreateIssue(parentId?: string): Promise<string | null
             switch (sel.action) {
                 case 'create': {
                     const title = sel.payload || input || sel.label;
-                    const uri = await createIssueFileSilent(title);
+                    const uri = await createIssueMarkdownSilent(title);
                     if (uri) {
                         const nodes = await addIssueToTree([uri], parentId, false);
                         if (nodes && nodes.length > 0) {
@@ -181,7 +182,7 @@ export async function quickCreateIssue(parentId?: string): Promise<string | null
                 }
                 case 'create-background': {
                     const title = sel.payload || input || sel.label.replace('（后台）','');
-                    const uri = await createIssueFileSilent(title);
+                    const uri = await createIssueMarkdownSilent(title);
                     if (uri) {
                         const nodes = await addIssueToTree([uri], parentId, false);
                         if (nodes && nodes.length > 0) {

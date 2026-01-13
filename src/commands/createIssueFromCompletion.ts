@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { createIssueFileSilent, addIssueToTree } from './issueFileUtils';
+import { addIssueToTree } from '../data/IssueMarkdowns';
+import { createIssueMarkdownSilent } from '../data/IssueMarkdowns';
 import { backgroundFillIssue } from '../llm/backgroundFill';
 
 export async function executeCreateIssueFromCompletion(...args: unknown[]): Promise<void> {
@@ -40,7 +41,7 @@ export function parseCreateIssueArgs(args: unknown[]): { parentId?: string | und
 }
 
 export async function createAndOpenIssue(title: string, parentId?: string): Promise<{ uri?: vscode.Uri; newNodeId?: string | undefined }> {
-    const uri = await createIssueFileSilent(title);
+    const uri = await createIssueMarkdownSilent(title);
     if (!uri) { return { }; }
 
     const added = await addIssueToTree([uri], parentId);
@@ -48,9 +49,9 @@ export async function createAndOpenIssue(title: string, parentId?: string): Prom
 
     try {
         const openUri = newNodeId ? uri.with({ query: `issueId=${encodeURIComponent(newNodeId)}` }) : uri;
-        await vscode.window.showTextDocument(openUri, { preserveFocus:false, preview: true, viewColumn: vscode.ViewColumn.Beside });
+        await vscode.window.showTextDocument(openUri, { preserveFocus:true, preview: true, viewColumn: vscode.ViewColumn.Beside });
     } catch (e) {
-        try { await vscode.window.showTextDocument(uri, { preserveFocus:false, preview: true }); } catch {}
+        try { await vscode.window.showTextDocument(uri, { preserveFocus:true, preview: true }); } catch {}
     }
 
     return { uri, newNodeId };
