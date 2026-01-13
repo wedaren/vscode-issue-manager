@@ -1,7 +1,16 @@
 import * as vscode from "vscode";
 import { getFlatTree, FlatTreeNode, getIssueNodeById } from "../data/issueTreeManager";
+import { getIssueIdFromUri } from "../utils/uriUtils";
 
-type QuickPickItemWithId = vscode.QuickPickItem & { id?: string; commandId?: string };
+type QuickPickItemWithId = vscode.QuickPickItem & {
+    id?: string;
+    commandId?: string;
+    /**
+     * 可选的通用过滤函数，接收上下文并返回是否应展示该项。
+     * ctx = { issueId?: string; issueValid?: boolean; uri?: vscode.Uri }
+     */
+    require?: (ctx: { issueId?: string; issueValid?: boolean; uri?: vscode.Uri }) => boolean;
+};
 
 export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -42,6 +51,60 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     description: "基于活动编辑器内容生成 git 分支名并复制",
                     commandId: "issueManager.generateGitBranchName",
                 },
+                {
+                    label: "新建子问题",
+                    description: "从当前编辑器对应的 IssueNode 下创建子问题",
+                    commandId: "issueManager.createSubIssueFromEditor",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "生成标题",
+                    description: "为当前编辑器的 IssueMarkdown 生成 IssueTitle",
+                    commandId: "issueManager.generateTitleCommand",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "复制文件名",
+                    description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
+                    commandId: "issueManager.copyFilename",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "复制问题 ID",
+                    description: "复制当前编辑器中的 IssueNode ID 到剪贴板",
+                    commandId: "issueManager.copyIssueId",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "在问题总览中查看",
+                    description: "在问题总览中定位当前编辑器对应的 IssueNode",
+                    commandId: "issueManager.revealInOverviewFromEditor",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "查看相关联问题",
+                    description: "显示与当前 IssueNode 相关联的问题",
+                    commandId: "issueManager.viewRelatedIssues",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "添加到关注",
+                    description: "将当前 IssueNode 加入关注列表",
+                    commandId: "issueManager.addToFocusedViewFromEditor",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "移动到...",
+                    description: "将当前 IssueNode 移动到其他 IssueNode 下",
+                    commandId: "issueManager.moveToFromEditor",
+                    require: ctx => !!ctx.issueValid,
+                },
+                {
+                    label: "关联到...",
+                    description: "将当前 IssueNode 关联到其他 IssueNode 下",
+                    commandId: "issueManager.attachToFromEditor",
+                    require: ctx => !!ctx.issueValid,
+                },
             ];
 
             // 显示所有模式按钮与帮助按钮，便于快速切换（可按需调整显示策略）
@@ -49,8 +112,27 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             let inCommandMode = true; // 默认进入命令模式
             let suppressChange = false; // 忽略程序性 value 变更
 
+            // 仅在当前活动编辑器的 URI 包含有效 issueId 时展示依赖编辑器的命令
+            let activeCommandItems = COMMAND_ITEMS.slice();
+            try {
+                const activeUri = vscode.window.activeTextEditor?.document?.uri;
+                const maybeIssueId = getIssueIdFromUri(activeUri);
+                let activeIssueValid = await getIssueNodeById(maybeIssueId||'')  
+                        .then(() => true)  
+                        .catch(() => false);  
+
+                const ctx = { issueId: maybeIssueId, issueValid: activeIssueValid, uri: activeUri };
+                activeCommandItems = COMMAND_ITEMS.filter(i => {
+                    if (!i.require) { return true; }
+                    try { return !!i.require(ctx); } catch (e) { return false; }
+                });
+            } catch (e) {
+                // 如果发生异常，保守地只返回无 require 的项
+                activeCommandItems = COMMAND_ITEMS.filter(i => !i.require);
+            }
+
             // 默认显示命令项
-            quickPick.items = COMMAND_ITEMS;
+            quickPick.items = activeCommandItems;
             quickPick.placeholder =
                 "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
             quickPick.value = "";
@@ -67,7 +149,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
             // 加载扁平化树并展示为默认项（与 searchIssues 行为一致）
             try {
-                if (COMMAND_ITEMS.length > 0) { quickPick.activeItems = [COMMAND_ITEMS[0]]; }
+                if (activeCommandItems.length > 0) { quickPick.activeItems = [activeCommandItems[0]]; }
 
                 const flatNodes = await getFlatTree();
 
@@ -107,12 +189,12 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     if (label === '命令模式') {
                         inCommandMode = true;
                         suppressChange = true;
-                        quickPick.items = COMMAND_ITEMS;
+                        quickPick.items = activeCommandItems;
                         quickPick.placeholder =
                             "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
                         quickPick.value = text;
-                        if (COMMAND_ITEMS.length > 0) { quickPick.activeItems = [COMMAND_ITEMS[0]]; }
+                        if (activeCommandItems.length > 0) { quickPick.activeItems = [activeCommandItems[0]]; }
                     } else if (label === '问题模式') {
                         inCommandMode = false;
                         suppressChange = true;
@@ -125,7 +207,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     } else if (label === '& 模式') {
                         inCommandMode = false;
                         suppressChange = true;
-                        const combined = COMMAND_ITEMS.concat(issueItems);
+                        const combined = activeCommandItems.concat(issueItems);
                         quickPick.items = filterItems(combined, text);
                         quickPick.placeholder = "& 模式：同时搜索命令与问题";
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
@@ -135,7 +217,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         // 示例性的 LLM 模式：目前表现为合并搜索，可以扩展为调用实际 LLM
                         inCommandMode = false;
                         suppressChange = true;
-                        const combined = COMMAND_ITEMS.concat(issueItems);
+                        const combined = activeCommandItems.concat(issueItems);
                         quickPick.items = filterItems(combined, text);
                         quickPick.placeholder = "LLM 模式：使用 LLM 辅助搜索（示例）";
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
@@ -152,7 +234,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         inCommandMode = true;
                         suppressChange = true;
                         quickPick.value = text;
-                        quickPick.items = filterItems(COMMAND_ITEMS, text);
+                        quickPick.items = filterItems(activeCommandItems, text);
                         if (quickPick.items.length > 0) { quickPick.activeItems = [quickPick.items[0]]; }
                         quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
                     }
@@ -284,7 +366,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     }
 
                     if (inCommandMode) {
-                        const filtered = filterItems(COMMAND_ITEMS, v);
+                        const filtered = filterItems(activeCommandItems, v);
                         quickPick.items = filtered;
                         if (filtered.length > 0) { quickPick.activeItems = [filtered[0]]; }
                     } else {
