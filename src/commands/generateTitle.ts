@@ -61,14 +61,15 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     // 2. 检查是否为 vscode.Uri 实例, 编辑器右键时传入
                     else if (firstArg instanceof vscode.Uri) {
                         targetUri = firstArg as vscode.Uri;
-                    } else if (vscode.window.activeTextEditor) {
-                        // 3. 使用当前激活的编辑器
-                        const issueMarkdown = await getIssueMarkdown(vscode.window.activeTextEditor.document.uri);
-                        if (issueMarkdown) {
-                            targetUri = issueMarkdown.uri;
-                        }
                     }
+                }
 
+                // 3. 使用当前激活的编辑器
+                if (!targetUri && vscode.window.activeTextEditor) {
+                    const issueMarkdown = await getIssueMarkdown(vscode.window.activeTextEditor.document.uri);
+                    if (issueMarkdown) {
+                        targetUri = issueMarkdown.uri;
+                    }
                 }
 
                 if (!targetUri) {
