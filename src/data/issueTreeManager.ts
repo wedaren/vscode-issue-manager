@@ -154,6 +154,11 @@ export function getIssueTitleSync(issueId:string){
   const issueNode = cache.issueIdMap.get(issueId);
   return issueNode?.resourceUri ? getIssueMarkdownTitleFromCache(issueNode?.filePath) : '[Unknown Issue: ' + issueId + ']';
 }
+
+const onIssueTreeUpdateEmitter = new vscode.EventEmitter<void>();
+
+export const onIssueTreeUpdate = onIssueTreeUpdateEmitter.event;
+
 async function getIssueData(){
   const treePath = getTreeDataPath();
   const issueDir = getIssueDir();
@@ -194,6 +199,8 @@ async function getIssueData(){
   cache.mtime = stat.mtime;
   cache.treeData = treeData;
   cache.issueIdMap = issueIdMap;
+  onIssueTreeUpdateEmitter.fire();
+
   return { treeData, issueIdMap };
 }
 

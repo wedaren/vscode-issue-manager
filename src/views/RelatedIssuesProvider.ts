@@ -3,7 +3,7 @@
  * 只读视图，动态展示某问题在知识库中的所有引用及上下文
  */
 import * as vscode from 'vscode';
-import { readTree, TreeData, IssueNode, getIssueNodeContextValue } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueNode, getIssueNodeContextValue, onIssueTreeUpdate } from '../data/issueTreeManager';
 import { findNotesLinkedToFile, findNotesLinkedToWorkspace, getIssueMarkdownContextValues, getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
@@ -15,6 +15,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     private disposables: vscode.Disposable[] = [];
     
     constructor(private context: vscode.ExtensionContext) {
+        onIssueTreeUpdate(this.refresh, this, this.disposables);  
     }
 
     /** 切换当前分析的问题 */
