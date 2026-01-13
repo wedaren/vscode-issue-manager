@@ -86,10 +86,13 @@ export function registerInsertMarksCommand(context: vscode.ExtensionContext, mar
                 }
 
                 // 优先匹配已有的 fenced marks 块并替换
-                const fencedRegex = /```\s*markdown\s+marks\r?\n[\s\S]*?\r?\n```/i;
+                // 兼容如下几种形式：
+                // ```markdown marks\n...\n```  或者 ```markdown marks\n```（空块）等
+                const fencedRegex = /```\s*markdown\s+marks[\s\S]*?```/i;
                 let newBody: string;
                 if (fencedRegex.test(body)) {
-                    newBody = body.replace(fencedRegex, fencedBlock.trimStart());
+                    // 使用完整的 fencedBlock 替换，保持块的格式一致
+                    newBody = body.replace(fencedRegex, fencedBlock);
                 } else {
                     // 末尾追加 fenced block，保持一个空行分隔
                     newBody = body;
@@ -118,6 +121,16 @@ export function registerInsertMarksCommand(context: vscode.ExtensionContext, mar
                 const savedDoc = await vscode.workspace.openTextDocument(node.resourceUri);
                 if (savedDoc.isDirty) {
                     await savedDoc.save();
+                }
+
+                // 确保在编辑器中展示更新的文档并定位到末尾（便于查看插入的 marks）
+                try {
+                    const editor = await vscode.window.showTextDocument(savedDoc, { preview: false });
+                    const lastLine = Math.max(0, savedDoc.lineCount - 1);
+                    const revealRange = new vscode.Range(lastLine, 0, lastLine, 0);
+                    editor.revealRange(revealRange, vscode.TextEditorRevealType.InCenter);
+                } catch (e) {
+                    // 忽略展示失败，仍然继续流程
                 }
 
                 vscode.window.showInformationMessage('已将当前任务的 marks 插入到关联问题');
