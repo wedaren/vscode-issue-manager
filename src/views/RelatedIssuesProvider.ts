@@ -15,9 +15,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     private disposables: vscode.Disposable[] = [];
     
     constructor(private context: vscode.ExtensionContext) {
-        onIssueTreeUpdate(() => {
-            this.refresh();
-        }, this.disposables);
+        onIssueTreeUpdate(this.refresh, this, this.disposables);  
     }
 
     /** 切换当前分析的问题 */
