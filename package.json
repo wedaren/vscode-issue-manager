@@ -235,6 +235,11 @@
         "category": "Issue Manager"
       },
       {
+        "command": "issueManager.openMarkerView",
+        "title": "打开问题标记视图",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.openRecentView",
         "title": "打开最近问题视图",
         "category": "Issue Manager"
@@ -1109,6 +1114,12 @@
         "command": "issueManager.openRecentView",
         "key": "ctrl+j ctrl+r",
         "mac": "cmd+j cmd+r",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.openMarkerView",
+        "key": "ctrl+j ctrl+v",
+        "mac": "cmd+j cmd+v",
         "when": "issueManager.isDirConfigured"
       },
       {

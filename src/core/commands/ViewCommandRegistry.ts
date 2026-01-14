@@ -159,6 +159,15 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         );
 
         this.registerCommand(
+            'issueManager.openMarkerView',
+            async () => {
+                await vscode.commands.executeCommand('workbench.view.extension.issue-manager');
+                await vscode.commands.executeCommand('issueManager.views.marker.focus');
+                vscode.window.showInformationMessage('已打开问题标记视图');
+            },
+            '打开问题标记视图'
+        );
+        this.registerCommand(
             'issueManager.openRecentView',
             async () => {
                 await vscode.commands.executeCommand('workbench.view.extension.issue-manager');
