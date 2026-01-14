@@ -217,19 +217,21 @@ export class MarkerCommandHandler {
             try {
                 const node = await getIssueNodeById(issueId);
                 if (node && node.resourceUri) {
+                    // 提取复用的 Issue URI，避免重复构造
+                    const issueUri = node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
+
                     // 左侧：打开 Issue 文档
-                    await vscode.window.showTextDocument(node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }), { preview: false, viewColumn: vscode.ViewColumn.One });
+                    await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.One });
 
                     // 右侧：打开关联的文件
                     const markers = this.markerManager.getCurrentTask().markers;
-                    // 获取所有唯一的文件路径
-                    
+
                     if (markers.length > 0 && markers[0].filePath) {
                         const uri = vscode.Uri.file(markers[0].filePath);
                         await vscode.window.showTextDocument(uri, { preview: false, viewColumn: vscode.ViewColumn.Two });
                     } else {
                         // 默认：如果在右侧没有关联文件，则在右侧打开 Issue 文档的预览模式
-                        await vscode.window.showTextDocument(node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }), { preview: true, viewColumn: vscode.ViewColumn.Two });
+                        await vscode.window.showTextDocument(issueUri, { preview: true, viewColumn: vscode.ViewColumn.Two });
                     }
 
                     // 将编辑器布局设置为左右两列，左侧较小（约 30%），右侧较大（约 70%）
@@ -248,7 +250,7 @@ export class MarkerCommandHandler {
 
                     // 确保焦点在左侧编辑器（打开右侧后焦点可能在右侧）
                     try {
-                        await vscode.window.showTextDocument(node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }), { preview: false, viewColumn: vscode.ViewColumn.One });
+                        await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.One });
                     } catch (focusErr) {
                         console.warn('设置左侧编辑器焦点失败', focusErr);
                     }
