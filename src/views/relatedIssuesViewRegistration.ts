@@ -41,17 +41,7 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   // 注册解锁命令
   context.subscriptions.push(vscode.commands.registerCommand('issueManager.unpinRelatedView', () => {
     updatePinContext(false);
-    // 已解锁相关联问题视图，内容将根据上下文自动刷新。
-    // 解锁后立即刷新为当前上下文
-    relatedIssuesProvider.updateContext(vscode.window.activeTextEditor?.document.uri);
-  }));
-
-  // 注册命令：查看关联问题
-  context.subscriptions.push(vscode.commands.registerCommand('issueManager.viewRelatedIssues', async (uriOrNode: vscode.TreeItem | vscode.Uri) => {
-    const resourceUri = uriOrNode instanceof vscode.Uri ? uriOrNode : uriOrNode?.resourceUri;
-    if (!isPinned) {
-      relatedIssuesProvider.updateContext(resourceUri);
-    }
+    relatedIssuesProvider.setContextUri(vscode.window.activeTextEditor?.document.uri);
   }));
 
   // 订阅编辑器事件管理器，自动更新相关联问题视图
@@ -59,15 +49,15 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   const subscription = editorEventManager.onIssueFileActivated((uri) => {
     // 只在视图未锁定时自动更新
     if (!isPinned) {
-      relatedIssuesProvider.updateContext(uri);
+      relatedIssuesProvider.setContextUri(uri);  
     }
   });
   context.subscriptions.push(subscription);
 
-  // 也订阅 VS Code 的活动编辑器变化，以支持外部文件或任意文件的关联展示
+  // 订阅 VS Code 的活动编辑器变化，支持外部文件或任意文件的关联展示
   const editorSub = vscode.window.onDidChangeActiveTextEditor((editor) => {
     if (!isPinned) {
-      relatedIssuesProvider.updateContext(editor?.document.uri);
+      relatedIssuesProvider.setContextUri(editor?.document.uri);
     }
   });
   context.subscriptions.push(editorSub);

@@ -10,21 +10,21 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    private contextUri: vscode.Uri | undefined;
     private treeData: TreeData | null = null;
+    private contextUri: vscode.Uri | undefined;
+    
     private disposables: vscode.Disposable[] = [];
     
     constructor(private context: vscode.ExtensionContext) {
-        onIssueTreeUpdate(this.refresh, this, this.disposables);  
+        onIssueTreeUpdate(this.refresh, this, this.disposables);
+        this.contextUri = vscode.window.activeTextEditor?.document.uri;
     }
 
-    /** 切换当前分析的问题 */
-    updateContext(resourceUri?: vscode.Uri) {
-        if (resourceUri) {
-            this.contextUri = resourceUri;
-            this.refresh();
-        }
-    }
+    /** 设置上下文 URI 并刷新视图 */  
+    setContextUri(uri: vscode.Uri | undefined): void {  
+        this.contextUri = uri;  
+        this.refresh();  
+    }  
 
     /** 刷新视图 */
     refresh(): void {
@@ -33,7 +33,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     /** 获取根节点 */
     async getChildren(element?: RelatedIssueNode): Promise<RelatedIssueNode[]> {
-        const ctx = vscode.window.activeTextEditor?.document.uri ?? this.contextUri;
+        const ctx = this.contextUri;
         if (!ctx) {
             return [];
         }
