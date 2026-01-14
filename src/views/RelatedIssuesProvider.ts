@@ -20,10 +20,11 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         this.contextUri = vscode.window.activeTextEditor?.document.uri;
     }
 
-    /** 设置上下文 URI */
-    setContextUri(uri: vscode.Uri | undefined): void {
-        this.contextUri = uri;
-    }
+    /** 设置上下文 URI 并刷新视图 */  
+    setContextUri(uri: vscode.Uri | undefined): void {  
+        this.contextUri = uri;  
+        this.refresh();  
+    }  
 
     /** 刷新视图 */
     refresh(): void {

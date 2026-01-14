@@ -42,7 +42,6 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   context.subscriptions.push(vscode.commands.registerCommand('issueManager.unpinRelatedView', () => {
     updatePinContext(false);
     relatedIssuesProvider.setContextUri(vscode.window.activeTextEditor?.document.uri);
-    relatedIssuesProvider.refresh();
   }));
 
   // 订阅编辑器事件管理器，自动更新相关联问题视图
@@ -50,8 +49,7 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   const subscription = editorEventManager.onIssueFileActivated((uri) => {
     // 只在视图未锁定时自动更新
     if (!isPinned) {
-      relatedIssuesProvider.setContextUri(vscode.window.activeTextEditor?.document.uri);
-      relatedIssuesProvider.refresh();
+      relatedIssuesProvider.setContextUri(uri);  
     }
   });
   context.subscriptions.push(subscription);
@@ -60,7 +58,6 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   const editorSub = vscode.window.onDidChangeActiveTextEditor((editor) => {
     if (!isPinned) {
       relatedIssuesProvider.setContextUri(editor?.document.uri);
-      relatedIssuesProvider.refresh();
     }
   });
   context.subscriptions.push(editorSub);
