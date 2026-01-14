@@ -82,12 +82,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     require: ctx => !!ctx.issueValid,
                 },
                 {
-                    label: "查看相关联问题",
-                    description: "显示与当前 IssueNode 相关联的问题",
-                    commandId: "issueManager.viewRelatedIssues",
-                    require: ctx => !!ctx.issueValid,
-                },
-                {
                     label: "添加到关注",
                     description: "将当前 IssueNode 加入关注列表",
                     commandId: "issueManager.addToFocusedViewFromEditor",

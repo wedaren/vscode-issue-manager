@@ -177,10 +177,6 @@
         "category": "Issue Manager"
       },
       {
-        "command": "issueManager.viewRelatedIssues",
-        "title": "查看相关联问题"
-      },
-      {
         "command": "issueManager.openAndViewRelatedIssues",
         "title": "打开并查看相关联问题"
       },
