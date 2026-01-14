@@ -573,8 +573,8 @@ export async function findNotesLinkedToFile(fileUri: vscode.Uri): Promise<IssueM
 /**
  * 查找所有在 frontmatter.issue_linked_workspace 中包含指定 workspace 路径的 issue markdown
  */
-export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Promise<IssueMarkdown[]> {
-    const targetFs = normalizeFsPath(workspaceUri.fsPath);
+export async function findNotesLinkedToWorkspace(fileUri: vscode.Uri): Promise<IssueMarkdown[]> {
+    const targetFs = normalizeFsPath(fileUri.fsPath);
     const all = await getAllIssueMarkdowns();
     const res: IssueMarkdown[] = [];
 
@@ -586,19 +586,32 @@ export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Prom
             if (s.startsWith("[[") && s.endsWith("]]")) {
                 s = s.slice(2, -2).trim();
             }
-            if (s.startsWith("workspace:")) {
+
+            // 统一得到要检查的路径：支持带或不带 "workspace:" 前缀
+            let pathToCheck = s;
+            if (pathToCheck.startsWith("workspace:")) {
                 try {
-                    const u = vscode.Uri.parse(s);
-                    if (u && u.fsPath) s = u.fsPath;
-                } catch {}
-                try {
-                    const candidate = normalizeFsPath(s);
-                    // 匹配相等或 target 包含 candidate（candidate 是父路径）
-                    if (candidate === targetFs || targetFs.startsWith(candidate + path.sep)) {
-                        res.push(issue);
-                        break;
+                    const u = vscode.Uri.parse(pathToCheck);
+                    if (u && u.fsPath) {
+                        pathToCheck = u.fsPath;
+                    } else {
+                        pathToCheck = pathToCheck.substring("workspace:".length);
                     }
-                } catch {}
+                } catch (e) {
+                    // 解析为 URI 失败时，去掉前缀作为普通路径处理
+                    pathToCheck = pathToCheck.substring("workspace:".length);
+                }
+            }
+
+            try {
+                const candidate = normalizeFsPath(pathToCheck);
+                // 匹配相等或 target 包含 candidate（candidate 是父路径）
+                if (candidate === targetFs || targetFs.startsWith(candidate + path.sep)) {
+                    res.push(issue);
+                    break;
+                }
+            } catch (e) {
+                Logger.getInstance().warn(`无法解析 issue_linked_workspace 中的路径: ${raw}`, e);
             }
         }
     }
