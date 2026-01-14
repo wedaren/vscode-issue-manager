@@ -217,34 +217,37 @@ export class MarkerCommandHandler {
             try {
                 const node = await getIssueNodeById(issueId);
                 if (node && node.resourceUri) {
+                    const issueUri = node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
+
                     // 左侧：打开 Issue 文档
-                    await vscode.window.showTextDocument(node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }), { preview: false, viewColumn: vscode.ViewColumn.One });
+                    await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.One });
 
                     // 右侧：打开关联的文件
                     const markers = this.markerManager.getCurrentTask().markers;
-                    // 获取所有唯一的文件路径
-                    
+
                     if (markers.length > 0 && markers[0].filePath) {
                         const uri = vscode.Uri.file(markers[0].filePath);
                         await vscode.window.showTextDocument(uri, { preview: false, viewColumn: vscode.ViewColumn.Two });
                     } else {
-                        // 默认：如果在右侧没有关联文件，则在右侧打开 Issue 文档的预览模式
-                        await vscode.window.showTextDocument(node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }), { preview: true, viewColumn: vscode.ViewColumn.Two });
+                        // 默认：如果在右侧没有关联文件，则在右侧打开 Issue 文档
+                        await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.Two });
                     }
 
-                    // 将编辑器布局设置为左右两列，左侧较小（约 30%），右侧较大（约 70%）
+                    // 设置编辑器布局为左右两列
                     try {
                         await vscode.commands.executeCommand('vscode.setEditorLayout', {
                             orientation: 0,
                             groups: [
-                                { size: 0.1 },
-                                { size: 0.9 }
+                                { size: 0.9 },
+                                { size: 0.1 }
                             ]
                         });
-                    } catch (layoutErr) {
-                        // 布局设置非关键；记录并忽略错误
-                        console.warn('设置编辑器布局失败', layoutErr);
-                    }
+                    } catch {}
+
+                    // 确保焦点在左侧编辑器
+                    try {
+                        await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.One });
+                    } catch {}
                 }
             } catch (e) {
                 console.error('打开左右编辑器失败', e);
