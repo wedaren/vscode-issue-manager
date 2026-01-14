@@ -29,10 +29,6 @@ export async function openIssueNode(issueOrNode: string | IssueNode): Promise<vo
     node = issueOrNode;
   }
 
-  if (!node) {
-    vscode.window.showErrorMessage('未提供有效的 Issue 节点信息。');
-    return;
-  }
 
   const filePath = path.join(issueDir, node.filePath);
   const uri = vscode.Uri.file(filePath).with({ query: `issueId=${encodeURIComponent(node.id)}` });

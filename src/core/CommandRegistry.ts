@@ -56,7 +56,7 @@ import { registerInsertMarksCommand } from '../commands/insertMarksCommand';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
-import { openIssueNode } from '../commands/openIssueNodeById';
+import { openIssueNode } from '../commands/openIssueNode';
 
 
 
@@ -225,8 +225,13 @@ export class CommandRegistry extends BaseCommandRegistry {
             this.registerCommand(
                 'issueManager.openIssueNode',
                 async (...args: unknown[]) => {
-                    const [first] = args;
-                    await openIssueNode(first as any);
+                    const [first] = args;  
+                    if (typeof first === 'string' || isIssueNode(first)) {  
+                        await openIssueNode(first);  
+                    } else {  
+                        this.logger.warn(`'issueManager.openIssueNode' command called with invalid argument:`, first);  
+                        vscode.window.showErrorMessage('打开笔记节点的参数无效。');  
+                    }  
                 },
                 '在编辑器打开IssueNode'
             );
