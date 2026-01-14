@@ -360,7 +360,7 @@ export async function getIssueMarkdownTitle(uriOrPath: vscode.Uri | string): Pro
             _issueMarkdownCache.set(key, {
                 mtime,
                 title,
-                frontmatter: cached?.frontmatter,
+                frontmatter: fm,
             });
             scheduleOnDidUpdate();
             cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
@@ -369,7 +369,7 @@ export async function getIssueMarkdownTitle(uriOrPath: vscode.Uri | string): Pro
             });
         } else if (cached && cached.mtime !== mtime) {
             // 更新 mtime 保持一致
-            _issueMarkdownCache.set(key, { ...cached, mtime });
+            _issueMarkdownCache.set(key, { ...cached,frontmatter: fm, mtime });
             cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         }
     } catch (error: any) {
@@ -571,7 +571,7 @@ export async function findNotesLinkedToFile(fileUri: vscode.Uri): Promise<IssueM
 }
 
 /**
- * 查找所有在 frontmatter.issue_linked_workspace 中包含指定 workspace 路径或其父路径的 issue markdown
+ * 查找所有在 frontmatter.issue_linked_workspace 中包含指定 workspace 路径的 issue markdown
  */
 export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Promise<IssueMarkdown[]> {
     const targetFs = normalizeFsPath(workspaceUri.fsPath);
@@ -591,15 +591,15 @@ export async function findNotesLinkedToWorkspace(workspaceUri: vscode.Uri): Prom
                     const u = vscode.Uri.parse(s);
                     if (u && u.fsPath) s = u.fsPath;
                 } catch {}
+                try {
+                    const candidate = normalizeFsPath(s);
+                    // 匹配相等或 target 包含 candidate（candidate 是父路径）
+                    if (candidate === targetFs || targetFs.startsWith(candidate + path.sep)) {
+                        res.push(issue);
+                        break;
+                    }
+                } catch {}
             }
-            try {
-                const candidate = normalizeFsPath(s);
-                // 匹配相等或 target 包含 candidate（candidate 是父路径）
-                if (candidate === targetFs || targetFs.startsWith(candidate + path.sep)) {
-                    res.push(issue);
-                    break;
-                }
-            } catch {}
         }
     }
 
