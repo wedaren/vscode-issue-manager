@@ -26,9 +26,15 @@ class CurrentTaskItem extends vscode.TreeItem {
         this.contextValue = 'currentTask';
         this.description = `${task.markers.length} 个标记`;
         
-        // 根据关联状态显示不同图标
+        // 根据关联状态显示不同图标并允许点击打开关联 Issue
         if (task.associatedIssueId) {
             this.iconPath = new vscode.ThemeIcon('go-to-file');
+            // 点击一级节点时，尝试打开关联的问题节点
+            this.command = {
+                command: 'issueManager.marker.openAssociated',
+                title: '打开关联问题',
+                arguments: [{ task }]
+            };
         } else {
             this.iconPath = new vscode.ThemeIcon('git-commit');
         }
@@ -48,6 +54,12 @@ class ArchivedTaskItem extends vscode.TreeItem {
         // 根据关联状态显示不同图标
         if (task.associatedIssueId) {
             this.iconPath = new vscode.ThemeIcon('go-to-file');
+            // 点击归档任务的一级节点也打开关联的问题节点
+            this.command = {
+                command: 'issueManager.marker.openAssociated',
+                title: '打开关联问题',
+                arguments: [{ task }]
+            };
         } else {
             this.iconPath = new vscode.ThemeIcon('tasklist');
         }
