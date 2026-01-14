@@ -245,6 +245,13 @@ export class MarkerCommandHandler {
                         // 布局设置非关键；记录并忽略错误
                         console.warn('设置编辑器布局失败', layoutErr);
                     }
+
+                    // 确保焦点在左侧编辑器（打开右侧后焦点可能在右侧）
+                    try {
+                        await vscode.window.showTextDocument(node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` }), { preview: false, viewColumn: vscode.ViewColumn.One });
+                    } catch (focusErr) {
+                        console.warn('设置左侧编辑器焦点失败', focusErr);
+                    }
                 }
             } catch (e) {
                 console.error('打开左右编辑器失败', e);
