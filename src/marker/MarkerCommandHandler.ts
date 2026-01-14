@@ -117,9 +117,9 @@ export class MarkerCommandHandler {
             vscode.commands.registerCommand('issueManager.marker.openAssociated', async (item) => {
                 if (item) {
                     if ('marker' in item) {
-                        vscode.commands.executeCommand('issueManager.openIssueBesideEditor',item.marker.associatedIssueId);
+                        vscode.commands.executeCommand('issueManager.openIssueNode',item.marker.associatedIssueId);
                     } else if ('task' in item) {
-                        vscode.commands.executeCommand('issueManager.openIssueBesideEditor',item.task.associatedIssueId);
+                        vscode.commands.executeCommand('issueManager.openIssueNode',item.task.associatedIssueId);
                     }
                 }
             })

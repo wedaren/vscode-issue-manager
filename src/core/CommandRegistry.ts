@@ -56,6 +56,7 @@ import { registerInsertMarksCommand } from '../commands/insertMarksCommand';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
+import { openIssueNode } from '../commands/openIssueNodeById';
 
 
 
@@ -155,13 +156,6 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 1. 注册基础问题管理命令
             this.registerBasicIssueCommands();
 
-            // 新命令：在激活的编辑器旁边打开问题（如果编辑器包含 issueId）
-            this.registerCommand(
-                'issueManager.openIssueBesideEditor',
-                registerOpenIssueBesideEditorHandler,
-                '在编辑器旁边打开问题'
-            );
-
             // 2. 设置视图提供者并注册视图命令
             this.viewCommandRegistry.setProviders({
                 focusedIssuesProvider,
@@ -222,7 +216,21 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 10. 注册 LLM 相关命令
             this.registerLLMCommands();
 
-            // 笔记映射命令已移除
+            // 新命令：在激活的编辑器旁边打开问题（如果编辑器包含 issueId）
+            this.registerCommand(
+                'issueManager.openIssueBesideEditor',
+                registerOpenIssueBesideEditorHandler,
+                '在编辑器旁边打开问题'
+            );
+            this.registerCommand(
+                'issueManager.openIssueNode',
+                async (...args: unknown[]) => {
+                    const [first] = args;
+                    await openIssueNode(first as any);
+                },
+                '在编辑器打开IssueNode'
+            );
+
 
             this.logger.info('✅ 所有命令注册完成');
 
