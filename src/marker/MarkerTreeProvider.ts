@@ -33,7 +33,7 @@ class CurrentTaskItem extends vscode.TreeItem {
             this.command = {
                 command: 'issueManager.marker.openAssociated',
                 title: '打开关联问题',
-                arguments: [{ task }]
+                arguments: [this]
             };
         } else {
             this.iconPath = new vscode.ThemeIcon('git-commit');
@@ -58,7 +58,7 @@ class ArchivedTaskItem extends vscode.TreeItem {
             this.command = {
                 command: 'issueManager.marker.openAssociated',
                 title: '打开关联问题',
-                arguments: [{ task }]
+                arguments: [this]
             };
         } else {
             this.iconPath = new vscode.ThemeIcon('tasklist');
