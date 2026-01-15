@@ -264,7 +264,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
                     // 普通 markdown 链接：恢复为相对路径并带 issueId 查询
                     item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`;
                     // 在用户接受该补全项后，在侧边打开对应的 markdown 文件
-                    item.command = { command: 'issueManager.openUriBeside', title: '在侧边打开', arguments: [absolutePath, node.id] };
+                    item.command = { command: 'issueManager.quickPeekIssue', title: '在侧边打开', arguments: [node.id] };
                 }
                 break;
             

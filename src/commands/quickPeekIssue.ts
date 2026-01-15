@@ -26,8 +26,8 @@ export async function quickPeekIssue(issueId: string): Promise<void> {
         // 3. 打开 Issue 视图
         const issueUri = node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
 
-        // 在当前编辑器旁边打开 Issue 文档
-        await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+        // 在当前编辑器旁边打开 Issue 文档，但保持焦点在当前编辑器（保留焦点避免闪烁）
+        await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
 
         // 4. 动态设置编辑器布局：保持现有栏不变，新增的栏设置为最小
         try {
@@ -37,8 +37,8 @@ export async function quickPeekIssue(issueId: string): Promise<void> {
             if (addedGroups > 0) {
                 // 构建布局数组：现有组保持均分，新增的组设置为最小
                 const groups = [];
-                const existingGroupSize = 0.85 / currentGroupCount; // 现有组共占 85%
-                const newGroupSize = 0.15 / addedGroups; // 新增组共占 15%
+                const existingGroupSize = 0.95 / currentGroupCount; // 现有组共占 95%
+                const newGroupSize = 0.05 / addedGroups; // 新增组共占 5%
                 
                 // 添加现有组
                 for (let i = 0; i < currentGroupCount; i++) {
@@ -57,19 +57,6 @@ export async function quickPeekIssue(issueId: string): Promise<void> {
             }
         } catch (e) {
             console.error('设置编辑器布局失败', e);
-        }
-
-        // 5. 恢复焦点到原来的编辑器
-        if (currentEditor && currentViewColumn) {
-            try {
-                await vscode.window.showTextDocument(currentEditor.document, { 
-                    preview: false, 
-                    viewColumn: currentViewColumn,
-                    preserveFocus: false
-                });
-            } catch (e) {
-                console.error('恢复焦点失败', e);
-            }
         }
     } catch (error) {
         console.error('快速查看 Issue 失败', error);
