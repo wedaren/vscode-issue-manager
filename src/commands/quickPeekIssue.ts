@@ -2,12 +2,11 @@ import * as vscode from 'vscode';
 import { getIssueNodeById } from '../data/issueTreeManager';
 
 /**
- * 快速查看两个 Issue 的命令
- * 保持当前编辑器不变（占据大部分空间），在旁边打开两个 Issue（占据小部分空间）
- * @param leftIssueId 左侧 Issue ID
- * @param rightIssueId 右侧 Issue ID
+ * 快速查看 Issue 的命令
+ * 保持当前编辑器不变（占据大部分空间），在旁边打开 Issue（占据小部分空间）
+ * @param issueId Issue ID
  */
-export async function quickPeekIssue(leftIssueId: string, rightIssueId: string): Promise<void> {
+export async function quickPeekIssue(issueId: string): Promise<void> {
     try {
         // 1. 保存当前活动编辑器和当前编辑器组数量
         const currentEditor = vscode.window.activeTextEditor;
@@ -17,31 +16,20 @@ export async function quickPeekIssue(leftIssueId: string, rightIssueId: string):
         const tabGroups = vscode.window.tabGroups;
         const currentGroupCount = tabGroups.all.length;
 
-        // 2. 获取左侧 Issue 节点
-        const leftNode = await getIssueNodeById(leftIssueId);
-        if (!leftNode || !leftNode.resourceUri) {
-            vscode.window.showErrorMessage(`未找到左侧 Issue: ${leftIssueId}`);
+        // 2. 获取 Issue 节点
+        const node = await getIssueNodeById(issueId);
+        if (!node || !node.resourceUri) {
+            vscode.window.showErrorMessage(`未找到 Issue: ${issueId}`);
             return;
         }
 
-        // 3. 获取右侧 Issue 节点
-        const rightNode = await getIssueNodeById(rightIssueId);
-        if (!rightNode || !rightNode.resourceUri) {
-            vscode.window.showErrorMessage(`未找到右侧 Issue: ${rightIssueId}`);
-            return;
-        }
+        // 3. 打开 Issue 视图
+        const issueUri = node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
 
-        // 4. 打开左右 Issue 视图
-        const leftIssueUri = leftNode.resourceUri.with({ query: `issueId=${encodeURIComponent(leftIssueId)}` });
-        const rightIssueUri = rightNode.resourceUri.with({ query: `issueId=${encodeURIComponent(rightIssueId)}` });
+        // 在当前编辑器旁边打开 Issue 文档
+        await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
 
-        // 在当前编辑器旁边打开左侧 Issue 文档
-        await vscode.window.showTextDocument(leftIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
-
-        // 继续在旁边打开右侧 Issue 文档
-        await vscode.window.showTextDocument(rightIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
-
-        // 5. 动态设置编辑器布局：保持现有栏不变，新增的栏设置为最小
+        // 4. 动态设置编辑器布局：保持现有栏不变，新增的栏设置为最小
         try {
             const newGroupCount = vscode.window.tabGroups.all.length;
             const addedGroups = newGroupCount - currentGroupCount;
@@ -71,7 +59,7 @@ export async function quickPeekIssue(leftIssueId: string, rightIssueId: string):
             console.error('设置编辑器布局失败', e);
         }
 
-        // 6. 恢复焦点到原来的编辑器
+        // 5. 恢复焦点到原来的编辑器
         if (currentEditor && currentViewColumn) {
             try {
                 await vscode.window.showTextDocument(currentEditor.document, { 
@@ -95,15 +83,14 @@ export async function quickPeekIssue(leftIssueId: string, rightIssueId: string):
 export function registerQuickPeekIssue(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.quickPeekIssue', async (...args: unknown[]) => {
-            if (args.length < 2) {
-                vscode.window.showErrorMessage('QuickPeekIssue 命令需要两个 Issue ID 参数');
+            if (args.length < 1) {
+                vscode.window.showErrorMessage('QuickPeekIssue 命令需要一个 Issue ID 参数');
                 return;
             }
 
-            const leftIssueId = typeof args[0] === 'string' ? args[0] : String(args[0]);
-            const rightIssueId = typeof args[1] === 'string' ? args[1] : String(args[1]);
+            const issueId = typeof args[0] === 'string' ? args[0] : String(args[0]);
 
-            await quickPeekIssue(leftIssueId, rightIssueId);
+            await quickPeekIssue(issueId);
         })
     );
 }
