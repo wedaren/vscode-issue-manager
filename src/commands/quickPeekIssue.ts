@@ -30,34 +30,37 @@ export async function quickPeekIssue(issueId: string): Promise<void> {
         await vscode.window.showTextDocument(issueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
 
         // 4. 动态设置编辑器布局：保持现有栏不变，新增的栏设置为最小
-        try {
-            const newGroupCount = vscode.window.tabGroups.all.length;
-            const addedGroups = newGroupCount - currentGroupCount;
-            
-            if (addedGroups > 0) {
-                // 构建布局数组：现有组保持均分，新增的组设置为最小
-                const groups = [];
-                const existingGroupSize = 0.95 / currentGroupCount; // 现有组共占 95%
-                const newGroupSize = 0.05 / addedGroups; // 新增组共占 5%
+        // 延迟一小段时间确保编辑器已经打开，然后再调整布局
+        setTimeout(async () => {
+            try {
+                const newGroupCount = vscode.window.tabGroups.all.length;
+                const addedGroups = newGroupCount - currentGroupCount;
                 
-                // 添加现有组
-                for (let i = 0; i < currentGroupCount; i++) {
-                    groups.push({ size: existingGroupSize });
+                if (addedGroups > 0) {
+                    // 构建布局数组：现有组保持均分，新增的组设置为最小
+                    const groups = [];
+                    const existingGroupSize = 0.95 / currentGroupCount; // 现有组共占 95%
+                    const newGroupSize = 0.05 / addedGroups; // 新增组共占 5%
+                    
+                    // 添加现有组
+                    for (let i = 0; i < currentGroupCount; i++) {
+                        groups.push({ size: existingGroupSize });
+                    }
+                    
+                    // 添加新增组
+                    for (let i = 0; i < addedGroups; i++) {
+                        groups.push({ size: newGroupSize });
+                    }
+                    
+                    await vscode.commands.executeCommand('vscode.setEditorLayout', {
+                        orientation: 0,
+                        groups: groups
+                    });
                 }
-                
-                // 添加新增组
-                for (let i = 0; i < addedGroups; i++) {
-                    groups.push({ size: newGroupSize });
-                }
-                
-                await vscode.commands.executeCommand('vscode.setEditorLayout', {
-                    orientation: 0,
-                    groups: groups
-                });
+            } catch (e) {
+                console.error('设置编辑器布局失败', e);
             }
-        } catch (e) {
-            console.error('设置编辑器布局失败', e);
-        }
+        }, 50);
     } catch (error) {
         console.error('快速查看 Issue 失败', error);
         vscode.window.showErrorMessage('快速查看 Issue 失败');
