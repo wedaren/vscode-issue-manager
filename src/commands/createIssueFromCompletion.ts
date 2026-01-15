@@ -39,11 +39,11 @@ export function parseCreateIssueArgs(args: unknown[]): { parentId?: string | und
     return { parentId, titleArg, background, insertMode, hasTrigger };
 }
 
-export async function createAndOpenIssue(title: string, parentId?: string): Promise<{ uri?: vscode.Uri; newNodeId?: string | undefined }> {
+async function createAndOpenIssue(title: string, parentId?: string): Promise<{ uri?: vscode.Uri; newNodeId?: string | undefined }> {
     const uri = await createIssueFileSilent(title);
     if (!uri) { return { }; }
 
-    const added = await addIssueToTree([uri], parentId);
+    const added = await addIssueToTree([uri], parentId, false);
     const newNodeId = added && added.length > 0 ? added[0].id : undefined;
 
     try {
