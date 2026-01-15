@@ -8,6 +8,7 @@ import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider
 import { registerOpenInSplit } from './commands/openInSplit';
 import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
 import { registerLinkWorkspaceToIssue } from './commands/linkWorkspaceToIssue';
+import { registerQuickPeekIssue } from './commands/quickPeekIssue';
 import { copilotDocumentProvider } from './virtual/CopilotDocumentProvider';
 
 // 当您的扩展被激活时,将调用此方法
@@ -50,6 +51,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册 将工作区/文件夹关联到 issue 的命令
 	registerLinkWorkspaceToIssue(context);
+
+	// 注册快速查看 Issue 命令
+	registerQuickPeekIssue(context);
 
 	// 注册 Copilot 虚拟文档提供者（用于展示不提示保存的虚拟编辑窗口）
 	const providerDisposable = vscode.workspace.registerTextDocumentContentProvider('copilot', copilotDocumentProvider);
