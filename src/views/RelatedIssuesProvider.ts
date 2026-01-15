@@ -3,7 +3,7 @@
  * 只读视图，动态展示某问题在知识库中的所有引用及上下文
  */
 import * as vscode from 'vscode';
-import { readTree, TreeData, IssueNode, getIssueNodeContextValue, onIssueTreeUpdate } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueNode, getIssueNodeContextValue, onIssueTreeUpdate, getIssueNodeIconPath } from '../data/issueTreeManager';
 import { findNotesLinkedToFile, findNotesLinkedToWorkspace, getIssueMarkdownContextValues, getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
@@ -47,6 +47,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 fmNodes.push({
                     label,
                     type: 'markdown',
+                    icon: new vscode.ThemeIcon('markdown'),
                     filePath: note.uri.fsPath,
                     children: [],
                     resourceUri: note.uri,
@@ -62,8 +63,9 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                     const label = await getIssueMarkdownTitle(note.uri);
                     workspaceNodes.push({
                         label,
-                        type: 'markdown',
+                        type: 'workspace',
                         filePath: note.uri.fsPath,
+                        icon: new vscode.ThemeIcon('file-directory'),
                         children: [],
                         resourceUri: note.uri,
                         id: note.uri.toString() + ':ws',
@@ -125,6 +127,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             label: await getNodeTitle(node),
             type: 'current',
             filePath: node.filePath,
+            icon: new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue')),
             resourceUri: node.resourceUri,
             id: node.id,
             contextValue: await getIssueNodeContextValue(node.id, 'issueNode'),
@@ -158,6 +161,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             return result;
         } else {
             currentNode.type = 'current';
+            currentNode.icon = new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
             return currentNode;
         }
     }
@@ -166,14 +170,14 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     async getTreeItem(element: RelatedIssueNode): Promise<vscode.TreeItem> {
         const item = new vscode.TreeItem(element.label, element.children && element.children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
         item.tooltip = element.tooltip;
-        item.iconPath = element.type === 'current' ? new vscode.ThemeIcon('eye') : (element.type === 'markdown' ? new vscode.ThemeIcon('markdown') : undefined);
+        item.iconPath = element.icon || await getIssueNodeIconPath(element.id);
         item.description = element.type === 'parent' ? element.tooltip : '';
         
         // 使用缓存的 contextValue 或计算新的 contextValue
         item.contextValue = element.contextValue ?? await getIssueNodeContextValue(element.id, 'issueNode');
         item.id = element.id;
         item.resourceUri = element.resourceUri;
-        if(element.type === 'markdown'){
+        if(element.type === 'markdown' || element.type === 'workspace'){
             item.command = {
                 command: 'vscode.open',
                 title: '在侧边打开关联笔记',
@@ -204,9 +208,9 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
  */
 export interface RelatedIssueNode extends IssueNode{
     label: string;
-    type: 'parent' | 'current' | 'sibling' | 'child' | 'markdown';
+    type: 'parent' | 'current' | 'sibling' | 'child' | 'markdown' | 'workspace' | 'git-branch';
     tooltip?: string;
-    icon?: string;
+    icon?: vscode.ThemeIcon;
     children: RelatedIssueNode[];
     contextValue?: string;
 }
