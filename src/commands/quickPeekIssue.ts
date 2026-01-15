@@ -3,54 +3,64 @@ import { getIssueNodeById } from '../data/issueTreeManager';
 
 /**
  * 快速查看两个 Issue 的命令
- * 在左侧编辑器显示左侧 Issue，右侧显示右侧 Issue
+ * 保持当前编辑器不变（占据大部分空间），在旁边打开两个 Issue（占据小部分空间）
  * @param leftIssueId 左侧 Issue ID
  * @param rightIssueId 右侧 Issue ID
  */
 export async function quickPeekIssue(leftIssueId: string, rightIssueId: string): Promise<void> {
     try {
-        // 1. 获取左侧 Issue 节点
+        // 1. 保存当前活动编辑器
+        const currentEditor = vscode.window.activeTextEditor;
+
+        // 2. 获取左侧 Issue 节点
         const leftNode = await getIssueNodeById(leftIssueId);
         if (!leftNode || !leftNode.resourceUri) {
             vscode.window.showErrorMessage(`未找到左侧 Issue: ${leftIssueId}`);
             return;
         }
 
-        // 2. 获取右侧 Issue 节点
+        // 3. 获取右侧 Issue 节点
         const rightNode = await getIssueNodeById(rightIssueId);
         if (!rightNode || !rightNode.resourceUri) {
             vscode.window.showErrorMessage(`未找到右侧 Issue: ${rightIssueId}`);
             return;
         }
 
-        // 3. 打开左右编辑器视图
+        // 4. 打开左右 Issue 视图
         const leftIssueUri = leftNode.resourceUri.with({ query: `issueId=${encodeURIComponent(leftIssueId)}` });
         const rightIssueUri = rightNode.resourceUri.with({ query: `issueId=${encodeURIComponent(rightIssueId)}` });
 
-        // 左侧：打开左侧 Issue 文档
-        await vscode.window.showTextDocument(leftIssueUri, { preview: false, viewColumn: vscode.ViewColumn.One });
+        // 在旁边打开左侧 Issue 文档
+        await vscode.window.showTextDocument(leftIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Two });
 
-        // 右侧：打开右侧 Issue 文档
-        await vscode.window.showTextDocument(rightIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Two });
+        // 在旁边打开右侧 Issue 文档
+        await vscode.window.showTextDocument(rightIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Three });
 
-        // 4. 设置编辑器布局为左右两列
+        // 5. 设置编辑器布局：当前编辑器占 90%，两个 Issue 各占 5%
         try {
             await vscode.commands.executeCommand('vscode.setEditorLayout', {
                 orientation: 0,
                 groups: [
                     { size: 0.9 },
-                    { size: 0.1 }
+                    { size: 0.05 },
+                    { size: 0.05 }
                 ]
             });
         } catch (e) {
             console.error('设置编辑器布局失败', e);
         }
 
-        // 5. 确保焦点在左侧编辑器
-        try {
-            await vscode.window.showTextDocument(leftIssueUri, { preview: false, viewColumn: vscode.ViewColumn.One });
-        } catch (e) {
-            console.error('设置焦点失败', e);
+        // 6. 恢复焦点到原来的编辑器
+        if (currentEditor) {
+            try {
+                await vscode.window.showTextDocument(currentEditor.document, { 
+                    preview: false, 
+                    viewColumn: currentEditor.viewColumn,
+                    preserveFocus: false
+                });
+            } catch (e) {
+                console.error('恢复焦点失败', e);
+            }
         }
     } catch (error) {
         console.error('快速查看 Issue 失败', error);
