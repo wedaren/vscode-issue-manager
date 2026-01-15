@@ -46,12 +46,7 @@ async function createAndOpenIssue(title: string, parentId?: string): Promise<{ u
     const added = await addIssueToTree([uri], parentId, false);
     const newNodeId = added && added.length > 0 ? added[0].id : undefined;
 
-    try {
-        const openUri = newNodeId ? uri.with({ query: `issueId=${encodeURIComponent(newNodeId)}` }) : uri;
-        await vscode.window.showTextDocument(openUri, { preserveFocus:false, preview: true, viewColumn: vscode.ViewColumn.Beside });
-    } catch (e) {
-        try { await vscode.window.showTextDocument(uri, { preserveFocus:false, preview: true }); } catch {}
-    }
+    vscode.commands.executeCommand('issueManager.quickPeekIssue', newNodeId);
 
     return { uri, newNodeId };
 }
