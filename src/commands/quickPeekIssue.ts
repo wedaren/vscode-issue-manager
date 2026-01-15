@@ -30,24 +30,28 @@ export async function quickPeekIssue(leftIssueId: string, rightIssueId: string):
         const leftIssueUri = leftNode.resourceUri.with({ query: `issueId=${encodeURIComponent(leftIssueId)}` });
         const rightIssueUri = rightNode.resourceUri.with({ query: `issueId=${encodeURIComponent(rightIssueId)}` });
 
-        // 在旁边打开左侧 Issue 文档
-        await vscode.window.showTextDocument(leftIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Two });
+        // 在当前编辑器旁边打开左侧 Issue 文档
+        await vscode.window.showTextDocument(leftIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
 
-        // 在旁边打开右侧 Issue 文档
-        await vscode.window.showTextDocument(rightIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Three });
+        // 继续在旁边打开右侧 Issue 文档
+        await vscode.window.showTextDocument(rightIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
 
         // 5. 设置编辑器布局：当前编辑器占 90%，两个 Issue 各占 5%
-        try {
-            await vscode.commands.executeCommand('vscode.setEditorLayout', {
-                orientation: 0,
-                groups: [
-                    { size: 0.9 },
-                    { size: 0.05 },
-                    { size: 0.05 }
-                ]
-            });
-        } catch (e) {
-            console.error('设置编辑器布局失败', e);
+        // 获取所有可见编辑器的数量来动态设置布局
+        const visibleEditors = vscode.window.visibleTextEditors.length;
+        if (visibleEditors >= 3) {
+            try {
+                await vscode.commands.executeCommand('vscode.setEditorLayout', {
+                    orientation: 0,
+                    groups: [
+                        { size: 0.9 },
+                        { size: 0.05 },
+                        { size: 0.05 }
+                    ]
+                });
+            } catch (e) {
+                console.error('设置编辑器布局失败', e);
+            }
         }
 
         // 6. 恢复焦点到原来的编辑器
