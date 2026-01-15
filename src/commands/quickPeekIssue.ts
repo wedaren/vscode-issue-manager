@@ -9,8 +9,13 @@ import { getIssueNodeById } from '../data/issueTreeManager';
  */
 export async function quickPeekIssue(leftIssueId: string, rightIssueId: string): Promise<void> {
     try {
-        // 1. 保存当前活动编辑器
+        // 1. 保存当前活动编辑器和当前编辑器组数量
         const currentEditor = vscode.window.activeTextEditor;
+        const currentViewColumn = currentEditor?.viewColumn;
+        
+        // 获取当前所有可见编辑器组
+        const tabGroups = vscode.window.tabGroups;
+        const currentGroupCount = tabGroups.all.length;
 
         // 2. 获取左侧 Issue 节点
         const leftNode = await getIssueNodeById(leftIssueId);
@@ -36,30 +41,42 @@ export async function quickPeekIssue(leftIssueId: string, rightIssueId: string):
         // 继续在旁边打开右侧 Issue 文档
         await vscode.window.showTextDocument(rightIssueUri, { preview: false, viewColumn: vscode.ViewColumn.Beside });
 
-        // 5. 设置编辑器布局：当前编辑器占 90%，两个 Issue 各占 5%
-        // 获取所有可见编辑器的数量来动态设置布局
-        const visibleEditors = vscode.window.visibleTextEditors.length;
-        if (visibleEditors >= 3) {
-            try {
+        // 5. 动态设置编辑器布局：保持现有栏不变，新增的栏设置为最小
+        try {
+            const newGroupCount = vscode.window.tabGroups.all.length;
+            const addedGroups = newGroupCount - currentGroupCount;
+            
+            if (addedGroups > 0) {
+                // 构建布局数组：现有组保持均分，新增的组设置为最小
+                const groups = [];
+                const existingGroupSize = 0.85 / currentGroupCount; // 现有组共占 85%
+                const newGroupSize = 0.15 / addedGroups; // 新增组共占 15%
+                
+                // 添加现有组
+                for (let i = 0; i < currentGroupCount; i++) {
+                    groups.push({ size: existingGroupSize });
+                }
+                
+                // 添加新增组
+                for (let i = 0; i < addedGroups; i++) {
+                    groups.push({ size: newGroupSize });
+                }
+                
                 await vscode.commands.executeCommand('vscode.setEditorLayout', {
                     orientation: 0,
-                    groups: [
-                        { size: 0.9 },
-                        { size: 0.05 },
-                        { size: 0.05 }
-                    ]
+                    groups: groups
                 });
-            } catch (e) {
-                console.error('设置编辑器布局失败', e);
             }
+        } catch (e) {
+            console.error('设置编辑器布局失败', e);
         }
 
         // 6. 恢复焦点到原来的编辑器
-        if (currentEditor) {
+        if (currentEditor && currentViewColumn) {
             try {
                 await vscode.window.showTextDocument(currentEditor.document, { 
                     preview: false, 
-                    viewColumn: currentEditor.viewColumn,
+                    viewColumn: currentViewColumn,
                     preserveFocus: false
                 });
             } catch (e) {
