@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
+import { parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
 
 /**
  * Issue 文档链接提供器
@@ -55,6 +56,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
         }
 
         // 2) 处理自定义语法 [[file:...]]，使用 command URI 打开并分屏显示
+        // 支持新的统一格式：[[file:/path#L10:4-L15:8]]
         const filePattern = /\[\[file:([^\]]+)\]\]/g;
         for (const match of text.matchAll(filePattern)) {
             if (token.isCancellationRequested) {
@@ -67,9 +69,18 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             const startIndex = match.index! + '[[file:'.length;
             const endIndex = startIndex + filePath.length;
 
-            // 将必要信息序列化为命令参数：包含原文档 uri 和目标路径字符串
+            // 使用统一的解析器解析位置信息
+            const linkText = `[[file:${filePath}]]`;
+            const fileLocation = parseFileLink(linkText);
+            
+            if (!fileLocation) {
+                // 解析失败，跳过
+                continue;
+            }
+
+            // 将必要信息序列化为命令参数：包含原文档 uri 和目标位置信息
             const args = {
-                target: filePath,
+                location: fileLocation,
                 source: document.uri.toString()
             };
 
@@ -81,7 +92,30 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             );
 
             const link = new vscode.DocumentLink(range, cmdUri);
-            link.tooltip = '在旁边打开文件';
+            
+            // 构建更详细的 tooltip
+            let tooltip = '在旁边打开文件';
+            if (fileLocation.startLine) {
+                if (fileLocation.endLine && fileLocation.endLine !== fileLocation.startLine) {
+                    tooltip += ` (L${fileLocation.startLine}`;
+                    if (fileLocation.startColumn) {
+                        tooltip += `:${fileLocation.startColumn}`;
+                    }
+                    tooltip += `-L${fileLocation.endLine}`;
+                    if (fileLocation.endColumn) {
+                        tooltip += `:${fileLocation.endColumn}`;
+                    }
+                    tooltip += ')';
+                } else {
+                    tooltip += ` (L${fileLocation.startLine}`;
+                    if (fileLocation.startColumn) {
+                        tooltip += `:${fileLocation.startColumn}`;
+                    }
+                    tooltip += ')';
+                }
+            }
+            
+            link.tooltip = tooltip;
             links.push(link);
         }
 

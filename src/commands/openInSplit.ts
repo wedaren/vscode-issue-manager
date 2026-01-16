@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { type FileLocation } from '../utils/fileLinkFormatter';
 
 export function registerOpenInSplit(context: vscode.ExtensionContext) {
 	const disposable = vscode.commands.registerCommand('extension.openInSplit', async (args) => {
@@ -8,8 +9,18 @@ export function registerOpenInSplit(context: vscode.ExtensionContext) {
 			let payload = args;
 			if (Array.isArray(args) && args.length > 0) payload = args[0];
 
+			// 支持新的 location 对象格式
+			const location = (payload && payload.location) ? payload.location as FileLocation : undefined;
 			const target = (payload && payload.target) ? String(payload.target) : undefined;
 			const source = (payload && payload.source) ? String(payload.source) : undefined;
+			
+			// 优先使用新格式
+			if (location) {
+				await openFileWithLocation(location, source);
+				return;
+			}
+			
+			// 回退到旧格式
 			if (!target) {
 				vscode.window.showErrorMessage('未提供目标文件路径');
 				return;
@@ -113,6 +124,95 @@ export function registerOpenInSplit(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(disposable);
+}
+
+/**
+ * 使用新的统一位置格式打开文件
+ */
+async function openFileWithLocation(location: FileLocation, source?: string): Promise<void> {
+	let resolvedPath: string;
+	const rawPath = location.filePath;
+	const workspaceFolders = vscode.workspace.workspaceFolders;
+	
+	// 解析路径
+	if (path.isAbsolute(rawPath)) {
+		resolvedPath = rawPath;
+	} else if (workspaceFolders && workspaceFolders.length > 0) {
+		// 优先使用触发链接文档所在的 workspace folder
+		if (source) {
+			try {
+				const srcUri = vscode.Uri.parse(source);
+				const wf = vscode.workspace.getWorkspaceFolder(srcUri);
+				const base = wf ? wf.uri.fsPath : workspaceFolders[0].uri.fsPath;
+				resolvedPath = path.join(base, rawPath);
+			} catch (e) {
+				resolvedPath = path.join(workspaceFolders[0].uri.fsPath, rawPath);
+			}
+		} else {
+			resolvedPath = path.join(workspaceFolders[0].uri.fsPath, rawPath);
+		}
+	} else if (source) {
+		// 无 workspace 时回退到源文档目录
+		try {
+			const srcUri = vscode.Uri.parse(source);
+			resolvedPath = path.resolve(path.dirname(srcUri.fsPath), rawPath);
+		} catch (e) {
+			resolvedPath = path.resolve(rawPath);
+		}
+	} else {
+		resolvedPath = path.resolve(rawPath);
+	}
+
+	// 验证文件存在
+	if (!fs.existsSync(resolvedPath)) {
+		vscode.window.showErrorMessage(`未找到文件: ${resolvedPath}`);
+		return;
+	}
+
+	const fileUri = vscode.Uri.file(resolvedPath);
+	const doc = await vscode.workspace.openTextDocument(fileUri);
+	const editor = await vscode.window.showTextDocument(doc, { 
+		viewColumn: vscode.ViewColumn.Beside, 
+		preview: false 
+	});
+
+	// 定位到指定位置（如果有）
+	if (location.startLine !== undefined) {
+		const startLine = Math.max(0, location.startLine - 1); // 转换为 0-based
+		const startChar = Math.max(0, (location.startColumn || 1) - 1);
+		
+		let endLine: number;
+		let endChar: number;
+		
+		if (location.endLine !== undefined) {
+			endLine = Math.max(0, location.endLine - 1);
+			if (location.endColumn !== undefined) {
+				endChar = Math.max(0, location.endColumn - 1);
+			} else {
+				// 未指定结束列，选中到行末
+				endChar = doc.lineAt(endLine).text.length;
+			}
+		} else {
+			// 未指定结束行
+			endLine = startLine;
+			if (location.startColumn !== undefined) {
+				// 有起始列但无结束位置，选中到行末
+				endChar = doc.lineAt(endLine).text.length;
+			} else {
+				// 只有行号，选中整行
+				endChar = doc.lineAt(endLine).text.length;
+			}
+		}
+		
+		const range = new vscode.Range(
+			startLine, 
+			startChar, 
+			endLine, 
+			Math.min(endChar, doc.lineAt(endLine).text.length)
+		);
+		editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+		editor.selection = new vscode.Selection(range.start, range.end);
+	}
 }
 
 export default registerOpenInSplit;
