@@ -181,19 +181,21 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             // 创建 URI
             let uri = vscode.Uri.file(absolutePath);
 
-            // 如果有查询参数，附加到 URI
+            // 如果有查询参数，优先检查是否包含 issueId
             if (queryString) {
-                uri = uri.with({ query: queryString });
-                
-                // 提取 issueId 用于 tooltip
                 const issueIdMatch = queryString.match(/issueId=([^&]+)/);
                 if (issueIdMatch) {
                     const issueId = decodeURIComponent(issueIdMatch[1]);
+                    // 使用 command URI 调用快速查看命令，传入 issueId
+                    const cmdUri = vscode.Uri.parse(`command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([issueId]))}`);
                     return {
-                        uri,
-                        tooltip: `打开文件 (issueId: ${issueId})`
+                        uri: cmdUri,
+                        tooltip: `快速查看 Issue (${issueId})`
                     };
                 }
+
+                // 其余查询参数保留在文件 URI 上
+                uri = uri.with({ query: queryString });
             }
 
             return { uri };
