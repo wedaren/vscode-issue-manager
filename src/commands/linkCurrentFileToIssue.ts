@@ -5,6 +5,7 @@ import { getIssueDir } from '../config';
 import { getRelativeToNoteRoot } from '../utils/pathUtils';
 import { getIssueMarkdownFrontmatter, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 import { getIssueNodeById } from '../data/issueTreeManager';
+import { createLocationFromEditor, formatFileLink } from '../utils/fileLinkFormatter';
 
 export async function linkCurrentFileToIssue(): Promise<void> {
   try {
@@ -25,25 +26,11 @@ export async function linkCurrentFileToIssue(): Promise<void> {
     // 优先使用相对于 issueDir 的相对路径，否则使用绝对路径
     const storedPath = rel !== undefined && rel !== '' ? rel : currentFilePath;
 
-    // 支持记录当前编辑器选区或光标范围为 fragment（例如 #L10 或 #L10-L12）
-    let fragment = '';  
-    const sel = editor.selection;
-    if (sel && !sel.isEmpty) {
-      const startLine = sel.start.line + 1;
-      const endLine = sel.end.line + 1;
-      if (startLine === endLine) {
-        fragment = `#L${startLine}`;
-      } else {
-        fragment = `#L${startLine}-L${endLine}`;
-      }
-    } else if (editor.selection) {
-      // 光标处无选区，记录光标所在行
-      const line = editor.selection.active.line + 1;
-      fragment = `#L${line}`;
-    }
-    // 使用双中括号 wiki-link 结构存储，并在路径前加上 `file:` 前缀，带可选 fragment
-    // 例如: [[file:notes/foo.md#L10-L12]] 或 [[file:/abs/path/to/file.md#L10]]
-    const linkValue = `[[file:${storedPath}${fragment}]]`;
+    // 使用统一的文件链接格式化工具
+    const location = createLocationFromEditor(editor);
+    // 将路径替换为优先路径（相对或绝对）
+    location.filePath = storedPath;
+    const linkValue = formatFileLink(location);
 
     // 使用 quickCreateIssue 选择或创建 issue（作为默认交互）
     const issueId = await quickCreateIssue();

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
+import { parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
 
 /**
  * Issue 文档链接提供器
@@ -55,6 +56,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
         }
 
         // 2) 处理自定义语法 [[file:...]]，使用 command URI 打开并分屏显示
+        // 支持新的统一格式：[[file:/path#L10:4-L15:8]]
         const filePattern = /\[\[file:([^\]]+)\]\]/g;
         for (const match of text.matchAll(filePattern)) {
             if (token.isCancellationRequested) {
@@ -67,9 +69,18 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             const startIndex = match.index! + '[[file:'.length;
             const endIndex = startIndex + filePath.length;
 
-            // 将必要信息序列化为命令参数：包含原文档 uri 和目标路径字符串
+            // 使用统一的解析器解析位置信息
+            const linkText = `[[file:${filePath}]]`;
+            const fileLocation = parseFileLink(linkText);
+            
+            if (!fileLocation) {
+                // 解析失败，跳过
+                continue;
+            }
+
+            // 将必要信息序列化为命令参数：包含原文档 uri 和目标位置信息
             const args = {
-                target: filePath,
+                location: fileLocation,
                 source: document.uri.toString()
             };
 
@@ -81,7 +92,30 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             );
 
             const link = new vscode.DocumentLink(range, cmdUri);
-            link.tooltip = '在旁边打开文件';
+            
+            // 构建更详细的 tooltip
+            let tooltip = '在旁边打开文件';
+            if (fileLocation.startLine) {
+                if (fileLocation.endLine && fileLocation.endLine !== fileLocation.startLine) {
+                    tooltip += ` (L${fileLocation.startLine}`;
+                    if (fileLocation.startColumn) {
+                        tooltip += `:${fileLocation.startColumn}`;
+                    }
+                    tooltip += `-L${fileLocation.endLine}`;
+                    if (fileLocation.endColumn) {
+                        tooltip += `:${fileLocation.endColumn}`;
+                    }
+                    tooltip += ')';
+                } else {
+                    tooltip += ` (L${fileLocation.startLine}`;
+                    if (fileLocation.startColumn) {
+                        tooltip += `:${fileLocation.startColumn}`;
+                    }
+                    tooltip += ')';
+                }
+            }
+            
+            link.tooltip = tooltip;
             links.push(link);
         }
 
@@ -181,19 +215,21 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             // 创建 URI
             let uri = vscode.Uri.file(absolutePath);
 
-            // 如果有查询参数，附加到 URI
+            // 如果有查询参数，优先检查是否包含 issueId
             if (queryString) {
-                uri = uri.with({ query: queryString });
-                
-                // 提取 issueId 用于 tooltip
                 const issueIdMatch = queryString.match(/issueId=([^&]+)/);
                 if (issueIdMatch) {
                     const issueId = decodeURIComponent(issueIdMatch[1]);
+                    // 使用 command URI 调用快速查看命令，传入 issueId
+                    const cmdUri = vscode.Uri.parse(`command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([issueId]))}`);
                     return {
-                        uri,
-                        tooltip: `打开文件 (issueId: ${issueId})`
+                        uri: cmdUri,
+                        tooltip: `快速查看 Issue (${issueId})`
                     };
                 }
+
+                // 其余查询参数保留在文件 URI 上
+                uri = uri.with({ query: queryString });
             }
 
             return { uri };

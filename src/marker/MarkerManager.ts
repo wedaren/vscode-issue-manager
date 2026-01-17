@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { quickCreateIssue } from '../commands/quickCreateIssue';
 import { getIssueTitle } from '../data/issueTreeManager';
+import { createLocationFromEditor, formatFileLink, parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
 
 /**
  * 标记项
@@ -10,15 +11,17 @@ import { getIssueTitle } from '../data/issueTreeManager';
 export interface MarkerItem {
     /** 标记文本 */
     message: string;
-    /** 文件路径（可选） */
+    /** 统一格式的位置链接，格式如 [[file:/path#L10:4-L15:8]]（推荐使用） */
+    location?: string;
+    /** 文件路径（可选，已废弃，保留用于向后兼容） */
     filePath?: string;
-    /** 行号（可选，从0开始） */
+    /** 行号（可选，从0开始，已废弃，保留用于向后兼容） */
     // 兼容单点位置
     line?: number;
-    /** 列号（可选，从0开始） */
+    /** 列号（可选，从0开始，已废弃，保留用于向后兼容） */
     column?: number;
 
-    // 可选范围位置（优先使用范围，如果存在则表示选中区域）
+    // 可选范围位置（优先使用范围，如果存在则表示选中区域）（已废弃，保留用于向后兼容）
     startLine?: number;
     startColumn?: number;
     endLine?: number;
@@ -179,17 +182,18 @@ export class MarkerManager {
             createdAt: Date.now()
         };
 
-        // 如果有编辑器，记录位置信息
+        // 如果有编辑器，使用统一的链接格式记录位置信息
         if (editor) {
+            const fileLocation = createLocationFromEditor(editor);
+            marker.location = formatFileLink(fileLocation);
+            
+            // 保留旧字段以实现向后兼容
             marker.filePath = editor.document.uri.fsPath;
-            // 如果用户有选中范围，则保存范围信息
             if (!editor.selection.isEmpty) {
                 marker.startLine = editor.selection.start.line;
                 marker.startColumn = editor.selection.start.character;
                 marker.endLine = editor.selection.end.line;
                 marker.endColumn = editor.selection.end.character;
-
-                // 兼容旧字段，使用起始位置填充 line/column
                 marker.line = marker.startLine;
                 marker.column = marker.startColumn;
             } else {
@@ -427,24 +431,50 @@ export class MarkerManager {
      * 跳转到标记位置
      */
     async jumpToMarker(marker: MarkerItem): Promise<void> {
-        if (!marker.filePath || marker.line === undefined) {
+        let fileLocation: FileLocation | null = null;
+        
+        // 优先使用新的统一格式
+        if (marker.location) {
+            fileLocation = parseFileLink(marker.location);
+        }
+        
+        // 如果没有新格式或解析失败，回退到旧格式
+        if (!fileLocation && marker.filePath && marker.line !== undefined) {
+            fileLocation = {
+                filePath: marker.filePath,
+                startLine: (marker.line || 0) + 1,  // 转换为 1-based
+                startColumn: marker.column !== undefined ? (marker.column + 1) : undefined,
+                endLine: marker.endLine !== undefined ? (marker.endLine + 1) : undefined,
+                endColumn: marker.endColumn !== undefined ? (marker.endColumn + 1) : undefined
+            };
+        }
+        
+        if (!fileLocation) {
             vscode.window.showWarningMessage('该标记没有关联的位置信息');
             return;
         }
 
         try {
-            const document = await vscode.workspace.openTextDocument(marker.filePath);
+            const document = await vscode.workspace.openTextDocument(fileLocation.filePath);
             const editor = await vscode.window.showTextDocument(document);
+            
             // 如果有范围信息，则选中整个范围
-            if (marker.startLine !== undefined && marker.endLine !== undefined) {
-                const start = new vscode.Position(marker.startLine, marker.startColumn || 0);
-                const end = new vscode.Position(marker.endLine, marker.endColumn || 0);
-                editor.selection = new vscode.Selection(start, end);
-                editor.revealRange(new vscode.Range(start, end), vscode.TextEditorRevealType.InCenter);
-            } else {
-                const position = new vscode.Position(marker.line, marker.column || 0);
-                editor.selection = new vscode.Selection(position, position);
-                editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+            if (fileLocation.startLine !== undefined) {
+                const startLine = fileLocation.startLine - 1; // 转换为 0-based
+                const startCol = (fileLocation.startColumn || 1) - 1;
+                
+                if (fileLocation.endLine !== undefined) {
+                    const endLine = fileLocation.endLine - 1;
+                    const endCol = (fileLocation.endColumn || 1) - 1;
+                    const start = new vscode.Position(startLine, startCol);
+                    const end = new vscode.Position(endLine, endCol);
+                    editor.selection = new vscode.Selection(start, end);
+                    editor.revealRange(new vscode.Range(start, end), vscode.TextEditorRevealType.InCenter);
+                } else {
+                    const position = new vscode.Position(startLine, startCol);
+                    editor.selection = new vscode.Selection(position, position);
+                    editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+                }
             }
         } catch (error) {
             vscode.window.showErrorMessage(`无法打开文件: ${error}`);
