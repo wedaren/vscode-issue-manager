@@ -291,7 +291,7 @@ export class IssueStructureProvider
                 const existingFileUri = vscode.Uri.file(existingFilePath);
 
                 try {
-                        const childrenFiles = (await getIssueMarkdown(existingFileUri))?.frontmatter?.issue_children_files || [];
+                    const childrenFiles = (await getIssueMarkdown(existingFileUri))?.frontmatter?.issue_children_files || [];
 
                     // 如果当前文件的 children_files 中包含被删除的文件
                     if (childrenFiles.includes(deletedFileName)) {

@@ -61,10 +61,10 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             const workspaceNodes: RelatedIssueNode[] = [];
                 const wsNotes = await findNotesLinkedToWorkspace(ctx);
                 for (const note of wsNotes) {
-                    const md = await getIssueMarkdown(note.uri);
-                        const label = md ? md.title : '不合法 issueMarkdown';
-                        workspaceNodes.push({
-                            label,
+                const md = await getIssueMarkdown(note.uri);
+                const label = md ? md.title : '不合法 issueMarkdown';
+                workspaceNodes.push({
+                    label,
                         type: 'workspace',
                         filePath: note.uri.fsPath,
                         icon: new vscode.ThemeIcon('file-directory'),
@@ -114,7 +114,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             return md ? md.title : '不合法 issueMarkdown';
         };
 
-            const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
+        const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
             label: await getNodeTitle(parentIssueNode),
             type: 'parent',
             filePath: parentIssueNode.filePath,

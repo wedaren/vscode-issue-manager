@@ -189,9 +189,9 @@ export class FrontmatterService {
                 return false;
             }
 
-                // 获取子文件当前的 frontmatter
-                    const childFrontmatter = (await getIssueMarkdown(childFileUri))?.frontmatter ?? null;
-                    if (!childFrontmatter) {
+            // 获取子文件当前的 frontmatter
+            const childFrontmatter = (await getIssueMarkdown(childFileUri))?.frontmatter ?? null;
+            if (!childFrontmatter) {
                 console.warn(`子文件 ${childFileName} 没有有效的 frontmatter`);
                 return false;
             }

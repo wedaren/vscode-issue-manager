@@ -29,6 +29,8 @@ export interface FlatTreeNode extends IssueNode {
   parentPath: FlatTreeNode[];
   title: string;
   resourceUri: vscode.Uri;
+  mtime: number;
+  ctime: number;
 }
 
 /**

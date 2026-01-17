@@ -154,14 +154,14 @@ export async function getIssueMarkdown(uriOrPath: vscode.Uri | string): Promise<
         const mtime = stat.mtime;
         const ctime = stat.ctime;
         const cached = _issueMarkdownCache.get(key);
-            if (cached && cached.mtime === mtime && (cached.title !== undefined || cached.frontmatter !== undefined)) {
-                return {
-                    title: cached.title ?? fallbackTitle(uri),
-                    uri,
-                    frontmatter: cached.frontmatter ?? null,
-                    mtime: cached.mtime,
-                    ctime: cached.ctime,
-                };
+        if (cached && cached.mtime === mtime && (cached.title !== undefined || cached.frontmatter !== undefined)) {
+            return {
+                title: cached.title ?? fallbackTitle(uri),
+                uri,
+                frontmatter: cached.frontmatter ?? null,
+                mtime: cached.mtime,
+                ctime: cached.ctime,
+            };
         }
 
         const contentBytes = await vscode.workspace.fs.readFile(uri);
