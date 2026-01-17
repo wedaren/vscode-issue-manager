@@ -61,11 +61,14 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
     for (const node of nodes) {
       const issue = await getIssueMarkdown(node.filePath);
       const title = issue ? issue.title : '不合法 issueMarkdown';
-      
+      const ctime = issue ? issue.ctime : 0;
+      const mtime = issue ? issue.mtime : 0;
       // 创建 FlatTreeNode，parentPath 指向已创建的父节点（即 FlatTreeNode 类型）
       const flatNode: FlatTreeNode = {
         ...node,
         title,
+        ctime,
+        mtime,
         parentPath: [...parents],
         resourceUri: node.resourceUri!,
       };
