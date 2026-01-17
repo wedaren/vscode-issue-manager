@@ -1,15 +1,13 @@
 import * as vscode from "vscode";
 import { getIssueDir } from "../config";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
-import { getFlatTree, FlatTreeNode, stripFocusedId } from "../data/issueTreeManager";
+import { getFlatTree } from "../data/issueTreeManager";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 
 // 模块级的 QuickPick 项接口，供辅助函数与主函数共享
 interface ActionQuickPickItem extends vscode.QuickPickItem {
     action: "create" | "create-background" | "open-existing";
-    // 对于已有项，存放对应的 issue id
-    issueId?: string;
     // 必填的执行器：在用户确认该项时调用，返回选中或新建的 issue id 或 null
     // 采用隐式闭包风格，不依赖 `this`
     run: (input: string) => Promise<string | null>;
@@ -58,9 +56,8 @@ export async function buildIssueQuickPickItems(value: string): Promise<ActionQui
         return {
             label: shouldShow ? highlightedLabel : n.title,
             description: finalDesc,
-            action: "open-existing",
-            issueId: n.id,
             alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId),
+            action: "open-existing",
             run: async () => {
                 return n.id || null;
             },
@@ -77,7 +74,7 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
     }
 
     const quickPick = vscode.window.createQuickPick<ActionQuickPickItem>();
-    quickPick.placeholder = "输入要创建的问题标题，或选择已有节点...";
+    quickPick.placeholder = "输入要创建的问题标题，或选择已有 IssueNode";
     quickPick.canSelectMany = false;
     quickPick.matchOnDescription = true;
 
@@ -108,7 +105,7 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
                 if (nodes && nodes.length > 0) {
                     backgroundFillIssue(uri, input, { timeoutMs: 60000 })
                         .then(() => {})
-                        .catch(() => {});
+                        .catch(err => console.error("Background fill issue failed:", err)); 
                     return nodes[0].id;
                 }
                 return null;
