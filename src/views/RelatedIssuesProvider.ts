@@ -4,7 +4,7 @@
  */
 import * as vscode from 'vscode';
 import { readTree, TreeData, IssueNode, getIssueNodeContextValue, onIssueTreeUpdate, getIssueNodeIconPath } from '../data/issueTreeManager';
-import { findNotesLinkedToFile, findNotesLinkedToWorkspace, getIssueMarkdownContextValues, getIssueMarkdownTitle } from '../data/IssueMarkdowns';
+import { findNotesLinkedToFile, findNotesLinkedToWorkspace, getIssueMarkdownContextValues, getIssueMarkdown } from '../data/IssueMarkdowns';
 
 export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIssueNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<RelatedIssueNode | undefined | void>();
@@ -43,7 +43,8 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             const fmNotes = await findNotesLinkedToFile(ctx);
             const fmNodes: RelatedIssueNode[] = [];
             for (const note of fmNotes) {
-                const label = await getIssueMarkdownTitle(note.uri);
+                const md = await getIssueMarkdown(note.uri);
+                const label = md ? md.title : '不合法 issueMarkdown';
                 fmNodes.push({
                     label,
                     type: 'markdown',
@@ -60,9 +61,10 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             const workspaceNodes: RelatedIssueNode[] = [];
                 const wsNotes = await findNotesLinkedToWorkspace(ctx);
                 for (const note of wsNotes) {
-                    const label = await getIssueMarkdownTitle(note.uri);
-                    workspaceNodes.push({
-                        label,
+                    const md = await getIssueMarkdown(note.uri);
+                        const label = md ? md.title : '不合法 issueMarkdown';
+                        workspaceNodes.push({
+                            label,
                         type: 'workspace',
                         filePath: note.uri.fsPath,
                         icon: new vscode.ThemeIcon('file-directory'),
@@ -108,15 +110,19 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         const parentIssueNode = parentNodes.pop();
         // 辅助方法：获取节点标题（缓存优先，未命中回退为文件名）
         const getNodeTitle = async (n: IssueNode) => {
-            return getIssueMarkdownTitle(n.filePath);
+            const md = await getIssueMarkdown(n.filePath);
+            return md ? md.title : '不合法 issueMarkdown';
         };
 
-        const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
+            const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
             label: await getNodeTitle(parentIssueNode),
             type: 'parent',
             filePath: parentIssueNode.filePath,
             children: [],
-            tooltip: (await Promise.all(parentNodes.map(n => getIssueMarkdownTitle(n.filePath)))).join(' / '),
+            tooltip: (await Promise.all(parentNodes.map(async n => {
+                const md = await getIssueMarkdown(n.filePath);
+                return md ? md.title : '不合法 issueMarkdown';
+            }))).join(' / '),
             resourceUri: parentIssueNode.resourceUri,
             id: parentIssueNode.id,
             contextValue: await getIssueNodeContextValue(parentIssueNode.id, 'issueNode'),
