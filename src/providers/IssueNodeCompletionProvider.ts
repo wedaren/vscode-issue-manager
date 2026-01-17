@@ -97,7 +97,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             // 获取光标之前的文本
             const prefix = lineText.slice(0, position.character);
 
-            // 在数组前插入两条常驻项：前台创建 & 后台创建（调用现有 quickCreateIssue QuickPick）
+            // 在数组前插入两条常驻项：前台创建 & 后台创建（调用现有 selectOrCreateIssue QuickPick）
             const createItem = new vscode.CompletionItem('新建问题', vscode.CompletionItemKind.Keyword);
             createItem.detail = `快速新建问题:${prefix ?? ''}`;
             createItem.insertText = prefix  ?? '';
@@ -115,7 +115,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             createBackground.sortText = '\u0001';
             createBackground.preselect = true;
             createBackground.filterText = prefix ?? '';
-            // 这里也复用 quickCreateIssue，QuickPick 会根据用户选择走后台路径；保留未来可直接调用后台命令的空间
+            // 这里也复用 selectOrCreateIssue，QuickPick 会根据用户选择走后台路径；保留未来可直接调用后台命令的空间
             // 直接在后台创建，不弹出 QuickPick
             createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [inferredParentId, prefix ?? undefined, true, insertMode, false] };
 

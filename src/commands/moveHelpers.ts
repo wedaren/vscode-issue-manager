@@ -4,7 +4,7 @@ import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 import { IssueNode, stripFocusedId, readTree, getIssueNodeById } from '../data/issueTreeManager';
-import { quickCreateIssue } from './quickCreateIssue';
+import { selectOrCreateIssue } from './selectOrCreateIssue';
 
 export function isTreeItem(node: unknown): node is vscode.TreeItem {
     return node !== null && typeof node === 'object' && 'resourceUri' in node && 'label' in node && !('id' in node);
@@ -28,7 +28,7 @@ export function convertTreeItemToTreeNode(item: vscode.TreeItem): IssueNode {
 }
 
 
-// 使用 quickCreateIssue 作为选择或新建目标的复用入口。
+// 使用 selectOrCreateIssue 作为选择或新建目标的复用入口。
 export async function pickTargetWithQuickCreate(treeNodesToExclude: IssueNode[]) {
     // 构建被排除的 stripped id 集合，防止选择自身或子节点
     const excludeStripped = new Set<string>();
@@ -38,7 +38,7 @@ export async function pickTargetWithQuickCreate(treeNodesToExclude: IssueNode[])
     }
     treeNodesToExclude.forEach(collect);
 
-    const targetId = await quickCreateIssue();
+    const targetId = await selectOrCreateIssue();
     if (!targetId) return undefined;
 
     if (excludeStripped.has(targetId)) {

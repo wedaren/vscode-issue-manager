@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { selectOrCreateIssue } from './selectOrCreateIssue';
 import { getIssueDir } from '../config';
 import { getRelativeToNoteRoot } from '../utils/pathUtils';
 import { getIssueMarkdownFrontmatter, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
@@ -32,8 +32,8 @@ export async function linkCurrentFileToIssue(): Promise<void> {
     location.filePath = storedPath;
     const linkValue = formatFileLink(location);
 
-    // 使用 quickCreateIssue 选择或创建 issue（作为默认交互）
-    const issueId = await quickCreateIssue();
+    // 使用 selectOrCreateIssue 选择或创建 issue（作为默认交互）
+    const issueId = await selectOrCreateIssue();
     if (!issueId) return;
 
     // 仅使用 tree 中的节点以获取问题文件的 resourceUri

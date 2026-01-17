@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { selectOrCreateIssue } from './selectOrCreateIssue';
 import { getIssueNodeById } from '../data/issueTreeManager';
 import { getIssueMarkdownFrontmatter, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
@@ -46,8 +46,8 @@ export async function linkWorkspaceToIssue(): Promise<void> {
       return;
     }
 
-    // 使用 quickCreateIssue 选择或创建 issue
-    const issueId = await quickCreateIssue();
+    // 使用 selectOrCreateIssue 选择或创建 issue
+    const issueId = await selectOrCreateIssue();
     if (!issueId) return;
 
     const issueNode = await getIssueNodeById(issueId).catch(() => undefined);

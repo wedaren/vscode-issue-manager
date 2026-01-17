@@ -34,7 +34,7 @@ import { registerFocusCommands } from '../commands/focusCommands';
 import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
-import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { selectOrCreateIssue } from '../commands/selectOrCreateIssue';
 import { executeCreateIssueFromCompletion } from '../commands/createIssueFromCompletion';
 import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
@@ -262,11 +262,11 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // 快速新建命令（QuickPick 三选项实现）
         this.registerCommand(
-            'issueManager.quickCreateIssue',
+            'issueManager.selectOrCreateIssue',
                 async (...args: unknown[]) => {
                 // 允许外部传入 parentId（或其他可选参数的扩展），若无则为默认 undefined
                 const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : undefined;
-                const createdId = await quickCreateIssue(parentId);
+                const createdId = await selectOrCreateIssue(parentId);
                 // 如果返回了 issueId，则定位并打开该问题
                 if (createdId) {
                     try {

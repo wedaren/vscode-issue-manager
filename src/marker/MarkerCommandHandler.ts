@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { MarkerManager, MarkerItem, MarkerTask } from './MarkerManager';
 import { MarkerTreeProvider } from './MarkerTreeProvider';
 import { getIssueNodeById } from '../data/issueTreeManager';
-import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { selectOrCreateIssue } from '../commands/selectOrCreateIssue';
 
 /**
  * 标记命令处理器
@@ -39,11 +39,11 @@ export class MarkerCommandHandler {
             })
         );
 
-        // 快速新建任务：使用 quickCreateIssue 创建新问题并执行新建任务流程
+        // 快速新建任务：使用 selectOrCreateIssue 创建新问题并执行新建任务流程
         context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.quickCreateTask', async (...args: unknown[]) => {
                 const parentId = args && args.length > 0 && typeof args[0] === 'string' ? (args[0] as string) : undefined;
-                const createdId = await quickCreateIssue(parentId);
+                const createdId = await selectOrCreateIssue(parentId);
                 if (createdId) {
                     await this.executeTaskWorkflow(createdId);
                 }
