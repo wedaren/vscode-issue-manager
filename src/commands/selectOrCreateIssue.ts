@@ -13,21 +13,18 @@ interface ActionQuickPickItem extends vscode.QuickPickItem {
 
 /**
  * 构建按最近访问排序并高亮匹配词的 QuickPick 项
- * 抽离成独立函数以便测试和阅读性
  */
-export async function buildSortedFlatItemsHelper(
-    latestFlat: FlatTreeNode[],
-    value: string,
-    activeIssueId?: string
-): Promise<ActionQuickPickItem[]> {
-    // 使用 FlatTreeNode 自身的 mtime 字段进行排序，mtime 由 getFlatTree 填充
-    const sortedFlat = [...latestFlat].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+export async function buildIssueQuickPickItems(value: string): Promise<ActionQuickPickItem[]> {
+    const sortedFlat = (await getFlatTree()).sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
 
     const words = (value || "")
         .split(" ")
         .map(k => (k || "").trim())
         .filter(k => k.length > 0);
     const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+
+    // 尝试获取当前编辑器对应的 issueId（如果有），在函数顶部计算一次即可
+    const activeIssueId = getIssueIdFromUri(vscode.window.activeTextEditor?.document?.uri);
 
     return sortedFlat.map(n => {
         const desc =
@@ -49,7 +46,6 @@ export async function buildSortedFlatItemsHelper(
                 }
             }
         }
-
         let finalDesc = shouldShow ? highlightedDesc : desc;
         if (activeIssueId && n.id === activeIssueId) {
             finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : "当前编辑器";
@@ -78,22 +74,6 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
     quickPick.canSelectMany = false;
     quickPick.matchOnDescription = true;
 
-    let latestFlat: FlatTreeNode[] = [];
-
-    async function refreshFlatTree() {
-        try {
-            latestFlat = await getFlatTree();
-        } catch (e) {
-            latestFlat = [];
-        }
-    }
-
-    await refreshFlatTree();
-
-    // 尝试获取当前编辑器对应的 issueId（如果有）
-    const activeIssueId = getIssueIdFromUri(vscode.window.activeTextEditor?.document?.uri);
-
-    // 使用提取出的模块级辅助函数构建排序项
 
     quickPick.onDidChangeValue(async value => {
         const v = value || "";
@@ -112,8 +92,7 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             payload: v || "新问题标题",
         };
 
-        // 使用复用函数构建排序后的项
-        const flatItems = await buildSortedFlatItemsHelper(latestFlat, v, activeIssueId);
+        const flatItems = await buildIssueQuickPickItems(v);
 
         // 当用户没有输入内容时，默认只显示按最近访问排序的已有项；当有输入时，将新问题项放到最前
         if (v.trim().length === 0) {
@@ -122,9 +101,8 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             quickPick.items = [direct, background, ...flatItems];
         }
     });
-    // quickPick.onDidHide 已在上面 Promise 中处理
-    // 初始化显示：展示按最近访问排序的已有项（不包含新建项），避免用户打开时仍看到“新问题标题”在最前
-    const initialItems = await buildSortedFlatItemsHelper(latestFlat, "", activeIssueId);
+    
+    const initialItems = await buildIssueQuickPickItems("");
     quickPick.items = initialItems;
     quickPick.show();
 
