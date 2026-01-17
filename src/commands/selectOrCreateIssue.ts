@@ -1,11 +1,9 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import { getIssueDir } from "../config";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { getFlatTree, FlatTreeNode, stripFocusedId } from "../data/issueTreeManager";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
-import { FileAccessTracker } from "../services/FileAccessTracker";
 
 // 模块级的 QuickPick 项接口，供辅助函数与主函数共享
 interface ActionQuickPickItem extends vscode.QuickPickItem {
@@ -15,46 +13,18 @@ interface ActionQuickPickItem extends vscode.QuickPickItem {
 
 /**
  * 构建按最近访问排序并高亮匹配词的 QuickPick 项
- * 抽离成独立函数以便测试和阅读性
  */
-export async function buildSortedFlatItemsHelper(
-    latestFlat: FlatTreeNode[],
-    value: string,
-    fileAccessTracker?: FileAccessTracker,
-    activeIssueId?: string
-): Promise<ActionQuickPickItem[]> {
-    const fileTimes = await Promise.all(
-        latestFlat.map(async n => {
-            const absPath =
-                n.resourceUri?.fsPath ||
-                (getIssueDir() ? path.join(getIssueDir()!, n.filePath) : n.filePath);
-            let t = 0;
-            try {
-                if (fileAccessTracker) {
-                    const s = fileAccessTracker.getFileAccessStats(absPath);
-                    if (s && s.lastViewTime) {
-                        t = s.lastViewTime;
-                    }
-                }
-                if (!t && n.resourceUri) {
-                    const stat = await vscode.workspace.fs.stat(n.resourceUri);
-                    t = stat.mtime || 0;
-                }
-            } catch (e) {
-                // 忽略任意错误，保留 t = 0
-            }
-            return { node: n, time: t };
-        })
-    );
-
-    fileTimes.sort((a, b) => (b.time || 0) - (a.time || 0));
-    const sortedFlat = fileTimes.map(ft => ft.node);
+export async function buildIssueQuickPickItems(value: string): Promise<ActionQuickPickItem[]> {
+    const sortedFlat = (await getFlatTree()).sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
 
     const words = (value || "")
         .split(" ")
         .map(k => (k || "").trim())
         .filter(k => k.length > 0);
     const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+
+    // 尝试获取当前编辑器对应的 issueId（如果有），在函数顶部计算一次即可
+    const activeIssueId = getIssueIdFromUri(vscode.window.activeTextEditor?.document?.uri);
 
     return sortedFlat.map(n => {
         const desc =
@@ -76,7 +46,6 @@ export async function buildSortedFlatItemsHelper(
                 }
             }
         }
-
         let finalDesc = shouldShow ? highlightedDesc : desc;
         if (activeIssueId && n.id === activeIssueId) {
             finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : "当前编辑器";
@@ -105,29 +74,6 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
     quickPick.canSelectMany = false;
     quickPick.matchOnDescription = true;
 
-    let latestFlat: FlatTreeNode[] = [];
-
-    async function refreshFlatTree() {
-        try {
-            latestFlat = await getFlatTree();
-        } catch (e) {
-            latestFlat = [];
-        }
-    }
-
-    await refreshFlatTree();
-
-    // 尝试获取当前编辑器对应的 issueId（如果有）
-    const activeIssueId = getIssueIdFromUri(vscode.window.activeTextEditor?.document?.uri);
-    let fileAccessTracker: FileAccessTracker | undefined;
-    try {
-        fileAccessTracker = FileAccessTracker.getInstance();
-    } catch (e) {
-        // 如果尚未初始化，则忽略追踪器（降级为文件修改时间）
-        fileAccessTracker = undefined;
-    }
-
-    // 使用提取出的模块级辅助函数构建排序项
 
     quickPick.onDidChangeValue(async value => {
         const v = value || "";
@@ -146,13 +92,7 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             payload: v || "新问题标题",
         };
 
-        // 使用复用函数构建排序后的项
-        const flatItems = await buildSortedFlatItemsHelper(
-            latestFlat,
-            v,
-            fileAccessTracker,
-            activeIssueId
-        );
+        const flatItems = await buildIssueQuickPickItems(v);
 
         // 当用户没有输入内容时，默认只显示按最近访问排序的已有项；当有输入时，将新问题项放到最前
         if (v.trim().length === 0) {
@@ -161,14 +101,8 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             quickPick.items = [direct, background, ...flatItems];
         }
     });
-    // quickPick.onDidHide 已在上面 Promise 中处理
-    // 初始化显示：展示按最近访问排序的已有项（不包含新建项），避免用户打开时仍看到“新问题标题”在最前
-    const initialItems = await buildSortedFlatItemsHelper(
-        latestFlat,
-        "",
-        fileAccessTracker,
-        activeIssueId
-    );
+    
+    const initialItems = await buildIssueQuickPickItems("");
     quickPick.items = initialItems;
     quickPick.show();
 
