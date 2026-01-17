@@ -17,19 +17,6 @@ interface ActionQuickPickItem extends vscode.QuickPickItem {
     ) => Promise<string | null>;
 }
 
-// 共用 helper：创建 issue 文件并加入树，返回 nodes[0].id 或 null
-async function createAndAddIssue(
-    title: string,
-    parentId?: string,
-    openAfterCreate = false
-): Promise<string | null> {
-    const uri = await createIssueFileSilent(title);
-    if (!uri) return null;
-    const nodes = await addIssueToTree([uri], parentId, openAfterCreate);
-    if (nodes && nodes.length > 0) return nodes[0].id;
-    return null;
-}
-
 /**
  * 构建按最近访问排序并高亮匹配词的 QuickPick 项
  */
@@ -101,7 +88,11 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             alwaysShow: true,
             action: "create",
             execute: async (input, ctx) => {
-                return createAndAddIssue(input, ctx?.parentId, false);
+                const uri = await createIssueFileSilent(input);
+                if (!uri) return null;
+                const nodes = await addIssueToTree([uri], ctx?.parentId, false);
+                if (nodes && nodes.length > 0) return nodes[0].id;
+                return null;
             },
         };
         const background: ActionQuickPickItem = {
@@ -110,15 +101,16 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             alwaysShow: true,
             action: "create-background",
             execute: async (input, ctx) => {
-                const id = await createAndAddIssue(input, ctx?.parentId, false);
-                if (id) {
-                    // 后台填充不阻塞 UI
-                    const uri = await createIssueFileSilent(input).catch(() => null);
-                    backgroundFillIssue(uri as any, input, { timeoutMs: 60000 })
+                const uri = await createIssueFileSilent(input);
+                if (!uri) return null;
+                const nodes = await addIssueToTree([uri], ctx?.parentId, false);
+                if (nodes && nodes.length > 0) {
+                    backgroundFillIssue(uri, input, { timeoutMs: 60000 })
                         .then(() => {})
-                        .catch(err => console.error("Background fill issue failed:", err));
+                        .catch(err => console.error("Background fill issue failed:", err)); 
+                    return nodes[0].id;
                 }
-                return id;
+                return null;
             },
         };
 
