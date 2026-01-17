@@ -103,13 +103,11 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             execute: async (input, ctx) => {
                 const uri = await createIssueFileSilent(input);
                 if (!uri) return null;
+                backgroundFillIssue(uri, input, { timeoutMs: 60000 })
+                    .then(() => {})
+                    .catch(err => console.error("Background fill issue failed:", err)); 
                 const nodes = await addIssueToTree([uri], ctx?.parentId, false);
-                if (nodes && nodes.length > 0) {
-                    backgroundFillIssue(uri, input, { timeoutMs: 60000 })
-                        .then(() => {})
-                        .catch(err => console.error("Background fill issue failed:", err)); 
-                    return nodes[0].id;
-                }
+                if (nodes && nodes.length > 0) return nodes[0].id;
                 return null;
             },
         };
