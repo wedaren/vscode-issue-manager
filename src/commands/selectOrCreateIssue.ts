@@ -2,15 +2,32 @@ import * as vscode from "vscode";
 import { getIssueDir } from "../config";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { getFlatTree } from "../data/issueTreeManager";
+import type { QuickPick } from "vscode";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 
 // 模块级的 QuickPick 项接口，供辅助函数与主函数共享
 interface ActionQuickPickItem extends vscode.QuickPickItem {
     action: "create" | "create-background" | "open-existing";
-    // 必填的执行器：在用户确认该项时调用，返回选中或新建的 issue id 或 null
-    // 采用隐式闭包风格，不依赖 `this`
-    run: (input: string) => Promise<string | null>;
+    // 执行器：在用户确认该项时调用，返回选中或新建的 issue id 或 null
+    // 签名为 (input, ctx?) 以便需要时获得额外上下文（例如 parentId、quickPick）
+    execute: (
+        input: string,
+        ctx?: { parentId?: string; quickPick?: QuickPick<ActionQuickPickItem> }
+    ) => Promise<string | null>;
+}
+
+// 共用 helper：创建 issue 文件并加入树，返回 nodes[0].id 或 null
+async function createAndAddIssue(
+    title: string,
+    parentId?: string,
+    openAfterCreate = false
+): Promise<string | null> {
+    const uri = await createIssueFileSilent(title);
+    if (!uri) return null;
+    const nodes = await addIssueToTree([uri], parentId, openAfterCreate);
+    if (nodes && nodes.length > 0) return nodes[0].id;
+    return null;
 }
 
 /**
@@ -58,9 +75,7 @@ export async function buildIssueQuickPickItems(value: string): Promise<ActionQui
             description: finalDesc,
             alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId),
             action: "open-existing",
-            run: async () => {
-                return n.id || null;
-            },
+            execute: async () => n.id || null,
         } as ActionQuickPickItem;
     });
 }
@@ -85,12 +100,8 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             description: "直接创建并打开",
             alwaysShow: true,
             action: "create",
-            run: async input => {
-                const uri = await createIssueFileSilent(input);
-                if (!uri) return null;
-                const nodes = await addIssueToTree([uri], parentId, false);
-                if (nodes && nodes.length > 0) return nodes[0].id;
-                return null;
+            execute: async (input, ctx) => {
+                return createAndAddIssue(input, ctx?.parentId, false);
             },
         };
         const background: ActionQuickPickItem = {
@@ -98,17 +109,16 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             description: "后台创建并由 AI 填充（不打开）",
             alwaysShow: true,
             action: "create-background",
-            run: async input => {
-                const uri = await createIssueFileSilent(input);
-                if (!uri) return null;
-                const nodes = await addIssueToTree([uri], parentId, false);
-                if (nodes && nodes.length > 0) {
-                    backgroundFillIssue(uri, input, { timeoutMs: 60000 })
+            execute: async (input, ctx) => {
+                const id = await createAndAddIssue(input, ctx?.parentId, false);
+                if (id) {
+                    // 后台填充不阻塞 UI
+                    const uri = await createIssueFileSilent(input).catch(() => null);
+                    backgroundFillIssue(uri as any, input, { timeoutMs: 60000 })
                         .then(() => {})
-                        .catch(err => console.error("Background fill issue failed:", err)); 
-                    return nodes[0].id;
+                        .catch(err => console.error("Background fill issue failed:", err));
                 }
-                return null;
+                return id;
             },
         };
 
@@ -136,11 +146,11 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             }
 
             try {
-                const res = await sel.run(quickPick.value);
+                const res = await sel.execute(quickPick.value, { parentId, quickPick });
                 resolve(res);
             } catch (err) {
                 // 因为这是 UI 交互，避免抛出到顶层；记录后返回 null
-                console.error("selectOrCreateIssue run error:", err);
+                console.error("selectOrCreateIssue execute error:", err);
                 resolve(null);
             } finally {
                 quickPick.dispose();
