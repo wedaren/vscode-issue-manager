@@ -164,7 +164,9 @@ async function openFileWithLocation(location: FileLocation, source?: string): Pr
 	}
 
 	// 验证文件存在
-	if (!fs.existsSync(resolvedPath)) {
+	try {
+		await vscode.workspace.fs.stat(vscode.Uri.file(resolvedPath));
+	} catch {
 		vscode.window.showErrorMessage(`未找到文件: ${resolvedPath}`);
 		return;
 	}

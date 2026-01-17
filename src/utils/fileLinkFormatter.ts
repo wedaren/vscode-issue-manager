@@ -41,17 +41,16 @@ export function formatFileLink(location: FileLocation): string {
             fragment += `:${location.startColumn}`;
         }
         
-        // 添加结束位置（如果有）
-        if (location.endLine !== undefined && location.endLine !== location.startLine) {
-            fragment += `-L${location.endLine}`;
-            
-            // 添加结束列号（如果有）
-            if (location.endColumn !== undefined) {
-                fragment += `:${location.endColumn}`;
-            }
-        } else if (location.endColumn !== undefined && location.endColumn !== location.startColumn) {
-            // 同一行但不同列的情况
-            fragment += `-L${location.startLine}:${location.endColumn}`;
+        // 添加结束位置（如果有）  
+        const isRange = location.endLine !== undefined &&  
+            (location.startLine !== location.endLine ||  
+            (location.endColumn !== undefined && location.startColumn !== location.endColumn));  
+
+        if (isRange) {  
+            fragment += `-L${location.endLine}`;  
+            if (location.endColumn !== undefined) {  
+                fragment += `:${location.endColumn}`;  
+            }  
         }
         
         link += fragment;
