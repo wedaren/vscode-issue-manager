@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import GitBranchManager from './GitBranchManager';
 import { GitBranchTreeProvider } from './GitBranchTreeProvider';
-import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { selectOrCreateIssue } from '../commands/selectOrCreateIssue';
 
 export class GitBranchCommandHandler {
     constructor(private manager: GitBranchManager, private treeProvider: GitBranchTreeProvider) {}
@@ -78,7 +78,7 @@ export class GitBranchCommandHandler {
                 if (!item || !item.entry) return;
                 // 通过已注册的命令创建/选择 Issue（可能返回 issueId）
                 try {
-                    const issueId = await quickCreateIssue();
+                    const issueId = await selectOrCreateIssue();
                     if (issueId) {
                         // 持久化关联到 manager
                         try {

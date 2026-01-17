@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { quickCreateIssue } from '../commands/quickCreateIssue';
+import { selectOrCreateIssue } from '../commands/selectOrCreateIssue';
 import { getIssueTitle } from '../data/issueTreeManager';
 import { createLocationFromEditor, formatFileLink, parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
 
@@ -485,7 +485,7 @@ export class MarkerManager {
      * 关联标记或任务到问题（占位函数）
      */
     async associate(target: MarkerItem | MarkerTask): Promise<void> {
-        const issueId = await quickCreateIssue();
+        const issueId = await selectOrCreateIssue();
         if (!issueId) {
             // 用户取消或创建失败
             return;
