@@ -1,15 +1,15 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { getIssueDir } from '../config';
-import { createIssueFileSilent, addIssueToTree } from './issueFileUtils';
-import { getFlatTree, FlatTreeNode, stripFocusedId } from '../data/issueTreeManager';
-import { backgroundFillIssue } from '../llm/backgroundFill';
-import { getIssueIdFromUri } from '../utils/uriUtils';
-import { FileAccessTracker } from '../services/FileAccessTracker';
+import * as vscode from "vscode";
+import * as path from "path";
+import { getIssueDir } from "../config";
+import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
+import { getFlatTree, FlatTreeNode, stripFocusedId } from "../data/issueTreeManager";
+import { backgroundFillIssue } from "../llm/backgroundFill";
+import { getIssueIdFromUri } from "../utils/uriUtils";
+import { FileAccessTracker } from "../services/FileAccessTracker";
 
 // 模块级的 QuickPick 项接口，供辅助函数与主函数共享
 interface ActionQuickPickItem extends vscode.QuickPickItem {
-    action: 'create' | 'create-background' | 'open-existing';
+    action: "create" | "create-background" | "open-existing";
     payload?: any;
 }
 
@@ -23,44 +23,53 @@ export async function buildSortedFlatItemsHelper(
     fileAccessTracker?: FileAccessTracker,
     activeIssueId?: string
 ): Promise<ActionQuickPickItem[]> {
-    const fileTimes = await Promise.all(latestFlat.map(async n => {
-        const absPath = n.resourceUri?.fsPath || (getIssueDir() ? path.join(getIssueDir()!, n.filePath) : n.filePath);
-        let t = 0;
-        try {
-            if (fileAccessTracker) {
-                const s = fileAccessTracker.getFileAccessStats(absPath);
-                if (s && s.lastViewTime) {
-                    t = s.lastViewTime;
+    const fileTimes = await Promise.all(
+        latestFlat.map(async n => {
+            const absPath =
+                n.resourceUri?.fsPath ||
+                (getIssueDir() ? path.join(getIssueDir()!, n.filePath) : n.filePath);
+            let t = 0;
+            try {
+                if (fileAccessTracker) {
+                    const s = fileAccessTracker.getFileAccessStats(absPath);
+                    if (s && s.lastViewTime) {
+                        t = s.lastViewTime;
+                    }
                 }
+                if (!t && n.resourceUri) {
+                    const stat = await vscode.workspace.fs.stat(n.resourceUri);
+                    t = stat.mtime || 0;
+                }
+            } catch (e) {
+                // 忽略任意错误，保留 t = 0
             }
-            if (!t && n.resourceUri) {
-                const stat = await vscode.workspace.fs.stat(n.resourceUri);
-                t = stat.mtime || 0;
-            }
-        } catch (e) {
-            // 忽略任意错误，保留 t = 0
-        }
-        return { node: n, time: t };
-    }));
+            return { node: n, time: t };
+        })
+    );
 
     fileTimes.sort((a, b) => (b.time || 0) - (a.time || 0));
     const sortedFlat = fileTimes.map(ft => ft.node);
 
-    const words = (value || '').split(' ').map(k => (k || '').trim()).filter(k => k.length > 0);
-    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+    const words = (value || "")
+        .split(" ")
+        .map(k => (k || "").trim())
+        .filter(k => k.length > 0);
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
 
     return sortedFlat.map(n => {
-        const desc = n.parentPath && n.parentPath.length > 0
-            ? '/' + n.parentPath.map(p => p.title).join(' / ')
-            : undefined;
+        const desc =
+            n.parentPath && n.parentPath.length > 0
+                ? "/" + n.parentPath.map(p => p.title).join(" / ")
+                : undefined;
 
-        const shouldShow = words.length > 1 && words.every(k => n.title.includes(k) || (desc && desc.includes(k)));
+        const shouldShow =
+            words.length > 1 && words.every(k => n.title.includes(k) || (desc && desc.includes(k)));
 
         let highlightedLabel = n.title;
         let highlightedDesc = desc;
         if (words.length > 0) {
             for (const k of words) {
-                const re = new RegExp(escapeRegExp(k), 'g');
+                const re = new RegExp(escapeRegExp(k), "g");
                 highlightedLabel = highlightedLabel.replace(re, `【${k}】`);
                 if (highlightedDesc) {
                     highlightedDesc = highlightedDesc.replace(re, `【${k}】`);
@@ -70,15 +79,15 @@ export async function buildSortedFlatItemsHelper(
 
         let finalDesc = shouldShow ? highlightedDesc : desc;
         if (activeIssueId && n.id === activeIssueId) {
-            finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : '当前编辑器';
+            finalDesc = finalDesc ? `${finalDesc} （当前编辑器）` : "当前编辑器";
         }
 
         return {
             label: shouldShow ? highlightedLabel : n.title,
             description: finalDesc,
-            action: 'open-existing',
+            action: "open-existing",
             payload: n.id,
-            alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId)
+            alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId),
         } as ActionQuickPickItem;
     });
 }
@@ -86,13 +95,13 @@ export async function buildSortedFlatItemsHelper(
 export async function selectOrCreateIssue(parentId?: string): Promise<string | null> {
     const issueDir = getIssueDir();
     if (!issueDir) {
-        vscode.window.showErrorMessage('请先配置 issue 目录 (issueManager.issueDir)。');
-        vscode.commands.executeCommand('workbench.action.openSettings', 'issueManager.issueDir');
+        vscode.window.showErrorMessage("请先配置 issue 目录 (issueManager.issueDir)。");
+        vscode.commands.executeCommand("workbench.action.openSettings", "issueManager.issueDir");
         return null;
     }
 
     const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem>();
-    quickPick.placeholder = '输入要创建的问题标题，或选择已有节点...';
+    quickPick.placeholder = "输入要创建的问题标题，或选择已有节点...";
     quickPick.canSelectMany = false;
     quickPick.matchOnDescription = true;
 
@@ -118,15 +127,32 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
         fileAccessTracker = undefined;
     }
 
-        // 使用提取出的模块级辅助函数构建排序项
+    // 使用提取出的模块级辅助函数构建排序项
 
-    quickPick.onDidChangeValue(async (value) => {
-        const v = value || '';
-        const direct: ActionQuickPickItem = { label: v || '新问题标题', description: '直接创建并打开', alwaysShow: true, action: 'create', payload: v || '新问题标题' };
-        const background: ActionQuickPickItem = { label: v || '新问题标题（后台）', description: '后台创建并由 AI 填充（不打开）', alwaysShow: true, action: 'create-background', payload: v || '新问题标题' };
+    quickPick.onDidChangeValue(async value => {
+        const v = value || "";
+        const direct: ActionQuickPickItem = {
+            label: v || "新问题标题",
+            description: "直接创建并打开",
+            alwaysShow: true,
+            action: "create",
+            payload: v || "新问题标题",
+        };
+        const background: ActionQuickPickItem = {
+            label: v || "新问题标题（后台）",
+            description: "后台创建并由 AI 填充（不打开）",
+            alwaysShow: true,
+            action: "create-background",
+            payload: v || "新问题标题",
+        };
 
         // 使用复用函数构建排序后的项
-        const flatItems = await buildSortedFlatItemsHelper(latestFlat, v, fileAccessTracker, activeIssueId);
+        const flatItems = await buildSortedFlatItemsHelper(
+            latestFlat,
+            v,
+            fileAccessTracker,
+            activeIssueId
+        );
 
         // 当用户没有输入内容时，默认只显示按最近访问排序的已有项；当有输入时，将新问题项放到最前
         if (v.trim().length === 0) {
@@ -137,7 +163,12 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
     });
     // quickPick.onDidHide 已在上面 Promise 中处理
     // 初始化显示：展示按最近访问排序的已有项（不包含新建项），避免用户打开时仍看到“新问题标题”在最前
-    const initialItems = await buildSortedFlatItemsHelper(latestFlat, '', fileAccessTracker, activeIssueId);
+    const initialItems = await buildSortedFlatItemsHelper(
+        latestFlat,
+        "",
+        fileAccessTracker,
+        activeIssueId
+    );
     quickPick.items = initialItems;
     quickPick.show();
 
@@ -145,7 +176,7 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
     const result = await new Promise<string | null>(resolve => {
         quickPick.onDidAccept(async () => {
             const sel = quickPick.selectedItems[0] as ActionQuickPickItem | undefined;
-            const input = quickPick.value || (sel && sel.label) || '';
+            const input = quickPick.value || (sel && sel.label) || "";
             if (!sel) {
                 // 直接按 Enter，静默创建并返回 id（不在此处打开）
                 if (input) {
@@ -166,7 +197,7 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
 
             // 使用 action 字段区分操作
             switch (sel.action) {
-                case 'create': {
+                case "create": {
                     const title = sel.payload || input || sel.label;
                     const uri = await createIssueFileSilent(title);
                     if (uri) {
@@ -179,14 +210,16 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
                     resolve(null);
                     break;
                 }
-                case 'create-background': {
-                    const title = sel.payload || input || sel.label.replace('（后台）','');
+                case "create-background": {
+                    const title = sel.payload || input || sel.label.replace("（后台）", "");
                     const uri = await createIssueFileSilent(title);
                     if (uri) {
                         const nodes = await addIssueToTree([uri], parentId, false);
                         if (nodes && nodes.length > 0) {
                             // 启动后台填充（不阻塞 UI）
-                            backgroundFillIssue(uri, title, { timeoutMs: 60000 }).then(() => {}).catch(()=>{});
+                            backgroundFillIssue(uri, title, { timeoutMs: 60000 })
+                                .then(() => {})
+                                .catch(() => {});
                             resolve(stripFocusedId(nodes[0].id));
                             break;
                         }
@@ -194,7 +227,7 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
                     resolve(null);
                     break;
                 }
-                case 'open-existing': {
+                case "open-existing": {
                     resolve(sel.payload as string);
                     break;
                 }
@@ -210,7 +243,6 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             quickPick.dispose();
             resolve(null);
         });
-        console.log('quickPick show')
     });
 
     return result;
