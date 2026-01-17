@@ -26,10 +26,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 iconPath: new vscode.ThemeIcon("list-tree"),
                 tooltip: "切换到问题模式",
             };
-            const ampButton: vscode.QuickInputButton = {
-                iconPath: new vscode.ThemeIcon("search"),
-                tooltip: "切换到 & 模式",
-            };
+            
             const helpButton: vscode.QuickInputButton = {
                 iconPath: new vscode.ThemeIcon("question"),
                 tooltip: "各模式说明",
@@ -102,7 +99,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             ];
 
             // 显示所有模式按钮与帮助按钮，便于快速切换（可按需调整显示策略）
-            quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
+            quickPick.buttons = [cmdButton, issueButton, helpButton];
             let inCommandMode = true; // 默认进入命令模式
             let suppressChange = false; // 忽略程序性 value 变更
 
@@ -173,7 +170,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 const HELP_ITEMS = [
                     { label: '命令模式', description: "输入关键词过滤并执行命令（支持空格多词匹配）" },
                     { label: '问题模式', description: "搜索并定位问题节点（用于导航/打开问题）" },
-                    { label: '& 模式', description: "同时在命令和问题中搜索，方便模糊查找" },
                     { label: 'LLM 模式', description: "使用 LLM 辅助搜索/模糊匹配（示例模式）" },
                     { label: '; 前缀', description: "在输入前加 ';' 快速进入问题模式" },
                     { label: "> 前缀", description: "在输入前加 '>' 快速进入命令模式" }
@@ -186,7 +182,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         quickPick.items = activeCommandItems;
                         quickPick.placeholder =
                             "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
-                        quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
+                        quickPick.buttons = [cmdButton, issueButton, helpButton];
                         quickPick.value = text;
                         if (activeCommandItems.length > 0) { quickPick.activeItems = [activeCommandItems[0]]; }
                     } else if (label === '问题模式') {
@@ -195,16 +191,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         quickPick.items = issueItems;
                         quickPick.placeholder =
                             "问题模式：输入关键词搜索问题，或点击按钮返回命令模式";
-                        quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
-                        quickPick.value = text;
-                        quickPick.activeItems = [];
-                    } else if (label === '& 模式') {
-                        inCommandMode = false;
-                        suppressChange = true;
-                        const combined = activeCommandItems.concat(issueItems);
-                        quickPick.items = filterItems(combined, text);
-                        quickPick.placeholder = "& 模式：同时搜索命令与问题";
-                        quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
+                        quickPick.buttons = [cmdButton, issueButton, helpButton];
                         quickPick.value = text;
                         quickPick.activeItems = [];
                     } else if (label === 'LLM 模式') {
@@ -214,7 +201,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         const combined = activeCommandItems.concat(issueItems);
                         quickPick.items = filterItems(combined, text);
                         quickPick.placeholder = "LLM 模式：使用 LLM 辅助搜索（示例）";
-                        quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
+                        quickPick.buttons = [cmdButton, issueButton, helpButton];
                         quickPick.value = text;
                         quickPick.activeItems = [];
                     } else if (label === '; 前缀') {
@@ -222,7 +209,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         suppressChange = true;
                         quickPick.value = text;
                         quickPick.items = issueItems;
-                        quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
+                        quickPick.buttons = [cmdButton, issueButton, helpButton];
                         quickPick.activeItems = [];
                     } else if (label === "> 前缀") {
                         inCommandMode = true;
@@ -230,19 +217,17 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         quickPick.value = text;
                         quickPick.items = filterItems(activeCommandItems, text);
                         if (quickPick.items.length > 0) { quickPick.activeItems = [quickPick.items[0]]; }
-                        quickPick.buttons = [cmdButton, issueButton, ampButton, helpButton];
+                        quickPick.buttons = [cmdButton, issueButton, helpButton];
                     }
                 };
 
                 // 统一模式入口，便于在多处调用以保持 placeholder/按钮/items 一致
-                const enterMode = (mode: 'command' | 'issue' | 'amp' | 'semicolon' | 'greater' | 'llm', text = '') => {
+                const enterMode = (mode: 'command' | 'issue' | 'semicolon' | 'greater' | 'llm', text = '') => {
                     const label =
                         mode === 'command'
                             ? '命令模式'
                             : mode === 'issue'
                             ? '问题模式'
-                            : mode === 'amp'
-                            ? '& 模式'
                             : mode === 'llm'
                             ? 'LLM 模式'
                             : mode === 'semicolon'
@@ -257,7 +242,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     const m = (initialRequest.mode || "").toString().toLowerCase();
                     if (m === 'command' || m === 'cmd' || m === '>' ) { enterMode('command', initialRequest.text); }
                     else if (m === 'issue' || m === 'list' || m === ';') { enterMode('issue', initialRequest.text); }
-                    else if (m === 'amp' || m === '&') { enterMode('amp', initialRequest.text); }
                     else if (m === 'llm') { enterMode('llm', initialRequest.text); }
                     else if (m === 'greater' || m === '>') { enterMode('greater', initialRequest.text); }
                     else if (m === 'semicolon' || m === ';') { enterMode('semicolon', initialRequest.text); }
@@ -288,10 +272,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         enterMode('semicolon', text);
                     }
                     ,
-                    // '&' 模式示例：当前将命令与问题合并，按关键词过滤
-                    "&": (text: string) => {
-                        enterMode('amp', text);
-                    },
                     // 'llm' 模式示例：示例性的 LLM 搜索模式（目前为合并搜索+不同占位提示）
                     "llm": (text: string) => {
                         enterMode('llm', text);
@@ -308,8 +288,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         enterMode('command', "");
                     } else if (btn === issueButton) {
                         enterMode('issue', "");
-                    } else if (btn === ampButton) {
-                        enterMode('amp', "");
                     } else if (btn === helpButton) {
                         openHelpInQuickPick("");
                     }
