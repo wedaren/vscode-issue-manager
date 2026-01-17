@@ -123,9 +123,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             try {
                 const activeUri = vscode.window.activeTextEditor?.document?.uri;
                 const maybeIssueId = getIssueIdFromUri(activeUri);
-                let activeIssueValid = await getIssueNodeById(maybeIssueId||'')  
-                        .then(() => true)  
-                        .catch(() => false);  
+                let activeIssueValid = !!(await getIssueNodeById(maybeIssueId||''));
 
                 const ctx = { issueId: maybeIssueId, issueValid: activeIssueValid, uri: activeUri };
                 activeCommandItems = COMMAND_ITEMS.filter(i => {
