@@ -104,8 +104,10 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
                 const uri = await createIssueFileSilent(input);
                 if (!uri) return null;
                 backgroundFillIssue(uri, input, { timeoutMs: 60000 })
-                    .then(() => {})
-                    .catch(err => console.error("Background fill issue failed:", err)); 
+                    .catch(err => {
+                        console.error("Background fill issue failed:", err);
+                        vscode.window.showErrorMessage(`后台填充问题 '${input}' 失败。`);
+                    });
                 const nodes = await addIssueToTree([uri], ctx?.parentId, false);
                 if (nodes && nodes.length > 0) return nodes[0].id;
                 return null;
