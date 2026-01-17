@@ -383,11 +383,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     // help 模式：选择后切换到对应模式并继续展示 quickPick
                     if (inHelpMode) {
                         if (selected.execute) {
-                            try {
-                                await Promise.resolve(selected.execute(quickPick.value, { quickPick }));
-                            } catch (e) {
-                                console.error("help item execute error:", e);
-                            }
+                            Promise.resolve(selected.execute(quickPick.value, { quickPick })).catch(e =>
+                                console.error("help item execute error:", e)
+                            );
                         } else {
                             switchToMode(selected.label, quickPick.value);
                         }
@@ -397,11 +395,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                     // 优先使用项的 execute 回调统一处理行为
                     if (selected.execute) {
-                        try {
-                            await Promise.resolve(selected.execute(quickPick.value, { quickPick }));
-                        } catch (e) {
-                            console.error("quickPick item execute error:", e);
-                        }
+                        Promise.resolve(selected.execute(quickPick.value, { quickPick })).catch(e =>
+                            console.error("quickPick item execute error:", e)
+                        );
                         quickPick.hide();
                         return;
                     }
