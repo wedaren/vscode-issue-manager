@@ -1,14 +1,33 @@
 import * as vscode from "vscode";
 import { getIssueDir } from "../config";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
-import { getFlatTree, FlatTreeNode, stripFocusedId } from "../data/issueTreeManager";
+import { getFlatTree } from "../data/issueTreeManager";
+import type { QuickPick } from "vscode";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 
 // 模块级的 QuickPick 项接口，供辅助函数与主函数共享
 interface ActionQuickPickItem extends vscode.QuickPickItem {
     action: "create" | "create-background" | "open-existing";
-    payload?: any;
+    // 执行器：在用户确认该项时调用，返回选中或新建的 issue id 或 null
+    // 签名为 (input, ctx?) 以便需要时获得额外上下文（例如 parentId、quickPick）
+    execute: (
+        input: string,
+        ctx?: { parentId?: string; quickPick?: QuickPick<ActionQuickPickItem> }
+    ) => Promise<string | null>;
+}
+
+// 共用 helper：创建 issue 文件并加入树，返回 nodes[0].id 或 null
+async function createAndAddIssue(
+    title: string,
+    parentId?: string,
+    openAfterCreate = false
+): Promise<string | null> {
+    const uri = await createIssueFileSilent(title);
+    if (!uri) return null;
+    const nodes = await addIssueToTree([uri], parentId, openAfterCreate);
+    if (nodes && nodes.length > 0) return nodes[0].id;
+    return null;
 }
 
 /**
@@ -54,9 +73,9 @@ export async function buildIssueQuickPickItems(value: string): Promise<ActionQui
         return {
             label: shouldShow ? highlightedLabel : n.title,
             description: finalDesc,
-            action: "open-existing",
-            payload: n.id,
             alwaysShow: shouldShow || (activeIssueId && n.id === activeIssueId),
+            action: "open-existing",
+            execute: async () => n.id || null,
         } as ActionQuickPickItem;
     });
 }
@@ -69,11 +88,10 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
         return null;
     }
 
-    const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem>();
-    quickPick.placeholder = "输入要创建的问题标题，或选择已有节点...";
+    const quickPick = vscode.window.createQuickPick<ActionQuickPickItem>();
+    quickPick.placeholder = "输入要创建的问题标题，或选择已有 IssueNode";
     quickPick.canSelectMany = false;
     quickPick.matchOnDescription = true;
-
 
     quickPick.onDidChangeValue(async value => {
         const v = value || "";
@@ -82,14 +100,26 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             description: "直接创建并打开",
             alwaysShow: true,
             action: "create",
-            payload: v || "新问题标题",
+            execute: async (input, ctx) => {
+                return createAndAddIssue(input, ctx?.parentId, false);
+            },
         };
         const background: ActionQuickPickItem = {
             label: v || "新问题标题（后台）",
             description: "后台创建并由 AI 填充（不打开）",
             alwaysShow: true,
             action: "create-background",
-            payload: v || "新问题标题",
+            execute: async (input, ctx) => {
+                const id = await createAndAddIssue(input, ctx?.parentId, false);
+                if (id) {
+                    // 后台填充不阻塞 UI
+                    const uri = await createIssueFileSilent(input).catch(() => null);
+                    backgroundFillIssue(uri as any, input, { timeoutMs: 60000 })
+                        .then(() => {})
+                        .catch(err => console.error("Background fill issue failed:", err));
+                }
+                return id;
+            },
         };
 
         const flatItems = await buildIssueQuickPickItems(v);
@@ -101,76 +131,30 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
             quickPick.items = [direct, background, ...flatItems];
         }
     });
-    
+
     const initialItems = await buildIssueQuickPickItems("");
     quickPick.items = initialItems;
     quickPick.show();
 
-    // 包装为 Promise，以便在 QuickPick 操作完成后返回新建或选中问题的 id
     const result = await new Promise<string | null>(resolve => {
         quickPick.onDidAccept(async () => {
             const sel = quickPick.selectedItems[0] as ActionQuickPickItem | undefined;
-            const input = quickPick.value || (sel && sel.label) || "";
             if (!sel) {
-                // 直接按 Enter，静默创建并返回 id（不在此处打开）
-                if (input) {
-                    const uri = await createIssueFileSilent(input);
-                    if (uri) {
-                        const nodes = await addIssueToTree([uri], parentId, true);
-                        if (nodes && nodes.length > 0) {
-                            resolve(stripFocusedId(nodes[0].id));
-                            quickPick.dispose();
-                            return;
-                        }
-                    }
-                }
                 quickPick.dispose();
                 resolve(null);
                 return;
             }
 
-            // 使用 action 字段区分操作
-            switch (sel.action) {
-                case "create": {
-                    const title = sel.payload || input || sel.label;
-                    const uri = await createIssueFileSilent(title);
-                    if (uri) {
-                        const nodes = await addIssueToTree([uri], parentId, false);
-                        if (nodes && nodes.length > 0) {
-                            resolve(stripFocusedId(nodes[0].id));
-                            break;
-                        }
-                    }
-                    resolve(null);
-                    break;
-                }
-                case "create-background": {
-                    const title = sel.payload || input || sel.label.replace("（后台）", "");
-                    const uri = await createIssueFileSilent(title);
-                    if (uri) {
-                        const nodes = await addIssueToTree([uri], parentId, false);
-                        if (nodes && nodes.length > 0) {
-                            // 启动后台填充（不阻塞 UI）
-                            backgroundFillIssue(uri, title, { timeoutMs: 60000 })
-                                .then(() => {})
-                                .catch(() => {});
-                            resolve(stripFocusedId(nodes[0].id));
-                            break;
-                        }
-                    }
-                    resolve(null);
-                    break;
-                }
-                case "open-existing": {
-                    resolve(sel.payload as string);
-                    break;
-                }
-                default: {
-                    resolve(null);
-                }
+            try {
+                const res = await sel.execute(quickPick.value, { parentId, quickPick });
+                resolve(res);
+            } catch (err) {
+                // 因为这是 UI 交互，避免抛出到顶层；记录后返回 null
+                console.error("selectOrCreateIssue execute error:", err);
+                resolve(null);
+            } finally {
+                quickPick.dispose();
             }
-
-            quickPick.dispose();
         });
 
         quickPick.onDidHide(() => {
