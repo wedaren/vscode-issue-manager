@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
-import { getIssueMarkdownTitle, getIssueMarkdownTitleFromCache } from './IssueMarkdowns';
+import { getIssueMarkdown, getIssueMarkdownTitleFromCache } from './IssueMarkdowns';
 import { getCategoryIcon, getIssueCategory } from './paraManager';
 
 /**
@@ -29,6 +29,8 @@ export interface FlatTreeNode extends IssueNode {
   parentPath: FlatTreeNode[];
   title: string;
   resourceUri: vscode.Uri;
+  mtime: number;
+  ctime: number;
 }
 
 /**
@@ -57,7 +59,8 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
   
   async function buildFlatNodes(nodes: IssueNode[], parents: FlatTreeNode[]) {
     for (const node of nodes) {
-      const title = await getIssueMarkdownTitle(node.filePath);
+      const issue = await getIssueMarkdown(node.filePath);
+      const title = issue ? issue.title : '不合法 issueMarkdown';
       
       // 创建 FlatTreeNode，parentPath 指向已创建的父节点（即 FlatTreeNode 类型）
       const flatNode: FlatTreeNode = {
@@ -208,7 +211,8 @@ export async function getIssueTitle(issueId:string){
   const {issueIdMap} = await getIssueData();
   const issueNode = issueIdMap.get(issueId);
   if(issueNode?.resourceUri){
-    return getIssueMarkdownTitle(issueNode?.filePath);
+    const issue = await getIssueMarkdown(issueNode?.filePath);
+    return issue ? issue.title : '不合法 issueMarkdown';
   } else {
     return '[Unknown Issue: ' + issueId + ']';
   }

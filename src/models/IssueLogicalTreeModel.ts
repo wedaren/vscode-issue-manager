@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { IssueFrontmatterService, IssueFrontmatterData } from '../services/IssueFrontmatterService';
-import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
+import { getIssueMarkdown } from '../data/IssueMarkdowns';
 
 /**
  * Issue 逻辑树节点
@@ -162,7 +162,8 @@ export class IssueLogicalTreeModel {
         }
 
         // 获取标题
-        const title = await getIssueMarkdownTitle(fileName);
+        const md = await getIssueMarkdown(fileName);
+        const title = md ? md.title : '不合法 issueMarkdown';
 
         // 构建子节点
         const children: IssueLogicalTreeNode[] = [];

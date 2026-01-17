@@ -10,7 +10,7 @@ import { readTree, IssueNode } from '../data/issueTreeManager';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { SharedConfig } from '../config/SharedConfig';
-import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
+import { getIssueMarkdown } from '../data/IssueMarkdowns';
 
 
 interface ChromeRequestPayload {  
@@ -290,7 +290,8 @@ export class ChromeIntegrationServer {
               
               // 递归构建树节点，包含子节点和 markdown 内容
               const buildTreeNode = async (node: IssueNode): Promise<IssueTreeFullNode> => {
-                const title = await getIssueMarkdownTitle(node.filePath);
+                const md = await getIssueMarkdown(node.filePath);
+                const title = md ? md.title : '不合法 issueMarkdown';
                 const absolutePath = path.join(issueDir, node.filePath);
                 
                 // 读取 markdown 文件内容
@@ -354,7 +355,8 @@ export class ChromeIntegrationServer {
 
 
               const buildMeta = async (node: IssueNode): Promise<IssueTreeMetaNode> => {
-                const title = await getIssueMarkdownTitle(node.filePath);
+                const md = await getIssueMarkdown(node.filePath);
+                const title = md ? md.title : '不合法 issueMarkdown';
                 const children: IssueTreeMetaNode[] = node.children && node.children.length > 0
                   ? await Promise.all(node.children.map(child => buildMeta(child)))
                   : [];

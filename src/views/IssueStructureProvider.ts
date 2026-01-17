@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { getIssueDir } from "../config";
 import {
-    getIssueMarkdownFrontmatter,
+    getIssueMarkdown,
     FrontmatterData,
     getIssueMarkdownTitleFromCache,
 } from "../data/IssueMarkdowns";
@@ -131,7 +131,7 @@ export class IssueStructureProvider
             // 对于创建和修改操作，获取文件的 frontmatter
             const filePath = path.join(issueDir, fileName);
             const fileUri = vscode.Uri.file(filePath);
-            const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
+            const frontmatter = (await getIssueMarkdown(fileUri))?.frontmatter ?? null;
 
             // 如果文件没有 frontmatter，检查是否与当前视图相关
             if (!frontmatter || !frontmatter.issue_root_file) {
@@ -230,7 +230,7 @@ export class IssueStructureProvider
             const fileUri = vscode.Uri.file(filePath);
 
             // 获取目标文件的 frontmatter
-            const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
+            const frontmatter = (await getIssueMarkdown(fileUri))?.frontmatter ?? null;
 
             if (frontmatter) {
                 // 对于存在 frontmatter 的文件，通过 root_file 判断关联性
@@ -291,8 +291,7 @@ export class IssueStructureProvider
                 const existingFileUri = vscode.Uri.file(existingFilePath);
 
                 try {
-                    const existingFrontmatter = await getIssueMarkdownFrontmatter(existingFileUri);
-                    const childrenFiles = existingFrontmatter?.issue_children_files || [];
+                    const childrenFiles = (await getIssueMarkdown(existingFileUri))?.frontmatter?.issue_children_files || [];
 
                     // 如果当前文件的 children_files 中包含被删除的文件
                     if (childrenFiles.includes(deletedFileName)) {
@@ -346,7 +345,7 @@ export class IssueStructureProvider
      */
     private async onIssueFileActivated(uri: vscode.Uri): Promise<void> {
         // 检查文件是否有有效的 frontmatter
-        const frontmatter = await getIssueMarkdownFrontmatter(uri);
+        const frontmatter = (await getIssueMarkdown(uri))?.frontmatter ?? null;
         if (!frontmatter || !frontmatter.issue_root_file) {
             this.showGuidanceMessage();
             return;
@@ -500,8 +499,7 @@ export class IssueStructureProvider
             const title = getIssueMarkdownTitleFromCache(fileName);
 
             // 获取 frontmatter
-            const frontmatter = await getIssueMarkdownFrontmatter(fileUri);
-            const childrenFiles = frontmatter?.issue_children_files || [];
+            const childrenFiles = (await getIssueMarkdown(fileUri))?.frontmatter?.issue_children_files || [];
 
             // 递归构建子节点
             const children: IssueStructureNode[] = [];

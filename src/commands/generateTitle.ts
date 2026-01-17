@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
-import { updateIssueMarkdownFrontmatter, getIssueMarkdownFrontmatter, onTitleUpdate, isIssueMarkdown, getIssueMarkdown } from '../data/IssueMarkdowns';
+import { updateIssueMarkdownFrontmatter, onTitleUpdate, isIssueMarkdown, getIssueMarkdown, getIssueMarkdownContent } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
-import { getIssueMarkdownTitle, getIssueMarkdownContent } from '../data/IssueMarkdowns';
 import { Logger } from '../core/utils/Logger';
 
 function normalizeTitle(t: string) {
@@ -117,7 +116,7 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                const existing = await getIssueMarkdownFrontmatter(targetUri);
+                const existing = (await getIssueMarkdown(targetUri))?.frontmatter ?? null;
 
                 const newTitle = normalizeTitle(title);
                 const merged = mergeTitle(existing, newTitle);
@@ -139,7 +138,7 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                 if (ok) {
                     // 触发缓存刷新/标题更新
                     try {
-                        await getIssueMarkdownTitle(targetUri);
+                        await getIssueMarkdown(targetUri);
                     } catch (e) {
                         Logger.getInstance().warn('刷新标题缓存失败', e);
                     }

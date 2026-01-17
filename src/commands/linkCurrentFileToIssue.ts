@@ -3,7 +3,7 @@ import * as path from 'path';
 import { selectOrCreateIssue } from './selectOrCreateIssue';
 import { getIssueDir } from '../config';
 import { getRelativeToNoteRoot } from '../utils/pathUtils';
-import { getIssueMarkdownFrontmatter, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
+import { getIssueMarkdown, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 import { getIssueNodeById } from '../data/issueTreeManager';
 import { createLocationFromEditor, formatFileLink } from '../utils/fileLinkFormatter';
 
@@ -46,7 +46,7 @@ export async function linkCurrentFileToIssue(): Promise<void> {
     const issueUri = issueNode.resourceUri;
 
     // 读取现有 frontmatter
-    const fm = await getIssueMarkdownFrontmatter(issueUri) || {};
+    const fm = (await getIssueMarkdown(issueUri))?.frontmatter ?? {};
     let currentLinked: string[] = [];
     if (Array.isArray(fm.issue_linked_files)) {
       currentLinked = fm.issue_linked_files as string[];

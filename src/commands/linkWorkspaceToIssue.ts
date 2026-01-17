@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { selectOrCreateIssue } from './selectOrCreateIssue';
 import { getIssueNodeById } from '../data/issueTreeManager';
-import { getIssueMarkdownFrontmatter, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
+import { getIssueMarkdown, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
 /**
  * 将工作区/文件夹关联到选中的 issue（frontmatter.issue_linked_workspace）
@@ -59,7 +59,7 @@ export async function linkWorkspaceToIssue(): Promise<void> {
     const issueUri = issueNode.resourceUri;
 
     // 读取现有 frontmatter
-    const fm = await getIssueMarkdownFrontmatter(issueUri) || {};
+    const fm = (await getIssueMarkdown(issueUri))?.frontmatter ?? {};
     let current: string[] = [];
     if (Array.isArray(fm.issue_linked_workspace)) current = fm.issue_linked_workspace as string[];
 

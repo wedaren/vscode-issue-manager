@@ -3,7 +3,7 @@ import { getIssueDir } from '../config';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
-import { getIssueMarkdownTitle,onTitleUpdate } from '../data/IssueMarkdowns';
+import { getIssueMarkdown,onTitleUpdate } from '../data/IssueMarkdowns';
 
 const DEBOUNCE_REFRESH_DELAY_MS = 500;
 
@@ -115,7 +115,7 @@ export class ConfigurationManager {
 
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
         fileWatcher.onMarkdownChange((e) => {
-            getIssueMarkdownTitle(e.uri); // 预热标题缓存
+            getIssueMarkdown(e.uri); // 预热标题缓存
         });
 
         // 订阅内存标题缓存写入/更新事件，触发刷新所有视图（加短延迟以合并快速连续更新）

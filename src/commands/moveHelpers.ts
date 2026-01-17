@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { v4 as uuidv4 } from 'uuid';
-import { getIssueMarkdownTitle } from '../data/IssueMarkdowns';
 import { IssueNode, stripFocusedId, readTree, getIssueNodeById } from '../data/issueTreeManager';
 import { selectOrCreateIssue } from './selectOrCreateIssue';
 

@@ -127,6 +127,9 @@ export type IssueMarkdown = {
     title: string;
     uri: vscode.Uri;
     frontmatter?: FrontmatterData | null;
+    // 文件的修改时间与创建时间（来自 vscode.workspace.fs.stat）
+    mtime: number;
+    ctime: number;
 };
 
 
@@ -138,12 +141,57 @@ export function isIssueMarkdown(item: unknown): item is IssueMarkdown {
     return !!item && typeof item === 'object' && 'title' in item && 'uri' in item;
 }
 
-export async function getIssueMarkdown(file: vscode.Uri): Promise<IssueMarkdown|null> {
-    if(isIssueMarkdownFile(file)){
-        const title = await getIssueMarkdownTitle(file);
-        const frontmatter = await getIssueMarkdownFrontmatter(file);
-        return { title, uri: file, frontmatter };
-    } else {
+export async function getIssueMarkdown(uriOrPath: vscode.Uri | string): Promise<IssueMarkdown|null> {
+    const uri = resolveIssueUri(uriOrPath);
+
+    if (!uri || !isIssueMarkdownFile(uri)) {
+        return null;
+    }
+
+    const key = uri.fsPath;
+    try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        const mtime = stat.mtime;
+        const ctime = stat.ctime;
+        const cached = _issueMarkdownCache.get(key);
+        if (cached && cached.mtime === mtime && (cached.title !== undefined || cached.frontmatter !== undefined)) {
+            return {
+                title: cached.title ?? fallbackTitle(uri),
+                uri,
+                frontmatter: cached.frontmatter ?? null,
+                mtime: cached.mtime,
+                ctime: cached.ctime,
+            };
+        }
+
+        const contentBytes = await vscode.workspace.fs.readFile(uri);
+        const content = Buffer.from(contentBytes).toString("utf-8");
+        const { frontmatter, body } = extractFrontmatterAndBody(content);
+
+        let title: string | undefined;
+        if (frontmatter) {
+            title = extractIssueTitleFromFrontmatter(frontmatter);
+        }
+        if (!title) {
+            const titleFromContent = extractTitleFromContent(body);
+            if (titleFromContent) title = titleFromContent;
+        }
+        title = title ?? path.basename(uri.fsPath, ".md");
+
+        const entry: IssueMarkdownCacheEntry = {
+            mtime,
+            ctime,
+            frontmatter: frontmatter ?? null,
+            title,
+        };
+        _issueMarkdownCache.set(key, entry);
+        scheduleOnDidUpdate();
+        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+
+            return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime };
+    } catch (err) {
+        _issueMarkdownCache.delete(key);
+        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         return null;
     }
 }
@@ -169,6 +217,7 @@ type IssueMarkdownCacheEntry = {
     mtime: number;
     frontmatter?: FrontmatterData | null;
     title?: string;
+    ctime: number;
 };
 
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
@@ -187,44 +236,6 @@ void (async () => {
         size: _issueMarkdownCache.size,
     });
 })();
-
-/** 获取 Markdown 文件的 frontmatter（带简单 mtime 缓存） */
-export async function getIssueMarkdownFrontmatter(
-    uriOrPath: vscode.Uri | string
-): Promise<FrontmatterData | null> {
-    const uri = resolveIssueUri(uriOrPath);
-    if (!uri) {
-        return null;
-    }
-    const key = uri.fsPath;
-    try {
-        const stat = await vscode.workspace.fs.stat(uri);
-        const mtime = stat.mtime;
-        const cached = _issueMarkdownCache.get(key);
-        if (cached && cached.mtime === mtime && cached.frontmatter !== undefined) {
-            return cached.frontmatter ?? null;
-        }
-
-        const contentBytes = await vscode.workspace.fs.readFile(uri);
-        const content = Buffer.from(contentBytes).toString("utf-8");
-        const data = extractFrontmatterAndBody(content);
-        const entry: IssueMarkdownCacheEntry = {
-            mtime,
-            frontmatter: data.frontmatter,
-        };
-        // 如果已有 title 且未改变，可保留
-        if (cached?.title) {
-            entry.title = cached.title;
-        }
-        _issueMarkdownCache.set(key, entry);
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
-        return data.frontmatter;
-    } catch (err) {
-        _issueMarkdownCache.delete(key);
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
-        return null;
-    }
-}
 
 /** 
  * 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。  
@@ -277,9 +288,11 @@ export async function updateIssueMarkdownFrontmatter(
         try {
             const stat = await vscode.workspace.fs.stat(uri);
             const mtime = stat.mtime;
+            const ctime = stat.ctime;
             const cached = _issueMarkdownCache.get(key);
             _issueMarkdownCache.set(key, {
                 mtime,
+                ctime,
                 frontmatter: fm,
                 title: cached?.title,
             });
@@ -299,6 +312,7 @@ export async function updateIssueMarkdownFrontmatter(
 
 /** 从缓存获取标题，若未命中则触发预热 */
 export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
+
     const uri = resolveIssueUri(uriOrPath);
     if (!uri) {
         return uriOrPath.toString();
@@ -306,7 +320,7 @@ export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
     const key = uri.fsPath;
     const cached = _issueMarkdownCache.get(key);
     // 触发异步预热，但不等待
-    getIssueMarkdownTitle(uri);
+    getIssueMarkdown(uri);
     if (cached?.title) {
         return cached.title;
     }
@@ -316,74 +330,6 @@ export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
 /** 标题兜底：优先返回相对于笔记根的相对路径，否则返回完整路径 */
 function fallbackTitle(uri: vscode.Uri): string {
     return getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
-}
-/**
- * 从 frontmatter 的 `issue_title` 优先取标题，其次解析 H1，再回退到文件名
- */
-export async function getIssueMarkdownTitle(uriOrPath: vscode.Uri | string): Promise<string> {
-    const uri = resolveIssueUri(uriOrPath);
-    if (!uri) {
-        return uriOrPath.toString();
-    }
-
-    let title: string | undefined;
-    const key = uri.fsPath;
-    try {
-        const stat = await vscode.workspace.fs.stat(uri);
-        const mtime = stat.mtime;
-        const cached = _issueMarkdownCache.get(key);
-        if (cached && cached.mtime === mtime && cached.title !== undefined) {
-            return cached.title;
-        }
-
-        // 1) 优先从 frontmatter 中读取 issue_title
-
-        const fm = await getIssueMarkdownFrontmatter(uri);
-        if (fm) {
-            // 优先从 frontmatter 的 issue_title 字段获取标题，支持字符串或字符串数组
-            title = extractIssueTitleFromFrontmatter(fm);
-        }
-        if (!title) {
-            // 2) 回退到 H1 标题（需要读取文件内容）
-
-            const contentBytes = await vscode.workspace.fs.readFile(uri);
-            const content = Buffer.from(contentBytes).toString("utf-8");
-            const titleFromContent = extractTitleFromContent(content);
-            if (titleFromContent) {
-                title = titleFromContent;
-            }
-        }
-
-        title = title ?? path.basename(uri.fsPath, ".md");
-        const prevTitle = cached?.title;
-        if (title !== prevTitle) {
-            _issueMarkdownCache.set(key, {
-                mtime,
-                title,
-                frontmatter: fm,
-            });
-            scheduleOnDidUpdate();
-            cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
-            Logger.getInstance().debug("[IssueMarkdowns] get and update title", {
-                [key]: title,
-            });
-        } else if (cached && cached.mtime !== mtime) {
-            // 更新 mtime 保持一致
-            _issueMarkdownCache.set(key, { ...cached,frontmatter: fm, mtime });
-            cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
-        }
-    } catch (error: any) {
-        // 如果是文件不存在的常见情况，降为 warn 级别以避免日志噪音
-        const isNotFound = error && (error.code === 'FileNotFound' || error.code === 'ENOENT' || (error.name && error.name.includes('FileNotFound')) || (error.message && error.message.includes('ENOENT')));
-        if (isNotFound) {
-            // TODO ，避免基于 issueid 读取标题时报错
-            // Logger.getInstance().warn(`读取文件失败（文件不存在） ${uri.fsPath}`);
-        } else {
-            // Logger.getInstance().error(`读取文件时出错 ${uri.fsPath}:`, error);
-        }
-    }
-    title = title ?? fallbackTitle(uri);
-    return title;
 }
 const onTitleUpdateEmitter = new vscode.EventEmitter<void>();
 let _debounceTimer: ReturnType<typeof setTimeout> | undefined;
