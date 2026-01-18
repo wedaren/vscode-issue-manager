@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
-import { getFlatTree, FlatTreeNode, getIssueNodeById, getIssueNodesByUri } from "../data/issueTreeManager";
+import { getFlatTree, getIssueNodeById, getIssueNodesByUri } from "../data/issueTreeManager";
 import { buildIssueQuickPickItems, buildIssueActionItems, ActionQuickPickItem } from "./selectOrCreateIssue";
-import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getAllPrompts } from "../data/IssueMarkdowns";
 import { getIssueIdFromUri } from "../utils/uriUtils";
