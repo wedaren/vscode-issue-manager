@@ -310,6 +310,82 @@ export async function updateIssueMarkdownFrontmatter(
     }
 }
 
+/**
+ * 更新 Markdown 文件的正文（保留或使用现有 frontmatter），并更新缓存。
+ * @param uriOrPath 要更新的文件的 URI 或路径。
+ * @param newBody 新的正文内容（不包括 frontmatter 部分）。
+ * @returns 如果更新成功，则返回 true；否则返回 false。
+ */
+export async function updateIssueMarkdownBody(
+    uriOrPath: vscode.Uri | string,
+    newBody: string
+): Promise<boolean> {
+    const uri = resolveIssueUri(uriOrPath);
+    if (!uri) {
+        return false;
+    }
+    const key = uri.fsPath;
+    try {
+        const document = await vscode.workspace.openTextDocument(uri);
+        const original = document.getText();
+        const { frontmatter } = extractFrontmatterAndBody(original);
+
+        const fm: FrontmatterData | null = frontmatter ? { ...frontmatter } : null;
+        const fmYaml = fm ? yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim() : null;
+        const newContent = fmYaml ? `---\n${fmYaml}\n---\n${newBody}` : newBody;
+
+        if (newContent === original) {
+            return true;
+        }
+
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
+        edit.replace(uri, fullRange, newContent);
+
+        const applied = await vscode.workspace.applyEdit(edit);
+        if (!applied) {
+            return false;
+        }
+
+        const doc = await vscode.workspace.openTextDocument(uri);
+        if (doc.isDirty) {
+            await doc.save();
+        }
+
+        // 更新缓存：mtime、ctime、frontmatter、title（如果可能）
+        try {
+            const stat = await vscode.workspace.fs.stat(uri);
+            const mtime = stat.mtime;
+            const ctime = stat.ctime;
+            let title: string | undefined;
+            if (fm) {
+                title = extractIssueTitleFromFrontmatter(fm);
+            }
+            if (!title) {
+                const titleFromContent = extractTitleFromContent(newBody);
+                if (titleFromContent) title = titleFromContent;
+            }
+            title = title ?? path.basename(uri.fsPath, ".md");
+            const cached = _issueMarkdownCache.get(key);
+            _issueMarkdownCache.set(key, {
+                mtime,
+                ctime,
+                frontmatter: fm,
+                title: cached?.title ?? title,
+            });
+            cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+            scheduleOnDidUpdate();
+        } catch (e) {
+            Logger.getInstance().warn('更新正文后更新缓存失败', e);
+        }
+
+        return true;
+    } catch (err) {
+        Logger.getInstance().error('updateIssueMarkdownBody error:', err);
+        return false;
+    }
+}
+
 /** 从缓存获取标题，若未命中则触发预热 */
 export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
 
