@@ -196,22 +196,37 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     activeCommandItems = COMMAND_ITEMS.filter(i => !i.require);
                 }
 
-                // 默认显示命令项
-                quickPick.items = activeCommandItems;
-                quickPick.placeholder =
-                    "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
-                quickPick.value = "";
-                quickPick.busy = false;
-
-                quickPick.show();
-                // 解析 initialArg（可以是字符串或 {mode,text}）
+                // 解析 initialArg（仅对象形式），并决定是否提前处理以避免闪烁
                 const initialRequest: { mode?: Mode; text?: string } | undefined = (() => {
                     if (!initialArg) {
                         return undefined;
                     }
-                    // initialArg 现在仅接受对象形式
                     return { mode: initialArg.mode, text: initialArg.text || "" };
                 })();
+
+                // 如果初始请求要求进入 issue/llm 模式，先设置为 busy 状态并延迟填充项，避免先展示 command 再切换造成闪烁
+                let handledInitialRequest = false;
+                const wantsInlineIssue = !!(initialRequest && (initialRequest.mode === "issue" || initialRequest.mode === ";" || initialRequest.mode === "list" || initialRequest.mode === "semicolon"));
+
+                // 默认显示命令项（除非初始请求要求进入 issue/llm 模式）
+                if (!wantsInlineIssue) {
+                    quickPick.items = activeCommandItems;
+                    quickPick.placeholder =
+                        "命令模式：输入关键词（支持空格多词匹配），点击按钮切换到问题列表";
+                    quickPick.value = "";
+                    quickPick.busy = false;
+                } else {
+                    // 进入等待状态：不展示命令项，显示加载提示
+                    currentMode = 'issue';
+                    suppressChange = true;
+                    quickPick.items = [];
+                    quickPick.placeholder = "搜索或新建问题（正在加载...）";
+                    quickPick.value = initialRequest?.text || "";
+                    quickPick.busy = true;
+                    handledInitialRequest = true;
+                }
+
+                quickPick.show();
 
                 // 加载扁平化树并展示为默认项（与 searchIssues 行为一致）
                 try {
@@ -340,8 +355,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             quickPick.value = text;
                             // 异步构建初始项，不阻塞 UI
 
-                            const actionItems = await buildIssueQuickPickItems(text || "");
-                            quickPick.items = convertActionItems(actionItems);
+                                    const actionItems = await buildIssueQuickPickItems(text || "");
+                                    quickPick.items = convertActionItems(actionItems);
 
                         } else if (label === "LLM 模式") {
                             // 示例性的 LLM 模式：目前表现为合并搜索，可以扩展为调用实际 LLM
@@ -368,20 +383,30 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             await switchToMode(label, text);
                         };
 
-                    // 如果调用时传入初始模式，则在初始化后切换到该模式
-                    if (initialRequest && initialRequest.mode) {
+                    // 如果调用时传入初始模式，则在初始化后切换到该模式（如果尚未处理）
+                    if (!handledInitialRequest && initialRequest && initialRequest.mode) {
                         // 支持多种写法：'command'|'issue'|'amp'|'llm' 等，或标签形式
                         const m = (initialRequest.mode || "").toString().toLowerCase();
-                        if (m === "command" || m === "cmd" || m === ">") {
+                        if (m === "command" || m === "cmd" || m === ">" || m === "greater") {
                             await enterMode("command", initialRequest.text);
-                        } else if (m === "issue" || m === "list" || m === ";") {
+                        } else if (m === "issue" || m === "list" || m === ";" || m === "semicolon") {
                             await enterMode("issue", initialRequest.text);
                         } else if (m === "llm") {
                             await enterMode("llm", initialRequest.text);
-                        } else if (m === "greater" || m === ">") {
-                            await enterMode("command", initialRequest.text);
-                        } else if (m === "semicolon" || m === ";") {
-                            await enterMode("issue", initialRequest.text);
+                        }
+                    }
+
+                    // 如果之前为 inline issue 模式预先设置为 busy，则现在填充实际的 issue 项并结束 busy
+                    if (handledInitialRequest && currentMode === 'issue') {
+                        try {
+                            const actionItems = await buildIssueQuickPickItems(initialRequest?.text || "");
+                            quickPick.items = convertActionItems(actionItems);
+                            quickPick.placeholder = "搜索或新建问题";
+                        } catch (e) {
+                            quickPick.items = issueItems;
+                        } finally {
+                            quickPick.busy = false;
+                            suppressChange = false;
                         }
                     }
 
