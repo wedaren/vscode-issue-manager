@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { getFlatTree, FlatTreeNode, getIssueNodeById } from "../data/issueTreeManager";
+import { getFlatTree, FlatTreeNode, getIssueNodeById, getIssueNodesByUri } from "../data/issueTreeManager";
 import { buildIssueQuickPickItems, buildIssueActionItems, ActionQuickPickItem } from "./selectOrCreateIssue";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
@@ -203,13 +203,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     activeCommandItems = COMMAND_ITEMS.filter(i => !i.require);
                 }
 
-                // 解析 initialArg（仅对象形式），并决定是否提前处理以避免闪烁
-                const initialRequest: { mode?: Mode; text?: string } | undefined = (() => {
-                    if (!initialArg) {
-                        return undefined;
-                    }
-                    return { mode: initialArg.mode, text: initialArg.text || "" };
-                })();
+                // 解析 initialArg（仅对象形式），直接使用传入对象即可
+                const initialRequest: InitialArg | undefined = initialArg;
 
                 // 如果初始请求要求进入 issue/llm 模式，先设置为 busy 状态并延迟填充项，避免先展示 command 再切换造成闪烁
                 let handledInitialRequest = false;
@@ -519,7 +514,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             return;
                         }
                         try {
-                            const nodes = await (await import('../data/issueTreeManager')).getIssueNodesByUri(fileUri);
+                            const nodes = await getIssueNodesByUri(fileUri);
                             if (nodes?.[0]) {
                                 await vscode.commands.executeCommand('issueManager.openAndRevealIssue', nodes[0], 'overview');
                             } else {
