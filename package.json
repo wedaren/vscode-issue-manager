@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "3.0.42",
+  "version": "3.0.43",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -1153,7 +1153,9 @@
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured",
-        "args": { "mode": "issue" }
+        "args": {
+          "mode": "issue"
+        }
       },
       {
         "command": "issueManager.unifiedQuickOpen",
