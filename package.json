@@ -1149,10 +1149,11 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.selectOrCreateIssue",
+        "command": "issueManager.unifiedQuickOpen",
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
-        "when": "issueManager.isDirConfigured"
+        "when": "issueManager.isDirConfigured",
+        "args": { "mode": "issue" }
       },
       {
         "command": "issueManager.copilotDiffSend",

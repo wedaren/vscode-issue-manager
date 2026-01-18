@@ -23,11 +23,18 @@ type QuickPickItemWithId = vscode.QuickPickItem & {
     require?: (ctx: { issueId?: string; uri?: vscode.Uri }) => boolean;
 };
 
+// 支持的模式类型：command | issue | llm
+type Mode = "command" | "issue" | "llm";
+
+// 统一入口接受的初始参数类型
+// 统一入口接受的初始参数类型（仅对象形式）
+type InitialArg = { mode?: Mode; text?: string };
+
 export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "issueManager.unifiedQuickOpen",
-            async (initialArg?: string | { mode?: string; text?: string }) => {
+                    async (initialArg?: InitialArg) => {
                 const quickPick = vscode.window.createQuickPick<QuickPickItemWithId>();
                 quickPick.matchOnDescription = true;
                 // quickPick.matchOnDetail = false;
@@ -198,17 +205,12 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                 quickPick.show();
                 // 解析 initialArg（可以是字符串或 {mode,text}）
-                const initialRequest = (() => {
+                const initialRequest: { mode?: Mode; text?: string } | undefined = (() => {
                     if (!initialArg) {
                         return undefined;
                     }
-                    if (typeof initialArg === "string") {
-                        return { mode: initialArg, text: "" };
-                    }
-                    if (typeof initialArg === "object") {
-                        return { mode: initialArg.mode, text: initialArg.text || "" };
-                    }
-                    return undefined;
+                    // initialArg 现在仅接受对象形式
+                    return { mode: initialArg.mode, text: initialArg.text || "" };
                 })();
 
                 // 加载扁平化树并展示为默认项（与 searchIssues 行为一致）
@@ -356,7 +358,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                     // 统一模式入口，便于在多处调用以保持 placeholder/按钮/items 一致
                     // 简化为仅接受主要模式：'command'、'issue'、'llm'
-                        const enterMode = async (mode: "command" | "issue" | "llm", text = "") => {
+                        const enterMode = async (mode: Mode, text = "") => {
                             const label =
                                 mode === "command"
                                     ? "命令模式"
