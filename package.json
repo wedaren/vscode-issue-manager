@@ -1149,16 +1149,20 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.selectOrCreateIssue",
+        "command": "issueManager.unifiedQuickOpen",
         "key": "ctrl+j ctrl+f",
         "mac": "cmd+j cmd+f",
-        "when": "issueManager.isDirConfigured"
+        "when": "issueManager.isDirConfigured",
+        "args": { "mode": "issue" }
       },
       {
-        "command": "issueManager.copilotDiffSend",
+        "command": "issueManager.unifiedQuickOpen",
         "key": "ctrl+j ctrl+l",
         "mac": "cmd+j cmd+l",
-        "when": "issueManager.isDirConfigured"
+        "when": "issueManager.isDirConfigured",
+        "args": {
+          "mode": "llm"
+        }
       },
       {
         "command": "workbench.action.togglePanel",
@@ -1197,13 +1201,10 @@
         "when": "issueManager.isDirConfigured"
       },
       {
-        "command": "issueManager.unifiedQuickOpen",
+        "command": "issueManager.copilotDiffSend",
         "key": "ctrl+j ctrl+shift+l",
         "mac": "cmd+j cmd+shift+l",
-        "when": "issueManager.isDirConfigured",
-        "args": {
-          "mode": "llm"
-        }
+        "when": "issueManager.isDirConfigured"
       },
       {
         "command": "issueManager.linkCurrentFileToIssue",
