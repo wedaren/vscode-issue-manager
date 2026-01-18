@@ -6,8 +6,7 @@ import type { QuickPick } from "vscode";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 
-// 模块级的 QuickPick 项接口，供辅助函数与主函数共享
-interface ActionQuickPickItem extends vscode.QuickPickItem {
+export interface ActionQuickPickItem extends vscode.QuickPickItem {
     action: "create" | "create-background" | "open-existing";
     // 执行器：在用户确认该项时调用，返回选中或新建的 issue id 或 null
     // 签名为 (input, ctx?) 以便需要时获得额外上下文（例如 parentId、quickPick）
@@ -67,6 +66,56 @@ export async function buildIssueQuickPickItems(value: string): Promise<ActionQui
     });
 }
 
+/**
+ * 构建问题相关的 action 项（包含直接创建 / 后台创建 / 打开已有项），
+ * 便于在其他模块复用（例如 unifiedQuickOpen）。
+ * 当输入为空时仅返回按最近访问排序的已有项；当有输入时将新建项放到最前。
+ */
+export async function buildIssueActionItems(
+    value: string,
+    parentId?: string
+): Promise<ActionQuickPickItem[]> {
+    const v = value || "";
+    const flatItems = await buildIssueQuickPickItems(v);
+
+    const direct: ActionQuickPickItem = {
+        label: v || "新问题标题",
+        description: "直接创建并打开",
+        alwaysShow: true,
+        action: "create",
+        execute: async (input, ctx) => {
+            const uri = await createIssueFileSilent(input);
+            if (!uri) { return null; }
+            const nodes = await addIssueToTree([uri], ctx?.parentId || parentId, false);
+            if (nodes && nodes.length > 0) { return nodes[0].id; }
+            return null;
+        },
+    };
+
+    const background: ActionQuickPickItem = {
+        label: v || "新问题标题（后台）",
+        description: "后台创建并由 AI 填充（不打开）",
+        alwaysShow: true,
+        action: "create-background",
+        execute: async (input, ctx) => {
+            const uri = await createIssueFileSilent(input);
+            if (!uri) { return null; }
+            backgroundFillIssue(uri, input, { timeoutMs: 60000 }).catch(err => {
+                console.error("Background fill issue failed:", err);
+                vscode.window.showErrorMessage(`后台填充问题 '${input}' 失败。`);
+            });
+            const nodes = await addIssueToTree([uri], ctx?.parentId || parentId, false);
+            if (nodes && nodes.length > 0) { return nodes[0].id; }
+            return null;
+        },
+    };
+
+    if (v.trim().length === 0) {
+        return flatItems;
+    }
+    return [direct, background, ...flatItems];
+}
+
 export async function selectOrCreateIssue(parentId?: string): Promise<string | null> {
     const issueDir = getIssueDir();
     if (!issueDir) {
@@ -82,49 +131,11 @@ export async function selectOrCreateIssue(parentId?: string): Promise<string | n
 
     quickPick.onDidChangeValue(async value => {
         const v = value || "";
-        const direct: ActionQuickPickItem = {
-            label: v || "新问题标题",
-            description: "直接创建并打开",
-            alwaysShow: true,
-            action: "create",
-            execute: async (input, ctx) => {
-                const uri = await createIssueFileSilent(input);
-                if (!uri) return null;
-                const nodes = await addIssueToTree([uri], ctx?.parentId, false);
-                if (nodes && nodes.length > 0) return nodes[0].id;
-                return null;
-            },
-        };
-        const background: ActionQuickPickItem = {
-            label: v || "新问题标题（后台）",
-            description: "后台创建并由 AI 填充（不打开）",
-            alwaysShow: true,
-            action: "create-background",
-            execute: async (input, ctx) => {
-                const uri = await createIssueFileSilent(input);
-                if (!uri) return null;
-                backgroundFillIssue(uri, input, { timeoutMs: 60000 })
-                    .catch(err => {
-                        console.error("Background fill issue failed:", err);
-                        vscode.window.showErrorMessage(`后台填充问题 '${input}' 失败。`);
-                    });
-                const nodes = await addIssueToTree([uri], ctx?.parentId, false);
-                if (nodes && nodes.length > 0) return nodes[0].id;
-                return null;
-            },
-        };
-
-        const flatItems = await buildIssueQuickPickItems(v);
-
-        // 当用户没有输入内容时，默认只显示按最近访问排序的已有项；当有输入时，将新问题项放到最前
-        if (v.trim().length === 0) {
-            quickPick.items = flatItems;
-        } else {
-            quickPick.items = [direct, background, ...flatItems];
-        }
+        const items = await buildIssueActionItems(v, parentId);
+        quickPick.items = items;
     });
 
-    const initialItems = await buildIssueQuickPickItems("");
+    const initialItems = await buildIssueActionItems("", parentId);
     quickPick.items = initialItems;
     quickPick.show();
 
