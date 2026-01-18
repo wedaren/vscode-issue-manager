@@ -1157,8 +1157,8 @@
       },
       {
         "command": "issueManager.unifiedQuickOpen",
-        "key": "ctrl+j ctrl+shift+l",
-        "mac": "cmd+j cmd+shift+l",
+        "key": "ctrl+j ctrl+l",
+        "mac": "cmd+j cmd+l",
         "when": "issueManager.isDirConfigured",
         "args": {
           "mode": "llm"
@@ -1202,8 +1202,8 @@
       },
       {
         "command": "issueManager.copilotDiffSend",
-        "key": "ctrl+j ctrl+l",
-        "mac": "cmd+j cmd+l",
+        "key": "ctrl+j ctrl+shift+l",
+        "mac": "cmd+j cmd+shift+l",
         "when": "issueManager.isDirConfigured"
       },
       {
