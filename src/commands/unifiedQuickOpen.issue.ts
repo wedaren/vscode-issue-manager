@@ -133,7 +133,7 @@ export async function handleIssueModeAccept(
 ): Promise<boolean> {
     // 如果有 execute 回调，执行它
     if (selected.execute) {
-        await Promise.resolve(selected.execute(value));
+        await selected.execute(value);
         return true;
     }
     
