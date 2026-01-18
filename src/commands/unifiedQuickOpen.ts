@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { getFlatTree, FlatTreeNode, getIssueNodeById } from "../data/issueTreeManager";
-import { selectOrCreateIssue, buildIssueQuickPickItems } from "./selectOrCreateIssue";
+import { selectOrCreateIssue, buildIssueQuickPickItems, buildIssueActionItems } from "./selectOrCreateIssue";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
@@ -274,8 +274,11 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                                 alwaysShow: ai.alwaysShow,
                                 execute: async (input?: string) => {
                                     try {
-                                        const id = await ai.execute(input || "");
-                                        openIssueNode(id || "");
+                                        const id = await ai.execute(input || "", { parentId: currentEditorIssueId });
+                                        // 对于后台创建项（create-background）保持不自动打开
+                                        if (id && ai.action !== 'create-background') {
+                                            openIssueNode(id || "");
+                                        }
                                     } catch (e) {
                                         console.error("action item execute failed:", e);
                                     }
@@ -492,64 +495,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             // 与 selectOrCreateIssue 保持一致的行为：当输入为空时显示按最近访问排序的已有项，
                             // 当有输入时在最前面插入直接创建与后台创建项
                             try {
-                                const actionItems = await buildIssueQuickPickItems(v);
+                                const actionItems = await buildIssueActionItems(v, currentEditorIssueId);
                                 const converted = convertActionItems(actionItems);
-
-                                const direct: QuickPickItemWithId = {
-                                    label: v || "新问题标题",
-                                    description: "直接创建并打开",
-                                    alwaysShow: true,
-                                    execute: async (input?: string) => {
-                                        const uri = await createIssueFileSilent(input || "");
-                                        if (!uri) return;
-                                        const nodes = await addIssueToTree(
-                                            [uri],
-                                            currentEditorIssueId,
-                                            false
-                                        );
-                                        if (nodes && nodes.length > 0) {
-                                            const node = nodes[0];
-                                            await vscode.commands.executeCommand(
-                                                "issueManager.openAndRevealIssue",
-                                                node,
-                                                "overview"
-                                            );
-                                        }
-                                    },
-                                };
-
-                                const background: QuickPickItemWithId = {
-                                    label: v || "新问题标题（后台）",
-                                    description: "后台创建并由 AI 填充（不打开）",
-                                    alwaysShow: true,
-                                    execute: async (input?: string) => {
-                                        const uri = await createIssueFileSilent(input || "");
-                                        if (!uri) return;
-                                        backgroundFillIssue(uri, input || "", {
-                                            timeoutMs: 60000,
-                                        }).catch(err => {
-                                            console.error("Background fill issue failed:", err);
-                                            vscode.window.showErrorMessage(
-                                                `后台填充问题 '${input}' 失败。`
-                                            );
-                                        });
-                                        const nodes = await addIssueToTree(
-                                            [uri],
-                                            currentEditorIssueId,
-                                            false
-                                        );
-                                        if (nodes && nodes.length > 0) {
-                                            const node = nodes[0];
-                                            // 不自动打开（与 selectOrCreateIssue 保持一致）
-                                        }
-                                    },
-                                };
-
-                                if (v.trim().length === 0) {
-                                    quickPick.items = converted;
-                                } else {
-                                    quickPick.items = [direct, background, ...converted];
-                                }
+                                quickPick.items = converted;
                             } catch (e) {
                                 console.error("issue mode build items failed:", e);
                                 quickPick.items = issueItems;
