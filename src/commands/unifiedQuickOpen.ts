@@ -4,6 +4,7 @@ import { selectOrCreateIssue, buildIssueQuickPickItems } from "./selectOrCreateI
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
+import { openIssueNode } from "./openIssueNode";
 
 type QuickPickItemWithId = vscode.QuickPickItem & {
     id?: string;
@@ -29,7 +30,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             async (initialArg?: string | { mode?: string; text?: string }) => {
                 const quickPick = vscode.window.createQuickPick<QuickPickItemWithId>();
                 quickPick.matchOnDescription = true;
-                quickPick.matchOnDetail = false;
+                // quickPick.matchOnDetail = false;
+
                 const cmdButton: vscode.QuickInputButton = {
                     iconPath: new vscode.ThemeIcon("terminal"),
                     tooltip: "切换到命令模式",
@@ -159,9 +161,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                 // 显示所有模式按钮与帮助按钮，便于快速切换（可按需调整显示策略）
                 quickPick.buttons = [cmdButton, issueButton, helpButton];
-                let inCommandMode = true; // 默认进入命令模式
+                // 当前模式：'command' | 'issue' | 'llm'
+                let currentMode: 'command' | 'issue' | 'llm' = 'command'; // 默认进入命令模式
                 let suppressChange = false; // 忽略程序性 value 变更
-                let inIssueMode = false; // 是否处于原地的问题模式（不打开新 quickPick）
 
                 // 仅在当前活动编辑器的 URI 包含有效 issueId 时展示依赖编辑器的命令
                 let activeCommandItems = COMMAND_ITEMS.slice();
@@ -263,6 +265,24 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         });
                     };
 
+                    // helper: 将 selectOrCreateIssue 返回的 actionItems 转换为 QuickPickItemWithId
+                    const convertActionItems = (items: Array<any>): QuickPickItemWithId[] =>
+                        items.map(ai =>
+                            ({
+                                label: ai.label,
+                                description: ai.description,
+                                alwaysShow: ai.alwaysShow,
+                                execute: async (input?: string) => {
+                                    try {
+                                        const id = await ai.execute(input || "");
+                                        openIssueNode(id || "");
+                                    } catch (e) {
+                                        console.error("action item execute failed:", e);
+                                    }
+                                },
+                            } as QuickPickItemWithId)
+                        );
+
                     // 帮助项与模式切换复用逻辑
                     const HELP_ITEMS: QuickPickItemWithId[] = [
                         {
@@ -292,11 +312,11 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         },
                     ];
 
-                    const switchToMode = (label: string, text = "") => {
+                    const switchToMode = async (label: string, text = "") => {
                         // 默认离开 inline 问题搜索
-                        inIssueMode = false;
+                        quickPick.activeItems = [];
                         if (label === "命令模式") {
-                            inCommandMode = true;
+                            currentMode = 'command';
                             suppressChange = true;
                             quickPick.items = activeCommandItems;
                             quickPick.placeholder =
@@ -308,58 +328,19 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             }
                         } else if (label === "问题搜索") {
                             // 进入 inline 问题搜索：在当前 quickPick 中展示与 selectOrCreateIssue 相同的文案与行为
-                            inCommandMode = false;
-                            inIssueMode = true;
+                            currentMode = 'issue';
                             suppressChange = true;
                             quickPick.placeholder = "搜索或新建问题";
                             quickPick.buttons = [cmdButton, issueButton, helpButton];
                             quickPick.value = text;
                             // 异步构建初始项，不阻塞 UI
-                            Promise.resolve(
-                                (async () => {
-                                    try {
-                                        const actionItems = await buildIssueQuickPickItems(
-                                            text || ""
-                                        );
-                                        const converted = actionItems.map(
-                                            ai =>
-                                                ({
-                                                    label: ai.label,
-                                                    description: ai.description,
-                                                    execute: async (input?: string) => {
-                                                        try {
-                                                            const id = await ai.execute(
-                                                                input || ""
-                                                            );
-                                                            if (id) {
-                                                                const n = await getIssueNodeById(
-                                                                    id
-                                                                );
-                                                                await vscode.commands.executeCommand(
-                                                                    "issueManager.openAndRevealIssue",
-                                                                    n,
-                                                                    "overview"
-                                                                );
-                                                            }
-                                                        } catch (e) {
-                                                            console.error(
-                                                                "action item execute failed:",
-                                                                e
-                                                            );
-                                                        }
-                                                    },
-                                                } as QuickPickItemWithId)
-                                        );
-                                        quickPick.items = converted;
-                                        quickPick.activeItems = [];
-                                    } catch (e) {
-                                        console.error("buildIssueQuickPickItems failed:", e);
-                                    }
-                                })()
-                            );
+
+                            const actionItems = await buildIssueQuickPickItems(text || "");
+                            quickPick.items = convertActionItems(actionItems);
+
                         } else if (label === "LLM 模式") {
                             // 示例性的 LLM 模式：目前表现为合并搜索，可以扩展为调用实际 LLM
-                            inCommandMode = false;
+                            currentMode = 'llm';
                             suppressChange = true;
                             const combined = activeCommandItems.concat(issueItems);
                             quickPick.items = filterItems(combined, text);
@@ -501,39 +482,18 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             }
                         }
 
-                        if (inCommandMode) {
+                        if (currentMode === 'command') {
                             const filtered = filterItems(activeCommandItems, v);
                             quickPick.items = filtered;
                             if (filtered.length > 0) {
                                 quickPick.activeItems = [filtered[0]];
                             }
-                        } else if (inIssueMode) {
+                        } else if (currentMode === 'issue') {
                             // 与 selectOrCreateIssue 保持一致的行为：当输入为空时显示按最近访问排序的已有项，
                             // 当有输入时在最前面插入直接创建与后台创建项
                             try {
                                 const actionItems = await buildIssueQuickPickItems(v);
-                                const converted = actionItems.map(
-                                    ai =>
-                                        ({
-                                            label: ai.label,
-                                            description: ai.description,
-                                            execute: async (input?: string) => {
-                                                try {
-                                                    const id = await ai.execute(input || "");
-                                                    if (id) {
-                                                        const n = await getIssueNodeById(id);
-                                                        await vscode.commands.executeCommand(
-                                                            "issueManager.openAndRevealIssue",
-                                                            n,
-                                                            "overview"
-                                                        );
-                                                    }
-                                                } catch (e) {
-                                                    console.error("action item execute failed:", e);
-                                                }
-                                            },
-                                        } as QuickPickItemWithId)
-                                );
+                                const converted = convertActionItems(actionItems);
 
                                 const direct: QuickPickItemWithId = {
                                     label: v || "新问题标题",
@@ -593,7 +553,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             } catch (e) {
                                 console.error("issue mode build items failed:", e);
                                 quickPick.items = issueItems;
-                                quickPick.activeItems = [];
                             }
                         } else {
                             quickPick.items = issueItems;
@@ -631,7 +590,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         }
 
                         // 兼容老字段：命令项
-                        if (inCommandMode && selected.commandId) {
+                        if (currentMode === 'command' && selected.commandId) {
                             await vscode.commands.executeCommand(selected.commandId);
                             quickPick.hide();
                             return;
