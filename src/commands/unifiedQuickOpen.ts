@@ -339,6 +339,56 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         },
                     ];
 
+                    // Helper: 构建并展示 LLM 模板项（包含内置 + 异步合并的用户 prompts）
+                    const createLLMItems = (text = "") => {
+                        currentMode = 'llm';
+                        suppressChange = true;
+                        quickPick.placeholder = "选择 LLM 模板（支持自定义）";
+                        quickPick.buttons = [cmdButton, issueButton, helpButton];
+                        quickPick.value = text;
+                        quickPick.busy = true;
+
+                        const builtin = [
+                            {
+                                label: "压缩为摘要（3句）",
+                                template:
+                                    "你是一个文本改写助手。任务：将下面的文本改写为更清晰、简洁的中文，保留原意。\n\n要求：\n\n1) 仅输出改写后的文本内容（不要添加说明、示例、编号或元信息）。\n\n2) 在最后单独一行输出一句结论，格式以“结论：”开头，结论一句话。\n\n3) 不要使用多余的 Markdown 标记或代码块。\n\n请把下列文本压缩为最多三句的简短摘要，并在最后给出一句结论：\n\n{{content}}",
+                                description: "快速概要",
+                            },
+                        ];
+
+                        quickPick.items = builtin.map(b => ({ label: b.label, description: b.description, template: b.template } as QuickPickItemWithId)).concat([
+                            { label: "自定义 Prompt...", description: "输入自定义的 prompt 模板（使用 {{content}} 占位）", isCustom: true } as QuickPickItemWithId,
+                        ]);
+
+                        // 异步加载并合并用户定义的 prompts
+                        (async () => {
+                            try {
+                                const promptsFromFiles = await getAllPrompts();
+                                const picks: QuickPickItemWithId[] = promptsFromFiles.map(p => ({
+                                    label: p.label,
+                                    description: p.description,
+                                    template: p.template,
+                                    fileUri: p.uri,
+                                    systemPrompt: p.systemPrompt,
+                                    buttons: [
+                                        {
+                                            iconPath: new vscode.ThemeIcon("go-to-file"),
+                                            tooltip: "在问题总览中查看",
+                                        },
+                                    ],
+                                }));
+
+                                quickPick.items = picks.concat(quickPick.items as QuickPickItemWithId[]);
+                            } catch (err) {
+                                // ignore
+                            } finally {
+                                quickPick.busy = false;
+                                suppressChange = false;
+                            }
+                        })();
+                    };
+
                     const switchToMode = async (label: string, text = "") => {
                         // 默认离开 inline 问题搜索
                         quickPick.activeItems = [];
@@ -366,55 +416,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                                     quickPick.items = convertActionItems(actionItems);
 
                         } else if (label === "LLM 模式") {
-                            // LLM 模式：展示 prompt 模板列表（参考 copilotDiff 的实现）
-                            currentMode = 'llm';
-                            suppressChange = true;
-                            quickPick.placeholder = "选择 LLM 模板（支持自定义）";
-                            quickPick.buttons = [cmdButton, issueButton, helpButton];
-                            quickPick.value = text;
-                            quickPick.items = [];
-                            quickPick.busy = true;
-
-                            // 内置示例模板
-                            const builtin = [
-                                {
-                                    label: "压缩为摘要（3句）",
-                                    template:
-                                        "你是一个文本改写助手。任务：将下面的文本改写为更清晰、简洁的中文，保留原意。\n\n要求：\n\n1) 仅输出改写后的文本内容（不要添加说明、示例、编号或元信息）。\n\n2) 在最后单独一行输出一句结论，格式以“结论：”开头，结论一句话。\n\n3) 不要使用多余的 Markdown 标记或代码块。\n\n请把下列文本压缩为最多三句的简短摘要，并在最后给出一句结论：\n\n{{content}}",
-                                    description: "快速概要",
-                                },
-                            ];
-
-                            // 先展示内置模板与自定义占位项，随后异步加载用户模板
-                            quickPick.items = builtin.map(b => ({ label: b.label, description: b.description, template: b.template } as QuickPickItemWithId)).concat([
-                                { label: "自定义 Prompt...", description: "输入自定义的 prompt 模板（使用 {{content}} 占位）", isCustom: true } as QuickPickItemWithId,
-                            ]);
-
-                            // 异步加载并合并用户定义的 prompts
-                            (async () => {
-                                try {
-                                    const promptsFromFiles = await getAllPrompts();
-                                    const picks: QuickPickItemWithId[] = promptsFromFiles.map(p => ({
-                                        label: p.label,
-                                        description: p.description,
-                                        template: p.template,
-                                        fileUri: p.uri,
-                                        systemPrompt: p.systemPrompt,
-                                        buttons: [
-                                            {
-                                                iconPath: new vscode.ThemeIcon("go-to-file"),
-                                                tooltip: "在问题总览中查看",
-                                            },
-                                        ],
-                                    }));
-
-                                    // 将从文件加载的用户 prompts 与当前已有项合并，避免重复添加 builtin 或自定义占位
-                                    quickPick.items = picks.concat(quickPick.items as QuickPickItemWithId[]);
-                                    quickPick.busy = false;
-                                } catch (err) {
-                                    quickPick.busy = false;
-                                }
-                            })();
+                                // LLM 模式：使用复用的 helper 构建模板列表
+                                createLLMItems(text);
                         }
                     };
 
@@ -459,48 +462,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                     // 如果之前为 inline llm 模式预先设置为 busy，则现在填充 LLM 模板列表并结束 busy
                     if (handledInitialRequest && currentMode === 'llm') {
-                        try {
-                            quickPick.placeholder = "选择 LLM 模板（支持自定义）";
-                            quickPick.buttons = [cmdButton, issueButton, helpButton];
-                            quickPick.value = initialRequest?.text || "";
-                            // 内置示例模板
-                            const builtin = [
-                                {
-                                    label: "压缩为摘要（3句）",
-                                    template:
-                                        "你是一个文本改写助手。任务：将下面的文本改写为更清晰、简洁的中文，保留原意。\n\n要求：\n\n1) 仅输出改写后的文本内容（不要添加说明、示例、编号或元信息）。\n\n2) 在最后单独一行输出一句结论，格式以“结论：”开头，结论一句话。\n\n3) 不要使用多余的 Markdown 标记或代码块。\n\n请把下列文本压缩为最多三句的简短摘要，并在最后给出一句结论：\n\n{{content}}",
-                                    description: "快速概要",
-                                },
-                            ];
-
-                            quickPick.items = builtin.map(b => ({ label: b.label, description: b.description, template: b.template } as QuickPickItemWithId)).concat([
-                                { label: "自定义 Prompt...", description: "输入自定义的 prompt 模板（使用 {{content}} 占位）", isCustom: true } as QuickPickItemWithId,
-                            ]);
-
-                            // 异步加载并合并用户定义的 prompts
-                            try {
-                                const promptsFromFiles = await getAllPrompts();
-                                const picks: QuickPickItemWithId[] = promptsFromFiles.map(p => ({
-                                    label: p.label,
-                                    description: p.description,
-                                    template: p.template,
-                                    fileUri: p.uri,
-                                    systemPrompt: p.systemPrompt,
-                                    buttons: [
-                                        {
-                                            iconPath: new vscode.ThemeIcon("go-to-file"),
-                                            tooltip: "在问题总览中查看",
-                                        },
-                                    ],
-                                }));
-                                quickPick.items = picks.concat(quickPick.items as QuickPickItemWithId[]);
-                            } catch (e) {
-                                // ignore
-                            }
-                        } finally {
-                            quickPick.busy = false;
-                            suppressChange = false;
-                        }
+                        createLLMItems(initialRequest?.text || "");
                     }
 
                     // 是否处于 help 模式（使用当前 quickPick 展示帮助项）
