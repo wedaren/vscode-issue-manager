@@ -590,7 +590,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                                 } else {
                                     quickPick.items = [direct, background, ...converted];
                                 }
-                                quickPick.activeItems = [];
                             } catch (e) {
                                 console.error("issue mode build items failed:", e);
                                 quickPick.items = issueItems;
