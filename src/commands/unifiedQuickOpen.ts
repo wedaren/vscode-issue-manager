@@ -3,6 +3,7 @@ import { getFlatTree, FlatTreeNode, getIssueNodeById } from "../data/issueTreeMa
 import { buildIssueQuickPickItems, buildIssueActionItems, ActionQuickPickItem } from "./selectOrCreateIssue";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
+import { getAllPrompts } from "../data/IssueMarkdowns";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 import { openIssueNode } from "./openIssueNode";
 
@@ -21,6 +22,12 @@ type QuickPickItemWithId = vscode.QuickPickItem & {
      * ctx = { issueId?: string; uri?: vscode.Uri }
      */
     require?: (ctx: { issueId?: string; uri?: vscode.Uri }) => boolean;
+    // LLM 模式相关字段
+    template?: string;
+    fileUri?: vscode.Uri;
+    systemPrompt?: string;
+    isCustom?: boolean;
+    buttons?: vscode.QuickInputButton[];
 };
 
 // 支持的模式类型：command | issue | llm
@@ -359,15 +366,61 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                                     quickPick.items = convertActionItems(actionItems);
 
                         } else if (label === "LLM 模式") {
-                            // 示例性的 LLM 模式：目前表现为合并搜索，可以扩展为调用实际 LLM
+                            // LLM 模式：展示 prompt 模板列表（参考 copilotDiff 的实现）
                             currentMode = 'llm';
                             suppressChange = true;
-                            const combined = activeCommandItems.concat(issueItems);
-                            quickPick.items = filterItems(combined, text);
-                            quickPick.placeholder = "LLM 模式：使用 LLM 辅助搜索（示例）";
+                            quickPick.placeholder = "选择 LLM 模板（支持自定义）";
                             quickPick.buttons = [cmdButton, issueButton, helpButton];
                             quickPick.value = text;
-                            quickPick.activeItems = [];
+                            quickPick.items = [];
+                            quickPick.busy = true;
+
+                            // 内置示例模板
+                            const builtin = [
+                                {
+                                    label: "压缩为摘要（3句）",
+                                    template:
+                                        "你是一个文本改写助手。任务：将下面的文本改写为更清晰、简洁的中文，保留原意。\n\n要求：\n\n1) 仅输出改写后的文本内容（不要添加说明、示例、编号或元信息）。\n\n2) 在最后单独一行输出一句结论，格式以“结论：”开头，结论一句话。\n\n3) 不要使用多余的 Markdown 标记或代码块。\n\n请把下列文本压缩为最多三句的简短摘要，并在最后给出一句结论：\n\n{{content}}",
+                                    description: "快速概要",
+                                },
+                            ];
+
+                            // 先展示内置模板与自定义占位项，随后异步加载用户模板
+                            quickPick.items = builtin.map(b => ({ label: b.label, description: b.description, template: b.template } as QuickPickItemWithId)).concat([
+                                { label: "自定义 Prompt...", description: "输入自定义的 prompt 模板（使用 {{content}} 占位）", isCustom: true } as QuickPickItemWithId,
+                            ]);
+
+                            // 异步加载并合并用户定义的 prompts
+                            (async () => {
+                                try {
+                                    const promptsFromFiles = await getAllPrompts();
+                                    const picks: QuickPickItemWithId[] = [];
+                                    for (const p of promptsFromFiles) {
+                                        picks.push({
+                                            label: p.label,
+                                            description: p.description,
+                                            template: p.template,
+                                            fileUri: p.uri,
+                                            systemPrompt: p.systemPrompt,
+                                            buttons: [
+                                                {
+                                                    iconPath: new vscode.ThemeIcon("go-to-file"),
+                                                    tooltip: "在问题总览中查看",
+                                                },
+                                            ],
+                                        });
+                                    }
+                                    for (const b of builtin) {
+                                        picks.push({ label: b.label, description: b.description, template: b.template });
+                                    }
+                                    picks.push({ label: "自定义 Prompt...", description: "输入自定义的 prompt 模板（使用 {{content}} 占位）", isCustom: true });
+
+                                    quickPick.items = picks;
+                                    quickPick.busy = false;
+                                } catch (err) {
+                                    quickPick.busy = false;
+                                }
+                            })();
                         }
                     };
 
@@ -457,6 +510,30 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         }
                     });
 
+                    // 处理 item 上的按钮（例如在 LLM 模板项上可能包含打开文件的按钮）
+                    quickPick.onDidTriggerItemButton && quickPick.onDidTriggerItemButton(async e => {
+                        const fileUri = (e.item as QuickPickItemWithId).fileUri;
+                        if (!fileUri) {
+                            return;
+                        }
+                        try {
+                            const nodes = await (await import('../data/issueTreeManager')).getIssueNodesByUri(fileUri);
+                            if (nodes?.[0]) {
+                                await vscode.commands.executeCommand('issueManager.openAndRevealIssue', nodes[0], 'overview');
+                            } else {
+                                const doc = await vscode.workspace.openTextDocument(fileUri);
+                                await vscode.window.showTextDocument(doc, { preview: true });
+                            }
+                        } catch (err) {
+                            try {
+                                const doc = await vscode.workspace.openTextDocument(fileUri);
+                                await vscode.window.showTextDocument(doc, { preview: true });
+                            } catch (e) {
+                                vscode.window.showErrorMessage('打开问题文件失败：' + String(e));
+                            }
+                        }
+                    });
+
                     quickPick.onDidChangeValue(async value => {
                         if (suppressChange) {
                             suppressChange = false;
@@ -538,6 +615,47 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     quickPick.onDidAccept(async () => {
                         const selected = quickPick.selectedItems[0];
                         if (!selected) {
+                            quickPick.hide();
+                            return;
+                        }
+
+                        // LLM 模式：如果选择了模板或自定义，使用后台填充当前编辑器对应的 issue 文件
+                        if (currentMode === 'llm' && (selected.template || selected.isCustom)) {
+                            let template = selected.template;
+                            if (selected.isCustom) {
+                                const custom = await vscode.window.showInputBox({
+                                    prompt: "输入自定义 prompt（使用 {{content}} 占位要替换为文本）",
+                                    value: `{{content}}`,
+                                });
+                                if (!custom) {
+                                    quickPick.hide();
+                                    return;
+                                }
+                                template = custom;
+                            }
+                            if (!template) {
+                                vscode.window.showWarningMessage('未指定模板');
+                                quickPick.hide();
+                                return;
+                            }
+
+                            if (!currentEditorIssueId) {
+                                vscode.window.showWarningMessage('请在编辑器中聚焦要填充的 Issue 文件后再使用 LLM 模板。');
+                                quickPick.hide();
+                                return;
+                            }
+
+                            try {
+                                const node = await getIssueNodeById(currentEditorIssueId || '');
+                                if (node && node.resourceUri) {
+                                    await backgroundFillIssue(node.resourceUri, template);
+                                } else {
+                                    vscode.window.showWarningMessage('未找到目标 Issue 文件。');
+                                }
+                            } catch (e) {
+                                console.error('LLM 模板执行失败', e);
+                                vscode.window.showErrorMessage('LLM 模板执行失败');
+                            }
                             quickPick.hide();
                             return;
                         }
