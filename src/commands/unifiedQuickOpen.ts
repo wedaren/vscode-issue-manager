@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { getFlatTree, FlatTreeNode, getIssueNodeById } from "../data/issueTreeManager";
-import { selectOrCreateIssue, buildIssueQuickPickItems, buildIssueActionItems } from "./selectOrCreateIssue";
+import { buildIssueQuickPickItems, buildIssueActionItems, ActionQuickPickItem } from "./selectOrCreateIssue";
 import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
@@ -266,7 +266,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     };
 
                     // helper: 将 selectOrCreateIssue 返回的 actionItems 转换为 QuickPickItemWithId
-                    const convertActionItems = (items: Array<any>): QuickPickItemWithId[] =>
+                    const convertActionItems = (items: Array<ActionQuickPickItem>): QuickPickItemWithId[] =>
                         items.map(ai =>
                             ({
                                 label: ai.label,
@@ -291,27 +291,27 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         {
                             label: "命令模式",
                             description: "输入关键词过滤并执行命令（支持空格多词匹配）",
-                            execute: () => enterMode("command"),
+                            execute: async () => await enterMode("command"),
                         },
                         {
                             label: "问题搜索",
                             description: "搜索并定位问题节点（用于导航/打开问题）",
-                            execute: () => enterMode("issue"),
+                            execute: async () => await enterMode("issue"),
                         },
                         {
                             label: "LLM 模式",
                             description: "使用 LLM 辅助搜索/模糊匹配（示例模式）",
-                            execute: () => enterMode("llm"),
+                            execute: async () => await enterMode("llm"),
                         },
                         {
                             label: "; 前缀",
                             description: "在输入前加 ';' 快速进入问题搜索",
-                            execute: () => enterMode("issue"),
+                            execute: async () => await enterMode("issue"),
                         },
                         {
                             label: "> 前缀",
                             description: "在输入前加 '>' 快速进入命令模式",
-                            execute: () => enterMode("command"),
+                            execute: async () => await enterMode("command"),
                         },
                     ];
 
@@ -356,30 +356,30 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                     // 统一模式入口，便于在多处调用以保持 placeholder/按钮/items 一致
                     // 简化为仅接受主要模式：'command'、'issue'、'llm'
-                    const enterMode = (mode: "command" | "issue" | "llm", text = "") => {
-                        const label =
-                            mode === "command"
-                                ? "命令模式"
-                                : mode === "issue"
-                                ? "问题搜索"
-                                : "LLM 模式";
-                        switchToMode(label, text);
-                    };
+                        const enterMode = async (mode: "command" | "issue" | "llm", text = "") => {
+                            const label =
+                                mode === "command"
+                                    ? "命令模式"
+                                    : mode === "issue"
+                                    ? "问题搜索"
+                                    : "LLM 模式";
+                            await switchToMode(label, text);
+                        };
 
                     // 如果调用时传入初始模式，则在初始化后切换到该模式
                     if (initialRequest && initialRequest.mode) {
                         // 支持多种写法：'command'|'issue'|'amp'|'llm' 等，或标签形式
                         const m = (initialRequest.mode || "").toString().toLowerCase();
                         if (m === "command" || m === "cmd" || m === ">") {
-                            enterMode("command", initialRequest.text);
+                            await enterMode("command", initialRequest.text);
                         } else if (m === "issue" || m === "list" || m === ";") {
-                            enterMode("issue", initialRequest.text);
+                            await enterMode("issue", initialRequest.text);
                         } else if (m === "llm") {
-                            enterMode("llm", initialRequest.text);
+                            await enterMode("llm", initialRequest.text);
                         } else if (m === "greater" || m === ">") {
-                            enterMode("command", initialRequest.text);
+                            await enterMode("command", initialRequest.text);
                         } else if (m === "semicolon" || m === ";") {
-                            enterMode("issue", initialRequest.text);
+                            await enterMode("issue", initialRequest.text);
                         }
                     }
 
@@ -398,23 +398,23 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     };
 
                     // 前缀处理映射：便于扩展新模式（说明：';' 为“问题搜索”的缩写，'>' 为“命令模式”的缩写）
-                    const prefixHandlers: Record<string, (text: string) => void> = {
+                    const prefixHandlers: Record<string, (text: string) => Promise<void> | void> = {
                         // 命令模式：'>' 前缀
-                        ">": (text: string) => {
+                        ">": async (text: string) => {
                             // 将 '>' 视为命令模式的快捷前缀
-                            enterMode("command", text);
+                            await enterMode("command", text);
                         },
                         // 问题列表模式：';' 前缀
-                        ";": (text: string) => {
+                        ";": async (text: string) => {
                             // 将 ';' 视为问题搜索的快捷前缀
-                            enterMode("issue", text);
+                            await enterMode("issue", text);
                         },
                         // 'llm' 模式示例：示例性的 LLM 搜索模式（目前为合并搜索+不同占位提示）
-                        llm: (text: string) => {
-                            enterMode("llm", text);
+                        llm: async (text: string) => {
+                            await enterMode("llm", text);
                         },
                         // '?' 前缀：显示帮助并切换到对应模式，同时保留后续输入作为搜索关键词
-                        "?": (text: string) => {
+                        "?": async (text: string) => {
                             openHelpInQuickPick(text);
                         },
                     };
@@ -422,9 +422,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     quickPick.onDidTriggerButton(async btn => {
                         // 按钮切换：根据按钮切换到对应模式
                         if (btn === cmdButton) {
-                            enterMode("command", "");
+                            await enterMode("command", "");
                         } else if (btn === issueButton) {
-                            enterMode("issue", "");
+                            await enterMode("issue", "");
                         } else if (btn === helpButton) {
                             openHelpInQuickPick("");
                         }
@@ -447,7 +447,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                                 if (handler) {
                                     // 退出 help 模式并触发对应前缀处理
                                     inHelpMode = false;
-                                    handler(v.slice(1));
+                                    await handler(v.slice(1));
                                     return;
                                 }
                             }
@@ -464,7 +464,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             const keys = Object.keys(prefixHandlers).sort(
                                 (a, b) => b.length - a.length
                             );
-                            for (const key of keys) {
+                                for (const key of keys) {
                                 if (!v.startsWith(key)) {
                                     continue;
                                 }
@@ -479,7 +479,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                                 }
                                 const handler = prefixHandlers[key];
                                 if (handler) {
-                                    handler(v.slice(key.length).trim());
+                                    await handler(v.slice(key.length).trim());
                                     return;
                                 }
                             }
@@ -517,12 +517,16 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                         // help 模式：选择后切换到对应模式并继续展示 quickPick
                         if (inHelpMode) {
-                            if (selected.execute) {
-                                Promise.resolve(
-                                    selected.execute(quickPick.value, { quickPick })
-                                ).catch(e => console.error("help item execute error:", e));
-                            } else {
-                                switchToMode(selected.label, quickPick.value);
+                            try {
+                                if (selected.execute) {
+                                    await Promise.resolve(
+                                        selected.execute(quickPick.value, { quickPick })
+                                    );
+                                } else {
+                                    await switchToMode(selected.label, quickPick.value);
+                                }
+                            } catch (e) {
+                                console.error("help item execute error:", e);
                             }
                             inHelpMode = false;
                             return;

@@ -6,8 +6,7 @@ import type { QuickPick } from "vscode";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 
-// 模块级的 QuickPick 项接口，供辅助函数与主函数共享
-interface ActionQuickPickItem extends vscode.QuickPickItem {
+export interface ActionQuickPickItem extends vscode.QuickPickItem {
     action: "create" | "create-background" | "open-existing";
     // 执行器：在用户确认该项时调用，返回选中或新建的 issue id 或 null
     // 签名为 (input, ctx?) 以便需要时获得额外上下文（例如 parentId、quickPick）
