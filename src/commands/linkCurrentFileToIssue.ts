@@ -81,7 +81,6 @@ export async function linkCurrentFileToIssue(): Promise<void> {
             if (visible.document.uri.fsPath === issueUri.fsPath) {
               // 在相同的 viewColumn 中重新显示文档，保持焦点不变
               await vscode.window.showTextDocument(updatedDoc, { viewColumn: visible.viewColumn, preserveFocus: true, preview: false });
-              break;
             }
           }
         } catch (refreshErr) {
