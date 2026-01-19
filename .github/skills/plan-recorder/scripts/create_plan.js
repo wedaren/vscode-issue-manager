@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs').promises;
 const path = require('path');
-
+const os = require('os');
 async function main() {
   const args = process.argv.slice(2);
   let outArgIndex = args.findIndex(a => a === '--out' || a === '-o');
@@ -15,7 +15,7 @@ async function main() {
   const source = path.join(__dirname, '..', 'references', 'PLAN.md');
 
   // 默认目录：/Users/wedaren/repositoryDestinationOfGithub/issue-notes
-  const defaultDir = path.resolve('/Users/wedaren/repositoryDestinationOfGithub/issue-notes');
+  const defaultDir = path.join(os.homedir(), 'repositoryDestinationOfGithub/issue-notes');
 
   function generateFileName() {
     const now = new Date();
@@ -34,7 +34,7 @@ async function main() {
     const resolved = path.resolve(outPath);
     // 如果传入的是目录，则在该目录下生成文件名
     try {
-      const stat = require('fs').statSync(resolved);
+      const stat = await fs.stat(resolved);
       if (stat.isDirectory()) {
         target = path.join(resolved, generateFileName());
       } else {

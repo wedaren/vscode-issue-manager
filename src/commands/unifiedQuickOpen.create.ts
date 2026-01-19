@@ -12,17 +12,35 @@ import { backgroundFillIssue } from "../llm/backgroundFill";
 import { openIssueNodeBeside } from "./openIssueNode";
 
 async function createCreateModeItems(value: string): Promise<QuickPickItemWithId[]> {
-    const v = value || "";
+    const issue = value || "";
     const currentEditor = vscode.window.activeTextEditor;
+    const currentselectedText = currentEditor?.document?.getText(currentEditor.selection) || "";
+    const currentSelection = currentEditor?.selection;
     const currentEditorContent = currentEditor?.document?.getText() || "";
     const currentEditorIssueId = await getCurrentEditorIssueId();
     const currentIssueTitle = (await getIssueMarkdown(currentEditorIssueId || ""))?.title || "问题";
     const titleItem: QuickPickItemWithId = {
-        label: v,
+        label: issue,
         description: currentEditorIssueId
             ? `在当前 ${currentIssueTitle} 下创建子问题`
             : "创建新问题（使用当前输入作为标题）",
-        execute: () => {},
+        execute: async (input?: string) => {
+            const title = input?.trim();
+            if (!title) { return; }
+            const uri = await createIssueFileSilent(title);
+            if (!uri) { return; }
+            const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
+            if (nodes && nodes[0] && nodes[0].id) {
+                await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
+                const prompt = `用户向你提了： ${issue}。
+可能有用的上下文:
+当前编辑器内容是：${currentEditorContent}。
+当前选中的文本是：${currentselectedText}。
+当前选中的范围是：${currentSelection}。
+请根据这些信息生成 Markdown（包含标题和详细描述）`;
+                await backgroundFillIssue(uri, buildPrompt(prompt));
+            }
+        },
     };
 
     const buildPrompt = (template: string) => {
@@ -49,10 +67,6 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                     return;
                 }
                 const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
-                // if (nodes && nodes[0] && nodes[0].id) {
-                //     openIssueNodeBeside(nodes[0].id).catch(() => {});
-                // }
-
                 try {
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
                     await backgroundFillIssue(uri, buildPrompt(p.template));
@@ -146,7 +160,6 @@ async function updateCreateModeItems(
         currentEditorContent,
         currentEditorIssueId
     );
-    quickPick.items = initial;
     const resolvedPrompts = await createCreateModeItems(value || "");
     quickPick.items = [...initial, ...resolvedPrompts];
 }
