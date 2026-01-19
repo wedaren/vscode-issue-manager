@@ -184,13 +184,13 @@ export async function handleCommandModeAccept(
 ): Promise<boolean> {
     // 如果有 execute 回调，执行它
     if (selected.execute) {
-        await selected.execute(value);
+        selected.execute(value);
         return true;
     }
     
     // 兼容老字段：commandId
     if (selected.commandId) {
-        await vscode.commands.executeCommand(selected.commandId);
+        vscode.commands.executeCommand(selected.commandId);
         return true;
     }
     

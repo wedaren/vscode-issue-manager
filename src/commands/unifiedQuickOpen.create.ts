@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { QuickPickItemWithId } from "./unifiedQuickOpen.types";
-import { getAllPrompts, getIssueMarkdown, updateIssueMarkdownFrontmatter } from "../data/IssueMarkdowns";
+import {
+    getAllPrompts,
+    getIssueMarkdown,
+    updateIssueMarkdownBody,
+    updateIssueMarkdownFrontmatter,
+} from "../data/IssueMarkdowns";
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
 import { createIssueFile, createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
@@ -11,15 +16,14 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
     const currentEditor = vscode.window.activeTextEditor;
     const currentEditorContent = currentEditor?.document?.getText() || "";
     const currentEditorIssueId = await getCurrentEditorIssueId();
-    const currentIssueTitle  = (await getIssueMarkdown(currentEditorIssueId||''))?.title || '问题';
+    const currentIssueTitle = (await getIssueMarkdown(currentEditorIssueId || ""))?.title || "问题";
     const titleItem: QuickPickItemWithId = {
         label: v,
         description: currentEditorIssueId
             ? `在当前 ${currentIssueTitle} 下创建子问题`
             : "创建新问题（使用当前输入作为标题）",
-        execute: ()=>{},
+        execute: () => {},
     };
-
 
     const buildPrompt = (template: string) => {
         if (!template) {
@@ -40,7 +44,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
             systemPrompt: p.systemPrompt,
             execute: async (input?: string) => {
                 const title = p.label;
-                const uri = await createIssueFile(title);
+                const uri = await createIssueFileSilent(title);
                 if (!uri) {
                     return;
                 }
@@ -48,10 +52,10 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                 // if (nodes && nodes[0] && nodes[0].id) {
                 //     openIssueNodeBeside(nodes[0].id).catch(() => {});
                 // }
-                
+
                 try {
-                    await backgroundFillIssue(uri, buildPrompt(p.template));
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
+                    await backgroundFillIssue(uri, buildPrompt(p.template));
                 } catch (e) {
                     console.error("create-mode prompt fill failed", e);
                 }
@@ -83,7 +87,7 @@ function buildCreateInitialItems(
 
     const direct: QuickPickItemWithId = {
         label: v || "新建问题",
-        description: '创建并打开新问题',
+        description: "创建并打开新问题",
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
@@ -99,7 +103,7 @@ function buildCreateInitialItems(
 
     const background: QuickPickItemWithId = {
         label: v ? `${v}（后台）` : "新建问题（后台）",
-        description: '创建并打开新问题 AI 填充',
+        description: "创建并打开新问题 AI 填充",
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
@@ -137,7 +141,11 @@ async function updateCreateModeItems(
     const currentEditor = vscode.window.activeTextEditor;
     const currentEditorContent = currentEditor?.document?.getText() || "";
     const currentEditorIssueId = await getCurrentEditorIssueId();
-    const initial = buildCreateInitialItems(value || "", currentEditorContent, currentEditorIssueId);
+    const initial = buildCreateInitialItems(
+        value || "",
+        currentEditorContent,
+        currentEditorIssueId
+    );
     quickPick.items = initial;
     const resolvedPrompts = await createCreateModeItems(value || "");
     quickPick.items = [...initial, ...resolvedPrompts];
@@ -166,12 +174,7 @@ export async function handleCreateModeAccept(
     value: string
 ): Promise<boolean> {
     if (selected.execute) {
-        try {
-            await Promise.resolve(selected.execute(value));
-        } catch (e) {
-            console.error("create mode accept execute failed", e);
-            vscode.window.showErrorMessage("创建操作失败");
-        }
+        selected.execute(value);
         return true;
     }
     return false;

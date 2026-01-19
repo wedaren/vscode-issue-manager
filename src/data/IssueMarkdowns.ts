@@ -254,25 +254,47 @@ async function applyContentEdit(
     }
 
     try {
-        const document = await vscode.workspace.openTextDocument(uri);
-        const edit = new vscode.WorkspaceEdit();
-        const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
-        edit.replace(uri, fullRange, newContent);
-
-        const applied = await vscode.workspace.applyEdit(edit);
-        if (!applied) {
-            return false;
-        }
-
-        const doc = await vscode.workspace.openTextDocument(uri);
-        if (doc.isDirty) {
-            await doc.save();
-        }
-
+        // 直接写入文件，避免打开编辑器。
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(newContent, "utf8"));
+        // 写盘成功后刷新已打开的编辑器（如果存在且无未保存更改）
+        await refreshOpenEditorsIfNeeded(uri, newContent);
         return true;
     } catch (err) {
         Logger.getInstance().error('applyContentEdit 失败', err);
         return false;
+    }
+}
+
+/**
+ * 在写盘后刷新已经打开的编辑器（不会覆盖有未保存修改的编辑器）
+ */
+async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent: string): Promise<void> {
+    let warned = false;
+    for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document.uri.toString() !== uri.toString()) continue;
+
+        if (editor.document.isDirty) {
+            if (!warned) {
+                Logger.getInstance().warn('文件在编辑器中有未保存修改，跳过自动刷新：' + uri.fsPath);
+                try {
+                    vscode.window.showWarningMessage('检测到当前编辑器有未保存更改，未自动应用磁盘更新。');
+                } catch {}
+                warned = true;
+            }
+            continue;
+        }
+
+        try {
+            const fullRange = new vscode.Range(0, 0, editor.document.lineCount, 0);
+            const applied = await editor.edit((eb) => eb.replace(fullRange, newContent));
+            if (applied) {
+                if (editor.document.isDirty) {
+                    await editor.document.save();
+                }
+            }
+        } catch (e) {
+            Logger.getInstance().warn('刷新打开的编辑器失败', e);
+        }
     }
 }
 
@@ -336,8 +358,8 @@ export async function updateIssueMarkdownFrontmatter(
     }
 
     try {
-        const document = await vscode.workspace.openTextDocument(uri);
-        const original = document.getText();
+        const contentBytes = await vscode.workspace.fs.readFile(uri);
+        const original = Buffer.from(contentBytes).toString("utf8");
         const { frontmatter, body } = extractFrontmatterAndBody(original);
 
         // 合并更新
@@ -383,8 +405,8 @@ export async function updateIssueMarkdownBody(
     }
 
     try {
-        const document = await vscode.workspace.openTextDocument(uri);
-        const original = document.getText();
+        const contentBytes = await vscode.workspace.fs.readFile(uri);
+        const original = Buffer.from(contentBytes).toString("utf8");
         const { frontmatter } = extractFrontmatterAndBody(original);
 
         // 生成新内容（保留原有 frontmatter）
