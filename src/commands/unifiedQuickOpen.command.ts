@@ -10,7 +10,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成项目名",
         description: "基于活动编辑器内容生成项目名并复制",
-        commandId: "issueManager.generateProjectName",
         execute: async () => {
             await vscode.commands.executeCommand(
                 "issueManager.generateProjectName"
@@ -20,7 +19,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "插入 marks 到关联问题",
         description: "将当前任务的 marks 写入到关联的问题 Markdown 中",
-        commandId: "issueManager.marker.insertMarksToAssociatedIssue",
         execute: async () => {
             await vscode.commands.executeCommand(
                 "issueManager.marker.insertMarksToAssociatedIssue"
@@ -30,7 +28,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成 Git 分支名",
         description: "基于活动编辑器内容生成 git 分支名并复制",
-        commandId: "issueManager.generateGitBranchName",
         execute: async () => {
             await vscode.commands.executeCommand(
                 "issueManager.generateGitBranchName"
@@ -40,7 +37,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "新建子问题",
         description: "从当前编辑器对应的 IssueNode 下创建子问题",
-        commandId: "issueManager.createSubIssueFromEditor",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand(
@@ -51,7 +47,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成标题",
         description: "为当前编辑器的 IssueMarkdown 生成 IssueTitle",
-        commandId: "issueManager.generateTitleCommand",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand(
@@ -62,7 +57,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "复制文件名",
         description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
-        commandId: "issueManager.copyFilename",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.copyFilename");
@@ -71,7 +65,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "复制问题 ID",
         description: "复制当前编辑器中的 IssueNode ID 到剪贴板",
-        commandId: "issueManager.copyIssueId",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.copyIssueId");
@@ -80,7 +73,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "在问题总览中查看",
         description: "在问题总览中定位当前编辑器对应的 IssueNode",
-        commandId: "issueManager.revealInOverviewFromEditor",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand(
@@ -91,7 +83,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "添加到关注",
         description: "将当前 IssueNode 加入关注列表",
-        commandId: "issueManager.addToFocusedViewFromEditor",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand(
@@ -102,7 +93,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "移动到...",
         description: "将当前 IssueNode 移动到其他 IssueNode 下",
-        commandId: "issueManager.moveToFromEditor",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.moveToFromEditor");
@@ -111,7 +101,6 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "关联到...",
         description: "将当前 IssueNode 关联到其他 IssueNode 下",
-        commandId: "issueManager.attachToFromEditor",
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.attachToFromEditor");
@@ -182,17 +171,9 @@ export async function handleCommandModeAccept(
     selected: QuickPickItemWithId,
     value: string
 ): Promise<boolean> {
-    // 如果有 execute 回调，执行它
     if (selected.execute) {
-        await selected.execute(value);
+        selected.execute(value);
         return true;
     }
-    
-    // 兼容老字段：commandId
-    if (selected.commandId) {
-        await vscode.commands.executeCommand(selected.commandId);
-        return true;
-    }
-    
     return false;
 }

@@ -237,6 +237,111 @@ void (async () => {
     });
 })();
 
+/**
+ * 应用文件内容编辑（替换整个文件内容）并保存
+ * @param uri 文件 URI
+ * @param newContent 新的完整文件内容
+ * @param originalContent 原始文件内容，用于比较是否有变化
+ * @returns 如果成功返回 true，否则返回 false
+ */
+async function applyContentEdit(
+    uri: vscode.Uri,
+    newContent: string,
+    originalContent: string
+): Promise<boolean> {
+    if (newContent === originalContent) {
+        return true;
+    }
+
+    try {
+        // 直接写入文件，避免打开编辑器。
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(newContent, "utf8"));
+        // 写盘成功后刷新已打开的编辑器（如果存在且无未保存更改）
+        await refreshOpenEditorsIfNeeded(uri, newContent);
+        return true;
+    } catch (err) {
+        Logger.getInstance().error('applyContentEdit 失败', err);
+        return false;
+    }
+}
+
+/**
+ * 在写盘后刷新已经打开的编辑器（不会覆盖有未保存修改的编辑器）
+ */
+async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent: string): Promise<void> {
+    let warned = false;
+    for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document.uri.toString() !== uri.toString()) continue;
+
+        if (editor.document.isDirty) {
+            if (!warned) {
+                Logger.getInstance().warn('文件在编辑器中有未保存修改，跳过自动刷新：' + uri.fsPath);
+                try {
+                    vscode.window.showWarningMessage('检测到当前编辑器有未保存更改，未自动应用磁盘更新。');
+                } catch {}
+                warned = true;
+            }
+            continue;
+        }
+
+        try {
+            const fullRange = new vscode.Range(0, 0, editor.document.lineCount, 0);
+            const applied = await editor.edit((eb) => eb.replace(fullRange, newContent));
+            if (applied) {
+                if (editor.document.isDirty) {
+                    await editor.document.save();
+                }
+            }
+        } catch (e) {
+            Logger.getInstance().warn('刷新打开的编辑器失败', e);
+        }
+    }
+}
+
+/**
+ * 刷新文件编辑后的缓存（更新 mtime、ctime、frontmatter 和 title）
+ * @param uri 文件 URI
+ * @param frontmatter 更新后的 frontmatter
+ * @param body 更新后的正文（可选，用于提取标题）
+ */
+async function refreshCacheAfterEdit(
+    uri: vscode.Uri,
+    frontmatter: FrontmatterData | null,
+    body?: string
+): Promise<void> {
+    const key = uri.fsPath;
+    try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        const mtime = stat.mtime;
+        const ctime = stat.ctime;
+
+        let title: string | undefined;
+        if (frontmatter) {
+            title = extractIssueTitleFromFrontmatter(frontmatter);
+        }
+        if (!title && body) {
+            const titleFromContent = extractTitleFromContent(body);
+            if (titleFromContent) title = titleFromContent;
+        }
+        if (!title) {
+            // 保留已有缓存的 title 或使用兜底逻辑
+            const cached = _issueMarkdownCache.get(key);
+            title = cached?.title ?? path.basename(uri.fsPath, ".md");
+        }
+
+        _issueMarkdownCache.set(key, {
+            mtime,
+            ctime,
+            frontmatter,
+            title,
+        });
+        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        scheduleOnDidUpdate();
+    } catch (e) {
+        Logger.getInstance().warn('refreshCacheAfterEdit 失败', e);
+    }
+}
+
 /** 
  * 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。  
  * @param uriOrPath 要更新的文件的 URI 或路径。  
@@ -251,61 +356,76 @@ export async function updateIssueMarkdownFrontmatter(
     if (!uri) {
         return false;
     }
-    const key = uri.fsPath;
+
     try {
-        const document = await vscode.workspace.openTextDocument(uri);
-        const original = document.getText();
+        const contentBytes = await vscode.workspace.fs.readFile(uri);
+        const original = Buffer.from(contentBytes).toString("utf8");
         const { frontmatter, body } = extractFrontmatterAndBody(original);
 
+        // 合并更新
         const fm: FrontmatterData = (frontmatter ? { ...frontmatter } : {}) as FrontmatterData;
         for (const [k, v] of Object.entries(updates)) {
             // @ts-ignore
             fm[k] = v as any;
         }
 
+        // 生成新内容
         const fmYaml = yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim();
         const newContent = `---\n${fmYaml}\n---\n${body}`;
 
-        if (newContent === original) {
-            return true;
-        }
-
-        const edit = new vscode.WorkspaceEdit();
-        const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
-        edit.replace(uri, fullRange, newContent);
-
-        const applied = await vscode.workspace.applyEdit(edit);
-        if (!applied) {
+        // 应用文件编辑
+        const success = await applyContentEdit(uri, newContent, original);
+        if (!success) {
             return false;
         }
 
-        const doc = await vscode.workspace.openTextDocument(uri);
-        if (doc.isDirty) {
-            await doc.save();
-        }
-
-        // 更新缓存 mtime & frontmatter
-        try {
-            const stat = await vscode.workspace.fs.stat(uri);
-            const mtime = stat.mtime;
-            const ctime = stat.ctime;
-            const cached = _issueMarkdownCache.get(key);
-            _issueMarkdownCache.set(key, {
-                mtime,
-                ctime,
-                frontmatter: fm,
-                title: cached?.title,
-            });
-            cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
-            scheduleOnDidUpdate();
-        } catch (e) {
-            // 忽略缓存更新错误
-            Logger.getInstance().warn('更新 frontmatter 后更新缓存失败', e);
-        }
+        // 刷新缓存
+        await refreshCacheAfterEdit(uri, fm, body);
 
         return true;
     } catch (err) {
         Logger.getInstance().error('updateIssueMarkdownFrontmatter error:', err);
+        return false;
+    }
+}
+
+/**
+ * 更新 Markdown 文件的正文（保留或使用现有 frontmatter），并更新缓存。
+ * @param uriOrPath 要更新的文件的 URI 或路径。
+ * @param newBody 新的正文内容（不包括 frontmatter 部分）。
+ * @returns 如果更新成功，则返回 true；否则返回 false。
+ */
+export async function updateIssueMarkdownBody(
+    uriOrPath: vscode.Uri | string,
+    newBody: string
+): Promise<boolean> {
+    const uri = resolveIssueUri(uriOrPath);
+    if (!uri) {
+        return false;
+    }
+
+    try {
+        const contentBytes = await vscode.workspace.fs.readFile(uri);
+        const original = Buffer.from(contentBytes).toString("utf8");
+        const { frontmatter } = extractFrontmatterAndBody(original);
+
+        // 生成新内容（保留原有 frontmatter）
+        const fm: FrontmatterData | null = frontmatter ? { ...frontmatter } : null;
+        const fmYaml = fm ? yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim() : null;
+        const newContent = fmYaml ? `---\n${fmYaml}\n---\n${newBody}` : newBody;
+
+        // 应用文件编辑
+        const success = await applyContentEdit(uri, newContent, original);
+        if (!success) {
+            return false;
+        }
+
+        // 刷新缓存（传入 newBody 用于提取标题）
+        await refreshCacheAfterEdit(uri, fm, newBody);
+
+        return true;
+    } catch (err) {
+        Logger.getInstance().error('updateIssueMarkdownBody error:', err);
         return false;
     }
 }

@@ -5,7 +5,6 @@ import * as vscode from "vscode";
  */
 export type QuickPickItemWithId = vscode.QuickPickItem & {
     id?: string;
-    commandId?: string;
     /**
      * 可选的执行器：在用户确认该项时调用，接收当前输入值和可选上下文
      */
@@ -29,7 +28,7 @@ export type QuickPickItemWithId = vscode.QuickPickItem & {
 /**
  * 支持的模式类型
  */
-export type Mode = "command" | "issue" | "llm";
+export type Mode = "command" | "issue" | "llm" | "create";
 
 /**
  * 统一入口接受的初始参数类型

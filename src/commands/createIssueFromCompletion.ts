@@ -14,11 +14,14 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
             if (!title) { return; }
         }
 
-        const { uri, newNodeId } = await createAndOpenIssue(title, parentId);
+        const uri = await createIssueFileSilent(title);
         if (!uri) { return; }
 
+        const added = await addIssueToTree([uri], parentId, false);
+        const newNodeId = added && added.length > 0 ? added[0].id : undefined;
+
         if (background) {
-            backgroundFillIssue(uri, title, { timeoutMs: 60000 }).then(()=>{}).catch(()=>{});
+            backgroundFillIssue(uri, title, { timeoutMs: 60000 });
         }
 
         if (editor) {
@@ -39,17 +42,6 @@ export function parseCreateIssueArgs(args: unknown[]): { parentId?: string | und
     return { parentId, titleArg, background, insertMode, hasTrigger };
 }
 
-async function createAndOpenIssue(title: string, parentId?: string): Promise<{ uri?: vscode.Uri; newNodeId?: string | undefined }> {
-    const uri = await createIssueFileSilent(title);
-    if (!uri) { return { }; }
-
-    const added = await addIssueToTree([uri], parentId, false);
-    const newNodeId = added && added.length > 0 ? added[0].id : undefined;
-
-    vscode.commands.executeCommand('issueManager.quickPeekIssue', newNodeId);
-
-    return { uri, newNodeId };
-}
 
 async function insertLinkIntoEditor(editor: vscode.TextEditor, uri: vscode.Uri, title: string, newNodeId: string | undefined, insertMode = 'relativePath', hasTrigger = false, background = false): Promise<void> {
     const currentDir = path.dirname(editor.document.uri.fsPath);

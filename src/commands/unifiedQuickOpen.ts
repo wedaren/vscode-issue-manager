@@ -14,6 +14,11 @@ import {
     enterLLMMode, 
     handleLLMModeAccept 
 } from "./unifiedQuickOpen.llm";
+import {
+    enterCreateMode,
+    handleCreateModeValueChange,
+    handleCreateModeAccept,
+} from "./unifiedQuickOpen.create";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 
 /**
@@ -43,6 +48,14 @@ const MODE_CONFIG = {
         description: '使用 LLM 辅助搜索/模糊匹配（示例模式）',
         icon: 'sparkle',
         tooltip: '切换到 LLM 模式',
+    },
+    create: {
+        mode: 'create' as Mode,
+        prefix: 'new',
+        label: '新建问题',
+        description: '创建新问题（支持后台填充和使用 prompts）',
+        icon: 'add',
+        tooltip: '切换到新建问题模式',
     },
 } as const;
 
@@ -92,6 +105,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 quickPick.buttons = [
                     modeButtons.command,
                     modeButtons.issue,
+                    modeButtons.create,
                     helpButton
                 ];
 
@@ -103,7 +117,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 // 不在主文件维护 currentEditorIssueId，交由各模式按需获取
                 // 解析初始请求
                 const initialRequest: InitialArg | undefined = initialArg;
-                const wantsInlineMode = !!(initialRequest && ["issue", "llm"].includes(initialRequest.mode || ''));
+                const wantsInlineMode = !!(initialRequest && ["issue", "llm", "create"].includes(initialRequest.mode || ''));
 
                 // 模式切换函数（不再接受 text 参数，调用处需在调用前设置 quickPick.value）
                 const enterMode = async (mode: Mode) => {
@@ -122,6 +136,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterIssueMode(quickPick);
                     } else if (mode === 'llm') {
                         await enterLLMMode(quickPick);
+                    } else if (mode === 'create') {
+                        await enterCreateMode(quickPick);
                     }
                     
                     suppressChange = false;
@@ -138,6 +154,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     quickPick.buttons = [
                         modeButtons.command,
                         modeButtons.issue,
+                        modeButtons.create,
                         helpButton
                     ];
                     quickPick.value = text;
@@ -158,6 +175,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         quickPick.value = text;
                         await enterMode("llm");
                     },
+                    [MODE_CONFIG.create.prefix]: async (text: string) => {
+                        quickPick.value = text;
+                        await enterMode("create");
+                    },
                     "?": async (text: string) => openHelpInQuickPick(text),
                 };
 
@@ -166,7 +187,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     quickPick.value = "";
                     await enterMode('command');
                 } else {
-                    currentMode = initialRequest.mode === 'llm' ? 'llm' : 'issue';
+                    currentMode = initialRequest.mode as Mode;
                     quickPick.value = initialRequest?.text || "";
                     quickPick.busy = true;
                     quickPick.items = [];
@@ -181,6 +202,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterIssueMode(quickPick, initialRequest?.text || "");
                     } else if (currentMode === 'llm') {
                         await enterLLMMode(quickPick, initialRequest?.text || "");
+                    } else if (currentMode === 'create') {
+                        await enterCreateMode(quickPick, initialRequest?.text || "");
                     }
                     suppressChange = false;
                 } else {
@@ -207,6 +230,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     } else if (btn === modeButtons.issue) {
                         quickPick.value = "";
                         await enterMode("issue");
+                    } else if (btn === modeButtons.create) {
+                        quickPick.value = "";
+                        await enterMode("create");
                     } else if (btn === helpButton) {
                         openHelpInQuickPick("");
                     }
@@ -295,6 +321,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await handleCommandModeValueChange(quickPick, v);
                     } else if (currentMode === 'issue') {
                         await handleIssueModeValueChange(quickPick, v);
+                    } else if (currentMode === 'create') {
+                        await handleCreateModeValueChange(quickPick, v);
                     }
                     // LLM 模式下不需要处理值变化
                 });
@@ -331,6 +359,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         handled = await handleIssueModeAccept(selected, quickPick.value);
                     } else if (currentMode === 'llm') {
                         handled = await handleLLMModeAccept(selected, quickPick.value);
+                    } else if (currentMode === 'create') {
+                        handled = await handleCreateModeAccept(selected, quickPick.value);
                     }
 
                     if (handled) {
