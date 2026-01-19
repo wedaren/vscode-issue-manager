@@ -74,6 +74,18 @@ export async function linkCurrentFileToIssue(): Promise<void> {
       const ok = await updateIssueMarkdownFrontmatter(issueUri, { issue_linked_files: updated });
       if (ok) {
         vscode.window.showInformationMessage('已将当前文件关联到问题。');
+        // 如果目标 issue 文件在某个编辑器中打开，尝试刷新其内容但不改变焦点
+        try {
+          const updatedDoc = await vscode.workspace.openTextDocument(issueUri);
+          for (const visible of vscode.window.visibleTextEditors) {
+            if (visible.document.uri.fsPath === issueUri.fsPath) {
+              // 在相同的 viewColumn 中重新显示文档，保持焦点不变
+              await vscode.window.showTextDocument(updatedDoc, { viewColumn: visible.viewColumn, preserveFocus: true, preview: false });
+            }
+          }
+        } catch (refreshErr) {
+          console.debug('尝试刷新 issue 编辑器失败:', refreshErr);
+        }
       } else {
         // 进一步读取文件内容以便调试
         try {
