@@ -110,7 +110,7 @@ function buildCreateInitialItems(
             if (!uri) {
                 return;
             }
-            const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
+            const nodes = await addIssueToTree([uri], undefined, false);
             if (nodes && nodes[0] && nodes[0].id) {
                 openIssueNodeBeside(nodes[0].id).catch(() => {});
             }
@@ -130,6 +130,19 @@ function buildCreateInitialItems(
     return [direct, background];
 }
 
+async function updateCreateModeItems(
+    quickPick: vscode.QuickPick<QuickPickItemWithId>,
+    value: string
+): Promise<void> {
+    const currentEditor = vscode.window.activeTextEditor;
+    const currentEditorContent = currentEditor?.document?.getText() || "";
+    const currentEditorIssueId = await getCurrentEditorIssueId();
+    const initial = buildCreateInitialItems(value || "", currentEditorContent, currentEditorIssueId);
+    quickPick.items = initial;
+    const resolvedPrompts = await createCreateModeItems(value || "");
+    quickPick.items = [...initial, ...resolvedPrompts];
+}
+
 export async function enterCreateMode(
     quickPick: vscode.QuickPick<QuickPickItemWithId>,
     text = ""
@@ -137,14 +150,7 @@ export async function enterCreateMode(
     quickPick.placeholder = "新建问题模式：输入标题或选择 Prompt";
     quickPick.value = text;
     quickPick.busy = true;
-    // 立即显示初始项以避免卡顿
-    const currentEditor = vscode.window.activeTextEditor;
-    const currentEditorContent = currentEditor?.document?.getText() || "";
-    const currentEditorIssueId = await getCurrentEditorIssueId();
-    const initial = buildCreateInitialItems(text || "", currentEditorContent, currentEditorIssueId);
-    quickPick.items = initial;
-    const resolvedPrompts = await createCreateModeItems(text || "");
-    quickPick.items = [...initial, ...resolvedPrompts];
+    await updateCreateModeItems(quickPick, text || "");
     quickPick.busy = false;
 }
 
@@ -152,17 +158,7 @@ export async function handleCreateModeValueChange(
     quickPick: vscode.QuickPick<QuickPickItemWithId>,
     value: string
 ): Promise<void> {
-    // 立即渲染初始项，异步加载 prompts
-    const currentEditor = vscode.window.activeTextEditor;
-    const currentEditorContent = currentEditor?.document?.getText() || "";
-    const currentEditorIssueId = await getCurrentEditorIssueId();
-    const initial = buildCreateInitialItems(
-        value || "",
-        currentEditorContent,
-        currentEditorIssueId
-    );
-    const resolvedPrompts = await createCreateModeItems(value || "");
-    quickPick.items = [...initial, ...resolvedPrompts];
+    await updateCreateModeItems(quickPick, value || "");
 }
 
 export async function handleCreateModeAccept(

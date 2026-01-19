@@ -366,12 +366,11 @@ export async function updateIssueMarkdownBody(
                 if (titleFromContent) title = titleFromContent;
             }
             title = title ?? path.basename(uri.fsPath, ".md");
-            const cached = _issueMarkdownCache.get(key);
             _issueMarkdownCache.set(key, {
                 mtime,
                 ctime,
                 frontmatter: fm,
-                title: cached?.title ?? title,
+                title: title,
             });
             cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
             scheduleOnDidUpdate();
