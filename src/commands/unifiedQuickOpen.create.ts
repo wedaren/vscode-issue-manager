@@ -3,11 +3,10 @@ import { QuickPickItemWithId } from "./unifiedQuickOpen.types";
 import {
     getAllPrompts,
     getIssueMarkdown,
-    updateIssueMarkdownBody,
     updateIssueMarkdownFrontmatter,
 } from "../data/IssueMarkdowns";
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
-import { createIssueFile, createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
+import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { openIssueNodeBeside } from "./openIssueNode";
 
@@ -38,7 +37,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
 当前选中的文本是：${currentselectedText}。
 当前选中的范围是：${currentSelection}。
 请根据这些信息生成 Markdown（包含标题和详细描述）`;
-                await backgroundFillIssue(uri, buildPrompt(prompt));
+                await backgroundFillIssue(uri, prompt);
             }
         },
     };
@@ -117,7 +116,7 @@ function buildCreateInitialItems(
 
     const background: QuickPickItemWithId = {
         label: v ? `${v}（后台）` : "新建问题（后台）",
-        description: "创建并打开新问题 AI 填充",
+        description: "创建新问题 AI 填充",
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
