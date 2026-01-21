@@ -524,7 +524,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                 this.registerCommand(
             'issueManager.createIssueFromFocused',
             async () => {
-                await smartCreateIssue(undefined, { addToTree: true, addToFocused: true });
+                await smartCreateIssue(undefined, { addToTree: true });
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从关注问题视图创建新问题'
