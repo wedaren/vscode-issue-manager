@@ -79,7 +79,7 @@ export async function buildIssueActionItems(
     const flatItems = await buildIssueQuickPickItems(v);
 
     const direct: ActionQuickPickItem = {
-        label: "新建问题",
+        label: `${value} 新建问题`,
         description: "直接创建并打开",
         alwaysShow: true,
         action: "create",
@@ -98,7 +98,7 @@ export async function buildIssueActionItems(
     };
 
     const background: ActionQuickPickItem = {
-        label: "LLM 新建问题",
+        label: `${value} LLM 新建问题`,
         description: "后台创建不打开",
         alwaysShow: true,
         action: "create-background",
