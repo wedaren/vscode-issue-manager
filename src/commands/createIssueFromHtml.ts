@@ -130,6 +130,7 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
             // 将新创建的问题添加到树和关注列表
             try {
                 await createIssueNodes([uri]);
+                vscode.commands.executeCommand('issueManager.refreshAllViews');  
             } catch (e) {
                 Logger.getInstance().error('添加问题到关注列表失败:', e);
                 // 不影响主流程，仅记录错误

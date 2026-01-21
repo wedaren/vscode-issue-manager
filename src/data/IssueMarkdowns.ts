@@ -450,6 +450,7 @@ export async function createIssueMarkdown(opts?: {
     const { frontmatter = null, markdownBody = '' } = opts ?? {};
     const issueDir = getIssueDir();
     if (!issueDir) {
+        vscode.window.showErrorMessage('问题目录（issueManager.issueDir）未配置，无法创建问题。');
         return null;
     }
 

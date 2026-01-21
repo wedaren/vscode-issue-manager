@@ -19,6 +19,7 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
         if (!uri) { return; }
 
         const added = await createIssueNodes([uri], parentId);
+        vscode.commands.executeCommand('issueManager.refreshAllViews');
         
         const newNodeId = added && added.length > 0 ? added[0].id : undefined;
 
