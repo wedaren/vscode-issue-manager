@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { getIssueDir } from "../config";
 import { MarkerItem, MarkerManager } from "../marker/MarkerManager";
+import { formatFileLink, parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
 
 
 /**
@@ -34,18 +35,41 @@ export function registerInsertMarksCommand(context: vscode.ExtensionContext, mar
                 for (const m of markers) {
                     const name = (m.message || '').toString().trim();
                     let link = '';
-                    if (m.filePath) {
+
+                    // 优先使用新的统一 location 字段（如 [[file:...]]）
+                    if (m.location) {
                         try {
+                            if (parseFileLink(m.location)) {
+                                link = m.location;
+                            }
+                        } catch {
+                            // ignore and fallback to legacy fields
+                        }
+                    }
+
+                    // 兼容旧字段：基于 filePath/line/range 构造统一链接
+                    if (!link && m.filePath) {
+                        try {
+                            let filePathToUse = m.filePath;
                             if (issueDir) {
                                 const rel = path.relative(issueDir, m.filePath);
                                 if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-                                    link = `[[file:${rel}${m.line !== undefined ? `#L${m.line + 1}` : ''}]]`;
-                                } else {
-                                    link = `[[file:${m.filePath}${m.line !== undefined ? `#L${m.line + 1}` : ''}]]`;
+                                    filePathToUse = rel;
                                 }
-                            } else {
-                                link = `[[file:${m.filePath}${m.line !== undefined ? `#L${m.line + 1}` : ''}]]`;
                             }
+
+                            const loc: FileLocation = { filePath: filePathToUse };
+                            if (m.startLine !== undefined) {
+                                loc.startLine = m.startLine + 1;
+                                if (m.startColumn !== undefined) loc.startColumn = m.startColumn + 1;
+                                if (m.endLine !== undefined) loc.endLine = m.endLine + 1;
+                                if (m.endColumn !== undefined) loc.endColumn = m.endColumn + 1;
+                            } else if (m.line !== undefined) {
+                                loc.startLine = m.line + 1;
+                                if (m.column !== undefined) loc.startColumn = m.column + 1;
+                            }
+
+                            link = formatFileLink(loc);
                         } catch {
                             link = `[[file:${m.filePath}]]`;
                         }
