@@ -105,7 +105,7 @@ function buildCreateInitialItems(
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
-            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title || ''}\n\n` });
             if (uri) {
                 const nodes = await createIssueNodes([uri], undefined);
                 if (nodes && nodes[0] && nodes[0].id) {

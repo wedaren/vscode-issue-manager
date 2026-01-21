@@ -11,7 +11,8 @@ import { addFocus } from '../data/focusedManager';
  * @deprecated 请使用 createIssueMarkdown 方法代替。
  */
 export async function createIssueFile(title: string, content?: string): Promise<vscode.Uri | null> {
-	const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
+	const markdownBody = content && content.length > 0 ? content : `# ${title}\n\n`;
+	const uri = await createIssueMarkdown({ markdownBody });
 	if (!uri) return null;
 	await vscode.window.showTextDocument(uri);
 	return uri;

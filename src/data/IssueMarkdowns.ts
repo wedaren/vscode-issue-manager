@@ -464,15 +464,14 @@ export async function createIssueMarkdown(opts?: {
         const uri = vscode.Uri.file(targetPath);
 
         // 生成内容（包含 frontmatter，如果有的话）
-        const fm: FrontmatterData | null = frontmatter ? ({ ...frontmatter } as FrontmatterData) : null;
-        const fmYaml = fm ? yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim() : null;
+        const fmYaml = frontmatter ? yaml.dump(frontmatter, { flowLevel: -1, lineWidth: -1 }).trim() : null;
         const content = fmYaml ? `---\n${fmYaml}\n---\n${markdownBody}` : markdownBody;
 
         // 写入文件
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
 
         // 刷新缓存以包含新创建的文件
-        await refreshCacheAfterEdit(uri, fm, markdownBody);
+        await refreshCacheAfterEdit(uri, frontmatter, markdownBody);
 
         return uri;
     } catch (e) {
