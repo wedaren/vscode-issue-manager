@@ -5,9 +5,7 @@ import { Logger } from '../core/utils/Logger';
 import { parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
 
 /**
- * Issue 文档链接提供器
- * 
- * 解析 markdown 文档中的链接，特别是包含 ?issueId= 查询参数的链接
+ * 解析 IssueMarkdown 文档中的链接，特别是包含 ?issueId= 查询参数的链接
  * 使得点击链接时能够正确导航到文件并保留 issueId 上下文
  */
 export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {

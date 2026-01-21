@@ -17,11 +17,11 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
-        label: "插入 marks 到关联问题",
-        description: "将当前任务的 marks 写入到关联的问题 Markdown 中",
+        label: "插入 marks 到当前编辑器",
+        description: "将当前任务的 marks 插入到当前活动编辑器",
         execute: async () => {
             await vscode.commands.executeCommand(
-                "issueManager.marker.insertMarksToAssociatedIssue"
+                "issueManager.marker.insertMarksToActivedEditor"
             );
         },
     },
