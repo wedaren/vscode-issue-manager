@@ -29,7 +29,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
     const currentEditorIssueId = await getCurrentEditorIssueId();
     const currentIssueTitle = (await getIssueMarkdown(currentEditorIssueId || ""))?.title || "问题";
     const titleItem: QuickPickItemWithId = {
-        label: `${issue} LLM 新建问题`,
+        label: [issue, 'LLM 新建问题'].filter(Boolean).join(' '),  
         description: currentEditorIssueId
             ? `基于当前 ${currentIssueTitle} 下创建子问题`
             : "基于当前编辑器内容创建新问题",
@@ -97,7 +97,7 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
     const currentEditorContent = currentEditor?.document?.getText() || "";
 
     const direct: QuickPickItemWithId = {
-        label: `${value} 新建问题`,
+        label: [value, '新建问题'].filter(Boolean).join(' '),
         description: "直接创建并打开",
         alwaysShow: true,
         execute: async (input?: string) => {
@@ -114,7 +114,7 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
     };
 
     const llm: QuickPickItemWithId = {
-        label: `${value} LLM 新建问题`,
+        label: [value, 'LLM 新建问题'].filter(Boolean).join(' '),
         description: "后台创建不打开",
         alwaysShow: true,
         execute: async (input?: string) => {
