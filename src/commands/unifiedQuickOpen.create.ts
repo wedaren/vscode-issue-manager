@@ -11,10 +11,19 @@ import { backgroundFillIssue } from "../llm/backgroundFill";
 import { openIssueNodeBeside } from "./openIssueNode";
 import { createIssueNodes } from "../data/issueTreeManager";
 
+function buildPromptWithContent(currentEditorContent: string, template?: string) {
+    if (!template) {
+        return currentEditorContent;
+    }
+    return template.includes("{{content}}")
+        ? template.replace("{{content}}", currentEditorContent)
+        : `${template}\n\n${currentEditorContent}`;
+}
+
 async function createCreateModeItems(value: string): Promise<QuickPickItemWithId[]> {
     const issue = value || "";
     const currentEditor = vscode.window.activeTextEditor;
-    const currentselectedText = currentEditor?.document?.getText(currentEditor.selection) || "";
+    const currentSelectedText = currentEditor?.document?.getText(currentEditor.selection) || "";
     const currentSelection = currentEditor?.selection;
     const currentEditorContent = currentEditor?.document?.getText() || "";
     const currentEditorIssueId = await getCurrentEditorIssueId();
@@ -40,7 +49,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                 const prompt = `用户向你提了： ${issue}。
 可能有用的上下文:
 当前编辑器内容是：${currentEditorContent}。
-当前选中的文本是：${currentselectedText}。
+当前选中的文本是：${currentSelectedText}。
 当前选中的范围是：${currentSelection}。
 请根据这些信息生成 Markdown（包含标题和详细描述）`;
                 await backgroundFillIssue(uri, prompt);
@@ -48,14 +57,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
         },
     };
 
-    const buildPrompt = (template: string) => {
-        if (!template) {
-            return currentEditorContent;
-        }
-        return template.includes("{{content}}")
-            ? template.replace("{{content}}", currentEditorContent)
-            : `${template}\n\n${currentEditorContent}`;
-    };
+    // 使用公共的 buildPromptWithContent 来构建提示
 
     try {
         const promptsFromFiles = await getAllPrompts();
@@ -74,7 +76,10 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                 const nodes = await createIssueNodes([uri], currentEditorIssueId);
                 try {
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
-                    await backgroundFillIssue(uri, buildPrompt(p.template));
+                    await backgroundFillIssue(
+                        uri,
+                        buildPromptWithContent(currentEditorContent, p.template)
+                    );
                 } catch (e) {
                     console.error("create-mode prompt fill failed", e);
                 }
@@ -88,21 +93,9 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
     }
 }
 
-function buildCreateInitialItems(
-    value: string,
-    currentEditorContent: string,
-    currentEditorIssueId?: string
-): QuickPickItemWithId[] {
-    const v = value || "";
-
-    const buildPrompt = (template: string) => {
-        if (!template) {
-            return currentEditorContent;
-        }
-        return template.includes("{{content}}")
-            ? template.replace("{{content}}", currentEditorContent)
-            : `${template}\n\n${currentEditorContent}`;
-    };
+function buildCreateInitialItems(): QuickPickItemWithId[] {
+    const currentEditor = vscode.window.activeTextEditor;
+    const currentEditorContent = currentEditor?.document?.getText() || "";
 
     const direct: QuickPickItemWithId = {
         label: "新建问题",
@@ -121,7 +114,7 @@ function buildCreateInitialItems(
         },
     };
 
-    const background: QuickPickItemWithId = {
+    const llm: QuickPickItemWithId = {
         label: "LLM 新建问题",
         description: "后台创建不打开",
         alwaysShow: true,
@@ -134,38 +127,51 @@ function buildCreateInitialItems(
             if (!uri) {
                 return;
             }
-            const nodes = await createIssueNodes([uri], undefined);
-            if (nodes && nodes[0] && nodes[0].id) {
-                openIssueNodeBeside(nodes[0].id).catch(() => {});
-            }
+            await createIssueNodes([uri]);
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
             try {
-                const prompt = buildPrompt(
+                const prompt = title;
+                backgroundFillIssue(uri, prompt);
+            } catch (e) {
+                console.error("create-mode background fill failed", e);
+            }
+        },
+    };
+    const background: QuickPickItemWithId = {
+        label: "LLM 新建问题基于当前编辑器内容",
+        description: "后台创建不打开",
+        alwaysShow: true,
+        execute: async (input?: string) => {
+            const title = input && input.trim();
+            if (!title) {
+                return;
+            }
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
+            if (!uri) {
+                return;
+            }
+            await createIssueNodes([uri]);
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
+            try {
+                const prompt = buildPromptWithContent(
+                    currentEditorContent,
                     "请根据以下内容生成 Markdown（包含标题和详细描述）：\n\n{{content}}"
                 );
-                backgroundFillIssue(uri, prompt).catch(err =>
-                    console.error("create-mode background fill failed", err)
-                );
+                backgroundFillIssue(uri, prompt);
             } catch (e) {
                 console.error("create-mode background fill failed", e);
             }
         },
     };
 
-    return [direct, background];
+    return [direct, llm, background];
 }
 
 async function updateCreateModeItems(
     quickPick: vscode.QuickPick<QuickPickItemWithId>,
     value: string
 ): Promise<void> {
-    const currentEditor = vscode.window.activeTextEditor;
-    const currentEditorContent = currentEditor?.document?.getText() || "";
-    const currentEditorIssueId = await getCurrentEditorIssueId();
-    const initial = buildCreateInitialItems(
-        value || "",
-        currentEditorContent,
-        currentEditorIssueId
-    );
+    const initial = buildCreateInitialItems();
     const resolvedPrompts = await createCreateModeItems(value || "");
     quickPick.items = [...initial, ...resolvedPrompts];
 }
