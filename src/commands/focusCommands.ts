@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { addFocus, pinFocus, removeFocus } from '../data/focusedManager';
-import { IssueNode, stripFocusedId, getFlatTree } from '../data/issueTreeManager';
+import { IssueNode, stripFocusedId, getFlatTree, createIssueNodes } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
-import { addIssueToTree } from './issueFileUtils';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { GitSyncService } from '../services/git-sync';
 
@@ -33,7 +32,11 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage('未找到要关注的问题文件。');
             return;
         }
-        await addIssueToTree([node.resourceUri], undefined, true);
+        const addedNodes = await createIssueNodes([node.resourceUri], undefined);
+        if (addedNodes && addedNodes.length > 0) {
+            const ids = addedNodes.map(node => node.id);
+            await addFocus(ids);
+        }
         vscode.window.showInformationMessage('已添加到关注问题。');
         // 触发同步
         GitSyncService.getInstance().triggerSync();
@@ -63,7 +66,11 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
             vscode.commands.executeCommand('issueManager.refreshAllViews');
         } else {
             // 如果没有 issueId（孤立问题），先添加到问题总览再添加到关注视图
-            await addIssueToTree([uri], undefined, true);
+            const addedNodes = await createIssueNodes([uri], undefined);
+            if (addedNodes && addedNodes.length > 0) {
+                const ids = addedNodes.map(node => node.id);
+                await addFocus(ids);
+            }
         }
         vscode.window.showInformationMessage('已添加到关注问题。');
         // 触发同步

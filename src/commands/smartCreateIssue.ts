@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
 import { LLMService } from '../llm/LLMService';
-import { createIssueFile, addIssueToTree } from './issueFileUtils';
-import { readQuickPickData, writeQuickPickData, QuickPickPersistedData, IssueNode } from '../data/issueTreeManager';
+import { readQuickPickData, writeQuickPickData, QuickPickPersistedData, IssueNode, createIssueNodes } from '../data/issueTreeManager';
 import { debounce } from '../utils/debounce';
 import { GitSyncService } from '../services/git-sync';
 import * as path from 'path';
+import { createIssueMarkdown } from '../data/IssueMarkdowns';
 
 // 在模块作用域内维护缓存和历史记录
 export const SEARCH_HISTORY: string[] = [];
@@ -77,7 +77,6 @@ async function processUris(
     uris: vscode.Uri[],
     parentId: string | undefined = undefined,
     addToTree: boolean,
-    addToFocused: boolean,
     reveal: boolean,
     openFlag: boolean,
     hasCreatedIssue: boolean
@@ -87,7 +86,7 @@ async function processUris(
     let lastAdded: IssueNode | null = null;
     if (addToTree) {
         try {
-            const addedNodes = await addIssueToTree(uris, parentId, addToFocused);
+            const addedNodes = await createIssueNodes(uris, parentId);
             if (addedNodes && addedNodes.length > 0) {
                 lastAdded = addedNodes[addedNodes.length - 1];
 
@@ -148,7 +147,6 @@ async function persistQuickPickData() {
  * 智能创建工作流
  * @param parentId 父节点ID，可为null
  * @param isAddToTree 是否添加到树结构
- * @param isAddToFocused 是否添加到关注列表
  * @param isReveal 是否在资源管理器中定位（reveal），默认 false
  * @param isOpen 是否在编辑器中打开文件（showTextDocument），默认 false
  * @returns Promise<vscode.Uri[]> 用户最终选择的所有 item 对应的 URI 数组，没有则返回空数组
@@ -157,13 +155,12 @@ export async function smartCreateIssue(
     parentId: string | undefined = undefined,
     options?: {
         addToTree?: boolean;
-        addToFocused?: boolean;
         reveal?: boolean;
         open?: boolean;
     }
 ): Promise<vscode.Uri[]> {
     await ensureQuickPickLoaded();
-    const { addToTree = false, addToFocused = false, reveal = false, open = false } = options || {};
+    const { addToTree = false, reveal = false, open = false } = options || {};
     const issueDir = getIssueDir();
     if (!issueDir) {
         vscode.window.showErrorMessage('请先在设置中配置"issueManager.issueDir"');
@@ -292,13 +289,13 @@ export async function smartCreateIssue(
             if (selectedItems.length > 0) {
                 // 用户勾选了至少一项并点击了"确定"
                 updateHistory(currentValue);
-                const uris = await handleBatchSelection(selectedItems, parentId, addToTree, addToFocused, reveal, open);
+                const uris = await handleBatchSelection(selectedItems, parentId, addToTree, reveal, open);
                 resolve(uris);
                 quickPick.dispose();
             } else if (currentValue) {
                 // 用户没有勾选任何项，但在输入框有值的情况下直接按 Enter
                 updateHistory(currentValue);
-                const uri = await handleDefaultCreation(currentValue, parentId, addToTree, addToFocused, reveal, open);
+                const uri = await handleDefaultCreation(currentValue, parentId, addToTree, reveal, open);
                 resolve(uri ? [uri] : []);
                 quickPick.dispose();
             }
@@ -330,7 +327,6 @@ async function handleBatchSelection(
     selectedItems: readonly vscode.QuickPickItem[],
     parentId: string | undefined = undefined,
     isAddToTree: boolean,
-    isAddToFocused: boolean,
     isReveal: boolean = false,
     isOpen: boolean = false
 ): Promise<vscode.Uri[]> {
@@ -341,7 +337,7 @@ async function handleBatchSelection(
     for (const item of selectedItems as readonly HistoryQuickPickItem[]) {
         if (item.action === 'create' && item.payload) {
             // 创建新笔记
-            const uri = await createIssueFile(item.payload);
+            const uri = await createIssueMarkdown({ markdownBody: `# ${item.payload}\n\n` });
             if (uri) {
                 uris.push(uri);
                 hasCreatedIssue = true;
@@ -372,7 +368,7 @@ async function handleBatchSelection(
     }
 
     // 统一处理添加到树、打开、reveal、以及触发同步
-    await processUris(uris, parentId, isAddToTree, isAddToFocused, isReveal, isOpen, hasCreatedIssue);
+    await processUris(uris, parentId, isAddToTree, isReveal, isOpen, hasCreatedIssue);
 
     return uris;
 }
@@ -385,15 +381,15 @@ async function handleDefaultCreation(
     title: string,
     parentId: string | undefined = undefined,
     isAddToTree: boolean,
-    isAddToFocused: boolean,
     isReveal: boolean = false,
     isOpen: boolean = false
 ): Promise<vscode.Uri | null> {
     if (title) {
-        const uri = await createIssueFile(title);
+        const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
+        
         if (uri) {
             const uris = [uri];
-            await processUris(uris, parentId, isAddToTree, isAddToFocused, isReveal, isOpen, true);
+            await processUris(uris, parentId, isAddToTree, isReveal, isOpen, true);
         }
         return uri;
     }
