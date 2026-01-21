@@ -358,7 +358,7 @@ export class IssueChatParticipant {
             stream.markdown(`💡 已生成文档: **${title}** (使用模型: ${modelFamily || "未知"})\n\n`);
 
             // 创建问题文件
-            const uri = await createIssueFile(title, content);
+            const uri = await createIssueMarkdown({ markdownBody: content, frontmatter: { title: title } });
 
             if (uri) {
                 const filename = path.basename(uri.fsPath);
