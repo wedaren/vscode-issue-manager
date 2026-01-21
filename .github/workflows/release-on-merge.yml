@@ -31,7 +31,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run release-patch script
+      - name: Bump npm version (patch) and push tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash ./scripts/release-patch.sh
+        run: |
+          npm version patch
+          git push --follow-tags
+
+      - name: 安装 vsce 工具
+        run: npm install -g vsce
+
+      - name: 打包并发布扩展
+        env:
+          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+        run: |
+          vsce publish --pat $VSCE_TOKEN
