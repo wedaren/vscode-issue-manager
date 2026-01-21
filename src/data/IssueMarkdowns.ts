@@ -27,7 +27,7 @@ export interface FrontmatterData {
     /**
      * 与该 issue 关联的外部文件列表（通常为工作文件/笔记）。
      * - 存储为 wiki-link 形式，带 `file:` 前缀，例如: `[[file:notes/foo.md]]` 或 `[[file:/abs/path/to/file.md]]`。
-        * - 可选地包含行范围片段，例如 `[[file:notes/foo.md#L10-L12]]` 或 `[[file:/abs/path/to/file.md#L5]]`。
+     * - 可选地包含行范围片段，例如 `[[file:notes/foo.md#L10-L12]]` 或 `[[file:/abs/path/to/file.md#L5]]`。
      * - 优先以相对于 `issueDir` 的相对路径存储（例如 `notes/foo.md`），再使用 `file:` 前缀；如果文件不在 `issueDir` 内，则使用绝对路径并加 `file:` 前缀。
      * - 用途：记录该问题关联的工作文件、参考笔记或其它资源，供 UI 展示或自动化脚本使用。
      */
@@ -103,7 +103,9 @@ function extractFrontmatterAndBody(content: string): {
 
 export async function getIssueMarkdownContent(uri: vscode.Uri): Promise<string> {
     const contentBytes = await vscode.workspace.fs.readFile(uri);
-    const data = Buffer.from(contentBytes).toString("utf-8").replace(/^---\s*[\s\S]*?---\s*/, "");
+    const data = Buffer.from(contentBytes)
+        .toString("utf-8")
+        .replace(/^---\s*[\s\S]*?---\s*/, "");
     return data;
 }
 
@@ -133,16 +135,17 @@ export type IssueMarkdown = {
     ctime: number;
 };
 
-
 /**
  * 类型守卫：判断对象是否为 IssueMarkdown
  * 目的：避免在多个文件中重复实现相同的检查逻辑
  */
 export function isIssueMarkdown(item: unknown): item is IssueMarkdown {
-    return !!item && typeof item === 'object' && 'title' in item && 'uri' in item;
+    return !!item && typeof item === "object" && "title" in item && "uri" in item;
 }
 
-export async function getIssueMarkdown(uriOrPath: vscode.Uri | string): Promise<IssueMarkdown|null> {
+export async function getIssueMarkdown(
+    uriOrPath: vscode.Uri | string
+): Promise<IssueMarkdown | null> {
     const uri = resolveIssueUri(uriOrPath);
 
     if (!uri || !isIssueMarkdownFile(uri)) {
@@ -155,7 +158,11 @@ export async function getIssueMarkdown(uriOrPath: vscode.Uri | string): Promise<
         const mtime = stat.mtime;
         const ctime = stat.ctime;
         const cached = _issueMarkdownCache.get(key);
-        if (cached && cached.mtime === mtime && (cached.title !== undefined || cached.frontmatter !== undefined)) {
+        if (
+            cached &&
+            cached.mtime === mtime &&
+            (cached.title !== undefined || cached.frontmatter !== undefined)
+        ) {
             return {
                 title: cached.title ?? fallbackTitle(uri),
                 uri,
@@ -189,7 +196,7 @@ export async function getIssueMarkdown(uriOrPath: vscode.Uri | string): Promise<
         scheduleOnDidUpdate();
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
 
-            return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime };
+        return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime };
     } catch (err) {
         _issueMarkdownCache.delete(key);
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
@@ -222,7 +229,7 @@ type IssueMarkdownCacheEntry = {
 };
 
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
-const _issueMarkdownCache = new Map<vscode.Uri['fsPath'], IssueMarkdownCacheEntry>();
+const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], IssueMarkdownCacheEntry>();
 
 // 尝试加载磁盘缓存（不阻塞启动流程）
 void (async () => {
@@ -261,7 +268,7 @@ async function applyContentEdit(
         await refreshOpenEditorsIfNeeded(uri, newContent);
         return true;
     } catch (err) {
-        Logger.getInstance().error('applyContentEdit 失败', err);
+        Logger.getInstance().error("applyContentEdit 失败", err);
         return false;
     }
 }
@@ -276,9 +283,13 @@ async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent: string): 
 
         if (editor.document.isDirty) {
             if (!warned) {
-                Logger.getInstance().warn('文件在编辑器中有未保存修改，跳过自动刷新：' + uri.fsPath);
+                Logger.getInstance().warn(
+                    "文件在编辑器中有未保存修改，跳过自动刷新：" + uri.fsPath
+                );
                 try {
-                    vscode.window.showWarningMessage('检测到当前编辑器有未保存更改，未自动应用磁盘更新。');
+                    vscode.window.showWarningMessage(
+                        "检测到当前编辑器有未保存更改，未自动应用磁盘更新。"
+                    );
                 } catch {}
                 warned = true;
             }
@@ -287,14 +298,14 @@ async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent: string): 
 
         try {
             const fullRange = new vscode.Range(0, 0, editor.document.lineCount, 0);
-            const applied = await editor.edit((eb) => eb.replace(fullRange, newContent));
+            const applied = await editor.edit(eb => eb.replace(fullRange, newContent));
             if (applied) {
                 if (editor.document.isDirty) {
                     await editor.document.save();
                 }
             }
         } catch (e) {
-            Logger.getInstance().warn('刷新打开的编辑器失败', e);
+            Logger.getInstance().warn("刷新打开的编辑器失败", e);
         }
     }
 }
@@ -339,16 +350,16 @@ async function refreshCacheAfterEdit(
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         scheduleOnDidUpdate();
     } catch (e) {
-        Logger.getInstance().warn('refreshCacheAfterEdit 失败', e);
+        Logger.getInstance().warn("refreshCacheAfterEdit 失败", e);
     }
 }
 
-/** 
- * 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。  
- * @param uriOrPath 要更新的文件的 URI 或路径。  
- * @param updates 一个包含要更新的 frontmatter 字段的对象。  
- * @returns 如果更新成功，则返回 true；否则返回 false。  
- */  
+/**
+ * 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。
+ * @param uriOrPath 要更新的文件的 URI 或路径。
+ * @param updates 一个包含要更新的 frontmatter 字段的对象。
+ * @returns 如果更新成功，则返回 true；否则返回 false。
+ */
 export async function updateIssueMarkdownFrontmatter(
     uriOrPath: vscode.Uri | string,
     updates: Partial<FrontmatterData>
@@ -385,7 +396,7 @@ export async function updateIssueMarkdownFrontmatter(
 
         return true;
     } catch (err) {
-        Logger.getInstance().error('updateIssueMarkdownFrontmatter error:', err);
+        Logger.getInstance().error("updateIssueMarkdownFrontmatter error:", err);
         return false;
     }
 }
@@ -426,7 +437,7 @@ export async function updateIssueMarkdownBody(
 
         return true;
     } catch (err) {
-        Logger.getInstance().error('updateIssueMarkdownBody error:', err);
+        Logger.getInstance().error("updateIssueMarkdownBody error:", err);
         return false;
     }
 }
@@ -447,10 +458,10 @@ export async function createIssueMarkdown(opts?: {
     frontmatter?: Partial<FrontmatterData> | null;
     markdownBody?: string;
 }): Promise<vscode.Uri | null> {
-    const { frontmatter = null, markdownBody = '' } = opts ?? {};
+    const { frontmatter = null, markdownBody = "" } = opts ?? {};
     const issueDir = getIssueDir();
     if (!issueDir) {
-        vscode.window.showErrorMessage('问题目录（issueManager.issueDir）未配置，无法创建问题。');
+        vscode.window.showErrorMessage("问题目录（issueManager.issueDir）未配置，无法创建问题。");
         return null;
     }
 
@@ -465,25 +476,26 @@ export async function createIssueMarkdown(opts?: {
         const uri = vscode.Uri.file(targetPath);
 
         // 生成内容（包含 frontmatter，如果有的话）
-        const fmYaml = frontmatter ? yaml.dump(frontmatter, { flowLevel: -1, lineWidth: -1 }).trim() : null;
+        const fmYaml = frontmatter
+            ? yaml.dump(frontmatter, { flowLevel: -1, lineWidth: -1 }).trim()
+            : null;
         const content = fmYaml ? `---\n${fmYaml}\n---\n${markdownBody}` : markdownBody;
 
         // 写入文件
-        await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf8"));
 
         // 刷新缓存以包含新创建的文件
         await refreshCacheAfterEdit(uri, frontmatter, markdownBody);
 
         return uri;
     } catch (e) {
-        Logger.getInstance().error('createIssueMarkdown 失败', e);
+        Logger.getInstance().error("createIssueMarkdown 失败", e);
         return null;
     }
 }
 
 /** 从缓存获取标题，若未命中则触发预热 */
 export function getIssueMarkdownTitleFromCache(uriOrPath: vscode.Uri | string) {
-
     const uri = resolveIssueUri(uriOrPath);
     if (!uri) {
         return uriOrPath.toString();
@@ -551,7 +563,7 @@ export async function getAllPrompts(): Promise<PromptFile[]> {
         for (const { uri } of prompts) {
             const data = await vscode.workspace.fs.readFile(uri);
             const text = Buffer.from(data).toString("utf8");
-            const { body,frontmatter } = extractFrontmatterAndBody(text);
+            const { body, frontmatter } = extractFrontmatterAndBody(text);
             const description = frontmatter?.issue_description;
             const label = extractIssueTitleFromFrontmatter(frontmatter) ?? fallbackTitle(uri);
             res.push({
@@ -603,7 +615,7 @@ export function parseLinkedFileString(raw: string): LinkedFileParseResult {
     if (s.startsWith("file:")) {
         try {
             const u = vscode.Uri.parse(s);
-            if (u && u.scheme === 'file' && u.fsPath) {
+            if (u && u.scheme === "file" && u.fsPath) {
                 // 使用 fsPath 并保留 fragment（如果有）
                 s = u.fsPath + (u.fragment ? `#${u.fragment}` : "");
             } else {
@@ -736,9 +748,8 @@ export async function findNotesLinkedToWorkspace(fileUri: vscode.Uri): Promise<I
     return res;
 }
 
-
-export function getIssueMarkdownContextValues(){
-    return 'issueMarkdown';
+export function getIssueMarkdownContextValues() {
+    return "issueMarkdown";
 }
 /**
  * 获取 IssueMarkdown 相对于问题目录的路径
@@ -747,14 +758,14 @@ export function getIssueMarkdownContextValues(){
  */
 
 export function getIssueFilePath(uri: vscode.Uri): string | null {
-  const issueDir = getIssueDir();
-  if (!issueDir) {
-    return null;
-  }
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return null;
+    }
 
-  const relativePath = path.relative(issueDir, uri.fsPath);
-  // 如果 relativePath 不以 '..' 开头，并且不是绝对路径，则说明文件在 issueDir 目录内
-  return !relativePath.startsWith('..') && !path.isAbsolute(relativePath) ? relativePath : null;
+    const relativePath = path.relative(issueDir, uri.fsPath);
+    // 如果 relativePath 不以 '..' 开头，并且不是绝对路径，则说明文件在 issueDir 目录内
+    return !relativePath.startsWith("..") && !path.isAbsolute(relativePath) ? relativePath : null;
 }
 /**
  * 检查文件是否为问题目录下的 Markdown 文件
@@ -763,9 +774,9 @@ export function getIssueFilePath(uri: vscode.Uri): string | null {
  */
 
 export function isIssueMarkdownFile(fileUri: vscode.Uri): boolean {
-  if (fileUri.scheme !== 'file' || !fileUri.fsPath.endsWith('.md')) {
-    return false;
-  }
+    if (fileUri.scheme !== "file" || !fileUri.fsPath.endsWith(".md")) {
+        return false;
+    }
 
-  return getIssueFilePath(fileUri) !== null;
+    return getIssueFilePath(fileUri) !== null;
 }

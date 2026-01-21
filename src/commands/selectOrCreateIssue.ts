@@ -79,16 +79,20 @@ export async function buildIssueActionItems(
     const flatItems = await buildIssueQuickPickItems(v);
 
     const direct: ActionQuickPickItem = {
-        label: '新建问题',
+        label: "新建问题",
         description: "直接创建并打开",
         alwaysShow: true,
         action: "create",
         execute: async (input, ctx) => {
             const uri = await createIssueMarkdown({ markdownBody: `# ${input}\n\n` });
-            if (!uri) { return null; }
+            if (!uri) {
+                return null;
+            }
             const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
-            vscode.commands.executeCommand('issueManager.refreshAllViews');
-            if (nodes && nodes.length > 0) { return nodes[0].id; }
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
+            if (nodes && nodes.length > 0) {
+                return nodes[0].id;
+            }
             return null;
         },
     };
@@ -100,14 +104,18 @@ export async function buildIssueActionItems(
         action: "create-background",
         execute: async (input, ctx) => {
             const uri = await createIssueMarkdown({ markdownBody: `# ${input}\n\n` });
-            if (!uri) { return null; }
+            if (!uri) {
+                return null;
+            }
             backgroundFillIssue(uri, input, { timeoutMs: 60000 }).catch(err => {
                 console.error("Background fill issue failed:", err);
                 vscode.window.showErrorMessage(`后台填充问题 '${input}' 失败。`);
             });
             const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
-            vscode.commands.executeCommand('issueManager.refreshAllViews');
-            if (nodes && nodes.length > 0) { return nodes[0].id; }
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
+            if (nodes && nodes.length > 0) {
+                return nodes[0].id;
+            }
             return null;
         },
     };

@@ -1,7 +1,7 @@
-import * as vscode from 'vscode';
-import { createIssueMarkdown } from '../data/IssueMarkdowns';
-import {  IssueNode, createIssueNodes } from '../data/issueTreeManager';
-import { addFocus } from '../data/focusedManager';
+import * as vscode from "vscode";
+import { createIssueMarkdown } from "../data/IssueMarkdowns";
+import { IssueNode, createIssueNodes } from "../data/issueTreeManager";
+import { addFocus } from "../data/focusedManager";
 
 /**
  * 仅负责在磁盘上创建新的问题文件。
@@ -11,11 +11,11 @@ import { addFocus } from '../data/focusedManager';
  * @deprecated 请使用 createIssueMarkdown 方法代替。
  */
 export async function createIssueFile(title: string, content?: string): Promise<vscode.Uri | null> {
-	const markdownBody = content && content.length > 0 ? content : `# ${title}\n\n`;
-	const uri = await createIssueMarkdown({ markdownBody });
-	if (!uri) return null;
-	await vscode.window.showTextDocument(uri);
-	return uri;
+    const markdownBody = content && content.length > 0 ? content : `# ${title}\n\n`;
+    const uri = await createIssueMarkdown({ markdownBody });
+    if (!uri) return null;
+    await vscode.window.showTextDocument(uri);
+    return uri;
 }
 
 /**
@@ -25,15 +25,21 @@ export async function createIssueFile(title: string, content?: string): Promise<
  * @param isAddToFocused 是否将新添加的节点添加到关注列表
  * @deprecated 请使用 createIssueNodes 方法代替。
  */
-export async function addIssueToTree(issueUris: vscode.Uri[], parentId?: string, isAddToFocused: boolean = true): Promise<IssueNode[] | null> {
-	const res = await createIssueNodes(issueUris, parentId);
-	if (!res) { return null; }
+export async function addIssueToTree(
+    issueUris: vscode.Uri[],
+    parentId?: string,
+    isAddToFocused: boolean = true
+): Promise<IssueNode[] | null> {
+    const res = await createIssueNodes(issueUris, parentId);
+    if (!res) {
+        return null;
+    }
 
-	const ids = res.map(node => node.id);
-	if (isAddToFocused) {
-		addFocus(ids);
-	}
+    const ids = res.map(node => node.id);
+    if (isAddToFocused) {
+        addFocus(ids);
+    }
 
-	vscode.commands.executeCommand('issueManager.refreshAllViews');
-	return res;
+    vscode.commands.executeCommand("issueManager.refreshAllViews");
+    return res;
 }

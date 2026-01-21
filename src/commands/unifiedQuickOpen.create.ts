@@ -26,11 +26,15 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
             : "创建新问题（使用当前输入作为标题）",
         execute: async (input?: string) => {
             const title = input?.trim();
-            if (!title) { return; }
-            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });            
-            if (!uri) { return; }
+            if (!title) {
+                return;
+            }
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
+            if (!uri) {
+                return;
+            }
             const nodes = await createIssueNodes([uri], currentEditorIssueId);
-            vscode.commands.executeCommand('issueManager.refreshAllViews');
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
             if (nodes && nodes[0] && nodes[0].id) {
                 await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
                 const prompt = `用户向你提了： ${issue}。
@@ -106,11 +110,11 @@ function buildCreateInitialItems(
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
-            const uri = await createIssueMarkdown({ markdownBody: `# ${title || ''}\n\n` });
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title || ""}\n\n` });
             if (uri) {
                 const nodes = await createIssueNodes([uri], undefined);
-                vscode.commands.executeCommand('issueManager.refreshAllViews');
-                    if (nodes && nodes[0] && nodes[0].id) {
+                vscode.commands.executeCommand("issueManager.refreshAllViews");
+                if (nodes && nodes[0] && nodes[0].id) {
                     openIssueNodeBeside(nodes[0].id).catch(() => {});
                 }
             }
