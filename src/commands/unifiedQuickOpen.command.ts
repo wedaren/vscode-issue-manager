@@ -21,7 +21,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "将当前任务的 marks 插入到当前活动编辑器",
         execute: async () => {
             await vscode.commands.executeCommand(
-                "issueManager.marker.insertMarksToActivedEditor"
+                "issueManager.marker.insertMarksToActiveEditor"
             );
         },
     },

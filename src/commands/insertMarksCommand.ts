@@ -12,7 +12,7 @@ import { formatFileLink, parseFileLink, type FileLocation } from '../utils/fileL
  */
 export function registerInsertMarksCommand(context: vscode.ExtensionContext, markerManager?: MarkerManager) {
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.marker.insertMarksToActivedEditor', async () => {
+        vscode.commands.registerCommand('issueManager.marker.insertMarksToActiveEditor', async () => {
             try {
                 if (!markerManager) {
                     vscode.window.showWarningMessage('无法获取 MarkerManager 实例，命令未能运行');
