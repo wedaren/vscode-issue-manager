@@ -1,18 +1,18 @@
-import * as vscode from 'vscode';
-import { getIssueDir } from '../config';
-import { createIssueFile } from '../commands/issueFileUtils';
-import { LLMService } from '../llm/LLMService';
-import { getFlatTree } from '../data/issueTreeManager';
-import * as path from 'path';
-import { Logger } from '../core/utils/Logger';
+import * as vscode from "vscode";
+import { getIssueDir } from "../config";
+import { LLMService } from "../llm/LLMService";
+import { getFlatTree } from "../data/issueTreeManager";
+import * as path from "path";
+import { Logger } from "../core/utils/Logger";
+import { createIssueMarkdown } from "../data/IssueMarkdowns";
 
 /**
  * 命令别名常量定义
  */
-const CREATE_COMMANDS = ['新建', 'new', 'create'] as const;
-const SEARCH_COMMANDS = ['搜索', 'search', 'find'] as const;
-const RESEARCH_COMMANDS = ['研究', 'research', 'deep', 'doc', '文档'] as const;
-const HELP_COMMANDS = ['帮助', 'help'] as const;
+const CREATE_COMMANDS = ["新建", "new", "create"] as const;
+const SEARCH_COMMANDS = ["搜索", "search", "find"] as const;
+const RESEARCH_COMMANDS = ["研究", "research", "deep", "doc", "文档"] as const;
+const HELP_COMMANDS = ["帮助", "help"] as const;
 
 /**
  * 意图配置 - 定义每种意图的检测关键词和噪音词
@@ -20,25 +20,49 @@ const HELP_COMMANDS = ['帮助', 'help'] as const;
  */
 const INTENT_CONFIG = {
     create: {
-        keywords: ['创建', '新建', 'create', 'new'],
+        keywords: ["创建", "新建", "create", "new"],
         noiseWords: [
-            'look for', 'document', 'create', 'issue', 'note', 'new',
-            '帮我创建', '帮我新建', '一个关于', '关于', '问题', '笔记', '文档', '创建', '新建'
-        ]
+            "look for",
+            "document",
+            "create",
+            "issue",
+            "note",
+            "new",
+            "帮我创建",
+            "帮我新建",
+            "一个关于",
+            "关于",
+            "问题",
+            "笔记",
+            "文档",
+            "创建",
+            "新建",
+        ],
     },
     search: {
-        keywords: ['搜索', '查找', '找', 'search', 'find'],
+        keywords: ["搜索", "查找", "找", "search", "find"],
         noiseWords: [
-            'look for', 'search', 'find',
-            '帮我找找', '帮我找', '帮我搜索', '帮我查找', '相关的问题', '相关问题', '相关的', '相关', '找找', '搜索', '查找', '找'
-        ]
+            "look for",
+            "search",
+            "find",
+            "帮我找找",
+            "帮我找",
+            "帮我搜索",
+            "帮我查找",
+            "相关的问题",
+            "相关问题",
+            "相关的",
+            "相关",
+            "找找",
+            "搜索",
+            "查找",
+            "找",
+        ],
     },
     research: {
-        keywords: ['研究', 'research', 'deep', '撰写', '生成文档'],
-        noiseWords: [
-            '帮我研究', '帮我撰写', '帮我生成', '关于', '文档', '研究', '撰写'
-        ]
-    }
+        keywords: ["研究", "research", "deep", "撰写", "生成文档"],
+        noiseWords: ["帮我研究", "帮我撰写", "帮我生成", "关于", "文档", "研究", "撰写"],
+    },
 } as const;
 
 /**
@@ -49,17 +73,17 @@ const INTENT_CONFIG = {
  */
 function cleanText(text: string, noiseWords: string[]): string {
     let result = text;
-    
+
     // 按从长到短的顺序替换，避免部分匹配问题
     for (const noise of noiseWords) {
         // 转义正则特殊字符，避免注入问题
-        const escaped = noise.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const pattern = new RegExp(escaped, 'gi');
-        result = result.replace(pattern, ' ');
+        const escaped = noise.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = new RegExp(escaped, "gi");
+        result = result.replace(pattern, " ");
     }
-    
+
     // 清理多余空格
-    return result.replace(/\s+/g, ' ').trim();
+    return result.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -69,14 +93,18 @@ function cleanText(text: string, noiseWords: string[]): string {
  * @param noiseWords 要移除的噪音词数组
  * @returns 如果检测到意图，返回清理后的文本；否则返回 null
  */
-function detectIntent(prompt: string, intentKeywords: readonly string[], noiseWords: readonly string[]): string | null {
+function detectIntent(
+    prompt: string,
+    intentKeywords: readonly string[],
+    noiseWords: readonly string[]
+): string | null {
     const lowerPrompt = prompt.toLowerCase();
-    
+
     // 检查是否包含任何意图关键词
     if (!intentKeywords.some(keyword => lowerPrompt.includes(keyword))) {
         return null;
     }
-    
+
     // 提取并清理文本
     const cleaned = cleanText(prompt, noiseWords as string[]);
     return cleaned || null;
@@ -84,7 +112,7 @@ function detectIntent(prompt: string, intentKeywords: readonly string[], noiseWo
 
 /**
  * Issue Manager Chat Participant
- * 
+ *
  * 在 Copilot Chat 中提供问题管理功能
  * 使用 @issueManager 触发
  */
@@ -97,23 +125,23 @@ export class IssueChatParticipant {
     public register(context: vscode.ExtensionContext): void {
         // 检查是否支持 Chat API
         if (!vscode.chat || !vscode.chat.createChatParticipant) {
-            Logger.getInstance().warn('[IssueChatParticipant] Chat API 不可用');
+            Logger.getInstance().warn("[IssueChatParticipant] Chat API 不可用");
             return;
         }
 
         // 创建 Chat Participant
         this.participant = vscode.chat.createChatParticipant(
-            'issueManager.chat',
+            "issueManager.chat",
             this.handleChatRequest.bind(this)
         );
 
         // 配置参与者
         this.participant.iconPath = vscode.Uri.file(
-            path.join(context.extensionPath, 'resources', 'icon.svg')
+            path.join(context.extensionPath, "resources", "icon.svg")
         );
 
         context.subscriptions.push(this.participant);
-        Logger.getInstance().info('[IssueChatParticipant] Chat Participant 已注册');
+        Logger.getInstance().info("[IssueChatParticipant] Chat Participant 已注册");
     }
 
     /**
@@ -128,17 +156,17 @@ export class IssueChatParticipant {
         // 检查问题目录是否配置
         const issueDir = getIssueDir();
         if (!issueDir) {
-            stream.markdown('❌ 请先在设置中配置 `issueManager.issueDir`\n\n');
+            stream.markdown("❌ 请先在设置中配置 `issueManager.issueDir`\n\n");
             stream.button({
-                command: 'workbench.action.openSettings',
-                arguments: ['issueManager.issueDir'],
-                title: '打开设置'
+                command: "workbench.action.openSettings",
+                arguments: ["issueManager.issueDir"],
+                title: "打开设置",
             });
             return;
         }
 
         // 解析命令
-        const command = request.command?.toLowerCase() || '';
+        const command = request.command?.toLowerCase() || "";
         const prompt = request.prompt.trim();
 
         try {
@@ -170,11 +198,11 @@ export class IssueChatParticipant {
         token: vscode.CancellationToken
     ): Promise<void> {
         if (!prompt) {
-            stream.markdown('❓ 请提供问题标题。例如: `/新建 修复登录bug`\n');
+            stream.markdown("❓ 请提供问题标题。例如: `/新建 修复登录bug`\n");
             return;
         }
 
-        stream.progress('正在创建问题...');
+        stream.progress("正在创建问题...");
 
         // 使用 LLM 优化标题
         let optimizedTitle = prompt;
@@ -188,24 +216,27 @@ export class IssueChatParticipant {
             }
         } catch (error) {
             // LLM 失败时使用原始输入
-            Logger.getInstance().warn('[IssueChatParticipant] LLM 生成标题失败,使用原始输入', error);
+            Logger.getInstance().warn(
+                "[IssueChatParticipant] LLM 生成标题失败,使用原始输入",
+                error
+            );
         }
 
         // 创建问题文件
-        const uri = await createIssueFile(optimizedTitle);
-        
+        const uri = await createIssueMarkdown({ markdownBody: `# ${optimizedTitle}\n\n` })
+
         if (uri) {
             const filename = path.basename(uri.fsPath);
             stream.markdown(`✅ 已创建问题: \`${filename}\`\n\n`);
-            
+
             // 创建一个包含 resourceUri 的对象,符合 focusIssueFromIssueFile 命令的要求
             stream.button({
-                command: 'issueManager.focusIssueFromIssueFile',
+                command: "issueManager.focusIssueFromIssueFile",
                 arguments: [{ resourceUri: uri }],
-                title: '⭐ 添加到关注'
+                title: "⭐ 添加到关注",
             });
         } else {
-            stream.markdown('❌ 创建问题失败\n');
+            stream.markdown("❌ 创建问题失败\n");
         }
     }
 
@@ -218,15 +249,15 @@ export class IssueChatParticipant {
         token: vscode.CancellationToken
     ): Promise<void> {
         if (!prompt) {
-            stream.markdown('❓ 请提供搜索关键词。例如: `/搜索 登录`\n');
+            stream.markdown("❓ 请提供搜索关键词。例如: `/搜索 登录`\n");
             return;
         }
 
-        stream.progress('正在搜索问题...');
+        stream.progress("正在搜索问题...");
 
         // 扁平化树节点（已包含标题）
-        const flatNodes =  await getFlatTree();
-        
+        const flatNodes = await getFlatTree();
+
         // 关键词匹配搜索：标题、文件路径、父节点标题
         const keyword = prompt.toLowerCase();
         const matchedIssueNodes = flatNodes.filter(node => {
@@ -254,27 +285,29 @@ export class IssueChatParticipant {
 
         // 显示前10个结果
         const displayIssues = matchedIssueNodes.slice(0, 10);
-        const issueDir = getIssueDir() || '';
+        const issueDir = getIssueDir() || "";
 
         displayIssues.forEach((issue, index) => {
             // 构建完整路径并生成 URI，使标题可点击
-            const fullPath = path.isAbsolute(issue.filePath) 
-                ? issue.filePath 
+            const fullPath = path.isAbsolute(issue.filePath)
+                ? issue.filePath
                 : path.join(issueDir, issue.filePath);
             const uri = vscode.Uri.file(fullPath);
 
             stream.markdown(`${index + 1}. [**${issue.title}**](${uri})\n`);
-            
+
             // 显示父节点信息
             if (issue.parentPath.length > 0) {
-                const parentLinks = issue.parentPath.map(parent => {
-                    const fullPath = path.isAbsolute(parent.filePath) 
-                        ? parent.filePath 
-                        : path.join(issueDir, parent.filePath);
-                    const uri = vscode.Uri.file(fullPath);
-                    // 使用代码样式 [`标题`](链接) 可以改变链接颜色（通常随主题变为非蓝色），同时保持可点击
-                    return `[\`${parent.title}\`](${uri})`;
-                }).join(' > ');
+                const parentLinks = issue.parentPath
+                    .map(parent => {
+                        const fullPath = path.isAbsolute(parent.filePath)
+                            ? parent.filePath
+                            : path.join(issueDir, parent.filePath);
+                        const uri = vscode.Uri.file(fullPath);
+                        // 使用代码样式 [`标题`](链接) 可以改变链接颜色（通常随主题变为非蓝色），同时保持可点击
+                        return `[\`${parent.title}\`](${uri})`;
+                    })
+                    .join(" > ");
                 stream.markdown(`   > ${parentLinks}\n`);
             }
         });
@@ -285,11 +318,10 @@ export class IssueChatParticipant {
 
         // 添加搜索按钮
         stream.button({
-            command: 'issueManager.searchIssuesInFocused',
-            title: '🔍 打开搜索面板'
+            command: "issueManager.searchIssuesInFocused",
+            title: "🔍 打开搜索面板",
         });
     }
-
 
     /**
      * 处理深度研究/文档生成命令
@@ -300,11 +332,11 @@ export class IssueChatParticipant {
         token: vscode.CancellationToken
     ): Promise<void> {
         if (!prompt) {
-            stream.markdown('❓ 请提供研究主题。例如: `/研究 如何优化 React 性能`\n');
+            stream.markdown("❓ 请提供研究主题。例如: `/研究 如何优化 React 性能`\n");
             return;
         }
 
-        stream.progress('正在进行深度研究并撰写文档...');
+        stream.progress("正在进行深度研究并撰写文档...");
 
         // 创建 AbortController 以处理取消请求
         const controller = new AbortController();
@@ -314,45 +346,49 @@ export class IssueChatParticipant {
 
         try {
             // 调用 LLM 生成文档内容
-            const { title, content, modelFamily } = await LLMService.generateDocument(prompt, { signal: controller.signal });
-            
+            const { title, content, modelFamily } = await LLMService.generateDocument(prompt, {
+                signal: controller.signal,
+            });
+
             if (!title || !content) {
-                stream.markdown('❌ 生成文档失败，请稍后重试。\n');
+                stream.markdown("❌ 生成文档失败，请稍后重试。\n");
                 return;
             }
 
-            stream.markdown(`💡 已生成文档: **${title}** (使用模型: ${modelFamily || '未知'})\n\n`);
-            
+            stream.markdown(`💡 已生成文档: **${title}** (使用模型: ${modelFamily || "未知"})\n\n`);
+
             // 创建问题文件
-            const uri = await createIssueFile(title, content);
-            
+            const uri = await createIssueMarkdown({ markdownBody: content, frontmatter: { title: title } });
+
             if (uri) {
                 const filename = path.basename(uri.fsPath);
                 stream.markdown(`✅ 文档已保存: \`${filename}\`\n\n`);
-                
+
                 stream.button({
-                    command: 'issueManager.focusIssueFromIssueFile',
+                    command: "issueManager.focusIssueFromIssueFile",
                     arguments: [{ resourceUri: uri }],
-                    title: '⭐ 添加到关注'
+                    title: "⭐ 添加到关注",
                 });
-                
+
                 stream.button({
-                    command: 'vscode.open',
+                    command: "vscode.open",
                     arguments: [uri],
-                    title: '📄 打开文档'
+                    title: "📄 打开文档",
                 });
             } else {
-                stream.markdown('❌ 保存文件失败\n');
+                stream.markdown("❌ 保存文件失败\n");
             }
-
         } catch (error) {
             // 检查是否是取消错误
-            if (token.isCancellationRequested || (error instanceof Error && error.message === '请求已取消')) {
-                stream.markdown('❌ 操作已取消\n');
+            if (
+                token.isCancellationRequested ||
+                (error instanceof Error && error.message === "请求已取消")
+            ) {
+                stream.markdown("❌ 操作已取消\n");
                 return;
             }
-            Logger.getInstance().error('[IssueChatParticipant] Research failed', error);
-            stream.markdown('❌ 研究过程中发生错误\n');
+            Logger.getInstance().error("[IssueChatParticipant] Research failed", error);
+            stream.markdown("❌ 研究过程中发生错误\n");
         } finally {
             cancellationListener.dispose();
         }
@@ -362,45 +398,45 @@ export class IssueChatParticipant {
      * 处理帮助命令
      */
     private handleHelpCommand(stream: vscode.ChatResponseStream): void {
-        stream.markdown('# 问题管理器 - 帮助\n\n');
-        stream.markdown('使用 `@issueManager` 在聊天中管理问题。\n\n');
-        stream.markdown('## 📋 可用命令\n\n');
-        
-        stream.markdown('### `/新建` - 创建新问题\n');
-        stream.markdown('创建一个新的问题文件,支持 AI 标题优化。\n\n');
-        stream.markdown('**示例:**\n');
-        stream.markdown('- `@issueManager /新建 修复登录bug`\n');
-        stream.markdown('- `@issueManager /新建 优化首页加载速度`\n\n');
+        stream.markdown("# 问题管理器 - 帮助\n\n");
+        stream.markdown("使用 `@issueManager` 在聊天中管理问题。\n\n");
+        stream.markdown("## 📋 可用命令\n\n");
 
-        stream.markdown('### `/搜索` - 搜索问题\n');
-        stream.markdown('根据关键词搜索现有问题。\n\n');
-        stream.markdown('**示例:**\n');
-        stream.markdown('- `@issueManager /搜索 登录`\n');
-        stream.markdown('- `@issueManager /搜索 性能`\n\n');
+        stream.markdown("### `/新建` - 创建新问题\n");
+        stream.markdown("创建一个新的问题文件,支持 AI 标题优化。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /新建 修复登录bug`\n");
+        stream.markdown("- `@issueManager /新建 优化首页加载速度`\n\n");
 
-        stream.markdown('### `/研究` - 深度研究并生成文档\n');
-        stream.markdown('利用 AI 进行深度分析并生成详细文档。\n\n');
-        stream.markdown('**示例:**\n');
-        stream.markdown('- `@issueManager /研究 如何优化 React 性能`\n');
-        stream.markdown('- `@issueManager /研究 微服务架构设计模式`\n\n');
+        stream.markdown("### `/搜索` - 搜索问题\n");
+        stream.markdown("根据关键词搜索现有问题。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /搜索 登录`\n");
+        stream.markdown("- `@issueManager /搜索 性能`\n\n");
 
-        stream.markdown('### `/帮助` - 显示此帮助\n\n');
+        stream.markdown("### `/研究` - 深度研究并生成文档\n");
+        stream.markdown("利用 AI 进行深度分析并生成详细文档。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /研究 如何优化 React 性能`\n");
+        stream.markdown("- `@issueManager /研究 微服务架构设计模式`\n\n");
 
-        stream.markdown('## 💡 智能模式\n\n');
-        stream.markdown('不使用命令时,AI 会理解您的意图:\n');
-        stream.markdown('- `@issueManager 创建一个关于性能优化的问题`\n');
-        stream.markdown('- `@issueManager 帮我找找登录相关的问题`\n');
-        stream.markdown('- `@issueManager 帮我研究一下分布式事务`\n\n');
+        stream.markdown("### `/帮助` - 显示此帮助\n\n");
+
+        stream.markdown("## 💡 智能模式\n\n");
+        stream.markdown("不使用命令时,AI 会理解您的意图:\n");
+        stream.markdown("- `@issueManager 创建一个关于性能优化的问题`\n");
+        stream.markdown("- `@issueManager 帮我找找登录相关的问题`\n");
+        stream.markdown("- `@issueManager 帮我研究一下分布式事务`\n\n");
 
         // 添加快捷按钮
         stream.button({
-            command: 'issueManager.openFocusedView',
-            title: '👀 打开关注问题'
+            command: "issueManager.openFocusedView",
+            title: "👀 打开关注问题",
         });
 
         stream.button({
-            command: 'issueManager.openRecentView',
-            title: '🕐 打开最近问题'
+            command: "issueManager.openRecentView",
+            title: "🕐 打开最近问题",
         });
     }
 
@@ -419,7 +455,11 @@ export class IssueChatParticipant {
         }
 
         // 检测创建意图
-        const createTitle = detectIntent(prompt, INTENT_CONFIG.create.keywords, INTENT_CONFIG.create.noiseWords);
+        const createTitle = detectIntent(
+            prompt,
+            INTENT_CONFIG.create.keywords,
+            INTENT_CONFIG.create.noiseWords
+        );
         if (createTitle) {
             stream.markdown(`💡 检测到创建意图...\n\n`);
             await this.handleCreateCommand(createTitle, stream, token);
@@ -427,7 +467,11 @@ export class IssueChatParticipant {
         }
 
         // 检测搜索意图
-        const searchKeyword = detectIntent(prompt, INTENT_CONFIG.search.keywords, INTENT_CONFIG.search.noiseWords);
+        const searchKeyword = detectIntent(
+            prompt,
+            INTENT_CONFIG.search.keywords,
+            INTENT_CONFIG.search.noiseWords
+        );
         if (searchKeyword) {
             stream.markdown(`💡 检测到搜索意图...\n\n`);
             await this.handleSearchCommand(searchKeyword, stream, token);
@@ -435,7 +479,11 @@ export class IssueChatParticipant {
         }
 
         // 检测研究意图
-        const researchTopic = detectIntent(prompt, INTENT_CONFIG.research.keywords, INTENT_CONFIG.research.noiseWords);
+        const researchTopic = detectIntent(
+            prompt,
+            INTENT_CONFIG.research.keywords,
+            INTENT_CONFIG.research.noiseWords
+        );
         if (researchTopic) {
             stream.markdown(`💡 检测到研究意图...\n\n`);
             await this.handleResearchCommand(researchTopic, stream, token);
@@ -443,11 +491,11 @@ export class IssueChatParticipant {
         }
 
         // 默认显示帮助
-        stream.markdown('💡 我可以帮您管理问题。\n\n');
-        stream.markdown('试试:\n');
-        stream.markdown('- `/新建 [标题]` - 创建新问题\n');
-        stream.markdown('- `/搜索 [关键词]` - 搜索问题\n');
-        stream.markdown('- `/研究 [主题]` - 深度研究并生成文档\n');
-        stream.markdown('- `/帮助` - 查看所有命令\n\n');
+        stream.markdown("💡 我可以帮您管理问题。\n\n");
+        stream.markdown("试试:\n");
+        stream.markdown("- `/新建 [标题]` - 创建新问题\n");
+        stream.markdown("- `/搜索 [关键词]` - 搜索问题\n");
+        stream.markdown("- `/研究 [主题]` - 深度研究并生成文档\n");
+        stream.markdown("- `/帮助` - 查看所有命令\n\n");
     }
 }

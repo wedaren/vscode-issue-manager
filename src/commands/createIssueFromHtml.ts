@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { HtmlToMarkdownService } from '../services/converters/HtmlToMarkdownService';
 import { LLMService } from '../llm/LLMService';
-import { createIssueFile } from './issueFileUtils';
 import { Logger } from '../core/utils/Logger';
 import { GitSyncService } from '../services/git-sync';
 import { createIssueNodes } from '../data/issueTreeManager';
+import { createIssueMarkdown } from '../data/IssueMarkdowns';
 
 /**
  * 从 HTML 内容创建问题的参数
@@ -123,9 +123,9 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
             finalContent = finalContent + metadata;
         }
 
-        // 创建问题文件
-        const uri = await createIssueFile(filenameTitle, finalContent);
-        
+        const markdownBody = finalContent && finalContent.length > 0 ? finalContent : `# ${filenameTitle}\n\n`;
+        const uri = await createIssueMarkdown({ markdownBody });
+
         if (uri) {
             // 将新创建的问题添加到树和关注列表
             try {
