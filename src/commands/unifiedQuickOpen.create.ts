@@ -7,9 +7,9 @@ import {
     updateIssueMarkdownFrontmatter,
 } from "../data/IssueMarkdowns";
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
-import { addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { openIssueNodeBeside } from "./openIssueNode";
+import { createIssueNodes } from "../data/issueTreeManager";
 
 async function createCreateModeItems(value: string): Promise<QuickPickItemWithId[]> {
     const issue = value || "";
@@ -29,7 +29,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
             if (!title) { return; }
             const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });            
             if (!uri) { return; }
-            const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
+            const nodes = await createIssueNodes([uri], currentEditorIssueId);
             if (nodes && nodes[0] && nodes[0].id) {
                 await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
                 const prompt = `用户向你提了： ${issue}。
@@ -66,7 +66,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                 if (!uri) {
                     return;
                 }
-                const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
+                const nodes = await createIssueNodes([uri], currentEditorIssueId);
                 try {
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
                     await backgroundFillIssue(uri, buildPrompt(p.template));
@@ -107,7 +107,7 @@ function buildCreateInitialItems(
             const title = input && input.trim();
             const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
             if (uri) {
-                const nodes = await addIssueToTree([uri], undefined, false);
+                const nodes = await createIssueNodes([uri], undefined);
                 if (nodes && nodes[0] && nodes[0].id) {
                     openIssueNodeBeside(nodes[0].id).catch(() => {});
                 }
@@ -128,7 +128,7 @@ function buildCreateInitialItems(
             if (!uri) {
                 return;
             }
-            const nodes = await addIssueToTree([uri], undefined, false);
+            const nodes = await createIssueNodes([uri], undefined);
             if (nodes && nodes[0] && nodes[0].id) {
                 openIssueNodeBeside(nodes[0].id).catch(() => {});
             }

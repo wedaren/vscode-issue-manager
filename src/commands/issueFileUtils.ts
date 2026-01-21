@@ -22,6 +22,7 @@ export async function createIssueFile(title: string, content?: string): Promise<
  * @param issueUris 要添加的问题文件的 URI 数组
  * @param parentId 父节点的 ID，如果为 null 则作为根节点
  * @param isAddToFocused 是否将新添加的节点添加到关注列表
+ * @deprecated 请使用 createIssueNodes 方法代替。
  */
 export async function addIssueToTree(issueUris: vscode.Uri[], parentId?: string, isAddToFocused: boolean = true): Promise<IssueNode[] | null> {
 	const res = await createIssueNodes(issueUris, parentId);

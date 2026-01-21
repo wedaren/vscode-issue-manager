@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { addIssueToTree } from './issueFileUtils';
 import { backgroundFillIssue } from '../llm/backgroundFill';
 import { createIssueMarkdown } from '../data/IssueMarkdowns';
+import { createIssueNodes } from '../data/issueTreeManager';
 
 export async function executeCreateIssueFromCompletion(...args: unknown[]): Promise<void> {
     try {
@@ -18,7 +18,8 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
         const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
         if (!uri) { return; }
 
-        const added = await addIssueToTree([uri], parentId, false);
+        const added = await createIssueNodes([uri], parentId);
+        
         const newNodeId = added && added.length > 0 ? added[0].id : undefined;
 
         if (background) {

@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { getIssueDir } from "../config";
-import { addIssueToTree } from "./issueFileUtils";
-import { getFlatTree } from "../data/issueTreeManager";
+import { createIssueNodes, getFlatTree } from "../data/issueTreeManager";
 import type { QuickPick } from "vscode";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
@@ -87,7 +86,7 @@ export async function buildIssueActionItems(
         execute: async (input, ctx) => {
             const uri = await createIssueMarkdown({ markdownBody: `# ${input}\n\n` });
             if (!uri) { return null; }
-            const nodes = await addIssueToTree([uri], ctx?.parentId || parentId, false);
+            const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
             if (nodes && nodes.length > 0) { return nodes[0].id; }
             return null;
         },
@@ -105,7 +104,7 @@ export async function buildIssueActionItems(
                 console.error("Background fill issue failed:", err);
                 vscode.window.showErrorMessage(`后台填充问题 '${input}' 失败。`);
             });
-            const nodes = await addIssueToTree([uri], ctx?.parentId || parentId, false);
+            const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
             if (nodes && nodes.length > 0) { return nodes[0].id; }
             return null;
         },
