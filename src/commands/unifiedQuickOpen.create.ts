@@ -1,12 +1,13 @@
 import * as vscode from "vscode";
 import { QuickPickItemWithId } from "./unifiedQuickOpen.types";
 import {
+    createIssueMarkdown,
     getAllPrompts,
     getIssueMarkdown,
     updateIssueMarkdownFrontmatter,
 } from "../data/IssueMarkdowns";
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
-import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
+import { addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { openIssueNodeBeside } from "./openIssueNode";
 
@@ -26,7 +27,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
         execute: async (input?: string) => {
             const title = input?.trim();
             if (!title) { return; }
-            const uri = await createIssueFileSilent(title);
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });            
             if (!uri) { return; }
             const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
             if (nodes && nodes[0] && nodes[0].id) {
@@ -61,7 +62,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
             systemPrompt: p.systemPrompt,
             execute: async (input?: string) => {
                 const title = p.label;
-                const uri = await createIssueFileSilent(title);
+                const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
                 if (!uri) {
                     return;
                 }
@@ -104,7 +105,7 @@ function buildCreateInitialItems(
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
-            const uri = await createIssueFileSilent(title || "");
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
             if (uri) {
                 const nodes = await addIssueToTree([uri], undefined, false);
                 if (nodes && nodes[0] && nodes[0].id) {
@@ -123,7 +124,7 @@ function buildCreateInitialItems(
             if (!title) {
                 return;
             }
-            const uri = await createIssueFileSilent(title);
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
             if (!uri) {
                 return;
             }

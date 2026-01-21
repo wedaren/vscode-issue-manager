@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { createIssueFileSilent, addIssueToTree } from './issueFileUtils';
+import { addIssueToTree } from './issueFileUtils';
 import { backgroundFillIssue } from '../llm/backgroundFill';
+import { createIssueMarkdown } from '../data/IssueMarkdowns';
 
 export async function executeCreateIssueFromCompletion(...args: unknown[]): Promise<void> {
     try {
@@ -14,7 +15,7 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
             if (!title) { return; }
         }
 
-        const uri = await createIssueFileSilent(title);
+        const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
         if (!uri) { return; }
 
         const added = await addIssueToTree([uri], parentId, false);

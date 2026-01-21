@@ -1,10 +1,11 @@
 import * as vscode from "vscode";
 import { getIssueDir } from "../config";
-import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
+import { addIssueToTree } from "./issueFileUtils";
 import { getFlatTree } from "../data/issueTreeManager";
 import type { QuickPick } from "vscode";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
+import { createIssueMarkdown } from "../data/IssueMarkdowns";
 
 export interface ActionQuickPickItem extends vscode.QuickPickItem {
     action: "create" | "create-background" | "open-existing";
@@ -84,7 +85,7 @@ export async function buildIssueActionItems(
         alwaysShow: true,
         action: "create",
         execute: async (input, ctx) => {
-            const uri = await createIssueFileSilent(input);
+            const uri = await createIssueMarkdown({ markdownBody: `# ${input}\n\n` });
             if (!uri) { return null; }
             const nodes = await addIssueToTree([uri], ctx?.parentId || parentId, false);
             if (nodes && nodes.length > 0) { return nodes[0].id; }
@@ -98,7 +99,7 @@ export async function buildIssueActionItems(
         alwaysShow: true,
         action: "create-background",
         execute: async (input, ctx) => {
-            const uri = await createIssueFileSilent(input);
+            const uri = await createIssueMarkdown({ markdownBody: `# ${input}\n\n` });
             if (!uri) { return null; }
             backgroundFillIssue(uri, input, { timeoutMs: 60000 }).catch(err => {
                 console.error("Background fill issue failed:", err);

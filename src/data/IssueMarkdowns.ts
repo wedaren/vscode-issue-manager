@@ -6,6 +6,7 @@ import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
 import * as cacheStorage from "../data/issueMarkdownCacheStorage";
+import { generateFileName } from "../utils/fileUtils";
 /**
  * 从 Markdown 文件内容中提取第一个一级标题。
  * @param content 文件内容。
@@ -427,6 +428,56 @@ export async function updateIssueMarkdownBody(
     } catch (err) {
         Logger.getInstance().error('updateIssueMarkdownBody error:', err);
         return false;
+    }
+}
+
+/**
+ * 创建一个新的 issue Markdown 文件（在 `issueDir` 下），并将 frontmatter 与 body 写入文件。
+ * - 确保 `issueDir` 存在后在其下创建文件
+ * - 文件名由 `generateFileName()` 自动生成（保证唯一且可读）
+ * - 写盘完成后会调用缓存刷新以更新 `mtime`/`ctime`/`title`/`frontmatter`
+ *
+ * 参数说明：调用者应传入一个对象：`{ frontmatter, markdownBody }`。
+ * - `frontmatter`: 可选，`Partial<FrontmatterData> | null`，会被序列化为 YAML 放在文档顶部（若为 null 则不写 frontmatter）
+ * - `markdownBody`: 可选，文件正文内容（不包含 frontmatter 封头）
+ *
+ * 返回值：成功返回所创建文件的 `vscode.Uri`，失败返回 `null`。
+ */
+export async function createIssueMarkdown(opts?: {
+    frontmatter?: Partial<FrontmatterData> | null;
+    markdownBody?: string;
+}): Promise<vscode.Uri | null> {
+    const { frontmatter = null, markdownBody = '' } = opts ?? {};
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return null;
+    }
+
+    try {
+        // 确保目录存在
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(issueDir));
+
+        // 生成文件名：使用统一的 generateFileName()
+        const finalName = generateFileName();
+
+        const targetPath = path.join(issueDir, finalName);
+        const uri = vscode.Uri.file(targetPath);
+
+        // 生成内容（包含 frontmatter，如果有的话）
+        const fm: FrontmatterData | null = frontmatter ? ({ ...frontmatter } as FrontmatterData) : null;
+        const fmYaml = fm ? yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim() : null;
+        const content = fmYaml ? `---\n${fmYaml}\n---\n${markdownBody}` : markdownBody;
+
+        // 写入文件
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
+
+        // 刷新缓存以包含新创建的文件
+        await refreshCacheAfterEdit(uri, fm, markdownBody);
+
+        return uri;
+    } catch (e) {
+        Logger.getInstance().error('createIssueMarkdown 失败', e);
+        return null;
     }
 }
 

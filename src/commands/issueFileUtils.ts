@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { getIssueDir } from '../config';
-import { generateFileName } from '../utils/fileUtils';
-import { readTree, writeTree, IssueNode, createIssueNodes } from '../data/issueTreeManager';
+import { createIssueMarkdown } from '../data/IssueMarkdowns';
+import {  IssueNode, createIssueNodes } from '../data/issueTreeManager';
 import { addFocus } from '../data/focusedManager';
 
 /**
@@ -10,45 +8,13 @@ import { addFocus } from '../data/focusedManager';
  * 文件名格式：YYYYMMDD-HHmmss-SSS.md，兼具可读性和唯一性。
  * @param title 问题标题
  * @returns 新建文件的 URI，如果失败则返回 null。
+ * @deprecated 请使用 createIssueMarkdown 方法代替。
  */
 export async function createIssueFile(title: string, content?: string): Promise<vscode.Uri | null> {
-	const issueDir = getIssueDir();
-	if (!issueDir) {
-		vscode.window.showErrorMessage('问题目录未配置。');
-		return null;
-	}
-	const filename = generateFileName();
-	const filePath = vscode.Uri.file(path.join(issueDir, filename));
-
-	// 如果外部传入了 content，则直接使用；否则根据 title 生成最小内容
-	const finalContent = (typeof content === 'string' && content.length > 0) ? content : `# ${title}\n\n`;
-	const contentBytes = Buffer.from(finalContent, 'utf8');
-
-	await vscode.workspace.fs.writeFile(filePath, contentBytes);
-	await vscode.window.showTextDocument(filePath);
-
-	return filePath;
-}
-
-/**
- * 与 `createIssueFile` 类似，但不会在创建后自动打开编辑器。
- * 供需要“创建但不打开”场景（例如后台填充）使用。
- */
-export async function createIssueFileSilent(title: string, content?: string): Promise<vscode.Uri | null> {
-	const issueDir = getIssueDir();
-	if (!issueDir) {
-		vscode.window.showErrorMessage('问题目录未配置。');
-		return null;
-	}
-	const filename = generateFileName();
-	const filePath = vscode.Uri.file(path.join(issueDir, filename));
-
-	const finalContent = (typeof content === 'string' && content.length > 0) ? content : `# ${title}\n\n`;
-	const contentBytes = Buffer.from(finalContent, 'utf8');
-
-	await vscode.workspace.fs.writeFile(filePath, contentBytes);
-	// 注意：与 createIssueFile 不同，这里不调用 showTextDocument，从而实现“静默创建”。
-	return filePath;
+	const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
+	if (!uri) return null;
+	await vscode.window.showTextDocument(uri);
+	return uri;
 }
 
 /**
