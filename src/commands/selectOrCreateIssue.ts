@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import { getIssueDir } from "../config";
-import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
-import { getFlatTree } from "../data/issueTreeManager";
+import { createIssueNodes, getFlatTree } from "../data/issueTreeManager";
 import type { QuickPick } from "vscode";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { getIssueIdFromUri } from "../utils/uriUtils";
+import { createIssueMarkdown } from "../data/IssueMarkdowns";
 
 export interface ActionQuickPickItem extends vscode.QuickPickItem {
     action: "create" | "create-background" | "open-existing";
@@ -79,15 +79,20 @@ export async function buildIssueActionItems(
     const flatItems = await buildIssueQuickPickItems(v);
 
     const direct: ActionQuickPickItem = {
-        label: '新建问题',
+        label: "新建问题",
         description: "直接创建并打开",
         alwaysShow: true,
         action: "create",
         execute: async (input, ctx) => {
-            const uri = await createIssueFileSilent(input);
-            if (!uri) { return null; }
-            const nodes = await addIssueToTree([uri], ctx?.parentId || parentId, false);
-            if (nodes && nodes.length > 0) { return nodes[0].id; }
+            const uri = await createIssueMarkdown({ markdownBody: `# ${input}\n\n` });
+            if (!uri) {
+                return null;
+            }
+            const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
+            if (nodes && nodes.length > 0) {
+                return nodes[0].id;
+            }
             return null;
         },
     };
@@ -98,14 +103,19 @@ export async function buildIssueActionItems(
         alwaysShow: true,
         action: "create-background",
         execute: async (input, ctx) => {
-            const uri = await createIssueFileSilent(input);
-            if (!uri) { return null; }
+            const uri = await createIssueMarkdown({ markdownBody: `# ${input}\n\n` });
+            if (!uri) {
+                return null;
+            }
             backgroundFillIssue(uri, input, { timeoutMs: 60000 }).catch(err => {
                 console.error("Background fill issue failed:", err);
                 vscode.window.showErrorMessage(`后台填充问题 '${input}' 失败。`);
             });
-            const nodes = await addIssueToTree([uri], ctx?.parentId || parentId, false);
-            if (nodes && nodes.length > 0) { return nodes[0].id; }
+            const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
+            if (nodes && nodes.length > 0) {
+                return nodes[0].id;
+            }
             return null;
         },
     };

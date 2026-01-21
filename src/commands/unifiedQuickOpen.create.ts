@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
 import { QuickPickItemWithId } from "./unifiedQuickOpen.types";
 import {
+    createIssueMarkdown,
     getAllPrompts,
     getIssueMarkdown,
     updateIssueMarkdownFrontmatter,
 } from "../data/IssueMarkdowns";
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
-import { createIssueFileSilent, addIssueToTree } from "./issueFileUtils";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { openIssueNodeBeside } from "./openIssueNode";
+import { createIssueNodes } from "../data/issueTreeManager";
 
 async function createCreateModeItems(value: string): Promise<QuickPickItemWithId[]> {
     const issue = value || "";
@@ -25,10 +26,15 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
             : "创建新问题（使用当前输入作为标题）",
         execute: async (input?: string) => {
             const title = input?.trim();
-            if (!title) { return; }
-            const uri = await createIssueFileSilent(title);
-            if (!uri) { return; }
-            const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
+            if (!title) {
+                return;
+            }
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
+            if (!uri) {
+                return;
+            }
+            const nodes = await createIssueNodes([uri], currentEditorIssueId);
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
             if (nodes && nodes[0] && nodes[0].id) {
                 await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
                 const prompt = `用户向你提了： ${issue}。
@@ -61,11 +67,11 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
             systemPrompt: p.systemPrompt,
             execute: async (input?: string) => {
                 const title = p.label;
-                const uri = await createIssueFileSilent(title);
+                const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
                 if (!uri) {
                     return;
                 }
-                const nodes = await addIssueToTree([uri], currentEditorIssueId, false);
+                const nodes = await createIssueNodes([uri], currentEditorIssueId);
                 try {
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
                     await backgroundFillIssue(uri, buildPrompt(p.template));
@@ -104,9 +110,10 @@ function buildCreateInitialItems(
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
-            const uri = await createIssueFileSilent(title || "");
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title || ""}\n\n` });
             if (uri) {
-                const nodes = await addIssueToTree([uri], undefined, false);
+                const nodes = await createIssueNodes([uri], undefined);
+                vscode.commands.executeCommand("issueManager.refreshAllViews");
                 if (nodes && nodes[0] && nodes[0].id) {
                     openIssueNodeBeside(nodes[0].id).catch(() => {});
                 }
@@ -123,11 +130,11 @@ function buildCreateInitialItems(
             if (!title) {
                 return;
             }
-            const uri = await createIssueFileSilent(title);
+            const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
             if (!uri) {
                 return;
             }
-            const nodes = await addIssueToTree([uri], undefined, false);
+            const nodes = await createIssueNodes([uri], undefined);
             if (nodes && nodes[0] && nodes[0].id) {
                 openIssueNodeBeside(nodes[0].id).catch(() => {});
             }
