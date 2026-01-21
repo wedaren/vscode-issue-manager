@@ -105,8 +105,8 @@ function buildCreateInitialItems(
     };
 
     const direct: QuickPickItemWithId = {
-        label: v || "新建问题",
-        description: "创建并打开新问题",
+        label: "新建问题",
+        description: "直接创建并打开",
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
@@ -122,8 +122,8 @@ function buildCreateInitialItems(
     };
 
     const background: QuickPickItemWithId = {
-        label: v ? `${v}（后台）` : "新建问题（后台）",
-        description: "创建新问题 AI 填充",
+        label: "LLM 新建问题",
+        description: "后台创建不打开",
         alwaysShow: true,
         execute: async (input?: string) => {
             const title = input && input.trim();
