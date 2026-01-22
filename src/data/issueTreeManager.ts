@@ -154,7 +154,18 @@ export const getIssueNodeById = async (id: string): Promise<IssueNode|undefined>
   return issueIdMap.get(id);
 };
 
-const cache = { mtime: 0, issueFilePathsMap: new Map<string, IssueNode[]>(), issueIdMap: new Map<string, IssueNode>(), treeData: { ...defaultTreeData, rootNodes: [] } as TreeData };
+export interface IssueDataResult {
+  treeData: TreeData;
+  issueIdMap: Map<string, IssueNode>;
+  issueFilePathsMap: Map<string, IssueNode[]>;
+}
+
+export interface IssueDataCache extends IssueDataResult {
+  mtime: number;
+}
+
+const defaultIssueDataStore: IssueDataResult = { treeData: defaultTreeData, issueIdMap: new Map(), issueFilePathsMap: new Map() }
+const cache: IssueDataCache = { mtime: 0, ...defaultIssueDataStore };
 
 export function getIssueTitleSync(issueId:string){
   const issueNode = cache.issueIdMap.get(issueId);
@@ -165,20 +176,18 @@ const onIssueTreeUpdateEmitter = new vscode.EventEmitter<void>();
 
 export const onIssueTreeUpdate = onIssueTreeUpdateEmitter.event;
 
-async function getIssueData(){
+async function getIssueData(): Promise<IssueDataResult> {
   const treePath = getTreeDataPath();
   const issueDir = getIssueDir();
 
   if (!treePath || !issueDir) {
-    return {treeData: { ...defaultTreeData, rootNodes: [] }, issueIdMap: new Map<string, IssueNode>(), issueFilePathsMap: new Map<string, IssueNode[]>()};
+    return defaultIssueDataStore;
   }
 
   const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
   if (cache.mtime === stat.mtime) {
-    return { treeData: cache.treeData, issueIdMap: cache.issueIdMap, issueFilePathsMap: cache.issueFilePathsMap  };
+    return cache;
   }
-
-
 
   let treeData: TreeData;
   try {
@@ -189,7 +198,7 @@ async function getIssueData(){
     // 记录错误有助于调试，特别是对于文件损坏或格式错误的情况  
     console.error(`Failed to read or parse tree data from ${treePath}:`, error);  
     // 如果文件不存在或解析失败，返回默认数据
-    treeData = { ...defaultTreeData, rootNodes: [] };
+    return defaultIssueDataStore;
   }
   const issueIdMap = new Map<string, IssueNode>();
   const issueFilePathsMap = new Map<string, IssueNode[]>();
