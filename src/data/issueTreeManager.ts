@@ -170,12 +170,12 @@ async function getIssueData(){
   const issueDir = getIssueDir();
 
   if (!treePath || !issueDir) {
-    return {treeData: { ...defaultTreeData, rootNodes: [] }, issueIdMap: new Map<string, IssueNode>()};
+    return {treeData: { ...defaultTreeData, rootNodes: [] }, issueIdMap: new Map<string, IssueNode>(), issueFilePathsMap: new Map<string, IssueNode[]>()};
   }
 
   const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
   if (cache.mtime === stat.mtime) {
-    return { treeData: cache.treeData, issueIdMap: cache.issueIdMap };
+    return { treeData: cache.treeData, issueIdMap: cache.issueIdMap, issueFilePathsMap: cache.issueFilePathsMap  };
   }
 
 
