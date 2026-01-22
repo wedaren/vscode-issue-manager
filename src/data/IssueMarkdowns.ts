@@ -307,50 +307,6 @@ async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent: string): 
 }
 
 /**
- * 刷新文件编辑后的缓存（更新 mtime、ctime、frontmatter 和 title）
- * @param uri 文件 URI
- * @param frontmatter 更新后的 frontmatter
- * @param body 更新后的正文（可选，用于提取标题）
- */
-async function refreshCacheAfterEdit(
-    uri: vscode.Uri,
-    frontmatter: FrontmatterData | null,
-    body?: string
-): Promise<void> {
-    const key = uri.fsPath;
-    try {
-        const stat = await vscode.workspace.fs.stat(uri);
-        const mtime = stat.mtime;
-        const ctime = stat.ctime;
-
-        let title: string | undefined;
-        if (frontmatter) {
-            title = extractIssueTitleFromFrontmatter(frontmatter);
-        }
-        if (!title && body) {
-            const titleFromContent = extractTitleFromContent(body);
-            if (titleFromContent) title = titleFromContent;
-        }
-        if (!title) {
-            // 保留已有缓存的 title 或使用兜底逻辑
-            const cached = _issueMarkdownCache.get(key);
-            title = cached?.title ?? path.basename(uri.fsPath, ".md");
-        }
-
-        _issueMarkdownCache.set(key, {
-            mtime,
-            ctime,
-            frontmatter,
-            title,
-        });
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
-        scheduleOnDidUpdate();
-    } catch (e) {
-        Logger.getInstance().warn("refreshCacheAfterEdit 失败", e);
-    }
-}
-
-/**
  * 更新 Markdown 文件的 frontmatter（只替换或添加指定字段），并更新缓存。
  * @param uriOrPath 要更新的文件的 URI 或路径。
  * @param updates 一个包含要更新的 frontmatter 字段的对象。
@@ -388,7 +344,7 @@ export async function updateIssueMarkdownFrontmatter(
         }
 
         // 刷新缓存
-        await refreshCacheAfterEdit(uri, fm, body);
+        await getIssueMarkdown(uri);
 
         return true;
     } catch (err) {
@@ -428,8 +384,7 @@ export async function updateIssueMarkdownBody(
             return false;
         }
 
-        // 刷新缓存（传入 newBody 用于提取标题）
-        await refreshCacheAfterEdit(uri, fm, newBody);
+        await getIssueMarkdown(uri);
 
         return true;
     } catch (err) {
@@ -480,8 +435,7 @@ export async function createIssueMarkdown(opts?: {
         // 写入文件
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf8"));
 
-        // 刷新缓存以包含新创建的文件
-        await refreshCacheAfterEdit(uri, frontmatter, markdownBody);
+        await getIssueMarkdown(uri);
 
         return uri;
     } catch (e) {
