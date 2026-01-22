@@ -384,6 +384,7 @@ export async function updateIssueMarkdownBody(
             return false;
         }
 
+        // 刷新缓存
         await getIssueMarkdown(uri);
 
         return true;
@@ -435,6 +436,7 @@ export async function createIssueMarkdown(opts?: {
         // 写入文件
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf8"));
 
+        // 刷新缓存
         await getIssueMarkdown(uri);
 
         return uri;
