@@ -75,6 +75,10 @@ export function generateFileName(): string {
     return `${year}${month}${day}-${hours}${minutes}${seconds}-${milliseconds}.md`;
 }
 
+export function getTimestampFromFileName(fileName: string): number | null {
+  const date = parseFileNameTimestamp(fileName);
+  return date ? date.getTime() : null;
+}
 /**
  * 读取文本文件内容
  */
