@@ -138,21 +138,18 @@ export const readTree = async (): Promise<TreeData> => {
 /**
  * 根据 IssueMarkdown 的 URI 获取对应的 IssueNode 列表。
  */
-export const getIssueNodesByUri = async (uri: vscode.Uri) => {
+export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[]> => {
     const issueMarkdown = await getIssueMarkdown(uri);
-    if (issueMarkdown) {
-        return getIssueNodesBy(issueMarkdown);
-    } else {
-        return undefined;
-    }
+    if (!issueMarkdown) return [];
+    return getIssueNodesBy(issueMarkdown);
 };
 
 /**
  * 根据 IssueMarkdown 获取对应的 IssueNode 列表。
  */
-const getIssueNodesBy = async (issueMarkdown: IssueMarkdown) => {
+const getIssueNodesBy = async (issueMarkdown: IssueMarkdown): Promise<IssueNode[]> => {
     const { issueFilePathsMap } = await getIssueData();
-    return issueFilePathsMap.get(issueMarkdown.uri.fsPath);
+    return issueFilePathsMap.get(issueMarkdown.uri.fsPath) || [];
 };
 
 /**
