@@ -154,7 +154,7 @@ export const getIssueNodeById = async (id: string): Promise<IssueNode|undefined>
   return issueIdMap.get(id);
 };
 
-const cache = {mtime: 0, issueIdMap:new Map<string, IssueNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
+const cache = { mtime: 0, issueFilePathsMap: new Map<string, IssueNode[]>(), issueIdMap: new Map<string, IssueNode>(), treeData: { ...defaultTreeData, rootNodes: [] } as TreeData };
 
 export function getIssueTitleSync(issueId:string){
   const issueNode = cache.issueIdMap.get(issueId);
@@ -192,12 +192,16 @@ async function getIssueData(){
     treeData = { ...defaultTreeData, rootNodes: [] };
   }
   const issueIdMap = new Map<string, IssueNode>();
+  const issueFilePathsMap = new Map<string, IssueNode[]>();
   // 运行时动态添加 resourceUri
   walkTree(treeData.rootNodes, (node) => {
     // 确保 filePath 存在再创建 Uri
     if (node.filePath) {
       node.resourceUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), node.filePath);
       getIssueMarkdownTitleFromCache(node.id); // 预加载标题到缓存
+      const arr = issueFilePathsMap.get(node.filePath) || [];
+      arr.push(node);
+      issueFilePathsMap.set(node.filePath, arr);
     }
     issueIdMap.set(node.id, node);
   });
@@ -205,9 +209,10 @@ async function getIssueData(){
   cache.mtime = stat.mtime;
   cache.treeData = treeData;
   cache.issueIdMap = issueIdMap;
+  cache.issueFilePathsMap = issueFilePathsMap;
   onIssueTreeUpdateEmitter.fire();
 
-  return { treeData, issueIdMap };
+  return { treeData, issueIdMap, issueFilePathsMap };
 }
 
 export async function getIssueTitle(issueId:string){
