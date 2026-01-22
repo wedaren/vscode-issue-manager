@@ -154,7 +154,22 @@ export const getIssueNodeById = async (id: string): Promise<IssueNode|undefined>
   return issueIdMap.get(id);
 };
 
-const cache = {mtime: 0, issueIdMap:new Map<string, IssueNode>(), treeData: { ...defaultTreeData, rootNodes: []} as TreeData };
+export interface IssueDataResult {
+  treeData: TreeData;
+  issueIdMap: Map<string, IssueNode>;
+  issueFilePathsMap: Map<string, IssueNode[]>;
+}
+
+export interface IssueDataCache extends IssueDataResult {
+  mtime: number;
+}
+
+const createDefaultIssueDataStore = (): IssueDataResult => ({  
+  treeData: { ...defaultTreeData, rootNodes: [] },  
+  issueIdMap: new Map(),  
+  issueFilePathsMap: new Map()  
+});  
+const cache: IssueDataCache = { mtime: 0, ...createDefaultIssueDataStore() };  
 
 export function getIssueTitleSync(issueId:string){
   const issueNode = cache.issueIdMap.get(issueId);
@@ -165,39 +180,39 @@ const onIssueTreeUpdateEmitter = new vscode.EventEmitter<void>();
 
 export const onIssueTreeUpdate = onIssueTreeUpdateEmitter.event;
 
-async function getIssueData(){
+async function getIssueData(): Promise<IssueDataResult> {
   const treePath = getTreeDataPath();
   const issueDir = getIssueDir();
 
   if (!treePath || !issueDir) {
-    return {treeData: { ...defaultTreeData, rootNodes: [] }, issueIdMap: new Map<string, IssueNode>()};
+    return createDefaultIssueDataStore();
   }
 
   const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
   if (cache.mtime === stat.mtime) {
-    return { treeData: cache.treeData, issueIdMap: cache.issueIdMap };
+    return cache;
   }
-
-
 
   let treeData: TreeData;
   try {
     const content = await vscode.workspace.fs.readFile(vscode.Uri.file(treePath));
-    // TODO: 添加更严格的数据校验逻辑
     treeData = JSON.parse(content.toString());
   } catch (error) {
     // 记录错误有助于调试，特别是对于文件损坏或格式错误的情况  
     console.error(`Failed to read or parse tree data from ${treePath}:`, error);  
-    // 如果文件不存在或解析失败，返回默认数据
-    treeData = { ...defaultTreeData, rootNodes: [] };
+    return createDefaultIssueDataStore();
   }
   const issueIdMap = new Map<string, IssueNode>();
+  const issueFilePathsMap = new Map<string, IssueNode[]>();
   // 运行时动态添加 resourceUri
   walkTree(treeData.rootNodes, (node) => {
     // 确保 filePath 存在再创建 Uri
     if (node.filePath) {
       node.resourceUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), node.filePath);
       getIssueMarkdownTitleFromCache(node.id); // 预加载标题到缓存
+      const arr = issueFilePathsMap.get(node.filePath) || [];
+      arr.push(node);
+      issueFilePathsMap.set(node.filePath, arr);
     }
     issueIdMap.set(node.id, node);
   });
@@ -205,9 +220,10 @@ async function getIssueData(){
   cache.mtime = stat.mtime;
   cache.treeData = treeData;
   cache.issueIdMap = issueIdMap;
+  cache.issueFilePathsMap = issueFilePathsMap;
   onIssueTreeUpdateEmitter.fire();
 
-  return { treeData, issueIdMap };
+  return { treeData, issueIdMap, issueFilePathsMap };
 }
 
 export async function getIssueTitle(issueId:string){
