@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { getIssueDir } from "../config";
-import { getIssueMarkdown, getIssueMarkdownTitleFromCache } from "./IssueMarkdowns";
+import { getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
 import { getCategoryIcon, getIssueCategory } from "./paraManager";
 
 /**
@@ -134,19 +134,30 @@ export const readTree = async (): Promise<TreeData> => {
     return treeData;
 };
 
-export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[] | undefined> => {
-    const { issueIdMap } = await getIssueData();
-    const uriMap = new Map<string, IssueNode[]>();
-    issueIdMap.forEach(node => {
-        if (node.resourceUri?.fsPath) {
-            const arr = uriMap.get(node.resourceUri?.fsPath) || [];
-            arr.push(node);
-            uriMap.set(node.resourceUri?.fsPath, arr);
-        }
-    });
-    return uriMap.get(uri.fsPath);
+
+/**
+ * 根据 IssueMarkdown 的 URI 获取对应的 IssueNode 列表。
+ */
+export const getIssueNodesByUri = async (uri: vscode.Uri) => {
+    const issueMarkdown = await getIssueMarkdown(uri);
+    if (issueMarkdown) {
+        return getIssueNodesBy(issueMarkdown);
+    } else {
+        return undefined;
+    }
 };
 
+/**
+ * 根据 IssueMarkdown 获取对应的 IssueNode 列表。
+ */
+const getIssueNodesBy = async (issueMarkdown: IssueMarkdown) => {
+    const { issueFilePathsMap } = await getIssueData();
+    return issueFilePathsMap.get(issueMarkdown.uri.fsPath);
+};
+
+/**
+ * 根据 ID 获取 IssueNode。
+ */
 export const getIssueNodeById = async (id: string): Promise<IssueNode | undefined> => {
     const { issueIdMap } = await getIssueData();
     return issueIdMap.get(id);
