@@ -170,7 +170,7 @@ export async function getIssueMarkdown(
         }
         title = title ?? path.basename(uri.fsPath, ".md");
 
-        const entry: IssueMarkdownCacheEntry = {
+        const entry: cacheStorage.IssueMarkdownCacheEntry = {
             mtime,
             ctime,
             frontmatter: frontmatter ?? null,
@@ -223,15 +223,9 @@ export async function getAllIssueMarkdowns(
     });
 }
 
-type IssueMarkdownCacheEntry = {
-    mtime: number;
-    frontmatter?: FrontmatterData | null;
-    title?: string;
-    ctime: number;
-};
 
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
-const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], IssueMarkdownCacheEntry>();
+const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], cacheStorage.IssueMarkdownCacheEntry>();
 
 // 尝试加载磁盘缓存（不阻塞启动流程）
 void (async () => {
@@ -240,7 +234,7 @@ void (async () => {
         return;
     }
     for (const [k, v] of Object.entries(obj)) {
-        _issueMarkdownCache.set(k, v as IssueMarkdownCacheEntry);
+        _issueMarkdownCache.set(k, v as cacheStorage.IssueMarkdownCacheEntry);
     }
     Logger.getInstance().debug("[IssueMarkdowns] loaded cache from storage", {
         size: _issueMarkdownCache.size,

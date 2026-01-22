@@ -75,6 +75,12 @@ export function generateFileName(): string {
     return `${year}${month}${day}-${hours}${minutes}${seconds}-${milliseconds}.md`;
 }
 
+/**  
+ * 从文件名中提取时间戳。  
+ * 文件名应遵循 `YYYYMMDD-HHmmss-SSS.md` 或 `YYYYMMDD-HHmmss.md` 格式。  
+ * @param fileName 包含时间戳的文件名字符串。  
+ * @returns 解析成功返回时间戳（毫秒），否则返回 null。  
+ */  
 export function getTimestampFromFileName(fileName: string): number | null {
   const date = parseFileNameTimestamp(fileName);
   return date ? date.getTime() : null;
