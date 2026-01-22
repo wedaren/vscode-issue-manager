@@ -6,7 +6,7 @@ import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
 import * as cacheStorage from "../data/issueMarkdownCacheStorage";
-import { generateFileName } from "../utils/fileUtils";
+import { generateFileName, getTimestampFromFileName } from "../utils/fileUtils";
 /**
  * 从 Markdown 文件内容中提取第一个一级标题。
  * @param content 文件内容。
@@ -109,23 +109,6 @@ export async function getIssueMarkdownContent(uri: vscode.Uri): Promise<string> 
     return data;
 }
 
-/**
- * 获取问题目录中所有 Markdown 文件;
- * @returns 问题目录中所有 Markdown 文件
- */
-async function getAllIssueMarkdownFiles(): Promise<vscode.Uri[]> {
-    const issueDir = getIssueDir();
-    if (!issueDir) {
-        return [];
-    }
-
-    const files = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(issueDir, "**/*.md"),
-        "**/.issueManager/**"
-    );
-    return files;
-}
-
 export type IssueMarkdown = {
     title: string;
     uri: vscode.Uri;
@@ -156,7 +139,8 @@ export async function getIssueMarkdown(
     try {
         const stat = await vscode.workspace.fs.stat(uri);
         const mtime = stat.mtime;
-        const ctime = stat.ctime;
+        const fileName = path.basename(uri.fsPath);
+        const ctime = getTimestampFromFileName(fileName) || stat.ctime;
         const cached = _issueMarkdownCache.get(key);
         if (
             cached &&
@@ -186,7 +170,7 @@ export async function getIssueMarkdown(
         }
         title = title ?? path.basename(uri.fsPath, ".md");
 
-        const entry: IssueMarkdownCacheEntry = {
+        const entry: cacheStorage.IssueMarkdownCacheEntry = {
             mtime,
             ctime,
             frontmatter: frontmatter ?? null,
@@ -203,33 +187,45 @@ export async function getIssueMarkdown(
         return null;
     }
 }
+
 /**
- * 获取问题目录中所有 Markdown 文件的标题和 URI。
- * @returns 包含标题和 URI 的对象数组。
+ * 获取问题目录中所有 Markdown 文件的标题和 URI（并行加载）。
+ * - 默认按文件修改时间 `mtime` 降序（最近更新的排在前面）；可通过 `sortBy: "ctime"` 改为按创建时间降序。
+ * - 参数：`{ sortBy?: "mtime" | "ctime" }`，默认 `{ sortBy: "mtime" }`。
  */
-export async function getAllIssueMarkdowns(): Promise<IssueMarkdown[]> {
-    const files = await getAllIssueMarkdownFiles();
-    const issues: IssueMarkdown[] = [];
+export async function getAllIssueMarkdowns(
+    { sortBy = "mtime" }: { sortBy?: "mtime" | "ctime" } = {}
+): Promise<IssueMarkdown[]> {
+    const issueDir = getIssueDir();
+    if (!issueDir) return [];
 
-    for (const file of files) {
-        const issueMarkdown = await getIssueMarkdown(file);
-        if (issueMarkdown) {
-            issues.push(issueMarkdown);
-        }
-    }
+    const files = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(issueDir, "**/*.md"),
+        "**/.issueManager/**"
+    );
 
-    return issues;
+    // 并行加载所有文件的元信息，单个文件出错时忽略
+    const entries = await Promise.all(
+        files.map(async f => {
+            try {
+                return await getIssueMarkdown(f);
+            } catch {
+                return null;
+            }
+        })
+    );
+
+    const issues = entries.filter((e): e is IssueMarkdown => !!e);
+
+    return issues.sort((a, b) => {
+        if (sortBy === "ctime") return b.ctime - a.ctime;
+        return b.mtime - a.mtime; 
+    });
 }
 
-type IssueMarkdownCacheEntry = {
-    mtime: number;
-    frontmatter?: FrontmatterData | null;
-    title?: string;
-    ctime: number;
-};
 
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
-const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], IssueMarkdownCacheEntry>();
+const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], cacheStorage.IssueMarkdownCacheEntry>();
 
 // 尝试加载磁盘缓存（不阻塞启动流程）
 void (async () => {
@@ -238,7 +234,7 @@ void (async () => {
         return;
     }
     for (const [k, v] of Object.entries(obj)) {
-        _issueMarkdownCache.set(k, v as IssueMarkdownCacheEntry);
+        _issueMarkdownCache.set(k, v as cacheStorage.IssueMarkdownCacheEntry);
     }
     Logger.getInstance().debug("[IssueMarkdowns] loaded cache from storage", {
         size: _issueMarkdownCache.size,

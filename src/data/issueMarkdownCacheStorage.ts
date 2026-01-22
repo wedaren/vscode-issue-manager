@@ -3,8 +3,9 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 
-type IssueMarkdownCacheEntry = {
+export type IssueMarkdownCacheEntry = {
   mtime: number;
+  ctime: number;
   frontmatter?: Record<string, unknown> | null;
   title?: string;
 };
