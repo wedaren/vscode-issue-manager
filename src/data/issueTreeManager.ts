@@ -164,8 +164,12 @@ export interface IssueDataCache extends IssueDataResult {
   mtime: number;
 }
 
-const defaultIssueDataStore: IssueDataResult = { treeData: defaultTreeData, issueIdMap: new Map(), issueFilePathsMap: new Map() }
-const cache: IssueDataCache = { mtime: 0, ...defaultIssueDataStore };
+const createDefaultIssueDataStore = (): IssueDataResult => ({  
+  treeData: { ...defaultTreeData, rootNodes: [] },  
+  issueIdMap: new Map(),  
+  issueFilePathsMap: new Map()  
+});  
+const cache: IssueDataCache = { mtime: 0, ...createDefaultIssueDataStore() };  
 
 export function getIssueTitleSync(issueId:string){
   const issueNode = cache.issueIdMap.get(issueId);
@@ -181,7 +185,7 @@ async function getIssueData(): Promise<IssueDataResult> {
   const issueDir = getIssueDir();
 
   if (!treePath || !issueDir) {
-    return defaultIssueDataStore;
+    return createDefaultIssueDataStore();
   }
 
   const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
@@ -192,13 +196,11 @@ async function getIssueData(): Promise<IssueDataResult> {
   let treeData: TreeData;
   try {
     const content = await vscode.workspace.fs.readFile(vscode.Uri.file(treePath));
-    // TODO: 添加更严格的数据校验逻辑
     treeData = JSON.parse(content.toString());
   } catch (error) {
     // 记录错误有助于调试，特别是对于文件损坏或格式错误的情况  
     console.error(`Failed to read or parse tree data from ${treePath}:`, error);  
-    // 如果文件不存在或解析失败，返回默认数据
-    return defaultIssueDataStore;
+    return createDefaultIssueDataStore();
   }
   const issueIdMap = new Map<string, IssueNode>();
   const issueFilePathsMap = new Map<string, IssueNode[]>();
