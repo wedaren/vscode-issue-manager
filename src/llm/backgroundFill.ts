@@ -18,7 +18,7 @@ export async function backgroundFillIssue(
     prompt: string,
     issueId?: string,
     options?: { timeoutMs?: number }
-): Promise<{ success: boolean; message?: string }>{
+): Promise<{ success: boolean; message?: string }> {
     const timeoutMs = options?.timeoutMs ?? 60000;
     const { controller, clear } = createAbortControllerWithTimeout(timeoutMs);
 
@@ -28,7 +28,7 @@ export async function backgroundFillIssue(
     try {
         const result = await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: '后台填充中…', cancellable: true },
-            async (progress, token) : Promise<{ success: boolean; message?: string }> => {
+            async (progress, token): Promise<{ success: boolean; message?: string }> => {
                 token.onCancellationRequested(() => controller.abort());
 
                 // 读取当前文件 mtime
@@ -57,20 +57,19 @@ export async function backgroundFillIssue(
                 // 原子写回目标文件
                 await updateIssueMarkdownBody(uri, finalContent);
 
-
                 const choice = await vscode.window.showInformationMessage(`已完成。`, '打开文件', '对半打开');
                 if (choice === '打开文件') {
-                    openIssueNode(issueId);
+                    issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri);
                 }
                 if (choice === '对半打开') {
-                    openIssueNode(issueId,{viewColumn:vscode.ViewColumn.Beside});
+                    issueId ? openIssueNode(issueId, { viewColumn: vscode.ViewColumn.Beside }) : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
                 }
                 return { success: true };
             }
         );
 
         return result;
-    } catch (error:any) {
+    } catch (error: any) {
         if (error?.message === '请求已取消' || error?.name === 'AbortError') {
             return { success: false, message: '请求已取消或超时' };
         }
