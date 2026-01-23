@@ -4,11 +4,9 @@ import {
     readFileStatSafe,
     callLLMGenerateDocument,
     savePendingFile,
-    atomicWriteFile,
-    updateOpenEditorIfCleanOrSavePending,
-    notifyPendingResult,
 } from './backgroundFill.utils';
 import { updateIssueMarkdownBody } from '../data/IssueMarkdowns';
+import { openIssueNode } from '../commands/openIssueNode';
 
 /**
  * 在后台为指定 issue 文件使用 LLM 生成并填充完整内容。
@@ -18,6 +16,7 @@ import { updateIssueMarkdownBody } from '../data/IssueMarkdowns';
 export async function backgroundFillIssue(
     uri: vscode.Uri,
     prompt: string,
+    issueId?: string,
     options?: { timeoutMs?: number }
 ): Promise<{ success: boolean; message?: string }>{
     const timeoutMs = options?.timeoutMs ?? 60000;
@@ -58,25 +57,17 @@ export async function backgroundFillIssue(
                 // 原子写回目标文件
                 await updateIssueMarkdownBody(uri, finalContent);
 
-                // // 如果该文件在某个编辑器中已打开，尝试用最新内容替换显示（仅在编辑器无未保存更改时）
-                // try {
-                //     const updateResult = await updateOpenEditorIfCleanOrSavePending(uri, finalContent);
-                //     if (updateResult.pendingUri) {
-                //         pendingNotification = { message: '后台填充已完成，但当前编辑器有未保存更改。已将生成结果保存为临时文件。', action: '打开临时文件', uriToOpen: updateResult.pendingUri };
-                //         return { success: true, message: '目标文件有未保存更改，内容保存为临时文件' };
-                //     }
-                // } catch (e) {
-                //     console.error('尝试更新打开的编辑器时出错:', e);
-                // }
 
-                // try { await vscode.commands.executeCommand('issueManager.refreshAllViews'); } catch(e){}
-                pendingNotification = { message: '后台填充已完成。', action: '打开文件', uriToOpen: uri };
+                const choice = await vscode.window.showInformationMessage(`已完成。`, '打开文件', '对半打开');
+                if (choice === '打开文件') {
+                    openIssueNode(issueId);
+                }
+                if (choice === '对半打开') {
+                    openIssueNode(issueId,{viewColumn:vscode.ViewColumn.Beside});
+                }
                 return { success: true };
             }
         );
-
-        // 在 progress 结束后再弹出提示，避免 loading 中出现交互按钮
-        await notifyPendingResult(pendingNotification);
 
         return result;
     } catch (error:any) {

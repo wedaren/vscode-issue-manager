@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { TreeDataProvider, TreeItem, Event, EventEmitter } from 'vscode';
+import { TreeDataProvider, Event, EventEmitter } from 'vscode';
 import { readTree, IssueNode, TreeData, FocusedData, getAncestors, isFocusedRootId, stripFocusedId, toFocusedId, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { readFocused, trimFocusedToMaxItems } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';

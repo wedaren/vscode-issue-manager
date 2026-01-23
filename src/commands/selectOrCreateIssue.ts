@@ -107,12 +107,13 @@ export async function buildIssueActionItems(
             if (!uri) {
                 return null;
             }
-            backgroundFillIssue(uri, input, { timeoutMs: 60000 }).catch(err => {
+            const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
+            vscode.commands.executeCommand("issueManager.refreshAllViews");
+            const nodeId = nodes && nodes.length > 0 ? nodes[0].id : undefined;
+            backgroundFillIssue(uri, input, nodeId, { timeoutMs: 60000 }).catch(err => {
                 console.error("Background fill issue failed:", err);
                 vscode.window.showErrorMessage(`后台填充问题 '${input}' 失败。`);
             });
-            const nodes = await createIssueNodes([uri], ctx?.parentId || parentId);
-            vscode.commands.executeCommand("issueManager.refreshAllViews");
             if (nodes && nodes.length > 0) {
                 return nodes[0].id;
             }
