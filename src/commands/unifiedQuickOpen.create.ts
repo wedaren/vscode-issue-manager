@@ -52,7 +52,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
 当前选中的文本是：${currentSelectedText}。
 当前选中的范围是：${currentSelection}。
 请根据这些信息生成 Markdown（包含标题和详细描述）`;
-                await backgroundFillIssue(uri, prompt);
+                await backgroundFillIssue(uri, prompt, nodes[0].id);
             }
         },
     };
@@ -77,7 +77,8 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
                     await backgroundFillIssue(
                         uri,
-                        buildPromptWithContent(currentEditorContent, p.template)
+                        buildPromptWithContent(currentEditorContent, p.template),
+                        nodes && nodes[0] ? nodes[0].id : undefined
                     );
                 } catch (e) {
                     console.error("create-mode prompt fill failed", e);
@@ -126,11 +127,11 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
             if (!uri) {
                 return;
             }
-            await createIssueNodes([uri]);
+            const nodes = await createIssueNodes([uri]);
             vscode.commands.executeCommand("issueManager.refreshAllViews");
             try {
                 const prompt = title;
-                backgroundFillIssue(uri, prompt);
+                backgroundFillIssue(uri, prompt, nodes && nodes[0] ? nodes[0].id : undefined);
             } catch (e) {
                 console.error("create-mode background fill failed", e);
             }

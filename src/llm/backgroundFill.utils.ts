@@ -65,14 +65,3 @@ export async function updateOpenEditorIfCleanOrSavePending(uri: vscode.Uri, cont
     }
 }
 
-export async function notifyPendingResult(notification: { message: string; action?: string; uriToOpen?: vscode.Uri } | undefined) {
-    if (!notification) return;
-    try {
-        const choice = await vscode.window.showInformationMessage(notification.message, notification.action || '');
-        if (choice && notification.uriToOpen) {
-            try { await vscode.window.showTextDocument(notification.uriToOpen, { preview: false }); } catch (e) {}
-        }
-    } catch (e) {
-        // Non-fatal
-    }
-}

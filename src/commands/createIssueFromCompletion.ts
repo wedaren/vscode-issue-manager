@@ -31,7 +31,7 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
         const newNodeId = added && added.length > 0 ? added[0].id : undefined;
 
         if (background) {
-            backgroundFillIssue(uri, title, { timeoutMs: 60000 });
+            backgroundFillIssue(uri, title, newNodeId, { timeoutMs: 60000 });
         }
 
         if (editor) {
