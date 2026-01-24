@@ -162,7 +162,7 @@ export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[]> 
 const getIssueNodesBy = async (issueMarkdown: IssueMarkdown): Promise<IssueNode[]> => {
     const { issueFilePathsMap } = await getIssueData();
     const filePath = getIssueFilePath(issueMarkdown.uri); //
-    if(filePath === null) return []; 
+    if(filePath === null) { return []; }
     return issueFilePathsMap.get(filePath) || [];
 };
 

@@ -50,7 +50,7 @@ export async function enterTimeMode(
                 group = "Unknown";
             }
             if (group !== lastGroup) {
-                items.push({ kind: vscode.QuickPickItemKind.Separator, label: group } as any);
+                items.push({ kind: vscode.QuickPickItemKind.Separator, label: group } as unknown as QuickPickItemWithId);
                 lastGroup = group;
             }
             items.push(toItem(it, sortBy));
@@ -82,7 +82,7 @@ export async function handleTimeModeAccept(
     value: string,
     sortBy: SortBy = "mtime"
 ): Promise<boolean> {
-    const fileUri = (selected.fileUri as vscode.Uri) || undefined;
+    const fileUri = selected.fileUri;
     if (!fileUri) return false;
 
     try {
@@ -114,5 +114,3 @@ export async function handleTimeModeAccept(
         return false;
     }
 }
-
-export default {};

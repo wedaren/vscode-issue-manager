@@ -237,7 +237,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 quickPick.show();
 
                 // 如果是内联模式，延迟加载内容
-                    if (wantsInlineMode) {
+                if (wantsInlineMode) {
                     if (currentMode === 'issue') {
                         await enterIssueMode(quickPick, initialRequest?.text || "");
                     } else if (currentMode === 'llm') {
