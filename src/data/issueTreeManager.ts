@@ -2,19 +2,29 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { getIssueDir } from "../config";
-import { getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
+import { getIssueFilePath, getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
 import { getCategoryIcon, getIssueCategory } from "./paraManager";
+
+/**
+ * 持久化到磁盘的节点结构（tree.json 中的格式）。
+ * children 使用同样的持久化类型。
+ */
+export interface PersistedIssueNode {
+    id: string;
+    filePath: string;
+    expanded?: boolean;
+    children: PersistedIssueNode[];
+}
+
 
 /**
  * Issue, 其背后是 IssueMarkdwon ，即 filePath 所指向的文件。
  * 一个 IssueMarkdown 可能对应多个 IssueNode。
  */
-export interface IssueNode {
-    id: string;
-    filePath: string; // 相对于 issueDir 的路径
-    expanded?: boolean;
-    children: IssueNode[];
-    resourceUri?: vscode.Uri; // 运行时属性，不持久化
+export interface IssueNode  extends PersistedIssueNode {
+    resourceUri: vscode.Uri; // 运行时属性，不持久化
+    parent: IssueNode[]; // 运行时属性，不持久化，祖先链（从根到直接父节点）
+    children: IssueNode[]; // 覆盖 PersistedIssueNode 中的 children 类型
 }
 export interface TreeData {
     version: string;
@@ -38,11 +48,13 @@ export interface FlatTreeNode extends IssueNode {
  * @param nodes 节点数组。
  * @param callback 回调函数。
  */
-function walkTree(nodes: IssueNode[], callback: (node: IssueNode) => void) {
+function walkTree(nodes: IssueNode[], callback: (node: IssueNode) => void, parents: IssueNode[] = []) {
     for (const node of nodes) {
+        // 在回调前构建并赋值祖先链，callback 可直接读取 node.parent
+        node.parent = [...parents];
         callback(node);
         if (node.children) {
-            walkTree(node.children, callback);
+            walkTree(node.children, callback, [...parents, node]);
         }
     }
 }
@@ -70,7 +82,7 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
                 ctime,
                 mtime,
                 parentPath: [...parents],
-                resourceUri: node.resourceUri!,
+                resourceUri: node.resourceUri,
             };
 
             result.push(flatNode);
@@ -149,7 +161,9 @@ export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[]> 
  */
 const getIssueNodesBy = async (issueMarkdown: IssueMarkdown): Promise<IssueNode[]> => {
     const { issueFilePathsMap } = await getIssueData();
-    return issueFilePathsMap.get(issueMarkdown.uri.fsPath) || [];
+    const filePath = getIssueFilePath(issueMarkdown.uri); //
+    if(filePath === null) { return []; }
+    return issueFilePathsMap.get(filePath) || [];
 };
 
 /**
@@ -212,7 +226,7 @@ async function getIssueData(): Promise<IssueDataResult> {
     }
     const issueIdMap = new Map<string, IssueNode>();
     const issueFilePathsMap = new Map<string, IssueNode[]>();
-    // 运行时动态添加 resourceUri
+    // 运行时动态添加 resourceUri 并建立 parent 引用（由 walkTree 负责构建祖先链）
     walkTree(treeData.rootNodes, node => {
         // 确保 filePath 存在再创建 Uri
         if (node.filePath) {
@@ -257,10 +271,10 @@ export const writeTree = async (data: TreeData): Promise<void> => {
 
     data.lastModified = new Date().toISOString();
 
-    // 使用 replacer 函数在序列化时忽略 resourceUri 属性
+    // 使用 replacer 函数在序列化时忽略运行时属性（如 resourceUri、parent）
     const replacer = (key: string, value: unknown) => {
-        if (key === "resourceUri") {
-            return undefined; // 忽略此属性
+        if (key === "resourceUri" || key === "parent") {
+            return undefined; // 忽略此类运行时属性
         }
         return value;
     };
@@ -286,6 +300,7 @@ function _createIssueNode(issueFilePath: IssueFilePath, issueDir: string): Issue
         children: [],
         expanded: true,
         resourceUri: vscode.Uri.joinPath(vscode.Uri.file(issueDir), issueFilePath),
+        parent: [],
     };
 }
 
@@ -304,6 +319,10 @@ export async function createIssueNodes(issueFiles: vscode.Uri[], parentId?: stri
         } else {
             const parent = await getIssueNodeById(parentId);
             if (parent) {
+                // 为新节点设置 parent 祖先链（复制父节点的祖先链并追加父节点本身）
+                for (const n of newNodes) {
+                    n.parent = [...(parent.parent || []), parent];
+                }
                 parent.children.unshift(...newNodes);
             } else {
                 treeData.rootNodes.unshift(...newNodes);

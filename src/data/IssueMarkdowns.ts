@@ -152,7 +152,7 @@ export async function getIssueMarkdown(
                 uri,
                 frontmatter: cached.frontmatter ?? null,
                 mtime: cached.mtime,
-                ctime: cached.ctime,
+                ctime,
             };
         }
 
@@ -199,8 +199,9 @@ export async function getAllIssueMarkdowns(
     const issueDir = getIssueDir();
     if (!issueDir) return [];
 
+    // 仅获取 issueDir 根目录下的 Markdown 文件（非递归）
     const files = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(issueDir, "**/*.md"),
+        new vscode.RelativePattern(issueDir, "*.md"),
         "**/.issueManager/**"
     );
 

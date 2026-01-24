@@ -14,6 +14,11 @@ import {
     enterLLMMode, 
     handleLLMModeAccept 
 } from "./unifiedQuickOpen.llm";
+import { 
+    enterTimeMode,
+    handleTimeModeValueChange,
+    handleTimeModeAccept,
+} from "./unifiedQuickOpen.time";
 import {
     enterCreateMode,
     handleCreateModeValueChange,
@@ -56,6 +61,22 @@ const MODE_CONFIG = {
         description: '创建新问题（支持后台填充和使用 prompts）',
         icon: 'add',
         tooltip: '切换到新建问题模式',
+    },
+    mtime: {
+        mode: 'mtime' as Mode,
+        prefix: 'mtime',
+        label: '按修改时间 (mtime)',
+        description: '按照文件修改时间列出问题 Markdown（最近更新在前）',
+        icon: 'history',
+        tooltip: '按 mtime 列出问题',
+    },
+    ctime: {
+        mode: 'ctime' as Mode,
+        prefix: 'ctime',
+        label: '按创建时间 (ctime)',
+        description: '按照文件创建时间或文件名时间戳列出问题',
+        icon: 'history',
+        tooltip: '按 ctime 列出问题',
     },
 } as const;
 
@@ -106,6 +127,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     modeButtons.command,
                     modeButtons.issue,
                     modeButtons.create,
+                    modeButtons.mtime,
+                    modeButtons.ctime,
                     helpButton
                 ];
 
@@ -117,7 +140,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 // 不在主文件维护 currentEditorIssueId，交由各模式按需获取
                 // 解析初始请求
                 const initialRequest: InitialArg | undefined = initialArg;
-                const wantsInlineMode = !!(initialRequest && ["issue", "llm", "create"].includes(initialRequest.mode || ''));
+                const wantsInlineMode = !!(initialRequest && ["issue", "llm", "create", "mtime", "ctime"].includes(initialRequest.mode || ''));
 
                 // 模式切换函数（不再接受 text 参数，调用处需在调用前设置 quickPick.value）
                 const enterMode = async (mode: Mode) => {
@@ -127,6 +150,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     quickPick.buttons = [
                         modeButtons.command,
                         modeButtons.issue,
+                        modeButtons.create,
+                        modeButtons.mtime,
+                        modeButtons.ctime,
                         helpButton
                     ];
 
@@ -138,6 +164,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterLLMMode(quickPick);
                     } else if (mode === 'create') {
                         await enterCreateMode(quickPick);
+                    } else if (mode === 'mtime') {
+                        await enterTimeMode(quickPick, "", "mtime");
+                    } else if (mode === 'ctime') {
+                        await enterTimeMode(quickPick, "", "ctime");
                     }
                     
                     suppressChange = false;
@@ -155,6 +185,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         modeButtons.command,
                         modeButtons.issue,
                         modeButtons.create,
+                        modeButtons.mtime,
+                        modeButtons.ctime,
                         helpButton
                     ];
                     quickPick.value = text;
@@ -178,6 +210,14 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     [MODE_CONFIG.create.prefix]: async (text: string) => {
                         quickPick.value = text;
                         await enterMode("create");
+                    },
+                    [MODE_CONFIG.mtime.prefix]: async (text: string) => {
+                        quickPick.value = text;
+                        await enterMode("mtime");
+                    },
+                    [MODE_CONFIG.ctime.prefix]: async (text: string) => {
+                        quickPick.value = text;
+                        await enterMode("ctime");
                     },
                     "?": async (text: string) => openHelpInQuickPick(text),
                 };
@@ -204,6 +244,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterLLMMode(quickPick, initialRequest?.text || "");
                     } else if (currentMode === 'create') {
                         await enterCreateMode(quickPick, initialRequest?.text || "");
+                    } else if (currentMode === 'mtime') {
+                        await enterTimeMode(quickPick, initialRequest?.text || "", "mtime");
+                    } else if (currentMode === 'ctime') {
+                        await enterTimeMode(quickPick, initialRequest?.text || "", "ctime");
                     }
                     suppressChange = false;
                 } else {
@@ -233,6 +277,12 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     } else if (btn === modeButtons.create) {
                         quickPick.value = "";
                         await enterMode("create");
+                    } else if (btn === modeButtons.mtime) {
+                        quickPick.value = "";
+                        await enterMode("mtime");
+                    } else if (btn === modeButtons.ctime) {
+                        quickPick.value = "";
+                        await enterMode("ctime");
                     } else if (btn === helpButton) {
                         openHelpInQuickPick("");
                     }
@@ -323,6 +373,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await handleIssueModeValueChange(quickPick, v);
                     } else if (currentMode === 'create') {
                         await handleCreateModeValueChange(quickPick, v);
+                    } else if (currentMode === 'mtime') {
+                        await handleTimeModeValueChange(quickPick, v, 'mtime');
+                    } else if (currentMode === 'ctime') {
+                        await handleTimeModeValueChange(quickPick, v, 'ctime');
                     }
                     // LLM 模式下不需要处理值变化
                 });
@@ -361,6 +415,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         handled = await handleLLMModeAccept(selected, quickPick.value);
                     } else if (currentMode === 'create') {
                         handled = await handleCreateModeAccept(selected, quickPick.value);
+                    } else if (currentMode === 'mtime') {
+                        handled = await handleTimeModeAccept(selected, quickPick.value, 'mtime');
+                    } else if (currentMode === 'ctime') {
+                        handled = await handleTimeModeAccept(selected, quickPick.value, 'ctime');
                     }
 
                     if (handled) {
