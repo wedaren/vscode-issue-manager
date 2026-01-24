@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { getIssueDir } from "../config";
-import { getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
+import { getIssueFilePath, getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
 import { getCategoryIcon, getIssueCategory } from "./paraManager";
 
 /**
@@ -161,7 +161,9 @@ export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[]> 
  */
 const getIssueNodesBy = async (issueMarkdown: IssueMarkdown): Promise<IssueNode[]> => {
     const { issueFilePathsMap } = await getIssueData();
-    return issueFilePathsMap.get(issueMarkdown.uri.fsPath) || [];
+    const filePath = getIssueFilePath(issueMarkdown.uri); //
+    if(filePath === null) return []; 
+    return issueFilePathsMap.get(filePath) || [];
 };
 
 /**

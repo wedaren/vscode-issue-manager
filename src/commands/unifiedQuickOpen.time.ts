@@ -6,8 +6,9 @@ import { openIssueNode } from "./openIssueNode";
 
 type SortBy = "mtime" | "ctime";
 
-function toItem(m: { title: string; uri: vscode.Uri; mtime: number; ctime: number }) {
-    const desc = m.uri.fsPath;
+function toItem(m: { title: string; uri: vscode.Uri; mtime: number; ctime: number }, sortBy: SortBy) {
+    const time = sortBy === "mtime" ? m.mtime : m.ctime;
+    const desc = new Date(time).toLocaleString() || "Unknown";
     return {
         label: m.title,
         description: desc,
@@ -27,7 +28,33 @@ export async function enterTimeMode(
 
     try {
         const issues = await getAllIssueMarkdowns({ sortBy });
-        const items = issues.map(i => toItem(i));
+        // 将按时间分组，使用 quick pick separator 来展示每个日期分组
+        const items: QuickPickItemWithId[] = [];
+        let lastGroup: string | null = null;
+        for (const it of issues) {
+            const time = sortBy === "mtime" ? it.mtime : it.ctime;
+            let group: string;
+            if (time) {
+                const d = new Date(time);
+                const today = new Date();
+                if (
+                    d.getFullYear() === today.getFullYear() &&
+                    d.getMonth() === today.getMonth() &&
+                    d.getDate() === today.getDate()
+                ) {
+                    group = "今天";
+                } else {
+                    group = d.toLocaleDateString();
+                }
+            } else {
+                group = "Unknown";
+            }
+            if (group !== lastGroup) {
+                items.push({ kind: vscode.QuickPickItemKind.Separator, label: group } as any);
+                lastGroup = group;
+            }
+            items.push(toItem(it, sortBy));
+        }
         quickPick.items = items;
     } catch (e) {
         console.error("enterTimeMode error:", e);
@@ -42,19 +69,6 @@ export async function handleTimeModeValueChange(
     value: string,
     sortBy: SortBy = "mtime"
 ): Promise<void> {
-    try {
-        const issues = await getAllIssueMarkdowns({ sortBy });
-        const keywords = (value || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-        const filtered = issues.filter(i => {
-            if (keywords.length === 0) return true;
-            const hay = `${i.title} ${i.uri.fsPath}`.toLowerCase();
-            return keywords.every(k => hay.includes(k));
-        }).map(i => toItem(i));
-        quickPick.items = filtered;
-    } catch (e) {
-        console.error("handleTimeModeValueChange error:", e);
-        quickPick.items = [];
-    }
 }
 
 /**
@@ -87,7 +101,7 @@ export async function handleTimeModeAccept(
         // 多个 IssueNode，展示选择
         const items = await Promise.all(nodes.map(async n => ({
             label: getIssueMarkdownTitleFromCache(n.filePath),
-            description: n.filePath,
+            description: n.parent.map(p => getIssueMarkdownTitleFromCache(p.filePath)).join(' > '),
             id: n.id,
         } as QuickPickItemWithId)));
 

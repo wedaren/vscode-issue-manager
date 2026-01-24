@@ -5,7 +5,6 @@ import { Logger } from '../core/utils/Logger';
 
 export type IssueMarkdownCacheEntry = {
   mtime: number;
-  ctime: number;
   frontmatter?: Record<string, unknown> | null;
   title?: string;
 };
