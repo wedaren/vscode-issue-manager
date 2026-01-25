@@ -12,12 +12,16 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     private treeData: TreeData | null = null;
     private contextUri: vscode.Uri | undefined;
+    private pinnedNodes: Set<string> = new Set();
+    // 缓存所有 pin 过的节点数据，key 是节点 id
+    private pinnedNodesCache: Map<string, RelatedIssueNode> = new Map();
     
     private disposables: vscode.Disposable[] = [];
     
     constructor(private context: vscode.ExtensionContext) {
         onIssueTreeUpdate(this.refresh, this, this.disposables);
         this.contextUri = vscode.window.activeTextEditor?.document.uri;
+        // Pin 状态仅在当前会话中保持，重启后清空
     }
 
     /** 设置上下文 URI 并刷新视图 */  
@@ -35,7 +39,13 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     async getChildren(element?: RelatedIssueNode): Promise<RelatedIssueNode[]> {
         const ctx = this.contextUri;
         if (!ctx) {
-            return [];
+            // 即使没有上下文，也应该显示 pin 的节点
+            // 确保返回的节点有完整的属性
+            return Array.from(this.pinnedNodesCache.values()).map(node => ({
+                ...node,
+                children: node.children || [],
+                parent: node.parent || [],
+            }));
         }
         if (!element) {
             // 查找所有引用该文件的节点（包括 tree.json 中的引用与 frontmatter 中的关联）
@@ -77,7 +87,24 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 } as RelatedIssueNode);
             }
 
-            return [...treeRefs, ...fmNodes, ...workspaceNodes];
+            // 合并当前上下文的节点
+            const contextNodes = [...treeRefs, ...fmNodes, ...workspaceNodes];
+            
+            // 将当前上下文的节点更新到缓存中（如果它们被 pin 了）
+            for (const node of contextNodes) {
+                if (this.pinnedNodes.has(node.id)) {
+                    this.pinnedNodesCache.set(node.id, node);
+                }
+            }
+            
+            // 从缓存中获取所有 pin 的节点
+            const pinnedNodesList = Array.from(this.pinnedNodesCache.values());
+            
+            // 找出当前上下文中未被 pin 的节点
+            const unpinnedContextNodes = contextNodes.filter(node => !this.pinnedNodes.has(node.id));
+            
+            // 合并：pin 的节点在前，当前上下文的未 pin 节点在后
+            return [...pinnedNodesList, ...unpinnedContextNodes];
         }
         // 返回子节点
         return element.children || [];
@@ -179,15 +206,41 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
     /** 渲染 TreeItem */
     async getTreeItem(element: RelatedIssueNode): Promise<vscode.TreeItem> {
-        const item = new vscode.TreeItem(element.label, element.children && element.children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
+        // 确保 children 属性存在
+        const children = element.children || [];
+        const item = new vscode.TreeItem(
+            element.label, 
+            children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
+        );
         item.tooltip = element.tooltip;
-        item.iconPath = element.icon || await getIssueNodeIconPath(element.id);
-        item.description = element.type === 'parent' ? element.tooltip : '';
         
-        // 使用缓存的 contextValue 或计算新的 contextValue
-        item.contextValue = element.contextValue ?? await getIssueNodeContextValue(element.id, 'issueNode');
+        // 判断是否为一级节点
+        const isTopLevel = element.type === 'parent' || element.type === 'current' || 
+                           element.type === 'markdown' || element.type === 'workspace';
+        
+        // 为一级节点设置 contextValue 和 icon
+        if (isTopLevel) {
+            const isPinned = this.pinnedNodes.has(element.id);
+            const baseContext = element.contextValue ?? await getIssueNodeContextValue(element.id, 'issueNode');
+            item.contextValue = isPinned 
+                ? `${baseContext}|relatedNode|pinnedNode`
+                : `${baseContext}|relatedNode`;
+            
+            // 如果节点被 pin，显示 pin 图标；否则使用默认图标
+            if (isPinned) {
+                item.iconPath = new vscode.ThemeIcon('pinned', new vscode.ThemeColor('charts.yellow'));
+            } else {
+                item.iconPath = element.icon || await getIssueNodeIconPath(element.id);
+            }
+        } else {
+            item.contextValue = element.contextValue ?? await getIssueNodeContextValue(element.id, 'issueNode');
+            item.iconPath = element.icon || await getIssueNodeIconPath(element.id);
+        }
+        
+        item.description = element.type === 'parent' ? element.tooltip : '';
         item.id = element.id;
         item.resourceUri = element.resourceUri;
+        
         if(element.type === 'markdown' || element.type === 'workspace'){
             item.command = {
                 command: 'vscode.open',
@@ -202,6 +255,29 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             } : undefined;
         }
         return item;
+    }
+
+    /** Pin 节点（会话级，重启后清空） */
+    async pinNode(nodeId: string, nodeData?: RelatedIssueNode): Promise<void> {
+        this.pinnedNodes.add(nodeId);
+        // 如果提供了节点数据，确保数据完整性后缓存
+        if (nodeData) {
+            // 确保必需的数组属性存在
+            const completeNode: RelatedIssueNode = {
+                ...nodeData,
+                children: nodeData.children || [],
+                parent: nodeData.parent || [],
+            };
+            this.pinnedNodesCache.set(nodeId, completeNode);
+        }
+        this.refresh();
+    }
+
+    /** Unpin 节点 */
+    async unpinNode(nodeId: string): Promise<void> {
+        this.pinnedNodes.delete(nodeId);
+        this.pinnedNodesCache.delete(nodeId);
+        this.refresh();
     }
 
     /** 释放资源 */

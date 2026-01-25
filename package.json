@@ -189,13 +189,13 @@
         "icon": "$(split-horizontal)"
       },
       {
-        "command": "issueManager.pinRelatedView",
-        "title": "锁定相关联问题视图",
+        "command": "issueManager.pinRelatedNode",
+        "title": "置顶此节点",
         "icon": "$(pin)"
       },
       {
-        "command": "issueManager.unpinRelatedView",
-        "title": "解锁相关联问题视图",
+        "command": "issueManager.unpinRelatedNode",
+        "title": "取消置顶",
         "icon": "$(pinned)"
       },
       {
@@ -665,16 +665,6 @@
           "title": "排序方式"
         },
         {
-          "command": "issueManager.pinRelatedView",
-          "when": "view == issueManager.views.related && !issueManager.relatedViewPinned",
-          "group": "navigation@99"
-        },
-        {
-          "command": "issueManager.unpinRelatedView",
-          "when": "view == issueManager.views.related && issueManager.relatedViewPinned",
-          "group": "navigation@99"
-        },
-        {
           "command": "issueManager.rss.addFeed",
           "when": "view == issueManager.views.rss",
           "group": "navigation@1"
@@ -830,6 +820,16 @@
           "command": "issueManager.pinFocus",
           "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /focusedNode/",
           "group": "modification@3"
+        },
+        {
+          "command": "issueManager.pinRelatedNode",
+          "when": "view == 'issueManager.views.related' && viewItem =~ /relatedNode/ && !(viewItem =~ /pinnedNode/)",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.unpinRelatedNode",
+          "when": "view == 'issueManager.views.related' && viewItem =~ /relatedNode.*pinnedNode/",
+          "group": "inline"
         },
         {
           "command": "issueManager.disassociateIssue",
