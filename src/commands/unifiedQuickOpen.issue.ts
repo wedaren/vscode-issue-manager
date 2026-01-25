@@ -4,6 +4,7 @@ import { getFlatTree, getIssueNodeById } from "../data/issueTreeManager";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 import { buildIssueActionItems, ActionQuickPickItem } from "./selectOrCreateIssue";
 import { openIssueNode } from "./openIssueNode";
+import { HistoryService } from "./unifiedQuickOpen.history.service";
 
 /**
  * 将 selectOrCreateIssue 返回的 actionItems 转换为 QuickPickItemWithId
@@ -129,11 +130,18 @@ export async function handleIssueModeValueChange(
  */
 export async function handleIssueModeAccept(
     selected: QuickPickItemWithId,
-    value: string
+    value: string,
+    historyService?: HistoryService
 ): Promise<boolean> {
+    // 记录历史
+    const shouldRecord = value && value.trim();
+    
     // 如果有 execute 回调，执行它
     if (selected.execute) {
         await selected.execute(value);
+        if (historyService && shouldRecord) {
+            await historyService.addHistory('issue', value);
+        }
         return true;
     }
     
@@ -146,6 +154,9 @@ export async function handleIssueModeAccept(
                 node,
                 "overview"
             );
+            if (historyService && shouldRecord) {
+                await historyService.addHistory('issue', value);
+            }
             return true;
         } catch (e) {
             await vscode.commands.executeCommand(
