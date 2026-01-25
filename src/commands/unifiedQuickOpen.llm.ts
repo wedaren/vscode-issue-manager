@@ -4,6 +4,7 @@ import { getAllPrompts } from "../data/IssueMarkdowns";
 import { getIssueNodeById } from "../data/issueTreeManager";
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
 import { runTemplateAndShowDiff, runTemplateForIssueUri } from "../llm/runAndShowDiff";
+import { HistoryService } from "./unifiedQuickOpen.history.service";
 
 /**
  * 创建 LLM 模板列表项
@@ -87,7 +88,8 @@ export async function enterLLMMode(
  */
 export async function handleLLMModeAccept(
     selected: QuickPickItemWithId,
-    value: string
+    value: string,
+    historyService?: HistoryService
 ): Promise<boolean> {
     // 必须是模板或自定义项
     if (!selected.template && !selected.isCustom) {
@@ -132,6 +134,11 @@ export async function handleLLMModeAccept(
             console.error('LLM 模板执行失败 (后台任务)', err);
             vscode.window.showErrorMessage('LLM 模板执行失败');
         });
+        
+        // 记录历史（使用模板的 label）
+        if (historyService && selected.label) {
+            await historyService.addHistory('llm', selected.label);
+        }
     } catch (e) {
         console.error('LLM 模板执行失败', e);
         vscode.window.showErrorMessage('LLM 模板执行失败');

@@ -3,6 +3,7 @@ import { QuickPickItemWithId } from "./unifiedQuickOpen.types";
 import { getAllIssueMarkdowns, getIssueMarkdownTitleFromCache } from "../data/IssueMarkdowns";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "./openIssueNode";
+import { HistoryService } from "./unifiedQuickOpen.history.service";
 
 type SortBy = "mtime" | "ctime" | "vtime";
 
@@ -87,7 +88,8 @@ export async function handleTimeModeValueChange(
 export async function handleTimeModeAccept(
     selected: QuickPickItemWithId,
     value: string,
-    sortBy: SortBy = "mtime"
+    sortBy: SortBy = "mtime",
+    historyService?: HistoryService
 ): Promise<boolean> {
     const fileUri = selected.fileUri;
     if (!fileUri) return false;
@@ -97,11 +99,19 @@ export async function handleTimeModeAccept(
         if (!nodes || nodes.length === 0) {
             const doc = await vscode.workspace.openTextDocument(fileUri);
             await vscode.window.showTextDocument(doc, { preview: true });
+            // 记录历史（使用文件标题）
+            if (historyService && selected.label) {
+                await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+            }
             return true;
         }
 
         if (nodes.length === 1) {
             await openIssueNode(nodes[0].id);
+            // 记录历史
+            if (historyService && selected.label) {
+                await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+            }
             return true;
         }
 
@@ -115,6 +125,10 @@ export async function handleTimeModeAccept(
         const pick = await vscode.window.showQuickPick(items, { placeHolder: "选择要打开的 Issue 节点" });
         if (!pick) return true;
         await openIssueNode(pick.id || "");
+        // 记录历史
+        if (historyService && selected.label) {
+            await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+        }
         return true;
     } catch (e) {
         console.error("handleTimeModeAccept error:", e);

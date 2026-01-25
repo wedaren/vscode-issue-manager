@@ -10,6 +10,7 @@ import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
 import { backgroundFillIssue } from "../llm/backgroundFill";
 import { openIssueNodeBeside } from "./openIssueNode";
 import { createIssueNodes } from "../data/issueTreeManager";
+import { HistoryService } from "./unifiedQuickOpen.history.service";
 
 function buildPromptWithContent(currentEditorContent: string, template?: string) {
     if (!template) {
@@ -170,10 +171,15 @@ export async function handleCreateModeValueChange(
 
 export async function handleCreateModeAccept(
     selected: QuickPickItemWithId,
-    value: string
+    value: string,
+    historyService?: HistoryService
 ): Promise<boolean> {
     if (selected.execute) {
-        selected.execute(value);
+        await selected.execute(value);
+        // 记录历史
+        if (historyService && value) {
+            await historyService.addHistory('create', value);
+        }
         return true;
     }
     return false;

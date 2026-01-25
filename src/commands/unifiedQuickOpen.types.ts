@@ -28,7 +28,7 @@ export type QuickPickItemWithId = vscode.QuickPickItem & {
 /**
  * 支持的模式类型
  */
-export type Mode = "command" | "issue" | "llm" | "create" | "mtime" | "ctime" | "vtime";
+export type Mode = "command" | "issue" | "llm" | "create" | "mtime" | "ctime" | "vtime"| "history";
 
 /**
  * 统一入口接受的初始参数类型
