@@ -7,6 +7,7 @@ export type IssueMarkdownCacheEntry = {
   mtime: number;
   frontmatter?: Record<string, unknown> | null;
   title?: string;
+  vtime?: number; // 视图时间：最后在编辑器中打开的时间，默认为 mtime
 };
 
 const CACHE_DIR_NAME = '.issueManager';
@@ -68,6 +69,14 @@ export async function load(): Promise<Record<string, IssueMarkdownCacheEntry> | 
     const bytes = await vscode.workspace.fs.readFile(fileUri);
     const text = Buffer.from(bytes).toString('utf8');
     const obj = JSON.parse(text) as Record<string, IssueMarkdownCacheEntry>;
+    
+    // 迁移逻辑：为没有 vtime 的旧缓存条目设置初始值
+    for (const entry of Object.values(obj)) {
+      if (entry.vtime === undefined && entry.mtime !== undefined) {
+        entry.vtime = entry.mtime;
+      }
+    }
+    
     return obj;
   } catch (e) {
     return undefined;

@@ -7,6 +7,8 @@ import { IViewRegistryResult, InitializationPhase } from './interfaces';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { EditorContextService } from '../services/EditorContextService';
+import { EditorEventManager } from '../services/EditorEventManager';
+import { updateIssueVtime } from '../data/IssueMarkdowns';
 
 const INITIALIZATION_RETRY_DELAY_MS = 2000;
 
@@ -99,6 +101,14 @@ export class ExtensionInitializer {
             this.logger.info('⚙️ 步骤 2/4: 初始化核心服务...');
             await this.initializeServicesSafely();
             EditorContextService.initialize(this.context);
+            
+            // 初始化编辑器事件管理器并订阅 vtime 更新
+            EditorEventManager.initialize(this.context);
+            const vtimeSubscription = EditorEventManager.getInstance()
+                .onIssueFileActivated((uri) => {
+                    updateIssueVtime(uri);
+                });
+            this.context.subscriptions.push(vtimeSubscription);
 
             // 3. 注册所有视图
             this.logger.info('📊 步骤 3/4: 注册视图组件...');

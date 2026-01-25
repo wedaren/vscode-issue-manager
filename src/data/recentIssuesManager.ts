@@ -15,6 +15,8 @@ export interface RecentIssueStats {
   mtime: Date;
   /** 创建时间 */
   ctime: Date;
+  /** 最后查看时间 */
+  vtime?: Date;
   /** 是否为孤立问题（未在问题树中建立关系） */
   isIsolated: boolean;
   /** 文件 URI */
@@ -41,7 +43,7 @@ export interface IssueGroup {
 /**
  * 排序方式
  */
-export type SortOrder = 'mtime' | 'ctime';
+export type SortOrder = 'mtime' | 'ctime' | 'vtime';
 
 // ========== 常量定义 ========== //
 
@@ -79,6 +81,7 @@ export async function getRecentIssuesStats(
         filePath,
         mtime: new Date(issue.mtime),
         ctime: new Date(issue.ctime),
+        vtime: issue.vtime ? new Date(issue.vtime) : undefined,
         isIsolated,
         uri: issue.uri,
       };
@@ -151,7 +154,14 @@ export function groupIssuesByTime(
 
   // 将文件分配到对应的分组
   for (const file of files) {
-    const fileDate = sortBy === 'mtime' ? file.mtime : file.ctime;
+    let fileDate: Date;
+    if (sortBy === 'vtime') {
+      fileDate = file.vtime ?? file.mtime;
+    } else if (sortBy === 'mtime') {
+      fileDate = file.mtime;
+    } else {
+      fileDate = file.ctime;
+    }
     
     for (const group of groupDefinitions) {
       if (group.test(fileDate)) {
@@ -184,7 +194,14 @@ export function groupByDay(
   const filesByDay = new Map<string, RecentIssueStats[]>();
 
   for (const file of files) {
-    const fileDate = sortBy === 'mtime' ? file.mtime : file.ctime;
+    let fileDate: Date;
+    if (sortBy === 'vtime') {
+      fileDate = file.vtime ?? file.mtime;
+    } else if (sortBy === 'mtime') {
+      fileDate = file.mtime;
+    } else {
+      fileDate = file.ctime;
+    }
     const dayKey = formatDateWithWeekday(fileDate);
 
     if (!filesByDay.has(dayKey)) {
@@ -235,7 +252,14 @@ export function groupByWeek(
   const otherWeeks = new Map<string, RecentIssueStats[]>();
 
   for (const file of files) {
-    const fileDate = sortBy === 'mtime' ? file.mtime : file.ctime;
+    let fileDate: Date;
+    if (sortBy === 'vtime') {
+      fileDate = file.vtime ?? file.mtime;
+    } else if (sortBy === 'mtime') {
+      fileDate = file.mtime;
+    } else {
+      fileDate = file.ctime;
+    }
 
     let matched = false;
     for (const group of weekGroups) {

@@ -4,10 +4,17 @@ import { getAllIssueMarkdowns, getIssueMarkdownTitleFromCache } from "../data/Is
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "./openIssueNode";
 
-type SortBy = "mtime" | "ctime";
+type SortBy = "mtime" | "ctime" | "vtime";
 
-function toItem(m: { title: string; uri: vscode.Uri; mtime: number; ctime: number }, sortBy: SortBy) {
-    const time = sortBy === "mtime" ? m.mtime : m.ctime;
+function toItem(m: { title: string; uri: vscode.Uri; mtime: number; ctime: number; vtime?: number }, sortBy: SortBy) {
+    let time: number;
+    if (sortBy === "vtime") {
+        time = m.vtime ?? m.mtime;
+    } else if (sortBy === "mtime") {
+        time = m.mtime;
+    } else {
+        time = m.ctime;
+    }
     const desc = new Date(time).toLocaleString() || "Unknown";
     return {
         label: m.title,

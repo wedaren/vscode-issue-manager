@@ -41,6 +41,7 @@ export interface FlatTreeNode extends IssueNode {
     resourceUri: vscode.Uri;
     mtime: number;
     ctime: number;
+    vtime?: number;
 }
 
 /**
@@ -75,12 +76,14 @@ export async function getFlatTree(): Promise<FlatTreeNode[]> {
             const title = issue ? issue.title : "不合法 issueMarkdown";
             const ctime = issue ? issue.ctime : 0;
             const mtime = issue ? issue.mtime : 0;
+            const vtime = issue?.vtime;
             // 创建 FlatTreeNode，parentPath 指向已创建的父节点（即 FlatTreeNode 类型）
             const flatNode: FlatTreeNode = {
                 ...node,
                 title,
                 ctime,
                 mtime,
+                vtime,
                 parentPath: [...parents],
                 resourceUri: node.resourceUri,
             };

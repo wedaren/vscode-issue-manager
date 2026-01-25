@@ -151,6 +151,10 @@
         "title": "按修改时间排序"
       },
       {
+        "command": "issueManager.setRecentSort.vtime",
+        "title": "按访问时间排序"
+      },
+      {
         "command": "issueManager.copyFilename",
         "title": "复制文件名",
         "icon": "$(file-symlink-file)",
@@ -768,6 +772,10 @@
         {
           "command": "issueManager.setRecentSort.mtime",
           "group": "1_sort@2"
+        },
+        {
+          "command": "issueManager.setRecentSort.vtime",
+          "group": "1_sort@3"
         }
       ],
       "view/item/context": [
