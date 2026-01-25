@@ -42,6 +42,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   private viewMode: ViewMode;
   private sortOrder: SortOrder = 'ctime';
   private itemCache = new Map<string, vscode.TreeItem>();
+  private dataCache: { issues: RecentIssueStats[], groups: IssueGroup[] } | null = null;
 
   constructor(private context: vscode.ExtensionContext) {
     this.viewMode = getRecentIssuesDefaultMode();
@@ -117,7 +118,21 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    */
   refresh(): void {
     this.itemCache.clear();
+    this.dataCache = null;
     this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * 获取或加载数据（带缓存）
+   */
+  private async getOrLoadData(): Promise<{ issues: RecentIssueStats[], groups: IssueGroup[] }> {
+    if (this.dataCache) {
+      return this.dataCache;
+    }
+    const issues = await getRecentIssuesStats(this.sortOrder);
+    const groups = groupIssuesByTime(issues, this.sortOrder);
+    this.dataCache = { issues, groups };
+    return this.dataCache;
   }
 
   /**
@@ -138,7 +153,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     }
 
     // 根节点：获取所有最近问题
-    const issues = await getRecentIssuesStats(this.sortOrder);
+    const { issues, groups } = await this.getOrLoadData();
     if (!issues || issues.length === 0) { return []; }
 
     if (this.viewMode === 'list') {
@@ -146,7 +161,6 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     }
 
     // 分组模式
-    const groups = groupIssuesByTime(issues, this.sortOrder);
     return groups.map((group: IssueGroup) => 
       new GroupTreeItem(
         group.label, 
@@ -239,7 +253,13 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     const tooltipText = `路径: \`${stat.uri.fsPath}\`\n\n修改时间: ${stat.mtime.toLocaleString()}\n\n创建时间: ${stat.ctime.toLocaleString()}`;
     item.tooltip = new vscode.MarkdownString(tooltipText);
-
+    
+    // 根据排序方式选择时间戳，根据视图模式选择格式
+    const timestamp = this.sortOrder === 'ctime' ? stat.ctime : stat.mtime;
+    item.description = this.viewMode === 'list' 
+      ? timestamp.toLocaleString() 
+      : timestamp.toLocaleTimeString();
+    
     this.itemCache.set(key, item);
     return item;
   }
@@ -253,7 +273,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const cached = this.itemCache.get(key);
     if (cached) { return cached; }
 
-    const issues = await getRecentIssuesStats(this.sortOrder);
+    const { issues } = await this.getOrLoadData();
     const matched = issues.find((i: RecentIssueStats) => this.makeCacheKey(i.uri) === key);
     if (!matched) { return null; }
 
@@ -267,11 +287,8 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     // 在 list 模式下没有分组父元素
     if (this.viewMode === 'list') { return null; }
 
-    const issues = await getRecentIssuesStats(this.sortOrder);
+    const { issues, groups } = await this.getOrLoadData();
     if (!issues || issues.length === 0) { return null; }
-
-    // 顶层分组
-    const groups = groupIssuesByTime(issues, this.sortOrder);
 
     // 如果是分组节点，查找其父分组
     if (element instanceof GroupTreeItem) {

@@ -228,7 +228,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
             await vscode.commands.executeCommand('issueManager.views.recent.focus');
 
             // recentIssuesProvider 需要提供按 uri 查找元素的能力
-            const element = await (this.recentIssuesProvider as any).getElementByUri?.(uri);
+            const element = await this.recentIssuesProvider?.getElementByUri?.(uri);
             if (!element) { vscode.window.showInformationMessage('未在最近问题中找到对应项'); return; }
 
             try {
