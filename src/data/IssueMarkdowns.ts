@@ -116,6 +116,8 @@ export type IssueMarkdown = {
     // 文件的修改时间与创建时间（来自 vscode.workspace.fs.stat）
     mtime: number;
     ctime: number;
+    // 视图时间：最后在编辑器中打开的时间，用于按访问时间排序
+    vtime?: number;
 };
 
 /**
@@ -153,6 +155,7 @@ export async function getIssueMarkdown(
                 frontmatter: cached.frontmatter ?? null,
                 mtime: cached.mtime,
                 ctime,
+                vtime: cached.vtime ?? mtime,
             };
         }
 
@@ -174,12 +177,13 @@ export async function getIssueMarkdown(
             mtime,
             frontmatter: frontmatter ?? null,
             title,
+            vtime: cached?.vtime ?? mtime, // 保留已有的 vtime 或使用 mtime
         };
         _issueMarkdownCache.set(key, entry);
         scheduleOnDidUpdate();
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
 
-        return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime };
+        return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime, vtime: entry.vtime };
     } catch (err) {
         _issueMarkdownCache.delete(key);
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
@@ -189,11 +193,12 @@ export async function getIssueMarkdown(
 
 /**
  * 获取问题目录中所有 Markdown 文件的标题和 URI（并行加载）。
- * - 默认按文件修改时间 `mtime` 降序（最近更新的排在前面）；可通过 `sortBy: "ctime"` 改为按创建时间降序。
- * - 参数：`{ sortBy?: "mtime" | "ctime" }`，默认 `{ sortBy: "mtime" }`。
+ * - 默认按文件修改时间 `mtime` 降序（最近更新的排在前面）；可通过 `sortBy` 参数改为其他排序方式。
+ * - 参数：`{ sortBy?: "mtime" | "ctime" | "vtime" }`，默认 `{ sortBy: "mtime" }`。
+ * - `"vtime"` 按最后查看时间排序，适合按访问频率排列。
  */
 export async function getAllIssueMarkdowns(
-    { sortBy = "mtime" }: { sortBy?: "mtime" | "ctime" } = {}
+    { sortBy = "mtime" }: { sortBy?: "mtime" | "ctime" | "vtime" } = {}
 ): Promise<IssueMarkdown[]> {
     const issueDir = getIssueDir();
     if (!issueDir) return [];
@@ -219,6 +224,7 @@ export async function getAllIssueMarkdowns(
 
     return issues.sort((a, b) => {
         if (sortBy === "ctime") return b.ctime - a.ctime;
+        if (sortBy === "vtime") return (b.vtime ?? b.mtime) - (a.vtime ?? a.mtime);
         return b.mtime - a.mtime; 
     });
 }
@@ -483,6 +489,52 @@ function scheduleOnDidUpdate(): void {
 }
 
 export const onTitleUpdate = onTitleUpdateEmitter.event;
+
+// -------------------- vtime (View Time) management --------------------
+
+let _cacheSaveTimer: ReturnType<typeof setTimeout> | undefined;
+const CACHE_SAVE_DELAY_MILLIS = 2000; // 2秒防抖，避免频繁写盘
+
+/**
+ * 安排缓存保存（防抖）
+ */
+function scheduleCacheSave(): void {
+    if (_cacheSaveTimer) {
+        clearTimeout(_cacheSaveTimer);
+    }
+    _cacheSaveTimer = setTimeout(() => {
+        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        _cacheSaveTimer = undefined;
+    }, CACHE_SAVE_DELAY_MILLIS);
+}
+
+/**
+ * 更新 Issue Markdown 的查看时间（vtime）
+ * 当文件在编辑器中被打开或激活时调用此函数
+ * @param uriOrPath 文件 URI 或路径
+ * @returns 是否更新成功
+ */
+export function updateIssueVtime(uriOrPath: vscode.Uri | string): boolean {
+    const uri = resolveIssueUri(uriOrPath);
+    if (!uri) return false;
+    
+    const key = uri.fsPath;
+    const cached = _issueMarkdownCache.get(key);
+    if (!cached) {
+        // 如果缓存中没有，触发异步加载（不阻塞）
+        void getIssueMarkdown(uri);
+        return false;
+    }
+    
+    const now = Date.now();
+    cached.vtime = now;
+    _issueMarkdownCache.set(key, cached);
+    
+    scheduleOnDidUpdate(); // 触发更新事件
+    scheduleCacheSave(); // 安排保存缓存
+    
+    return true;
+}
 
 // -------------------- Prompt management (migrated from src/prompts/PromptManager.ts) --------------------
 export interface PromptFile {

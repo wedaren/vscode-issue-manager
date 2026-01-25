@@ -12,6 +12,7 @@ const MODE_DISPLAY: Record<Mode, { icon: string; label: string }> = {
     create: { icon: 'add', label: '新建问题' },
     mtime: { icon: 'history', label: '按修改时间' },
     ctime: { icon: 'history', label: '按创建时间' },
+    vtime: { icon: 'history', label: '按查看时间' },
     history: { icon: 'clock', label: '历史搜索' },
 };
 

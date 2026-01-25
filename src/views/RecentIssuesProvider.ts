@@ -74,6 +74,9 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       vscode.commands.registerCommand('issueManager.setRecentSort.mtime', () => {
         this.setSortOrder('mtime');
       }),
+      vscode.commands.registerCommand('issueManager.setRecentSort.vtime', () => {
+        this.setSortOrder('vtime');
+      }),
       vscode.commands.registerCommand('issueManager.openAndViewRelatedIssues', async (uri: vscode.Uri) => {
         try {
           await vscode.window.showTextDocument(uri);

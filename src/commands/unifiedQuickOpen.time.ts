@@ -5,10 +5,17 @@ import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "./openIssueNode";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
 
-type SortBy = "mtime" | "ctime";
+type SortBy = "mtime" | "ctime" | "vtime";
 
-function toItem(m: { title: string; uri: vscode.Uri; mtime: number; ctime: number }, sortBy: SortBy) {
-    const time = sortBy === "mtime" ? m.mtime : m.ctime;
+function toItem(m: { title: string; uri: vscode.Uri; mtime: number; ctime: number; vtime?: number }, sortBy: SortBy) {
+    let time: number;
+    if (sortBy === "vtime") {
+        time = m.vtime ?? m.mtime;
+    } else if (sortBy === "mtime") {
+        time = m.mtime;
+    } else {
+        time = m.ctime;
+    }
     const desc = new Date(time).toLocaleString() || "Unknown";
     return {
         label: m.title,
@@ -33,7 +40,14 @@ export async function enterTimeMode(
         const items: QuickPickItemWithId[] = [];
         let lastGroup: string | null = null;
         for (const it of issues) {
-            const time = sortBy === "mtime" ? it.mtime : it.ctime;
+            let time: number;
+            if (sortBy === "vtime") {
+                time = it.vtime ?? it.mtime;
+            } else if (sortBy === "mtime") {
+                time = it.mtime;
+            } else {
+                time = it.ctime;
+            }
             let group: string;
             if (time) {
                 const d = new Date(time);
@@ -94,7 +108,7 @@ export async function handleTimeModeAccept(
             await vscode.window.showTextDocument(doc, { preview: true });
             // 记录历史（使用文件标题）
             if (historyService && selected.label) {
-                await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+                await historyService.addHistory(sortBy, selected.label);
             }
             return true;
         }
@@ -103,7 +117,7 @@ export async function handleTimeModeAccept(
             await openIssueNode(nodes[0].id);
             // 记录历史
             if (historyService && selected.label) {
-                await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+                await historyService.addHistory(sortBy, selected.label);
             }
             return true;
         }
@@ -120,7 +134,7 @@ export async function handleTimeModeAccept(
         await openIssueNode(pick.id || "");
         // 记录历史
         if (historyService && selected.label) {
-            await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+            await historyService.addHistory(sortBy, selected.label);
         }
         return true;
     } catch (e) {
