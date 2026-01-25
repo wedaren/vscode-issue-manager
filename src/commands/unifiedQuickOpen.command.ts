@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { QuickPickItemWithId, filterItems } from "./unifiedQuickOpen.types";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 import { getIssueNodeById } from "../data/issueTreeManager";
+import { HistoryService } from "./unifiedQuickOpen.history.service";
 
 /**
  * 命令模式的所有命令项定义
@@ -11,7 +12,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "生成项目名",
         description: "基于活动编辑器内容生成项目名并复制",
         execute: async () => {
-            await vscode.commands.executeCommand(
+            vscode.commands.executeCommand(
                 "issueManager.generateProjectName"
             );
         },
@@ -20,7 +21,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "插入 marks 到当前编辑器",
         description: "将当前任务的 marks 插入到当前活动编辑器",
         execute: async () => {
-            await vscode.commands.executeCommand(
+            vscode.commands.executeCommand(
                 "issueManager.marker.insertMarksToActiveEditor"
             );
         },
@@ -29,7 +30,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "生成 Git 分支名",
         description: "基于活动编辑器内容生成 git 分支名并复制",
         execute: async () => {
-            await vscode.commands.executeCommand(
+            vscode.commands.executeCommand(
                 "issueManager.generateGitBranchName"
             );
         },
@@ -39,7 +40,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "从当前编辑器对应的 IssueNode 下创建子问题",
         require: ctx => !!ctx.issueId,
         execute: async () => {
-            await vscode.commands.executeCommand(
+            vscode.commands.executeCommand(
                 "issueManager.createSubIssueFromEditor"
             );
         },
@@ -49,7 +50,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "为当前编辑器的 IssueMarkdown 生成 IssueTitle",
         require: ctx => !!ctx.issueId,
         execute: async () => {
-            await vscode.commands.executeCommand(
+            vscode.commands.executeCommand(
                 "issueManager.generateTitleCommand"
             );
         },
@@ -59,7 +60,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
         require: ctx => !!ctx.issueId,
         execute: async () => {
-            await vscode.commands.executeCommand("issueManager.copyFilename");
+            vscode.commands.executeCommand("issueManager.copyFilename");
         },
     },
     {
@@ -67,7 +68,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "复制当前编辑器中的 IssueNode ID 到剪贴板",
         require: ctx => !!ctx.issueId,
         execute: async () => {
-            await vscode.commands.executeCommand("issueManager.copyIssueId");
+            vscode.commands.executeCommand("issueManager.copyIssueId");
         },
     },
     {
@@ -75,7 +76,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "在问题总览中定位当前编辑器对应的 IssueNode",
         require: ctx => !!ctx.issueId,
         execute: async () => {
-            await vscode.commands.executeCommand(
+            vscode.commands.executeCommand(
                 "issueManager.revealInOverviewFromEditor"
             );
         },
@@ -85,7 +86,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "在最近问题视图中定位当前编辑器对应的文件（若存在）",
         require: ctx => !!ctx.uri,
         execute: async () => {
-            await vscode.commands.executeCommand("issueManager.revealInRecentFromEditor");
+            vscode.commands.executeCommand("issueManager.revealInRecentFromEditor");
         },
     },
     {
@@ -93,7 +94,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         description: "将当前 IssueNode 加入关注列表",
         require: ctx => !!ctx.issueId,
         execute: async () => {
-            await vscode.commands.executeCommand(
+            vscode.commands.executeCommand(
                 "issueManager.addToFocusedViewFromEditor"
             );
         },
@@ -177,10 +178,15 @@ export async function handleCommandModeValueChange(
  */
 export async function handleCommandModeAccept(
     selected: QuickPickItemWithId,
-    value: string
+    value: string,
+    historyService?: HistoryService
 ): Promise<boolean> {
     if (selected.execute) {
-        selected.execute(value);
+        await selected.execute(value);
+        // 记录历史
+        if (historyService && value) {
+            await historyService.addHistory('command', value);
+        }
         return true;
     }
     return false;

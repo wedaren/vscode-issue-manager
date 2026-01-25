@@ -24,6 +24,13 @@ import {
     handleCreateModeValueChange,
     handleCreateModeAccept,
 } from "./unifiedQuickOpen.create";
+import {
+    enterHistoryMode,
+    handleHistoryModeValueChange,
+    handleHistoryModeAccept,
+    handleHistoryItemButton,
+} from "./unifiedQuickOpen.history";
+import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 
 /**
@@ -78,6 +85,14 @@ const MODE_CONFIG = {
         icon: 'history',
         tooltip: '按 ctime 列出问题',
     },
+    history: {
+        mode: 'history' as Mode,
+        prefix: 'history',
+        label: '历史搜索',
+        description: '查看和复用历史搜索记录',
+        icon: 'clock',
+        tooltip: '切换到历史搜索模式',
+    },
 } as const;
 
 /**
@@ -100,6 +115,9 @@ function createHelpItems(enterMode: (mode: Mode, text?: string) => Promise<void>
 }
 
 export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext) {
+    // 创建历史服务实例
+    const historyService = new HistoryService(context);
+
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "issueManager.unifiedQuickOpen",
@@ -127,6 +145,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     modeButtons.command,
                     modeButtons.issue,
                     modeButtons.create,
+                    modeButtons.history,  // 新增
                     modeButtons.mtime,
                     modeButtons.ctime,
                     helpButton
@@ -140,7 +159,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 // 不在主文件维护 currentEditorIssueId，交由各模式按需获取
                 // 解析初始请求
                 const initialRequest: InitialArg | undefined = initialArg;
-                const wantsInlineMode = !!(initialRequest && ["issue", "llm", "create", "mtime", "ctime"].includes(initialRequest.mode || ''));
+                const wantsInlineMode = !!(initialRequest && ["issue", "llm", "create", "mtime", "ctime", "history"].includes(initialRequest.mode || ''));
 
                 // 模式切换函数（不再接受 text 参数，调用处需在调用前设置 quickPick.value）
                 const enterMode = async (mode: Mode) => {
@@ -151,23 +170,29 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         modeButtons.command,
                         modeButtons.issue,
                         modeButtons.create,
+                        modeButtons.history,  // 新增
                         modeButtons.mtime,
                         modeButtons.ctime,
                         helpButton
                     ];
 
+                    // 保存当前的 value，以便传递给各模式
+                    const currentValue = quickPick.value || "";
+
                     if (mode === 'command') {
                         await enterCommandMode(quickPick);
                     } else if (mode === 'issue') {
-                        await enterIssueMode(quickPick);
+                        await enterIssueMode(quickPick, currentValue);
                     } else if (mode === 'llm') {
-                        await enterLLMMode(quickPick);
+                        await enterLLMMode(quickPick, currentValue);
                     } else if (mode === 'create') {
-                        await enterCreateMode(quickPick);
+                        await enterCreateMode(quickPick, currentValue);
+                    } else if (mode === 'history') {
+                        await enterHistoryMode(quickPick, historyService, currentValue);
                     } else if (mode === 'mtime') {
-                        await enterTimeMode(quickPick, "", "mtime");
+                        await enterTimeMode(quickPick, currentValue, "mtime");
                     } else if (mode === 'ctime') {
-                        await enterTimeMode(quickPick, "", "ctime");
+                        await enterTimeMode(quickPick, currentValue, "ctime");
                     }
                     
                     suppressChange = false;
@@ -185,6 +210,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         modeButtons.command,
                         modeButtons.issue,
                         modeButtons.create,
+                        modeButtons.history,  // 新增
                         modeButtons.mtime,
                         modeButtons.ctime,
                         helpButton
@@ -219,6 +245,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         quickPick.value = text;
                         await enterMode("ctime");
                     },
+                    [MODE_CONFIG.history.prefix]: async (text: string) => {
+                        quickPick.value = text;
+                        await enterMode("history");
+                    },
                     "?": async (text: string) => openHelpInQuickPick(text),
                 };
 
@@ -248,6 +278,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterTimeMode(quickPick, initialRequest?.text || "", "mtime");
                     } else if (currentMode === 'ctime') {
                         await enterTimeMode(quickPick, initialRequest?.text || "", "ctime");
+                    } else if (currentMode === 'history') {
+                        await enterHistoryMode(quickPick, historyService, initialRequest?.text || "");
                     }
                     suppressChange = false;
                 } else {
@@ -283,6 +315,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     } else if (btn === modeButtons.ctime) {
                         quickPick.value = "";
                         await enterMode("ctime");
+                    } else if (btn === modeButtons.history) {
+                        quickPick.value = "";
+                        await enterMode("history");
                     } else if (btn === helpButton) {
                         openHelpInQuickPick("");
                     }
@@ -290,6 +325,12 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                 // 处理 item 上的按钮（例如在 LLM 模板项上可能包含打开文件的按钮）
                 quickPick.onDidTriggerItemButton && quickPick.onDidTriggerItemButton(async e => {
+                    // 如果是历史模式，处理删除按钮
+                    if (currentMode === 'history') {
+                        await handleHistoryItemButton(e.item, historyService, quickPick);
+                        return;
+                    }
+
                     const fileUri = (e.item as QuickPickItemWithId).fileUri;
                     if (!fileUri) {
                         return;
@@ -377,6 +418,8 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await handleTimeModeValueChange(quickPick, v, 'mtime');
                     } else if (currentMode === 'ctime') {
                         await handleTimeModeValueChange(quickPick, v, 'ctime');
+                    } else if (currentMode === 'history') {
+                        await handleHistoryModeValueChange(quickPick, historyService, v);
                     }
                     // LLM 模式下不需要处理值变化
                 });
@@ -408,17 +451,26 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     let handled = false;
                     
                     if (currentMode === 'command') {
-                        handled = await handleCommandModeAccept(selected, quickPick.value);
+                        handled = await handleCommandModeAccept(selected, quickPick.value, historyService);
                     } else if (currentMode === 'issue') {
-                        handled = await handleIssueModeAccept(selected, quickPick.value);
+                        handled = await handleIssueModeAccept(selected, quickPick.value, historyService);
                     } else if (currentMode === 'llm') {
-                        handled = await handleLLMModeAccept(selected, quickPick.value);
+                        handled = await handleLLMModeAccept(selected, quickPick.value, historyService);
                     } else if (currentMode === 'create') {
-                        handled = await handleCreateModeAccept(selected, quickPick.value);
+                        handled = await handleCreateModeAccept(selected, quickPick.value, historyService);
+                    } else if (currentMode === 'history') {
+                        const result = await handleHistoryModeAccept(selected, quickPick.value);
+                        if (result.handled && result.mode && result.value !== undefined) {
+                            // 切换到对应模式并填充值
+                            quickPick.value = result.value;
+                            await enterMode(result.mode);
+                            return; // 不关闭 QuickPick
+                        }
+                        handled = result.handled;
                     } else if (currentMode === 'mtime') {
-                        handled = await handleTimeModeAccept(selected, quickPick.value, 'mtime');
+                        handled = await handleTimeModeAccept(selected, quickPick.value, 'mtime', historyService);
                     } else if (currentMode === 'ctime') {
-                        handled = await handleTimeModeAccept(selected, quickPick.value, 'ctime');
+                        handled = await handleTimeModeAccept(selected, quickPick.value, 'ctime', historyService);
                     }
 
                     if (handled) {
