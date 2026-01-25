@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { MarkerManager, MarkerItem, MarkerTask } from './MarkerManager';
-import { getIssueTitle, getIssueTitleSync } from '../data/issueTreeManager';
+import { getIssueTitle, getIssueTitleFromCache } from '../data/issueTreeManager';
 
 /**
  * TreeView 节点类型
@@ -9,7 +9,7 @@ type MarkerTreeItem = CurrentTaskItem | ArchivedTaskItem | MarkerItemTreeItem;
 
 function currentTaskLabel(task: MarkerTask): string {
     if (task.associatedIssueId) {
-        const issueTitle = getIssueTitleSync(task.associatedIssueId);
+        const issueTitle = getIssueTitleFromCache(task.associatedIssueId);
         return `当前任务（${issueTitle}）`;
     }
     return '当前任务';
