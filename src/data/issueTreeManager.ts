@@ -199,20 +199,25 @@ const cache: IssueDataCache = { mtime: 0, ...createDefaultIssueDataStore() };
  * @param issueOrId - Issue 的 id（或带 focused 后缀的 id），或 IssueNode 对象
  * @returns 对应的 issue 标题，或表示未知 Issue 的占位字符串
  */
-export function getIssueTitleFromCache(issueOrId: string | IssueNode) {
-    if (typeof issueOrId === "string") {
-        const realId = stripFocusedId(issueOrId);
-        const issueNode = cache.issueIdMap.get(realId);
-        return issueNode?.resourceUri
-            ? getIssueMarkdownTitleFromCache(issueNode.filePath)
-            : "[Unknown Issue: " + realId + "]";
-    }
+export function getIssueTitleFromCache(issueOrId: string | IssueNode): string {
+    let uri;
+    if (typeof issueOrId === "string") {  
+        const realId = stripFocusedId(issueOrId);  
+        const issueNode = cache.issueIdMap.get(realId);  
+        if (issueNode?.resourceUri) {  
+            uri = issueNode.resourceUri;  
+        } else {  
+            return "[Unknown Issue: " + realId + "]";  
+        }  
+    } else if (isIssueNode(issueOrId)) {  
+        uri = issueOrId.resourceUri;  
+    }  
 
-    if (isIssueNode(issueOrId)) {
-        return getIssueMarkdownTitleFromCache(issueOrId.filePath);
-    }
+    if (uri) {  
+        return getIssueMarkdownTitleFromCache(uri);  
+    }  
 
-    return "[Unknown Issue]";
+    return "[Unknown Issue]";  
 }
 
 /**
@@ -224,25 +229,28 @@ export function getIssueTitleFromCache(issueOrId: string | IssueNode) {
  * @param issueOrId IssueNode 或节点 id
  * @returns Promise<string>
  */
-export async function getIssueTitle(issueOrId: string | IssueNode): Promise<string> {
-    if (typeof issueOrId === "string") {
-        const realId = stripFocusedId(issueOrId);
-        const { issueIdMap } = await getIssueData();
-        const issueNode = issueIdMap.get(realId);
-        if (issueNode?.resourceUri) {
-            const issue = await getIssueMarkdown(issueNode.filePath);
-            return issue ? issue.title : "不合法 issueMarkdown";
-        }
-        return "[Unknown Issue: " + realId + "]";
-    }
+export async function getIssueTitle(issueOrId: string | IssueNode): Promise<string> {  
+    let uri;
+    if (typeof issueOrId === "string") {  
+        const realId = stripFocusedId(issueOrId);  
+        const { issueIdMap } = await getIssueData();  
+        const issueNode = issueIdMap.get(realId);  
+        if (issueNode?.resourceUri) {  
+            uri = issueNode.resourceUri;  
+        } else {  
+            return "[Unknown Issue: " + realId + "]";  
+        }  
+    } else if (isIssueNode(issueOrId)) {  
+        uri = issueOrId.resourceUri;  
+    }  
 
-    if (isIssueNode(issueOrId)) {
-        const issue = await getIssueMarkdown(issueOrId.filePath);
-        return issue ? issue.title : "不合法 issueMarkdown";
-    }
+    if (uri) {  
+        const issue = await getIssueMarkdown(uri);  
+        return issue ? issue.title : "不合法 issueMarkdown";  
+    }  
 
-    return "[Unknown Issue]";
-}
+    return "[Unknown Issue]";  
+}  
 
 const onIssueTreeUpdateEmitter = new vscode.EventEmitter<void>();
 
