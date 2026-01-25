@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
-import { getCtimeOrNow, getMtimeOrNow } from '../utils/fileUtils';
-import { FileAccessTracker } from '../services/FileAccessTracker';
-import { getAssociatedFiles } from '../data/issueTreeManager';
-import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+
+import { getIssueMarkdownTitleFromCache, getAllIssueMarkdowns } from '../data/IssueMarkdowns';
+import { getIssueNodesBy } from '../data/issueTreeManager';
 
 
 /**
@@ -22,8 +21,6 @@ interface FileStat {
   filePath: string;
   mtime: Date;
   ctime: Date;
-  viewTime?: Date;
-  viewCount: number;
   isIsolated: boolean;
 }
 
@@ -50,16 +47,16 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private viewMode: ViewMode; // 默认值由配置项决定
-  private sortOrder: 'mtime' | 'ctime' | 'viewTime' | 'viewCount' = 'ctime'; // 默认为创建时间
-  private fileStatsCache: FileStat[] | null = null;
-  private fileAccessTracker: FileAccessTracker;
+  private sortOrder: 'mtime' | 'ctime' = 'ctime'; // 默认为创建时间
+  
+  
 
   constructor(private context: vscode.ExtensionContext) {
     // 初始化时根据配置项设置默认模式
     this.viewMode = getRecentIssuesDefaultMode();
 
     // 获取文件访问跟踪服务实例
-    this.fileAccessTracker = FileAccessTracker.getInstance();
+    
 
     this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
       this.setViewMode('grouped');
@@ -77,13 +74,9 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       this.setSortOrder('mtime');
     }));
 
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.viewTime', () => {
-      this.setSortOrder('viewTime');
-    }));
+    
 
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.viewCount', () => {
-      this.setSortOrder('viewCount');
-    }));
+    
 
     this.setSortContext();
     this.setViewModeContext();
@@ -118,7 +111,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 设置排序顺序并刷新视图
    * @param order 排序方式
    */
-  setSortOrder(order: 'mtime' | 'ctime' | 'viewTime' | 'viewCount'): void {
+  setSortOrder(order: 'mtime' | 'ctime'): void {
     this.sortOrder = order;
     this.setSortContext();
     this.refresh();
@@ -136,18 +129,10 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 刷新视图。
    */
   refresh(): void {
-    this.fileStatsCache = null; // 清空缓存
     this._onDidChangeTreeData.fire();
   }
 
-  /**
-   * 获取文件的查看时间
-   * @param filePath 文件路径
-   * @returns 查看时间，如果没有记录则返回undefined
-   */
-  getViewTime(filePath: string): Date | undefined {
-    return this.fileAccessTracker.getLastViewTime(filePath);
-  }
+  
 
   /**
    * 获取树中的每一个项目。
@@ -183,10 +168,18 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       }
     }
 
-    const fileStats = await this.getFileStats();
-    if (!fileStats) {
-      return [];
-    }
+    // 直接使用 getAllIssueMarkdowns 获取 issue 列表并映射为 FileStat
+    let issues = await getAllIssueMarkdowns({ sortBy: this.sortOrder === 'ctime' ? 'ctime' : 'mtime' });
+    if (!issues || issues.length === 0) return [];
+
+    const fileStats: FileStat[] = await Promise.all(issues.map( async issue => {
+      const filePath = issue.uri.fsPath;
+      const file = path.basename(filePath);
+      const mtime = new Date(issue.mtime);
+      const ctime = new Date(issue.ctime);
+      const isIsolated = (await getIssueNodesBy(issue)).length === 0;
+      return { file, filePath, mtime, ctime, isIsolated };
+    }));
 
     if (this.viewMode === 'list') {
       return Promise.all(fileStats.map(fileStat => this.createFileTreeItem(fileStat)));
@@ -202,70 +195,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 从缓存或文件系统获取文件统计信息。
    * @returns FileStat 数组或 null
    */
-  private async getFileStats(): Promise<FileStat[] | null> {
-    if (this.fileStatsCache) {
-      return this.fileStatsCache;
-    }
-
-    const issueDir = getIssueDir();
-    if (!issueDir) {
-      return null;
-    }
-
-    const associatedFiles = await getAssociatedFiles();
-
-    // 使用 VS Code 的文件系统 API 获取 .md 文件列表，兼容多平台和虚拟文件系统
-    const files: string[] = [];
-    const dirUri = vscode.Uri.file(issueDir);
-    try {
-      for (const [name, type] of await vscode.workspace.fs.readDirectory(dirUri)) {
-        if (type === vscode.FileType.File && name.endsWith('.md')) {
-          files.push(name);
-        }
-      }
-    } catch (error) {
-      console.error(`Error reading issue directory ${issueDir}:`, error);
-      vscode.window.showErrorMessage(`无法读取问题目录: ${issueDir}`);
-      return null;
-    }
-
-    console.log(`Found ${files.length} markdown files in ${issueDir}`);
-    const fileStats: FileStat[] = await Promise.all(
-      files.map(async (file) => {
-        const filePath = path.join(issueDir, file);
-        const ctime = await getCtimeOrNow(vscode.Uri.file(filePath));
-        const mtime = await getMtimeOrNow(vscode.Uri.file(filePath));
-        const viewTime = this.getViewTime(filePath);
-        const accessStats = this.fileAccessTracker.getFileAccessStats(filePath);
-        const viewCount = accessStats ? accessStats.viewCount : 0;
-        const isIsolated = !associatedFiles.has(path.normalize(file));
-        return { file, filePath, mtime, ctime, viewTime, viewCount, isIsolated };
-      })
-    );
-
-    fileStats.sort((a, b) => {
-      if (this.sortOrder === 'viewCount') {
-        return b.viewCount - a.viewCount;
-      }
-      
-      if (this.sortOrder === 'viewTime') {
-        const aHasView = !!a.viewTime;
-        const bHasView = !!b.viewTime;
-        if (aHasView !== bHasView) {
-          // 有查看记录的排在前面 (降序)
-          return aHasView ? -1 : 1;
-        }
-      }
-
-      const timeA = this.getSortTimestamp(a);
-      const timeB = this.getSortTimestamp(b);
-
-      return timeB - timeA; // 降序排序
-    });
-
-    this.fileStatsCache = fileStats;
-    return this.fileStatsCache;
-  }
+  
 
   /**
    * 获取用于排序的时间戳
@@ -278,9 +208,6 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         return file.mtime.getTime();
       case 'ctime':
         return file.ctime.getTime();
-      case 'viewTime':
-        // 对于 viewTime 排序，无记录时使用 mtime 作为后备
-        return (file.viewTime || file.mtime).getTime();
       default:
         return file.ctime.getTime();
     }
@@ -297,12 +224,6 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         return file.mtime;
       case 'ctime':
         return file.ctime;
-      case 'viewTime':
-        // 对于 viewTime 分组，无记录时使用 mtime 作为后备
-        return file.viewTime || file.mtime;
-      case 'viewCount':
-        // 对于 viewCount 分组，使用 mtime 作为后备
-        return file.mtime;
       default:
         return file.ctime;
     }
@@ -408,14 +329,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     // 构建工具提示，包含访问统计信息
     let tooltipText = `路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`;
     
-    const accessStats = this.fileAccessTracker.getFileAccessStats(fileStat.filePath);
-    if (accessStats) {
-      tooltipText += `\n\n最近查看: ${new Date(accessStats.lastViewTime).toLocaleString()}`;
-      tooltipText += `\n\n查看次数: ${accessStats.viewCount}`;
-      if (accessStats.firstViewTime !== accessStats.lastViewTime) {
-        tooltipText += `\n\n首次查看: ${new Date(accessStats.firstViewTime).toLocaleString()}`;
-      }
-    }
+    
     
     item.tooltip = new vscode.MarkdownString(tooltipText);
     
