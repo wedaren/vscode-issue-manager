@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import {  RelatedIssuesProvider } from './RelatedIssuesProvider';
+import {  RelatedIssueNode, RelatedIssuesProvider } from './RelatedIssuesProvider';
 import { onTitleUpdate } from '../data/IssueMarkdowns';
 import { ViewContextManager } from '../services/ViewContextManager';
 import { EditorEventManager } from '../services/EditorEventManager';
@@ -27,14 +27,14 @@ export function registerRelatedIssuesView(context: vscode.ExtensionContext, view
   }
 
   // 注册节点级 pin 命令
-  context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinRelatedNode', async (node) => {
+  context.subscriptions.push(vscode.commands.registerCommand('issueManager.pinRelatedNode', async (node: RelatedIssueNode) => {
     if (node?.id) {
       await relatedIssuesProvider.pinNode(node.id, node);
     }
   }));
   
   // 注册节点级 unpin 命令
-  context.subscriptions.push(vscode.commands.registerCommand('issueManager.unpinRelatedNode', async (node) => {
+  context.subscriptions.push(vscode.commands.registerCommand('issueManager.unpinRelatedNode', async (node: RelatedIssueNode) => {
     if (node?.id) {
       await relatedIssuesProvider.unpinNode(node.id);
     }

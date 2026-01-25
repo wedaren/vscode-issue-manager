@@ -41,11 +41,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         if (!ctx) {
             // 即使没有上下文，也应该显示 pin 的节点
             // 确保返回的节点有完整的属性
-            return Array.from(this.pinnedNodesCache.values()).map(node => ({
-                ...node,
-                children: node.children || [],
-                parent: node.parent || [],
-            }));
+            return Array.from(this.pinnedNodesCache.values());  
         }
         if (!element) {
             // 查找所有引用该文件的节点（包括 tree.json 中的引用与 frontmatter 中的关联）
@@ -258,7 +254,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     }
 
     /** Pin 节点（会话级，重启后清空） */
-    async pinNode(nodeId: string, nodeData?: RelatedIssueNode): Promise<void> {
+    async pinNode(nodeId: string, nodeData: RelatedIssueNode): Promise<void> {  
         this.pinnedNodes.add(nodeId);
         // 如果提供了节点数据，确保数据完整性后缓存
         if (nodeData) {
