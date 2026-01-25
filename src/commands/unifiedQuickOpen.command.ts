@@ -11,7 +11,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成项目名",
         description: "基于活动编辑器内容生成项目名并复制",
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.generateProjectName"
             );
@@ -20,7 +20,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "插入 marks 到当前编辑器",
         description: "将当前任务的 marks 插入到当前活动编辑器",
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.marker.insertMarksToActiveEditor"
             );
@@ -29,7 +29,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成 Git 分支名",
         description: "基于活动编辑器内容生成 git 分支名并复制",
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.generateGitBranchName"
             );
@@ -39,7 +39,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "新建子问题",
         description: "从当前编辑器对应的 IssueNode 下创建子问题",
         require: ctx => !!ctx.issueId,
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.createSubIssueFromEditor"
             );
@@ -49,7 +49,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "生成标题",
         description: "为当前编辑器的 IssueMarkdown 生成 IssueTitle",
         require: ctx => !!ctx.issueId,
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.generateTitleCommand"
             );
@@ -59,7 +59,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "复制文件名",
         description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
         require: ctx => !!ctx.issueId,
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand("issueManager.copyFilename");
         },
     },
@@ -67,7 +67,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "复制问题 ID",
         description: "复制当前编辑器中的 IssueNode ID 到剪贴板",
         require: ctx => !!ctx.issueId,
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand("issueManager.copyIssueId");
         },
     },
@@ -75,7 +75,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "在问题总览中查看",
         description: "在问题总览中定位当前编辑器对应的 IssueNode",
         require: ctx => !!ctx.issueId,
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.revealInOverviewFromEditor"
             );
@@ -85,7 +85,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "在最近视图中查看",
         description: "在最近问题视图中定位当前编辑器对应的文件（若存在）",
         require: ctx => !!ctx.uri,
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand("issueManager.revealInRecentFromEditor");
         },
     },
@@ -93,7 +93,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         label: "添加到关注",
         description: "将当前 IssueNode 加入关注列表",
         require: ctx => !!ctx.issueId,
-        execute: async () => {
+        execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.addToFocusedViewFromEditor"
             );

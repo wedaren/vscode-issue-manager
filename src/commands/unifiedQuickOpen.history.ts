@@ -74,7 +74,7 @@ export async function enterHistoryMode(
             tooltip: '删除此记录',
         };
 
-        return {
+        const historyItem: QuickPickItemWithId & { historyValue?: string } = {
             label: `$(${modeInfo.icon}) ${item.value}`,
             description: `${modeInfo.label} · ${formatRelativeTime(item.timestamp)}`,
             detail: item.mode,
@@ -88,7 +88,10 @@ export async function enterHistoryMode(
             },
             // 存储时间戳用于删除
             id: item.timestamp.toString(),
-        } as QuickPickItemWithId & { id: string };
+            // 存储原始值，避免从 label 中提取
+            historyValue: item.value,
+        };
+        return historyItem as QuickPickItemWithId;
     });
 
     // 添加清空历史选项
@@ -157,8 +160,8 @@ export async function handleHistoryModeAccept(
     // 如果是历史项，返回模式和值供外部切换
     if (selected.detail && selected.label.startsWith("$(")) {
         const mode = selected.detail as Mode;
-        // 从 label 中提取实际的搜索值（去除图标前缀）
-        const value = selected.label.replace(/^\$\([^)]+\)\s*/, '');
+        // 从自定义属性中读取原始值，而不是从 label 中提取
+        const value = (selected as any).historyValue || selected.label.replace(/^\$\([^)]+\)\s*/, '');
         return { handled: true, mode, value };
     }
 
