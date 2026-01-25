@@ -124,7 +124,8 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueNode> {
       return {
         ...node,
         id: toFocusedId(node.id, rootId),
-        children: node.children ? node.children.map(n => collectDescendants(n, rootId)) : []
+        children: node.children ? node.children.map(n => collectDescendants(n, rootId)) : [],
+        resourceUri: node.resourceUri,
       };
     };
     for (const id of new Set(this.focusedData.focusList)) {
@@ -134,6 +135,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueNode> {
         const topNode: IssueNode = {
           ...collectDescendants(node, id),
           id: toFocusedId(id, id),
+          resourceUri: node.resourceUri,
         };
         result.push(topNode);
       }
@@ -192,7 +194,7 @@ export class FocusedIssuesProvider implements TreeDataProvider<IssueNode> {
       this.setFilteredTreeCache(filtered);
       if (filtered.length === 0) {
         // Show a placeholder message when there are no nodes
-        return Promise.resolve([{ id: 'placeholder-no-focused', filePath: '', children: [] }]);
+        return Promise.resolve([{ id: 'placeholder-no-focused', filePath: '', children: [], resourceUri: vscode.Uri.file(''), parent: [] }]);
       } else {
         return Promise.resolve(filtered);
       }

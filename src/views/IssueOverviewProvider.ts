@@ -122,6 +122,6 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
     }
 
     // Show a placeholder message when there are no nodes
-    return [{ id: 'placeholder-no-issues', filePath: '', children: [] }];
+    return [{ id: 'placeholder-no-issues', filePath: '', children: [], resourceUri: vscode.Uri.file(''), parent: [] }];
   }
 }

@@ -100,6 +100,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                         id: uuidv4(),
                         filePath: relativePath,
                         children: [],
+                        resourceUri: resourceUri,
                     };
                     this.addNodeToTree(treeData, nodeToMove, targetNodeInTree);
                 }
@@ -124,6 +125,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                     id: uuidv4(),
                     filePath: relativePath,
                     children: [],
+                    resourceUri: fileUri,
                 };
                 this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
             }
@@ -167,6 +169,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                             id: uuidv4(),
                             filePath: relativePath,
                             children: [],
+                            resourceUri: markdownUri,
                         };
 
                         this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);

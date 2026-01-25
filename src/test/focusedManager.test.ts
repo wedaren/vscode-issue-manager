@@ -5,7 +5,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { addFocus, readFocused, writeFocused, removeFocus, pinFocus } from '../data/focusedManager';
+import { addFocus, readFocused, writeFocused, removeFocus, pinFocus, trimFocusedToMaxItems } from '../data/focusedManager';
 
 suite('FocusedManager Test Suite', () => {
     let testIssueDir: vscode.Uri;
@@ -249,7 +249,7 @@ suite('FocusedManager Test Suite', () => {
             await config.update('focused.maxItems', 5, vscode.ConfigurationTarget.Workspace);
             
             // 调用trim函数
-            const { trimFocusedToMaxItems } = await import('../data/focusedManager');
+
             const removedCount = await trimFocusedToMaxItems();
             
             // 应该移除3个节点
@@ -281,7 +281,6 @@ suite('FocusedManager Test Suite', () => {
             await config.update('focused.maxItems', 5, vscode.ConfigurationTarget.Workspace);
             
             // 调用trim函数
-            const { trimFocusedToMaxItems } = await import('../data/focusedManager');
             const removedCount = await trimFocusedToMaxItems();
             
             // 不应移除任何节点

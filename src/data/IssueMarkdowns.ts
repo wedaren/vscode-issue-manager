@@ -172,7 +172,6 @@ export async function getIssueMarkdown(
 
         const entry: cacheStorage.IssueMarkdownCacheEntry = {
             mtime,
-            ctime,
             frontmatter: frontmatter ?? null,
             title,
         };

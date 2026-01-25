@@ -23,7 +23,7 @@ export interface PersistedIssueNode {
  */
 export interface IssueNode  extends PersistedIssueNode {
     resourceUri: vscode.Uri; // 运行时属性，不持久化
-    parent: IssueNode[]; // 运行时属性，不持久化，祖先链（从根到直接父节点）
+    parent?: IssueNode[]; // 运行时属性，不持久化，祖先链（从根到直接父节点）
     children: IssueNode[]; // 覆盖 PersistedIssueNode 中的 children 类型
 }
 export interface TreeData {

@@ -101,7 +101,7 @@ export async function handleTimeModeAccept(
         // 多个 IssueNode，展示选择
         const items = await Promise.all(nodes.map(async n => ({
             label: getIssueMarkdownTitleFromCache(n.filePath),
-            description: n.parent.map(p => getIssueMarkdownTitleFromCache(p.filePath)).join(' > '),
+            description: n.parent?.map(p => getIssueMarkdownTitleFromCache(p.filePath)).join(' > '),
             id: n.id,
         } as QuickPickItemWithId)));
 
