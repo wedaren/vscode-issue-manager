@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { GitBranchManager, BranchEntry } from './GitBranchManager';
-import { getIssueTitleSync } from '../data/issueTreeManager';
+import { getIssueTitleFromCache } from '../data/issueTreeManager';
 
 class BranchTreeItem extends vscode.TreeItem {
     constructor(public readonly entry: BranchEntry) {
@@ -19,7 +19,7 @@ class BranchTreeItem extends vscode.TreeItem {
             this.iconPath = new vscode.ThemeIcon('eye', new vscode.ThemeColor('terminal.ansiBlue'));
         } else if (entry.associatedIssueId) {
             this.iconPath = new vscode.ThemeIcon('go-to-file');
-            this.description += ` • issue: ${getIssueTitleSync(entry.associatedIssueId)}`;
+            this.description += ` • issue: ${getIssueTitleFromCache(entry.associatedIssueId)}`;
         } else {
             this.iconPath = new vscode.ThemeIcon('link');
         }
@@ -78,7 +78,7 @@ export class GitBranchTreeProvider implements vscode.TreeDataProvider<BranchTree
                 ti.collapsibleState = state;
                 ti.label = label;
                 // description already set in constructor but override to ensure consistency
-                ti.description = `last commit: ${new Date(b.commitTime).toLocaleDateString()}` + (b.associatedIssueId ? ` • issue: ${getIssueTitleSync(b.associatedIssueId)}` : '');
+                ti.description = `last commit: ${new Date(b.commitTime).toLocaleDateString()}` + (b.associatedIssueId ? ` • issue: ${getIssueTitleFromCache(b.associatedIssueId)}` : '');
                 return ti;
             }));
 
@@ -105,7 +105,7 @@ export class GitBranchTreeProvider implements vscode.TreeDataProvider<BranchTree
             const ti = new BranchTreeItem(p);
             ti.collapsibleState = state;
             ti.label = formatted.join(', ');
-            ti.description = `last commit: ${new Date(p.commitTime).toLocaleDateString()}` + (p.associatedIssueId ? ` • issue: ${getIssueTitleSync(p.associatedIssueId)}` : '');
+            ti.description = `last commit: ${new Date(p.commitTime).toLocaleDateString()}` + (p.associatedIssueId ? ` • issue: ${getIssueTitleFromCache(p.associatedIssueId)}` : '');
             return ti;
         }));
     }

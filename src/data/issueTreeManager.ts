@@ -191,8 +191,15 @@ const createDefaultIssueDataStore = (): IssueDataResult => ({
 });
 const cache: IssueDataCache = { mtime: 0, ...createDefaultIssueDataStore() };
 
-export function getIssueTitleSync(issueOrId: string | IssueNode) {
-    // 支持传入 id 或 IssueNode（不再支持 IssueMarkdown）
+/**
+ * 从缓存中获取 Issue 标题的同步方法。
+ * 支持传入节点 ID（支持带 focused 后缀）或直接传入 IssueNode。
+ * 当无法定位对应的 Issue 或者资源不存在时，返回一个默认提示字符串。
+ *
+ * @param issueOrId - Issue 的 id（或带 focused 后缀的 id），或 IssueNode 对象
+ * @returns 对应的 issue 标题，或表示未知 Issue 的占位字符串
+ */
+export function getIssueTitleFromCache(issueOrId: string | IssueNode) {
     if (typeof issueOrId === "string") {
         const realId = stripFocusedId(issueOrId);
         const issueNode = cache.issueIdMap.get(realId);
@@ -201,9 +208,37 @@ export function getIssueTitleSync(issueOrId: string | IssueNode) {
             : "[Unknown Issue: " + realId + "]";
     }
 
-    // IssueNode
     if (isIssueNode(issueOrId)) {
         return getIssueMarkdownTitleFromCache(issueOrId.filePath);
+    }
+
+    return "[Unknown Issue]";
+}
+
+/**
+ * 获取 Issue 的标题。
+ *
+ * 支持传入 IssueNode 或节点 id（支持带 focused 后缀，如 "id::rootId"）。
+ * 若无法定位节点或读取对应的 IssueMarkdown，会返回占位字符串。
+ *
+ * @param issueOrId IssueNode 或节点 id
+ * @returns Promise<string>
+ */
+export async function getIssueTitle(issueOrId: string | IssueNode): Promise<string> {
+    if (typeof issueOrId === "string") {
+        const realId = stripFocusedId(issueOrId);
+        const { issueIdMap } = await getIssueData();
+        const issueNode = issueIdMap.get(realId);
+        if (issueNode?.resourceUri) {
+            const issue = await getIssueMarkdown(issueNode.filePath);
+            return issue ? issue.title : "不合法 issueMarkdown";
+        }
+        return "[Unknown Issue: " + realId + "]";
+    }
+
+    if (isIssueNode(issueOrId)) {
+        const issue = await getIssueMarkdown(issueOrId.filePath);
+        return issue ? issue.title : "不合法 issueMarkdown";
     }
 
     return "[Unknown Issue]";
@@ -259,28 +294,6 @@ async function getIssueData(): Promise<IssueDataResult> {
     return { treeData, issueIdMap, issueFilePathsMap };
 }
 
-export async function getIssueTitle(issueOrId: string | IssueNode) {
-    // 支持传入 id 或 IssueNode（不再支持 IssueMarkdown）
-    if (typeof issueOrId === "string") {
-        const realId = stripFocusedId(issueOrId);
-        const { issueIdMap } = await getIssueData();
-        const issueNode = issueIdMap.get(realId);
-        if (issueNode?.resourceUri) {
-            const issue = await getIssueMarkdown(issueNode.filePath);
-            return issue ? issue.title : "不合法 issueMarkdown";
-        } else {
-            return "[Unknown Issue: " + realId + "]";
-        }
-    }
-
-    // IssueNode：直接通过 filePath 读取 IssueMarkdown
-    if (isIssueNode(issueOrId)) {
-        const issue = await getIssueMarkdown(issueOrId.filePath);
-        return issue ? issue.title : "不合法 issueMarkdown";
-    }
-
-    return "[Unknown Issue]";
-}
 /**
  * 将树状数据写入 tree.json 文件。
  * @param data 要写入的 TreeData 对象。
