@@ -51,7 +51,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                     icon: new vscode.ThemeIcon('markdown'),
                     filePath: note.uri.fsPath,
                     children: [],
-                    parent:[],
+                    parent: [],
                     resourceUri: note.uri,
                     id: note.uri.toString() + ':fm',
                     contextValue: getIssueMarkdownContextValues(),
@@ -60,22 +60,22 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
             // 检查当前上下文所属的 workspace（若有），并查找与 workspace 关联的 issue
             const workspaceNodes: RelatedIssueNode[] = [];
-                const wsNotes = await findNotesLinkedToWorkspace(ctx);
-                for (const note of wsNotes) {
+            const wsNotes = await findNotesLinkedToWorkspace(ctx);
+            for (const note of wsNotes) {
                 const md = await getIssueMarkdown(note.uri);
                 const label = md ? md.title : '不合法 issueMarkdown';
                 workspaceNodes.push({
                     label,
-                        type: 'workspace',
-                        filePath: note.uri.fsPath,
-                        icon: new vscode.ThemeIcon('file-directory'),
-                        children: [],
-                        parent:[],
-                        resourceUri: note.uri,
-                        id: note.uri.toString() + ':ws',
-                        contextValue: getIssueMarkdownContextValues(),
-                    } as RelatedIssueNode);
-                }
+                    type: 'workspace',
+                    filePath: note.uri.fsPath,
+                    icon: new vscode.ThemeIcon('file-directory'),
+                    children: [],
+                    parent: [],
+                    resourceUri: note.uri,
+                    id: note.uri.toString() + ':ws',
+                    contextValue: getIssueMarkdownContextValues(),
+                } as RelatedIssueNode);
+            }
 
             return [...treeRefs, ...fmNodes, ...workspaceNodes];
         }
