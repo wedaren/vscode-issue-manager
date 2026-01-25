@@ -493,7 +493,7 @@ export const onTitleUpdate = onTitleUpdateEmitter.event;
 // -------------------- vtime (View Time) management --------------------
 
 let _cacheSaveTimer: ReturnType<typeof setTimeout> | undefined;
-const CacheSaveDelayMillis = 2000; // 2秒防抖，避免频繁写盘
+const CACHE_SAVE_DELAY_MILLIS = 2000; // 2秒防抖，避免频繁写盘
 
 /**
  * 安排缓存保存（防抖）
@@ -505,7 +505,7 @@ function scheduleCacheSave(): void {
     _cacheSaveTimer = setTimeout(() => {
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         _cacheSaveTimer = undefined;
-    }, CacheSaveDelayMillis);
+    }, CACHE_SAVE_DELAY_MILLIS);
 }
 
 /**
