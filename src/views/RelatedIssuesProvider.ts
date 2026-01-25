@@ -51,6 +51,7 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                     icon: new vscode.ThemeIcon('markdown'),
                     filePath: note.uri.fsPath,
                     children: [],
+                    parent: [],
                     resourceUri: note.uri,
                     id: note.uri.toString() + ':fm',
                     contextValue: getIssueMarkdownContextValues(),
@@ -59,21 +60,22 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
 
             // 检查当前上下文所属的 workspace（若有），并查找与 workspace 关联的 issue
             const workspaceNodes: RelatedIssueNode[] = [];
-                const wsNotes = await findNotesLinkedToWorkspace(ctx);
-                for (const note of wsNotes) {
+            const wsNotes = await findNotesLinkedToWorkspace(ctx);
+            for (const note of wsNotes) {
                 const md = await getIssueMarkdown(note.uri);
                 const label = md ? md.title : '不合法 issueMarkdown';
                 workspaceNodes.push({
                     label,
-                        type: 'workspace',
-                        filePath: note.uri.fsPath,
-                        icon: new vscode.ThemeIcon('file-directory'),
-                        children: [],
-                        resourceUri: note.uri,
-                        id: note.uri.toString() + ':ws',
-                        contextValue: getIssueMarkdownContextValues(),
-                    } as RelatedIssueNode);
-                }
+                    type: 'workspace',
+                    filePath: note.uri.fsPath,
+                    icon: new vscode.ThemeIcon('file-directory'),
+                    children: [],
+                    parent: [],
+                    resourceUri: note.uri,
+                    id: note.uri.toString() + ':ws',
+                    contextValue: getIssueMarkdownContextValues(),
+                } as RelatedIssueNode);
+            }
 
             return [...treeRefs, ...fmNodes, ...workspaceNodes];
         }
@@ -85,41 +87,46 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
     private async findAllReferences(resourceUri: vscode.Uri): Promise<RelatedIssueNode[]> {
         this.treeData = await readTree();
         const nodes: RelatedIssueNode[] = [];
-        const traverse = async (node: IssueNode, parentNodes: IssueNode[] = []) => {
+        const traverse = async (node: IssueNode) => {
             if (node.resourceUri?.fsPath === resourceUri.fsPath) {
-                // 构建引用上下文树
-                nodes.push(await this.buildReferenceNode(node, parentNodes));
+                // 构建引用上下文树（使用节点自身的 parent 字段）
+                nodes.push(await this.buildReferenceNode(node));
             }
             if (node.children) {
                 for (const child of node.children) {
-                    await traverse(child, [...parentNodes, node]);
+                    await traverse(child);
                 }
             }
         };
         if (this.treeData) {
             for (const root of this.treeData.rootNodes || []) {
-                await traverse(root, []);
+                await traverse(root);
             }
         }
         return nodes;
     }
 
     /** 构建单个引用节点的上下文树 */
-    private async buildReferenceNode(node: IssueNode, parentNodes: IssueNode[]): Promise<RelatedIssueNode> {
-        // 父路径（祖先链）
-        const parentIssueNode = parentNodes.pop();
+    private async buildReferenceNode(node: IssueNode): Promise<RelatedIssueNode> {
+        // 使用节点的 parent 字段构建上下文（parent 为祖先链：从根到直接父节点）
+        const parentAncestors = node.parent || [];
+        const parentIssueNode = parentAncestors.length > 0 ? parentAncestors[parentAncestors.length - 1] : undefined;
         // 辅助方法：获取节点标题（缓存优先，未命中回退为文件名）
         const getNodeTitle = async (n: IssueNode) => {
             const md = await getIssueMarkdown(n.filePath);
             return md ? md.title : '不合法 issueMarkdown';
         };
 
+        // tooltip 使用祖先链（不包含直接父节点）的标题
+        const ancestorList = parentAncestors.length > 1 ? parentAncestors.slice(0, -1) : [];
+
         const parentNode: RelatedIssueNode | undefined = parentIssueNode ? {
             label: await getNodeTitle(parentIssueNode),
             type: 'parent',
             filePath: parentIssueNode.filePath,
+            parent: parentIssueNode.parent,
             children: [],
-            tooltip: (await Promise.all(parentNodes.map(async n => {
+            tooltip: (await Promise.all(ancestorList.map(async n => {
                 const md = await getIssueMarkdown(n.filePath);
                 return md ? md.title : '不合法 issueMarkdown';
             }))).join(' / '),
@@ -132,37 +139,35 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         const currentNode: RelatedIssueNode = {
             label: await getNodeTitle(node),
             type: 'current',
-            filePath: node.filePath,
             icon: new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue')),
+            filePath: node.filePath,
             resourceUri: node.resourceUri,
             id: node.id,
+            parent: node.parent,
             contextValue: await getIssueNodeContextValue(node.id, 'issueNode'),
             children: node.children ? await Promise.all(node.children.map(async (child: IssueNode) => ({
+                ...child,
                 label: await getNodeTitle(child),
                 type: 'child',
-                filePath: child.filePath,
                 children: [],
-                resourceUri: child.resourceUri,
-                id: child.id,
                 contextValue: await getIssueNodeContextValue(child.id, 'issueNode'),
             }))) : [],
         };
 
-        // 已移除同级节点 siblings 相关逻辑，提升代码可读性与维护性
-
         if (parentNode) {
             const result: RelatedIssueNode = {
-            label: parentNode.label,
-            type: 'parent',
-            filePath: parentNode.filePath,
-            tooltip: parentNode.tooltip,
-            id: parentNode.id,
-            resourceUri: parentNode.resourceUri,
-            contextValue: parentNode.contextValue,
-            children: [
-                currentNode,
-                // ...siblings
-            ],
+                label: parentNode.label,
+                type: 'parent',
+                filePath: parentNode.filePath,
+                tooltip: parentNode.tooltip,
+                parent: parentNode.parent,
+                id: parentNode.id,
+                resourceUri: parentNode.resourceUri,
+                contextValue: parentNode.contextValue,
+                children: [
+                    currentNode,
+                    // ...siblings
+                ],
             };
             return result;
         } else {
