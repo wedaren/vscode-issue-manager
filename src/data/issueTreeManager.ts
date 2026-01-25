@@ -191,11 +191,22 @@ const createDefaultIssueDataStore = (): IssueDataResult => ({
 });
 const cache: IssueDataCache = { mtime: 0, ...createDefaultIssueDataStore() };
 
-export function getIssueTitleSync(issueId: string) {
-    const issueNode = cache.issueIdMap.get(issueId);
-    return issueNode?.resourceUri
-        ? getIssueMarkdownTitleFromCache(issueNode?.filePath)
-        : "[Unknown Issue: " + issueId + "]";
+export function getIssueTitleSync(issueOrId: string | IssueNode) {
+    // 支持传入 id 或 IssueNode（不再支持 IssueMarkdown）
+    if (typeof issueOrId === "string") {
+        const realId = stripFocusedId(issueOrId);
+        const issueNode = cache.issueIdMap.get(realId);
+        return issueNode?.resourceUri
+            ? getIssueMarkdownTitleFromCache(issueNode.filePath)
+            : "[Unknown Issue: " + realId + "]";
+    }
+
+    // IssueNode
+    if (isIssueNode(issueOrId)) {
+        return getIssueMarkdownTitleFromCache(issueOrId.filePath);
+    }
+
+    return "[Unknown Issue]";
 }
 
 const onIssueTreeUpdateEmitter = new vscode.EventEmitter<void>();
@@ -248,15 +259,27 @@ async function getIssueData(): Promise<IssueDataResult> {
     return { treeData, issueIdMap, issueFilePathsMap };
 }
 
-export async function getIssueTitle(issueId: string) {
-    const { issueIdMap } = await getIssueData();
-    const issueNode = issueIdMap.get(issueId);
-    if (issueNode?.resourceUri) {
-        const issue = await getIssueMarkdown(issueNode?.filePath);
-        return issue ? issue.title : "不合法 issueMarkdown";
-    } else {
-        return "[Unknown Issue: " + issueId + "]";
+export async function getIssueTitle(issueOrId: string | IssueNode) {
+    // 支持传入 id 或 IssueNode（不再支持 IssueMarkdown）
+    if (typeof issueOrId === "string") {
+        const realId = stripFocusedId(issueOrId);
+        const { issueIdMap } = await getIssueData();
+        const issueNode = issueIdMap.get(realId);
+        if (issueNode?.resourceUri) {
+            const issue = await getIssueMarkdown(issueNode.filePath);
+            return issue ? issue.title : "不合法 issueMarkdown";
+        } else {
+            return "[Unknown Issue: " + realId + "]";
+        }
     }
+
+    // IssueNode：直接通过 filePath 读取 IssueMarkdown
+    if (isIssueNode(issueOrId)) {
+        const issue = await getIssueMarkdown(issueOrId.filePath);
+        return issue ? issue.title : "不合法 issueMarkdown";
+    }
+
+    return "[Unknown Issue]";
 }
 /**
  * 将树状数据写入 tree.json 文件。
