@@ -16,15 +16,10 @@ import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
  * 
  * @template T 树节点的类型
  */
-export interface IIssueViewProvider<T = vscode.TreeItem> extends vscode.TreeDataProvider<T> {
-    /**
-     * 刷新视图数据
-     * 
-     * 触发视图重新加载和渲染，通常在数据源发生变化时调用
-     */
-    refresh(): void;
-}
-
+export interface IIssueViewProvider<T = vscode.TreeItem> extends vscode.TreeDataProvider<T> {  
+    refresh(): void;  
+    getElementByUri?(uri: vscode.Uri): Promise<T | null | undefined>;  
+}  
 /**
  * 关注问题视图提供者接口
  * 

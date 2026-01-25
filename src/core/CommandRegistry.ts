@@ -138,6 +138,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         focusedIssuesProvider: IFocusedIssuesProvider,
         issueOverviewProvider: IIssueOverviewProvider,
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
+        recentView: vscode.TreeView<vscode.TreeItem> | undefined,
         overviewView: vscode.TreeView<IssueNode>,
         focusedView: vscode.TreeView<IssueNode>,
         // issueStructureProvider: IssueStructureProvider,
@@ -161,6 +162,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                 focusedIssuesProvider,
                 issueOverviewProvider,
                 recentIssuesProvider,
+                recentView,
                 paraViewProvider,
                 overviewView,
                 focusedView

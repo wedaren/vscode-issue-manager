@@ -14,6 +14,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private focusedIssuesProvider?: IFocusedIssuesProvider;
     private issueOverviewProvider?: IIssueOverviewProvider;
     private recentIssuesProvider?: IIssueViewProvider;
+    private recentView?: vscode.TreeView<vscode.TreeItem>;
     private paraViewProvider?: ParaViewProvider;
     private overviewView?: vscode.TreeView<IssueNode>;
     private focusedView?: vscode.TreeView<IssueNode>;
@@ -27,6 +28,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         focusedIssuesProvider: IFocusedIssuesProvider;
         issueOverviewProvider: IIssueOverviewProvider;
         recentIssuesProvider: IIssueViewProvider;
+        recentView?: vscode.TreeView<vscode.TreeItem>;
         paraViewProvider?: ParaViewProvider;
         overviewView: vscode.TreeView<IssueNode>;
         focusedView: vscode.TreeView<IssueNode>;
@@ -34,6 +36,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.focusedIssuesProvider = providers.focusedIssuesProvider;
         this.issueOverviewProvider = providers.issueOverviewProvider;
         this.recentIssuesProvider = providers.recentIssuesProvider;
+        this.recentView = providers.recentView;
         this.paraViewProvider = providers.paraViewProvider;
         this.overviewView = providers.overviewView;
         this.focusedView = providers.focusedView;
@@ -205,5 +208,36 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
                 await this.focusedView.reveal(node, options);
             }
         }, '在关注视图中定位');
+
+        // 最近视图 reveal（接收 TreeItem）
+        this.registerCommand('issueManager.views.recent.reveal', async (...args: unknown[]) => {
+            const [element, options] = args as [vscode.TreeItem, { select?: boolean, focus?: boolean, expand?: boolean } | undefined];
+            if (this.recentView && element) {
+                await this.recentView.reveal(element, options);
+            }
+        }, '在最近视图中定位');
+
+        // 从当前活动编辑器在最近视图中定位
+        this.registerCommand('issueManager.revealInRecentFromEditor', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) { vscode.window.showWarningMessage('未找到活动的编辑器'); return; }
+            const uri = editor.document.uri;
+            if (!this.recentIssuesProvider) { vscode.window.showWarningMessage('最近问题视图未初始化'); return; }
+
+            await vscode.commands.executeCommand('workbench.view.extension.issue-manager');
+            await vscode.commands.executeCommand('issueManager.views.recent.focus');
+
+            // recentIssuesProvider 需要提供按 uri 查找元素的能力
+            const element = await this.recentIssuesProvider?.getElementByUri?.(uri);
+            if (!element) { vscode.window.showInformationMessage('未在最近问题中找到对应项'); return; }
+
+            try {
+                await vscode.commands.executeCommand('issueManager.views.recent.reveal', element, { select: true, focus: true, expand: true });
+                vscode.window.showInformationMessage('已在最近问题视图中定位当前编辑器对应项');
+            } catch (error) {
+                this.logger.error('在最近视图中定位失败', error);
+                vscode.window.showErrorMessage('在最近视图中定位失败');
+            }
+        }, '从编辑器在最近视图中定位');
     }
 }

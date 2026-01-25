@@ -233,6 +233,7 @@ export class ExtensionInitializer {
                 views.focusedIssuesProvider,
                 views.issueOverviewProvider,
                 views.recentIssuesProvider,
+                views.recentIssuesView,
                 views.overviewView,
                 views.focusedView,
                 // views.issueStructureProvider,

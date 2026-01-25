@@ -256,7 +256,7 @@ const onIssueTreeUpdateEmitter = new vscode.EventEmitter<void>();
 
 export const onIssueTreeUpdate = onIssueTreeUpdateEmitter.event;
 
-async function getIssueData(): Promise<IssueDataResult> {
+export async function getIssueData(): Promise<IssueDataResult> {
     const treePath = getTreeDataPath();
     const issueDir = getIssueDir();
 
