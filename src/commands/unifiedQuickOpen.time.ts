@@ -40,7 +40,14 @@ export async function enterTimeMode(
         const items: QuickPickItemWithId[] = [];
         let lastGroup: string | null = null;
         for (const it of issues) {
-            const time = sortBy === "mtime" ? it.mtime : it.ctime;
+            let time: number;
+            if (sortBy === "vtime") {
+                time = it.vtime ?? it.mtime;
+            } else if (sortBy === "mtime") {
+                time = it.mtime;
+            } else {
+                time = it.ctime;
+            }
             let group: string;
             if (time) {
                 const d = new Date(time);
@@ -101,7 +108,7 @@ export async function handleTimeModeAccept(
             await vscode.window.showTextDocument(doc, { preview: true });
             // 记录历史（使用文件标题）
             if (historyService && selected.label) {
-                await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+                await historyService.addHistory(sortBy, selected.label);
             }
             return true;
         }
@@ -110,7 +117,7 @@ export async function handleTimeModeAccept(
             await openIssueNode(nodes[0].id);
             // 记录历史
             if (historyService && selected.label) {
-                await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+                await historyService.addHistory(sortBy, selected.label);
             }
             return true;
         }
@@ -127,7 +134,7 @@ export async function handleTimeModeAccept(
         await openIssueNode(pick.id || "");
         // 记录历史
         if (historyService && selected.label) {
-            await historyService.addHistory(sortBy === 'mtime' ? 'mtime' : 'ctime', selected.label);
+            await historyService.addHistory(sortBy, selected.label);
         }
         return true;
     } catch (e) {
