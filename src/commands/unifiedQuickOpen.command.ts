@@ -81,6 +81,14 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "在最近视图中查看",
+        description: "在最近问题视图中定位当前编辑器对应的文件（若存在）",
+        require: ctx => !!ctx.uri,
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.revealInRecentFromEditor");
+        },
+    },
+    {
         label: "添加到关注",
         description: "将当前 IssueNode 加入关注列表",
         require: ctx => !!ctx.issueId,

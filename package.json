@@ -177,6 +177,12 @@
         "category": "Issue Manager"
       },
       {
+        "command": "issueManager.revealInRecentFromEditor",
+        "title": "在最近视图中查看",
+        "icon": "$(eye)",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.openAndViewRelatedIssues",
         "title": "打开并查看相关联问题"
       },

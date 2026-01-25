@@ -1,100 +1,87 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
-
-import { getIssueMarkdownTitleFromCache, getAllIssueMarkdowns } from '../data/IssueMarkdowns';
-import { getIssueNodesBy } from '../data/issueTreeManager';
-
+import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+import {
+  getRecentIssuesStats,
+  groupIssuesByTime,
+  groupByDay,
+  groupByWeek,
+  DEFAULT_EXPANDED_GROUPS,
+  type RecentIssueStats,
+  type IssueGroup,
+  type SubgroupStrategy,
+  type SortOrder,
+} from '../data/recentIssuesManager';
 
 /**
- * 分组的类型，决定了其子节点的展示方式。
- * - `direct`: 直接展示文件。
- * - `by-day`: 子节点按天分组。
- * - `by-week`: 子节点按周分组。
- * - `day`: 日期分组，直接展示文件。
- * - `week`: 周分组，子节点按天分组。
+ * 分组树节点
  */
-type GroupType = 'direct' | 'by-day' | 'by-week' | 'day' | 'week';
-
-interface FileStat {
-  file: string;
-  filePath: string;
-  mtime: Date;
-  ctime: Date;
-  isIsolated: boolean;
-}
-
 class GroupTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
-    public readonly files: FileStat[],
-    public readonly type: GroupType,
-    public readonly expanded: boolean = false // 新增参数，控制展开状态
+    public readonly files: RecentIssueStats[],
+    public readonly subgroupStrategy: SubgroupStrategy,
+    public readonly expanded: boolean = false
   ) {
     super(label, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
     this.description = `(${files.length})`;
-    this.contextValue = `group-${type}`;
+    this.contextValue = subgroupStrategy ? `group-${subgroupStrategy}` : 'group-direct';
   }
 }
 
 /**
- * “最近问题”视图的数据提供者。
- * 支持“列表”和“分组”两种展示模式。
+ * "最近问题"视图的数据提供者
+ * 支持"列表"和"分组"两种展示模式
  */
 export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
 
-  private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+  private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  private viewMode: ViewMode; // 默认值由配置项决定
-  private sortOrder: 'mtime' | 'ctime' = 'ctime'; // 默认为创建时间
-  
-  
+  private viewMode: ViewMode;
+  private sortOrder: SortOrder = 'ctime';
+  private itemCache = new Map<string, vscode.TreeItem>();
 
   constructor(private context: vscode.ExtensionContext) {
-    // 初始化时根据配置项设置默认模式
     this.viewMode = getRecentIssuesDefaultMode();
-
-    // 获取文件访问跟踪服务实例
-    
-
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
-      this.setViewMode('grouped');
-    }));
-
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.list', () => {
-      this.setViewMode('list');
-    }));
-
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.ctime', () => {
-      this.setSortOrder('ctime');
-    }));
-
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.setRecentSort.mtime', () => {
-      this.setSortOrder('mtime');
-    }));
-
-    
-
-    
-
+    this.registerCommands();
     this.setSortContext();
     this.setViewModeContext();
-
-    this.context.subscriptions.push(vscode.commands.registerCommand('issueManager.openAndViewRelatedIssues', async (uri: vscode.Uri) => {
-      try {
-        await vscode.window.showTextDocument(uri);
-      } catch (error) {
-        console.error(`打开并查看相关联问题失败: ${uri.fsPath}`, error);
-        vscode.window.showErrorMessage('打开并查看相关联问题失败。');
-      }
-    }));
 
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('issueManager.issueDir')) {
         this.refresh();
       }
     });
+  }
+
+  /**
+   * 注册所有命令
+   */
+  private registerCommands(): void {
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.group', () => {
+        this.setViewMode('grouped');
+      }),
+      vscode.commands.registerCommand('issueManager.setRecentIssuesViewMode.list', () => {
+        this.setViewMode('list');
+      }),
+      vscode.commands.registerCommand('issueManager.setRecentSort.ctime', () => {
+        this.setSortOrder('ctime');
+      }),
+      vscode.commands.registerCommand('issueManager.setRecentSort.mtime', () => {
+        this.setSortOrder('mtime');
+      }),
+      vscode.commands.registerCommand('issueManager.openAndViewRelatedIssues', async (uri: vscode.Uri) => {
+        try {
+          await vscode.window.showTextDocument(uri);
+        } catch (error) {
+          console.error(`打开并查看相关联问题失败: ${uri.fsPath}`, error);
+          vscode.window.showErrorMessage('打开并查看相关联问题失败。');
+        }
+      })
+    );
   }
 
   /**
@@ -111,31 +98,30 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 设置排序顺序并刷新视图
    * @param order 排序方式
    */
-  setSortOrder(order: 'mtime' | 'ctime'): void {
+  setSortOrder(order: SortOrder): void {
     this.sortOrder = order;
     this.setSortContext();
     this.refresh();
   }
 
-  private setSortContext() {
+  private setSortContext(): void {
     vscode.commands.executeCommand('setContext', 'issueManager.recentIssuesSortOrder', this.sortOrder);
   }
 
-  private setViewModeContext() {
+  private setViewModeContext(): void {
     vscode.commands.executeCommand('setContext', 'issueManager.recentIssuesViewMode', this.viewMode);
   }
 
   /**
-   * 刷新视图。
+   * 刷新视图
    */
   refresh(): void {
+    this.itemCache.clear();
     this._onDidChangeTreeData.fire();
   }
 
-  
-
   /**
-   * 获取树中的每一个项目。
+   * 获取树中的每一个项目
    * @param element 项目元素
    */
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
@@ -143,263 +129,242 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
   }
 
   /**
-   * 获取元素的子项目。
-   * @param element 项目元素，如果为 undefined，则获取根节点。
+   * 获取元素的子项目
+   * @param element 项目元素，如果为 undefined，则获取根节点
    */
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     if (element instanceof GroupTreeItem) {
-      switch (element.type) {
-        // 这些类型的分组直接展示其下的文件
-        case 'direct':
-        case 'day':
-          return Promise.all(element.files.map(fileStat => this.createFileTreeItem(fileStat)));
-
-        // 这些类型的分组需要进一步按“天”进行子分组
-        case 'by-day':
-        case 'week':
-          return this.createDaySubgroups(element.files);
-
-        // 这种类型的分组需要进一步按“周”进行子分组
-        case 'by-week':
-          return this.createWeekSubgroups(element.files);
-
-        default:
-          return Promise.resolve([]);
-      }
+      return this.getGroupChildren(element);
     }
 
-    // 直接使用 getAllIssueMarkdowns 获取 issue 列表并映射为 FileStat
-    let issues = await getAllIssueMarkdowns({ sortBy: this.sortOrder === 'ctime' ? 'ctime' : 'mtime' });
-    if (!issues || issues.length === 0) return [];
-
-    const fileStats: FileStat[] = await Promise.all(issues.map( async issue => {
-      const filePath = issue.uri.fsPath;
-      const file = path.basename(filePath);
-      const mtime = new Date(issue.mtime);
-      const ctime = new Date(issue.ctime);
-      const isIsolated = (await getIssueNodesBy(issue)).length === 0;
-      return { file, filePath, mtime, ctime, isIsolated };
-    }));
+    // 根节点：获取所有最近问题
+    const issues = await getRecentIssuesStats(this.sortOrder);
+    if (!issues || issues.length === 0) { return []; }
 
     if (this.viewMode === 'list') {
-      return Promise.all(fileStats.map(fileStat => this.createFileTreeItem(fileStat)));
+      return Promise.all(issues.map((stat: RecentIssueStats) => this.createFileTreeItem(stat)));
     }
 
-    // Group mode
-    const groups = this.groupFiles(fileStats);
-    // 仅“今天”、“昨天”、“最近一周”分组默认展开，其他分组保持折叠
-    const DEFAULT_EXPANDED_LABELS = ['今天', '昨天', '最近一周'];
-    return groups.map(group => new GroupTreeItem(group.label, group.files, group.type, DEFAULT_EXPANDED_LABELS.includes(group.label)));
-  }
-  /**
-   * 从缓存或文件系统获取文件统计信息。
-   * @returns FileStat 数组或 null
-   */
-  
-
-  /**
-   * 获取用于排序的时间戳
-   * @param file 文件统计信息
-   * @returns 时间戳（毫秒）
-   */
-  private getSortTimestamp(file: FileStat): number {
-    switch (this.sortOrder) {
-      case 'mtime':
-        return file.mtime.getTime();
-      case 'ctime':
-        return file.ctime.getTime();
-      default:
-        return file.ctime.getTime();
-    }
+    // 分组模式
+    const groups = groupIssuesByTime(issues, this.sortOrder);
+    return groups.map((group: IssueGroup) => 
+      new GroupTreeItem(
+        group.label, 
+        group.files, 
+        group.subgroupStrategy, 
+        DEFAULT_EXPANDED_GROUPS.includes(group.label)
+      )
+    );
   }
 
   /**
-   * 根据当前排序方式获取文件的日期
-   * @param file 文件统计信息
-   * @returns 用于分组的日期
+   * 获取分组的子节点
    */
-  private getFileDateForGrouping(file: FileStat): Date {
-    switch (this.sortOrder) {
-      case 'mtime':
-        return file.mtime;
-      case 'ctime':
-        return file.ctime;
-      default:
-        return file.ctime;
+  private async getGroupChildren(group: GroupTreeItem): Promise<vscode.TreeItem[]> {
+    // 没有子分组策略，直接展示文件
+    if (!group.subgroupStrategy) {
+      return Promise.all(group.files.map(stat => this.createFileTreeItem(stat)));
     }
+
+    // 按天分组
+    if (group.subgroupStrategy === 'day') {
+      return this.createDaySubgroups(group.files);
+    }
+
+    // 按周分组
+    if (group.subgroupStrategy === 'week') {
+      return this.createWeekSubgroups(group.files);
+    }
+
+    return [];
   }
 
   /**
-   * 将一组文件按“周”进行分组。
-   * @param files 要分组的文件列表。
-   * @returns GroupTreeItem 数组。
+   * 创建日分组
    */
-  private createWeekSubgroups(files: FileStat[]): GroupTreeItem[] {
-    const now = new Date();
-    const startOfWeek = this.getStartOfWeek(new Date());
-    const startOfLastWeek = new Date(startOfWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
+  private createDaySubgroups(files: RecentIssueStats[]): GroupTreeItem[] {
+    const dayGroups = groupByDay(files, this.sortOrder);
+    return dayGroups.map((g: IssueGroup) => new GroupTreeItem(g.label, g.files, g.subgroupStrategy));
+  }
 
-    const weekGroupDefinitions: { label: string, type: GroupType, test: (fileDate: Date) => boolean, files: FileStat[] }[] = [
-      { label: '本周', type: 'by-day', test: (fileDate) => this.normalizeDate(fileDate) >= startOfWeek, files: [] },
-      { label: '上周', type: 'by-day', test: (fileDate) => this.normalizeDate(fileDate) >= startOfLastWeek && this.normalizeDate(fileDate) < startOfWeek, files: [] },
-    ];
+  /**
+   * 创建周分组
+   */
+  private createWeekSubgroups(files: RecentIssueStats[]): GroupTreeItem[] {
+    const weekGroups = groupByWeek(files, this.sortOrder);
+    return weekGroups.map((g: IssueGroup) => new GroupTreeItem(g.label, g.files, g.subgroupStrategy));
+  }
 
-    const otherWeeks: { [week: string]: FileStat[] } = {};
-
-    for (const file of files) {
-      const fileDate = this.getFileDateForGrouping(file);
-      
-      let matched = false;
-      for (const group of weekGroupDefinitions) {
-        if (group.test(fileDate)) {
-          group.files.push(file);
-          matched = true;
-          break; // 文件只属于第一个匹配的分组
+  /**
+   * 生成用于缓存的唯一 key
+   * 使用 Uri 的 toString() 保证包含 scheme、path 及 query，避免歧义
+   */
+  private makeCacheKey(uri: vscode.Uri): string {
+    const issueDir = getIssueDir();
+    if (uri.scheme === 'file' && issueDir) {
+      try {
+        const rel = path.relative(issueDir, uri.fsPath);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) {
+          return uri.toString();
         }
-      }
-      if (!matched) {
-        const fileWeekNumber = this.getWeekNumber(fileDate);
-        const [start, end] = this.getWeekDateRange(fileDate.getFullYear(), fileWeekNumber);
-        const weekLabel = `第 ${fileWeekNumber} 周 (${start} - ${end})`;
-
-        if (!otherWeeks[weekLabel]) {
-          otherWeeks[weekLabel] = [];
-        }
-        otherWeeks[weekLabel].push(file);
+        return rel;
+      } catch {
+        return uri.toString();
       }
     }
-
-    // 合并所有分组
-    const allGroups = [
-      ...weekGroupDefinitions.filter(g => g.files.length > 0).map(g => new GroupTreeItem(g.label, g.files, 'week')),
-      ...Object.entries(otherWeeks).map(([label, weekFiles]) => new GroupTreeItem(label, weekFiles, 'week'))
-    ];
-
-    return allGroups;
+    return uri.toString();
   }
 
   /**
-   * 获取给定日期所在周的开始日期（周一）。
-   * @param date The date.
-   * @returns The first day of the week (Monday).
+   * 创建最近问题的树节点，并绑定自定义点击命令
+   * 点击时自动打开文件并查看相关联问题
    */
-  private getStartOfWeek(date: Date): Date {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // 将周日(0)视为一周的最后一天
-    d.setDate(diff);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
+  private async createFileTreeItem(stat: RecentIssueStats): Promise<vscode.TreeItem> {
+    const key = this.makeCacheKey(stat.uri);
+    const cached = this.itemCache.get(key);
+    if (cached) { return cached; }
 
-  private createDaySubgroups(files: FileStat[]): GroupTreeItem[] {
-    const filesByDay = new Map<string, FileStat[]>();
-    for (const file of files) {
-      const fileDate = this.getFileDateForGrouping(file);
-      
-      const dayKey = this.formatDateWithWeekday(fileDate);
-      if (!filesByDay.has(dayKey)) {
-        filesByDay.set(dayKey, []);
-      }
-      filesByDay.get(dayKey)!.push(file);
-    }
-
-    const dayGroups = Array.from(filesByDay.entries()).map(([dayLabel, dayFiles]) => {
-      return new GroupTreeItem(dayLabel, dayFiles, 'day');
-    });
-    return dayGroups;
-  }
-
-  /**
-   * 创建最近问题的树节点，并绑定自定义点击命令。
-   * 点击时自动打开文件并查看相关联问题。
-   */
-  private async createFileTreeItem(fileStat: FileStat): Promise<vscode.TreeItem> {
-    const uri = vscode.Uri.file(fileStat.filePath);
-    const title =  getIssueMarkdownTitleFromCache(uri);
+    const title = getIssueMarkdownTitleFromCache(stat.uri);
     const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
-    item.resourceUri = uri;
+    item.resourceUri = stat.uri;
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',
-      arguments: [uri],
+      arguments: [stat.uri],
     };
-    item.contextValue = fileStat.isIsolated ? 'isolatedIssue' : 'recentIssue'; // 用于右键菜单
-    item.iconPath = fileStat.isIsolated ? new vscode.ThemeIcon('debug-disconnect') : new vscode.ThemeIcon('notebook');
-    // 构建工具提示，包含访问统计信息
-    let tooltipText = `路径: \`${uri.fsPath}\` \n\n修改时间: ${fileStat.mtime.toLocaleString()}\n\n创建时间: ${fileStat.ctime.toLocaleString()}`;
-    
-    
-    
+    item.contextValue = stat.isIsolated ? 'isolatedIssue' : 'recentIssue';
+    item.iconPath = stat.isIsolated
+      ? new vscode.ThemeIcon('debug-disconnect')
+      : new vscode.ThemeIcon('notebook');
+
+    const tooltipText = `路径: \`${stat.uri.fsPath}\`\n\n修改时间: ${stat.mtime.toLocaleString()}\n\n创建时间: ${stat.ctime.toLocaleString()}`;
     item.tooltip = new vscode.MarkdownString(tooltipText);
-    
+
+    this.itemCache.set(key, item);
     return item;
   }
 
-  private formatDateWithWeekday(date: Date): string {
-    const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', weekday: 'long' };
-    return new Intl.DateTimeFormat('zh-CN', options).format(date);
-  }
+  /**
+   * 根据 Uri 获取对应的 TreeItem（若尚未创建则尝试构建并缓存）
+   * @param uri 文件 Uri
+   */
+  public async getElementByUri(uri: vscode.Uri): Promise<vscode.TreeItem | null> {
+    const key = this.makeCacheKey(uri);
+    const cached = this.itemCache.get(key);
+    if (cached) { return cached; }
 
-  private getWeekNumber(d: Date): number {
-    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-    return weekNo;
-  }
+    const issues = await getRecentIssuesStats(this.sortOrder);
+    const matched = issues.find((i: RecentIssueStats) => this.makeCacheKey(i.uri) === key);
+    if (!matched) { return null; }
 
-  private getWeekDateRange(year: number, weekNumber: number): [string, string] {
-    const d = new Date(year, 0, 1 + (weekNumber - 1) * 7);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-    const start = new Date(d.setDate(diff));
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    const format = (dt: Date) => `${dt.getMonth() + 1}月${dt.getDate()}日`;
-    return [format(start), format(end)];
+    return this.createFileTreeItem(matched);
   }
 
   /**
-   * 将日期标准化为当天的零点。
-   * @param date 要标准化的日期。
-   * @returns 标准化后的新日期对象。
+   * 返回给定元素的父元素（用于 TreeView.reveal 路径查找）
    */
-  private normalizeDate(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  public async getParent(element: vscode.TreeItem): Promise<vscode.TreeItem | null> {
+    // 在 list 模式下没有分组父元素
+    if (this.viewMode === 'list') { return null; }
+
+    const issues = await getRecentIssuesStats(this.sortOrder);
+    if (!issues || issues.length === 0) { return null; }
+
+    // 顶层分组
+    const groups = groupIssuesByTime(issues, this.sortOrder);
+
+    // 如果是分组节点，查找其父分组
+    if (element instanceof GroupTreeItem) {
+      return this.findParentGroup(element, groups);
+    }
+
+    // 如果是文件节点，查找其所在的分组
+    const uri = element.resourceUri;
+    if (!uri) { return null; }
+
+    const key = this.makeCacheKey(uri);
+    const matched = issues.find((i: RecentIssueStats) => this.makeCacheKey(i.uri) === key);
+    if (!matched) { return null; }
+
+    return this.findFileParentGroup(matched, groups);
   }
 
-  private groupFiles(files: FileStat[]): { label: string, files: FileStat[], type: GroupType }[] {
-    const now = new Date();
-    const today = this.normalizeDate(now);
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const oneWeekAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000); // 7 days including today
-    const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
-
-    // 使用声明式的方式定义分组规则
-    const groupDefinitions: { label: string, type: GroupType, test: (fileDateSource: Date) => boolean, files: FileStat[] }[] = [
-      // "是不是今天？"—— 这是"相等"比较，必须用净化后的日期
-      { label: '今天', type: 'direct', test: (fileDateSource) => this.normalizeDate(fileDateSource).getTime() === today.getTime(), files: [] },
-      { label: '昨天', type: 'direct', test: (fileDateSource) => this.normalizeDate(fileDateSource).getTime() === yesterday.getTime(), files: [] },
-      // "是不是在某个范围？"—— 为了逻辑统一和健壮性，所有比较都应基于净化后的日期
-      { label: '最近一周', type: 'by-day', test: (fileDateSource) => this.normalizeDate(fileDateSource) >= oneWeekAgo, files: [] },
-      { label: '最近一月', type: 'by-week', test: (fileDateSource) => this.normalizeDate(fileDateSource) >= oneMonthAgo, files: [] },
-      { label: '更早', type: 'by-week', test: () => true, files: [] }, // 默认捕获所有剩余文件
-    ];
-
-    for (const file of files) {
-      const fileDateSource = this.getFileDateForGrouping(file);
-
-      for (const group of groupDefinitions) {
-        if (group.test(fileDateSource)) {
-          group.files.push(file);
-          break; // 每个文件只属于第一个匹配的分组
+  /**
+   * 查找分组节点的父分组
+   */
+  private findParentGroup(childGroup: GroupTreeItem, topGroups: IssueGroup[]): GroupTreeItem | null {
+    // 遍历顶层分组
+    for (const g of topGroups) {
+      // 如果顶层分组直接包含子分组，说明子分组是它的直接子级
+      if (g.subgroupStrategy === 'week') {
+        const weekGroups = groupByWeek(g.files, this.sortOrder);
+        for (const wg of weekGroups) {
+          if (wg.label === childGroup.label) {
+            // 找到了，返回顶层分组
+            return new GroupTreeItem(g.label, g.files, g.subgroupStrategy, DEFAULT_EXPANDED_GROUPS.includes(g.label));
+          }
+          
+          // 检查是否是周分组下的日分组
+          if (wg.subgroupStrategy === 'day') {
+            const dayGroups = groupByDay(wg.files, this.sortOrder);
+            for (const dg of dayGroups) {
+              if (dg.label === childGroup.label) {
+                // 找到了，返回周分组
+                return new GroupTreeItem(wg.label, wg.files, wg.subgroupStrategy);
+              }
+            }
+          }
+        }
+      } else if (g.subgroupStrategy === 'day') {
+        const dayGroups = groupByDay(g.files, this.sortOrder);
+        for (const dg of dayGroups) {
+          if (dg.label === childGroup.label) {
+            // 找到了，返回顶层分组
+            return new GroupTreeItem(g.label, g.files, g.subgroupStrategy, DEFAULT_EXPANDED_GROUPS.includes(g.label));
+          }
         }
       }
     }
 
-    return groupDefinitions
-      .filter(g => g.files.length > 0)
-      .map(g => ({ label: g.label, files: g.files, type: g.type }));
+    // 没有找到父级，说明是顶层分组
+    return null;
+  }
+
+  /**
+   * 查找文件所在的直接父分组
+   */
+  private findFileParentGroup(file: RecentIssueStats, topGroups: IssueGroup[]): GroupTreeItem | null {
+    for (const g of topGroups) {
+      // 没有子分组策略，直接展示文件
+      if (!g.subgroupStrategy) {
+        if (g.files.some((f: RecentIssueStats) => f.filePath === file.filePath)) {
+          return new GroupTreeItem(g.label, g.files, g.subgroupStrategy, DEFAULT_EXPANDED_GROUPS.includes(g.label));
+        }
+      } 
+      // 按天分组
+      else if (g.subgroupStrategy === 'day') {
+        const dayGroups = groupByDay(g.files, this.sortOrder);
+        for (const dg of dayGroups) {
+          if (dg.files.some((f: RecentIssueStats) => f.filePath === file.filePath)) {
+            return new GroupTreeItem(dg.label, dg.files, dg.subgroupStrategy);
+          }
+        }
+      } 
+      // 按周分组
+      else if (g.subgroupStrategy === 'week') {
+        const weekGroups = groupByWeek(g.files, this.sortOrder);
+        for (const wg of weekGroups) {
+          const dayGroups = groupByDay(wg.files, this.sortOrder);
+          for (const dg of dayGroups) {
+            if (dg.files.some((f: RecentIssueStats) => f.filePath === file.filePath)) {
+              // 返回最直接的父级：日分组
+              return new GroupTreeItem(dg.label, dg.files, dg.subgroupStrategy);
+            }
+          }
+        }
+      }
+    }
+
+    return null;
   }
 }
