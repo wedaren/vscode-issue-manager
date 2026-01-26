@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import {
     createAbortControllerWithTimeout,
     readFileStatSafe,
-    callLLMGenerateDocument,
     savePendingFile,
 } from './backgroundFill.utils';
 import { updateIssueMarkdownBody } from '../data/IssueMarkdowns';
 import { openIssueNode } from '../commands/openIssueNode';
+import { LLMService } from './LLMService';
 
 /**
  * 在后台为指定 issue 文件使用 LLM 生成并填充完整内容。
@@ -35,7 +35,8 @@ export async function backgroundFillIssue(
                 const statBefore = await readFileStatSafe(uri);
 
                 // 调用 LLM 生成文档（标题+内容）
-                const doc = await callLLMGenerateDocument(prompt, controller.signal);
+                const doc = await LLMService.generateDocument(prompt, { signal: controller.signal });
+
                 if (!doc || (!doc.content && !doc.title)) {
                     return { success: false, message: 'LLM 未生成有效内容' };
                 }
@@ -57,13 +58,17 @@ export async function backgroundFillIssue(
                 // 原子写回目标文件
                 await updateIssueMarkdownBody(uri, finalContent);
 
-                const choice = await vscode.window.showInformationMessage(`已完成。`, '打开文件', '对半打开');
-                if (choice === '打开文件') {
-                    issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri);
-                }
-                if (choice === '对半打开') {
-                    issueId ? openIssueNode(issueId, { viewColumn: vscode.ViewColumn.Beside }) : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
-                }
+                vscode.window.showInformationMessage('已完成。', '打开文件', '对半打开').then((choice) => {
+                    if (!choice) return;
+                    if (choice === '打开文件') {
+                        issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri);
+                    } else if (choice === '对半打开') {
+                        issueId
+                            ? openIssueNode(issueId, { viewColumn: vscode.ViewColumn.Beside })
+                            : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
+                    }
+                });
+
                 return { success: true };
             }
         );

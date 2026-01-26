@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { LLMService } from './LLMService';
 
 export function createAbortControllerWithTimeout(timeoutMs: number | undefined) {
     const controller = new AbortController();
@@ -21,16 +20,6 @@ export async function readFileStatSafe(uri: vscode.Uri): Promise<vscode.FileStat
     }
 }
 
-export async function callLLMGenerateDocument(prompt: string, signal?: AbortSignal) {
-    try {
-        // LLMService may accept an options object with signal
-        // Keep this thin so it can be mocked in tests
-        return await LLMService.generateDocument(prompt, { signal });
-    } catch (e) {
-        // Let caller handle errors (including Abort)
-        throw e;
-    }
-}
 
 export async function savePendingFile(targetUri: vscode.Uri, content: string): Promise<vscode.Uri> {
     const pendingPath = `${targetUri.fsPath}.pending.${Date.now()}.md`;
