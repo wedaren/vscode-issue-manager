@@ -116,21 +116,10 @@ export function registerGenerateBriefSummaryCommand(context: vscode.ExtensionCon
 
                 const newSummary = normalizeSummary(summary);
                 const merged = mergeSummary(existing, newSummary);
-                if (merged === undefined) {
-                    if (existing) {
-                        const briefSummary = existing.brief_summary;
-                        if (typeof briefSummary === 'string' && normalizeSummary(briefSummary).toLowerCase() === newSummary.toLowerCase()) {
-                            vscode.window.showInformationMessage('生成摘要与现有 brief_summary 相同，未做修改。');
-                            return;
-                        }
-                        if (Array.isArray(briefSummary) && containsSummary(briefSummary as string[], newSummary)) {
-                            vscode.window.showInformationMessage('生成摘要已存在于 brief_summary 中，未做修改。');
-                            return;
-                        }
-                    }
-                    return;
-                }
-
+                if (merged === undefined) {  
+                    vscode.window.showInformationMessage('生成摘要与现有 brief_summary 相同或已存在，未做修改。');  
+                    return;  
+                }  
                 const ok = await updateIssueMarkdownFrontmatter(targetUri, { brief_summary: merged });
                 if (ok) {
                     vscode.window.showInformationMessage('已将生成摘要写入 frontmatter.brief_summary');

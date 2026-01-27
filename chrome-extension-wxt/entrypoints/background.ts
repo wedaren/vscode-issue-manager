@@ -488,6 +488,7 @@ export default defineBackground(() => {
               // 请求成功，通知 Side Panel 刷新关注列表
               notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
               sendResponse({ success: true });
+            } else if (wsResponse) {  
               sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });
             } else {
               sendResponse({ success: false, error: 'Unexpected response from VSCode' });
@@ -522,7 +523,8 @@ export default defineBackground(() => {
               // 请求成功，通知 Side Panel 刷新关注列表
               notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
               sendResponse({ success: true });
-              sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });
+            } else if (wsResponse) {  
+              sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });  
             } else {
               sendResponse({ success: false, error: 'Unexpected response from VSCode' });
             }
