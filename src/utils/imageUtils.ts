@@ -180,7 +180,7 @@ export class ImageUtils {
                 return savedPath;
             }
             // 保存失败,根据配置决定是保留还是移除
-            return options.fallbackToBase64 !== false ? src : null;
+            return options.fallbackToBase64 === true ? src : null;
         }
 
         // 默认保留 base64
@@ -212,7 +212,18 @@ export interface ImageProcessOptions {
 
     /**
      * 当提取失败时是否回退到保留 base64
-     * 默认 true
+     * 默认 false
      */
     fallbackToBase64?: boolean;
 }
+
+/**
+ * 默认的图片处理选项
+ * 作为配置的单一来源，确保在多个地方使用相同的默认值
+ */
+export const DEFAULT_IMAGE_PROCESS_OPTIONS: ImageProcessOptions = {
+    extractBase64Images: true,
+    base64SizeThreshold: 1 * 1024, // 1KB
+    removeBase64Images: false,
+    fallbackToBase64: false
+};

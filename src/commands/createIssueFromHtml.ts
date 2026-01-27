@@ -5,7 +5,7 @@ import { Logger } from '../core/utils/Logger';
 import { GitSyncService } from '../services/git-sync';
 import { createIssueNodes } from '../data/issueTreeManager';
 import { createIssueMarkdown, updateIssueMarkdownBody } from '../data/IssueMarkdowns';
-import { ImageProcessOptions } from '../utils/imageUtils';
+import { ImageProcessOptions, DEFAULT_IMAGE_PROCESS_OPTIONS } from '../utils/imageUtils';
 
 /**
  * 从 HTML 内容创建问题的参数
@@ -95,12 +95,7 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
                 preserveImages: params.preserveImages !== false,
                 preserveLinks: params.preserveLinks !== false,
                 contextFilePath: uri.fsPath,
-                imageProcessOptions: params.imageProcessOptions || {
-                    extractBase64Images: true,
-                    base64SizeThreshold: 1 * 1024, // 1KB
-                    removeBase64Images: false,
-                    fallbackToBase64: false
-                }
+                imageProcessOptions: params.imageProcessOptions || DEFAULT_IMAGE_PROCESS_OPTIONS
             });
 
             if (!markdown || markdown.trim().length === 0) {

@@ -130,14 +130,9 @@ export class HtmlToMarkdownService {
                 if (options.preserveImages !== false) {
                     const src = $elem.attr('src') || '';
                     const alt = $elem.attr('alt') || '';
-                    
-                    // 处理 base64 图片
-                    if (ImageUtils.isBase64Image(src)) {
-                        // 标记需要异步处理,先使用原始值
-                        // 实际处理将在 convertToMarkdown 的后处理阶段完成
-                        return `\n\n![${alt}](${src})\n\n`;
-                    }
-                    
+
+                    // base64 图片和普通图片一样，先生成 markdown 文本，  
+                    // 后续由 processBase64Images 统一处理。  
                     return `\n\n![${alt}](${src})\n\n`;
                 }
                 return '';
@@ -346,18 +341,16 @@ export class HtmlToMarkdownService {
             return markdown;
         }
         
-        // 收集所有需要处理的图片
-        const replacements: Array<{ original: string; replacement: string }> = [];
-        
-        for (const match of matches) {
+        // 异步并行处理所有图片
+        const processingPromises = matches.map(async (match) => {
             const [fullMatch, alt, src] = match;
             
-            // 只处理 base64 图片
+            // 非 base64 图片保持不变
             if (!ImageUtils.isBase64Image(src)) {
-                continue;
+                return { original: fullMatch, replacement: fullMatch, index: match.index! };
             }
             
-            // 处理图片
+            // 处理 base64 图片
             const processedSrc = await ImageUtils.processImageSource(
                 src,
                 alt,
@@ -365,22 +358,32 @@ export class HtmlToMarkdownService {
                 options.contextFilePath
             );
             
+            let replacement: string;
             if (processedSrc === null) {
                 // 移除图片,保留 alt 文本作为提示
-                const placeholder = alt ? `[图片: ${alt}]` : '[图片已移除]';
-                replacements.push({ original: fullMatch, replacement: placeholder });
+                replacement = alt ? `[图片: ${alt}]` : '[图片已移除]';
             } else if (processedSrc !== src) {
-                // 替换图片源
-                const newImageMarkdown = `![${alt}](${processedSrc})`;
-                replacements.push({ original: fullMatch, replacement: newImageMarkdown });
+                // 替换为新的图片源
+                replacement = `![${alt}](${processedSrc})`;
+            } else {
+                // 保持不变
+                replacement = fullMatch;
             }
-        }
+            
+            return { original: fullMatch, replacement, index: match.index! };
+        });
+
+        const replacements = await Promise.all(processingPromises);
         
-        // 执行替换
-        let result = markdown;
-        for (const { original, replacement } of replacements) {
-            result = result.replace(original, replacement);
+        // 基于索引进行安全替换，避免重复替换问题
+        let result = '';
+        let lastIndex = 0;
+        for (const { original, replacement, index } of replacements) {
+            result += markdown.substring(lastIndex, index);
+            result += replacement;
+            lastIndex = index + original.length;
         }
+        result += markdown.substring(lastIndex);
         
         return result;
     }
