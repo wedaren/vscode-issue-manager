@@ -50,6 +50,7 @@ import { selectLLMModel } from '../commands/llmCommands';
 // note mapping commands removed
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
 import {registerGenerateTitleCommand} from '../commands/generateTitle';
+import {registerGenerateBriefSummaryCommand} from '../commands/generateBriefSummary';
 import { registerGenerateProjectNameCommand, registerGenerateGitBranchCommand } from '../commands/nameGenerators';
 import { registerUnifiedQuickOpenCommand } from '../commands/unifiedQuickOpen';
 import { registerInsertMarksCommand } from '../commands/insertMarksCommand';
@@ -937,6 +938,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         );
 
         registerGenerateTitleCommand(this.context);
+        registerGenerateBriefSummaryCommand(this.context);
         // 注册生成名称相关命令和统一入口
         registerGenerateProjectNameCommand(this.context);
         registerGenerateGitBranchCommand(this.context);

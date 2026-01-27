@@ -488,12 +488,48 @@ export default defineBackground(() => {
               // 请求成功，通知 Side Panel 刷新关注列表
               notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
               sendResponse({ success: true });
+            } else if (wsResponse) {  
               sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });
             } else {
               sendResponse({ success: false, error: 'Unexpected response from VSCode' });
             }
           } catch (e: unknown) {
             console.error('GENERATE_TITLE failed:', e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      case 'GENERATE_BRIEF_SUMMARY':
+        (async () => {
+          try {
+            const filePath = message.filePath;
+            if (!filePath) {
+              sendResponse({ success: false, error: 'Missing filePath' });
+              return;
+            }
+
+            // 转发到 VSCode，执行命令
+            const wsResponse = await sendWebSocketMessage({
+              type: 'execute-command',
+              data: {
+                command: 'issueManager.generateBriefSummaryCommand',
+                args: [ { filePath } ]
+              }
+            }, 15000);
+
+            if (wsResponse && wsResponse.type === 'success') {
+              // 请求成功，通知 Side Panel 刷新关注列表
+              notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
+              sendResponse({ success: true });
+            } else if (wsResponse) {  
+              sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });  
+            } else {
+              sendResponse({ success: false, error: 'Unexpected response from VSCode' });
+            }
+          } catch (e: unknown) {
+            console.error('GENERATE_BRIEF_SUMMARY failed:', e);
             const errorMessage = e instanceof Error ? e.message : String(e);
             sendResponse({ success: false, error: errorMessage });
           }

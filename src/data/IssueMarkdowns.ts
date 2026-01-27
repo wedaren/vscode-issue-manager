@@ -41,6 +41,12 @@ export interface FrontmatterData {
     issue_title?: string[] | string;
     issue_description?: string;
     issue_prompt?: boolean;
+    /**
+     * 问题的简明摘要（3-5句话），概括核心内容和关键要点。
+     * - 可以是单个字符串或多个摘要的数组（例如由不同时间生成的多个版本）。
+     * - 由 LLM 自动生成或手动编辑。
+     */
+    brief_summary?: string | string[];
     [key: string]: unknown; // 支持其他字段
 }
 

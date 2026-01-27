@@ -57,6 +57,16 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "生成简明摘要",
+        description: "为当前编辑器的 IssueMarkdown 生成简明摘要",
+        require: ctx => !!ctx.uri && isIssueMarkdown(getIssueMarkdown(ctx.uri)),
+        execute: () => {
+            vscode.commands.executeCommand(
+                "issueManager.generateBriefSummaryCommand"
+            );
+        },
+    },
+    {
         label: "复制文件名",
         description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
         require: ctx => !!ctx.issueId,

@@ -430,7 +430,7 @@ export class ChromeIntegrationServer {
               const payload = (message.data || {}) as Partial<ExecuteCommandPayload>;  
               const command = payload.command;  
               const args = payload.args || [];  
-              const allowedCommands = ['issueManager.generateTitleCommand'];
+              const allowedCommands = ['issueManager.generateTitleCommand', 'issueManager.generateBriefSummaryCommand'];
               if (!command || !allowedCommands.includes(command)) {
                 ws.send(JSON.stringify({ type: 'error', error: 'Command not allowed', id: message.id }));
                 return;
