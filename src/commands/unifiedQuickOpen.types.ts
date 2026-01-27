@@ -16,7 +16,7 @@ export type QuickPickItemWithId = vscode.QuickPickItem & {
      * 可选的通用过滤函数，接收上下文并返回是否应展示该项。
      * ctx = { issueId?: string; uri?: vscode.Uri }
      */
-    require?: (ctx: { issueId?: string; uri?: vscode.Uri }) => boolean;
+    require?: (ctx: { issueId?: string; uri?: vscode.Uri }) => boolean | Promise<boolean>;
     // LLM 模式相关字段
     template?: string;
     fileUri?: vscode.Uri;
