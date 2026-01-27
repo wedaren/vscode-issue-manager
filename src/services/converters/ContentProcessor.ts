@@ -41,6 +41,18 @@ export interface ContentProcessingOptions {
     /** 是否保留链接 */
     preserveLinks?: boolean;
     
+    /** 图片处理选项 */
+    imageProcessOptions?: {
+        /** Base64 图片大小阈值(字节) */
+        base64SizeThreshold?: number;
+        /** 是否提取大型 base64 图片到本地文件 */
+        extractBase64Images?: boolean;
+        /** 是否移除大型 base64 图片 */
+        removeBase64Images?: boolean;
+        /** 当提取失败时是否回退到保留 base64 */
+        fallbackToBase64?: boolean;
+    };
+    
     /** 自定义规则表达式 */
     customRules?: {
         pattern: string;
