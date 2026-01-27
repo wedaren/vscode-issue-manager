@@ -3,7 +3,7 @@ import { QuickPickItemWithId, filterItems } from "./unifiedQuickOpen.types";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 import { getIssueNodeById } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
-import { isIssueMarkdown } from "../data/IssueMarkdowns";
+import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
 
 /**
  * 命令模式的所有命令项定义
@@ -49,7 +49,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成标题",
         description: "为当前编辑器的 IssueMarkdown 生成 IssueTitle",
-        require: ctx => isIssueMarkdown(ctx.uri),
+        require: ctx => !!ctx.uri && isIssueMarkdown(getIssueMarkdown(ctx.uri)),
         execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.generateTitleCommand"
