@@ -32,7 +32,7 @@ function mergeSummary(
     summary: string
 ): string | string[] | undefined {
     const s = normalizeSummary(summary);
-    const briefSummary = existing?.brief_summary;
+    const briefSummary = existing?.issue_brief_summary;
     
     if (!existing || briefSummary === undefined || briefSummary === null) {
         return s;
@@ -117,14 +117,14 @@ export function registerGenerateBriefSummaryCommand(context: vscode.ExtensionCon
                 const newSummary = normalizeSummary(summary);
                 const merged = mergeSummary(existing, newSummary);
                 if (merged === undefined) {  
-                    vscode.window.showInformationMessage('生成摘要与现有 brief_summary 相同或已存在，未做修改。');  
+                    vscode.window.showInformationMessage('生成摘要与现有 issue_brief_summary 相同或已存在，未做修改。');  
                     return;  
                 }  
-                const ok = await updateIssueMarkdownFrontmatter(targetUri, { brief_summary: merged });
+                const ok = await updateIssueMarkdownFrontmatter(targetUri, { issue_brief_summary: merged });
                 if (ok) {
-                    vscode.window.showInformationMessage('已将生成摘要写入 frontmatter.brief_summary');
+                    vscode.window.showInformationMessage('已将生成摘要写入 frontmatter.issue_brief_summary');
                 } else {
-                    vscode.window.showErrorMessage('写入 brief_summary 失败，请查看日志。');
+                    vscode.window.showErrorMessage('写入 issue_brief_summary 失败，请查看日志。');
                 }
             } catch (err: any) {
                 if (err && err.message === 'cancelled') {
