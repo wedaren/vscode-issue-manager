@@ -97,7 +97,7 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
                 contextFilePath: uri.fsPath,
                 imageProcessOptions: params.imageProcessOptions || {
                     extractBase64Images: true,
-                    base64SizeThreshold: 50 * 1024, // 50KB
+                    base64SizeThreshold: 1 * 1024, // 1KB
                     removeBase64Images: false,
                     fallbackToBase64: false
                 }

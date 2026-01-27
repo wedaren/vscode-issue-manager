@@ -9,9 +9,9 @@ import { getIssueDir } from '../config';
 export class ImageUtils {
     /**
      * Base64 图片大小限制(字节),超过此大小的图片将被提取保存
-     * 默认 50KB
+     * 默认 1KB
      */
-    private static readonly BASE64_SIZE_THRESHOLD = 50 * 1024;
+    private static readonly BASE64_SIZE_THRESHOLD = 1 * 1024;
 
     /**
      * 检测字符串是否为 base64 图片
@@ -194,7 +194,7 @@ export class ImageUtils {
 export interface ImageProcessOptions {
     /**
      * Base64 图片大小阈值(字节)
-     * 默认 50KB
+     * 默认 1KB
      */
     base64SizeThreshold?: number;
 

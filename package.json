@@ -1369,8 +1369,8 @@
         },
         "issueManager.rss.contentProcessing.base64Images.sizeThreshold": {
           "type": "number",
-          "default": 51200,
-          "description": "Base64 图片的大小阈值（字节）。超过此大小的图片将被提取或移除，默认 50KB (51200 字节)。"
+          "default": 1024,
+          "description": "Base64 图片的大小阈值（字节）。超过此大小的图片将被提取或移除，默认 1KB (1024 字节)。"
         },
         "issueManager.rss.contentProcessing.base64Images.remove": {
           "type": "boolean",
