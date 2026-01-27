@@ -402,6 +402,140 @@ ${JSON.stringify(
     }
 
     /**
+     * 根据输入文本生成一个简明的摘要（3-5句话）。
+     * 如果失败或没有生成结果，返回空字符串。
+     */
+    public static async generateBriefSummary(
+        text: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<string> {
+        if (!text || text.trim().length === 0) {
+            return "";
+        }
+
+        // 截断以防超长内容导致模型拒绝或超时
+        const MAX_CHARS = 64000;
+        let sentText = text;
+        let truncated = false;
+        if (text.length > MAX_CHARS) {
+            sentText = text.slice(0, MAX_CHARS);
+            truncated = true;
+        }
+
+        const promptLines: string[] = [];
+        promptLines.push(
+            "请为下面的 Markdown 文本生成一个简明的摘要（3-5句话），概括其核心内容和关键要点。"
+        );
+        promptLines.push(
+            '仅返回一个 JSON 对象，格式为：{ "summary": "生成的摘要文本" }。不要添加其它说明、注释或代码块标签。'
+        );
+        if (truncated) {
+            promptLines.push(
+                "(注意：输入已被截断，只包含文件的前部分，请基于可见内容生成简明摘要)"
+            );
+        }
+        promptLines.push("原文如下：");
+        promptLines.push("---");
+        promptLines.push(sentText);
+        promptLines.push("---");
+
+        const prompt = promptLines.join("\n");
+
+        try {
+            const fullResp = await LLMService._request(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                options
+            );
+            if (fullResp === null) {
+                return "";
+            }
+            const full = fullResp.text;
+            Logger.getInstance().info("LLM generateBriefSummary Raw Response:", full);
+
+            // 1) 尝试提取 ```json ``` 区块
+            const jsonBlockMatch = full.match(/```json\s*([\s\S]*?)\s*```/i);
+            let jsonCandidate = "";
+            if (jsonBlockMatch && jsonBlockMatch[1]) {
+                jsonCandidate = jsonBlockMatch[1];
+            }
+
+            // 2) 如果没有，尝试提取第一个平衡的 JSON 对象
+            function extractFirstBalancedJson(s: string): string | null {
+                const first = s.indexOf("{");
+                if (first === -1) {
+                    return null;
+                }
+                let depth = 0;
+                for (let i = first; i < s.length; i++) {
+                    const ch = s[i];
+                    if (ch === "{") {
+                        depth++;
+                    } else if (ch === "}") {
+                        depth--;
+                    }
+                    if (depth === 0) {
+                        return s.substring(first, i + 1);
+                    }
+                }
+                return null;
+            }
+
+            if (!jsonCandidate) {
+                const balanced = extractFirstBalancedJson(full);
+                if (balanced) {
+                    jsonCandidate = balanced;
+                }
+            }
+
+            // 3) 解析 JSON
+            if (jsonCandidate) {
+                try {
+                    const parsed = JSON.parse(jsonCandidate);
+                    if (
+                        parsed &&
+                        typeof parsed.summary === "string" &&
+                        parsed.summary.trim().length > 0
+                    ) {
+                        return parsed.summary.trim();
+                    }
+                } catch (err) {
+                    Logger.getInstance().warn(
+                        "解析 LLM generateBriefSummary JSON 失败，尝试其它解析策略",
+                        err
+                    );
+                }
+            }
+
+            // 4) 直接使用键值正则提取 "summary": "..."
+            const summaryMatch =
+                full.match(/"summary"\s*:\s*"([^"]{1,500})"/i) ||
+                full.match(/'summary'\s*:\s*'([^']{1,500})'/i);
+            if (summaryMatch && summaryMatch[1]) {
+                return summaryMatch[1].trim();
+            }
+
+            // 5) 回退：取第一段非空文本（最多500字符）
+            const paragraphs = full
+                .split(/\n\n+/)
+                .map(p => p.trim())
+                .filter(Boolean);
+            if (paragraphs.length > 0) {
+                const first = paragraphs[0].substring(0, 500).trim();
+                return first;
+            }
+
+            return "";
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return "";
+            }
+            Logger.getInstance().error("generateBriefSummary error:", error);
+            vscode.window.showErrorMessage("调用 Copilot 自动生成摘要失败。");
+            return "";
+        }
+    }
+
+    /**
      * 根据用户输入生成一篇完整的 Markdown 文档。
      * @param prompt 用户的主题或问题
      * @param options 可选参数
