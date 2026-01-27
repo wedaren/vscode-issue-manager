@@ -49,7 +49,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成标题",
         description: "为当前编辑器的 IssueMarkdown 生成 IssueTitle",
-        require: ctx => !!ctx.uri && isIssueMarkdown(getIssueMarkdown(ctx.uri)),
+        require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
         execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.generateTitleCommand"
@@ -59,7 +59,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "生成简明摘要",
         description: "为当前编辑器的 IssueMarkdown 生成简明摘要",
-        require: ctx => !!ctx.uri && isIssueMarkdown(getIssueMarkdown(ctx.uri)),
+        require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
         execute: () => {
             vscode.commands.executeCommand(
                 "issueManager.generateBriefSummaryCommand"
@@ -139,16 +139,23 @@ export async function getActiveCommandItems(): Promise<QuickPickItemWithId[]> {
         let activeIssueValid = !!(await getIssueNodeById(currentEditorIssueId || ""));
         currentEditorIssueId = activeIssueValid ? currentEditorIssueId : undefined;
         const ctx = { issueId: currentEditorIssueId, uri: activeUri };
-        return COMMAND_ITEMS.filter(i => {
-            if (!i.require) {
-                return true;
-            }
-            try {
-                return !!i.require(ctx);
-            } catch (e) {
-                return false;
-            }
-        });
+        
+        // 使用 Promise.all 并发处理所有 require 检查
+        const results = await Promise.all(
+            COMMAND_ITEMS.map(async (item) => {
+                if (!item.require) {
+                    return { item, shouldInclude: true };
+                }
+                try {
+                    const result = await item.require(ctx);
+                    return { item, shouldInclude: !!result };
+                } catch (e) {
+                    return { item, shouldInclude: false };
+                }
+            })
+        );
+        
+        return results.filter(r => r.shouldInclude).map(r => r.item);
     } catch (e) {
         // 如果发生异常，保守地只返回无 require 的项
         return COMMAND_ITEMS.filter(i => !i.require);
