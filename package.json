@@ -83,12 +83,6 @@
         "icon": "$(add)"
       },
       {
-        "command": "issueManager.generateTitleCommand",
-        "title": "生成标题",
-        "category": "Issue Manager",
-        "icon": "$(pencil)"
-      },
-      {
         "command": "issueManager.generateProjectName",
         "title": "生成项目名",
         "category": "Issue Manager",
@@ -796,7 +790,7 @@
         },
         {
           "command": "issueManager.generateTitleCommand",
-          "when": "view == 'issueManager.views.overview' && (viewItem =~ /issueNode/ || viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
+          "when": "view == 'issueManager.views.overview' && (viewItem =~ /issueNode/)",
           "group": "llm"
         },
         {
