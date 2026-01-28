@@ -32,7 +32,14 @@ export class RSSContentProcessingConfig {
                     maxSentences: config.get(`${this.CONFIG_SECTION}.summaryMode.maxSentences`, 3),
                     preferredSections: config.get(`${this.CONFIG_SECTION}.summaryMode.preferredSections`, ['摘要', '总结'])
                 },
-                customRules: config.get(`${this.CONFIG_SECTION}.customRules`, [])
+                customRules: config.get(`${this.CONFIG_SECTION}.customRules`, []),
+                // Base64 图片处理配置
+                imageProcessOptions: {
+                    extractBase64Images: config.get(`${this.CONFIG_SECTION}.base64Images.extract`, true),
+                    base64SizeThreshold: config.get(`${this.CONFIG_SECTION}.base64Images.sizeThreshold`, 1024),
+                    removeBase64Images: config.get(`${this.CONFIG_SECTION}.base64Images.remove`, false),
+                    fallbackToBase64: config.get(`${this.CONFIG_SECTION}.base64Images.fallbackToBase64`, false)
+                }
             }
         };
     }

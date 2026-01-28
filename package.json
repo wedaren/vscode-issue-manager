@@ -1362,6 +1362,26 @@
           "default": true,
           "description": "是否保留图片标签。"
         },
+        "issueManager.rss.contentProcessing.base64Images.extract": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否提取 base64 图片并保存为本地文件。启用后，大型 base64 图片将被保存到 .assets 目录。"
+        },
+        "issueManager.rss.contentProcessing.base64Images.sizeThreshold": {
+          "type": "number",
+          "default": 1024,
+          "description": "Base64 图片的大小阈值（字节）。超过此大小的图片将被提取或移除，默认 1KB (1024 字节)。"
+        },
+        "issueManager.rss.contentProcessing.base64Images.remove": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否直接移除大型 base64 图片（而不是保存）。启用后会忽略 extract 选项。"
+        },
+        "issueManager.rss.contentProcessing.base64Images.fallbackToBase64": {
+          "type": "boolean",
+          "default": false,
+          "description": "当图片保存失败时，是否回退到保留原始 base64。禁用时会移除保存失败的图片。"
+        },
         "issueManager.rss.contentProcessing.preserveLinks": {
           "type": "boolean",
           "default": true,

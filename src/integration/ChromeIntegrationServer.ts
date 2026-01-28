@@ -11,6 +11,7 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { SharedConfig } from '../config/SharedConfig';
 import { getIssueMarkdown } from '../data/IssueMarkdowns';
+import { DEFAULT_IMAGE_PROCESS_OPTIONS } from '../utils/imageUtils';
 
 
 interface ChromeRequestPayload {  
@@ -243,8 +244,8 @@ export class ChromeIntegrationServer {
               return;
             }
 
-            // 限制大小 5MB
-            if (html.length > 5 * 1024 * 1024) {
+            // 限制大小 50MB
+            if (html.length > 50 * 1024 * 1024) {
               ws.send(JSON.stringify({ 
                 type: 'error', 
                 error: 'Content too large',
@@ -253,7 +254,7 @@ export class ChromeIntegrationServer {
               return;
             }
 
-            const created = await createIssueFromHtml({ html, title, url });
+            const created = await createIssueFromHtml({ html, title, url,imageProcessOptions: DEFAULT_IMAGE_PROCESS_OPTIONS });
             ws.send(JSON.stringify({ 
               type: 'success', 
               path: created?.toString(),

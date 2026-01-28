@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import { ImageUtils, ImageProcessOptions } from '../../utils/imageUtils';
 
 /**
  * HTML 到 Markdown 转换服务
@@ -11,7 +12,7 @@ export class HtmlToMarkdownService {
      * @param options 转换选项
      * @returns Markdown 字符串
      */
-    public static convertToMarkdown(html: string, options: ConversionOptions = {}): string {
+    public static async convertToMarkdown(html: string, options: ConversionOptions = {}): Promise<string> {
         const $ = cheerio.load(html);
 
         // 移除脚本和样式标签
@@ -21,6 +22,9 @@ export class HtmlToMarkdownService {
         const rootElement = $('body').length > 0 ? $('body') : $.root();
         
         let markdown = this.processNode(rootElement, $, 0, options);
+
+        // 处理 base64 图片
+        markdown = await this.processBase64Images(markdown, options);
 
         // 清理多余的空行
         markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
@@ -126,6 +130,9 @@ export class HtmlToMarkdownService {
                 if (options.preserveImages !== false) {
                     const src = $elem.attr('src') || '';
                     const alt = $elem.attr('alt') || '';
+
+                    // base64 图片和普通图片一样，先生成 markdown 文本，  
+                    // 后续由 processBase64Images 统一处理。  
                     return `\n\n![${alt}](${src})\n\n`;
                 }
                 return '';
@@ -318,6 +325,68 @@ export class HtmlToMarkdownService {
         
         return '';
     }
+
+    /**
+     * 处理 Markdown 中的 base64 图片
+     */
+    private static async processBase64Images(
+        markdown: string,
+        options: ConversionOptions
+    ): Promise<string> {
+        // 匹配 Markdown 图片语法: ![alt](src)
+        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        const matches = Array.from(markdown.matchAll(imageRegex));
+        
+        if (matches.length === 0) {
+            return markdown;
+        }
+        
+        // 异步并行处理所有图片
+        const processingPromises = matches.map(async (match) => {
+            const [fullMatch, alt, src] = match;
+            
+            // 非 base64 图片保持不变
+            if (!ImageUtils.isBase64Image(src)) {
+                return { original: fullMatch, replacement: fullMatch, index: match.index! };
+            }
+            
+            // 处理 base64 图片
+            const processedSrc = await ImageUtils.processImageSource(
+                src,
+                alt,
+                options.imageProcessOptions,
+                options.contextFilePath
+            );
+            
+            let replacement: string;
+            if (processedSrc === null) {
+                // 移除图片,保留 alt 文本作为提示
+                replacement = alt ? `[图片: ${alt}]` : '[图片已移除]';
+            } else if (processedSrc !== src) {
+                // 替换为新的图片源
+                replacement = `![${alt}](${processedSrc})`;
+            } else {
+                // 保持不变
+                replacement = fullMatch;
+            }
+            
+            return { original: fullMatch, replacement, index: match.index! };
+        });
+
+        const replacements = await Promise.all(processingPromises);
+        
+        // 基于索引进行安全替换，避免重复替换问题
+        let result = '';
+        let lastIndex = 0;
+        for (const { original, replacement, index } of replacements) {
+            result += markdown.substring(lastIndex, index);
+            result += replacement;
+            lastIndex = index + original.length;
+        }
+        result += markdown.substring(lastIndex);
+        
+        return result;
+    }
 }
 
 /**
@@ -338,4 +407,15 @@ export interface ConversionOptions {
      * 是否移除空白元素（默认 true）
      */
     removeEmptyElements?: boolean;
+    
+    /**
+     * 图片处理选项
+     */
+    imageProcessOptions?: ImageProcessOptions;
+    
+    /**
+     * 上下文文件路径（用于确定图片保存位置）
+     * 如果提供，图片将保存在该文件同级的 {filename}.assets 目录中
+     */
+    contextFilePath?: string;
 }
