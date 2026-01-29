@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { GitSyncService } from '../services/GitSyncService';
-import { FileAccessTracker } from '../services/FileAccessTracker';
 import { EditorEventManager } from '../services/EditorEventManager';
 import { RecordContentTool } from '../llm/RecordContentTool';
 import { IssueChatParticipant } from '../chat/IssueChatParticipant';
@@ -11,7 +10,6 @@ import { Logger } from './utils/Logger';
  * 
  * 负责初始化和管理扩展的核心服务组件，包括：
  * - Git同步服务：自动同步本地更改到远程仓库
- * - 文件访问跟踪服务：跟踪文件访问模式和使用情况
  * - Language Model工具：集成AI助手功能
  * 
  * 所有服务的生命周期都与扩展上下文绑定，确保在扩展
@@ -53,13 +51,10 @@ export class ServiceRegistry {
             // 1. 初始化Git同步服务（核心功能）
             this.initializeGitSyncService();
             
-            // 2. 初始化文件访问跟踪服务（性能监控）
-            this.initializeFileAccessTracker();
-            
-            // 3. 注册Language Model Tool（增强功能）
+            // 2. 注册Language Model Tool（增强功能）
             this.registerLanguageModelTool();
             
-            // 4. 注册Chat Participant（AI 聊天集成）
+            // 3. 注册Chat Participant（AI 聊天集成）
             this.registerChatParticipant();
             
             this.logger.info('    ✓ 所有服务初始化完成');
@@ -103,23 +98,6 @@ export class ServiceRegistry {
             this.logger.error('      ✗ Git同步服务启动失败:', error);
             // Git服务失败不应该阻止整个扩展启动
             this.logger.warn('      ⚠️ 继续启动扩展，但Git自动同步功能将不可用');
-        }
-    }
-
-    /**
-     * 初始化文件访问跟踪服务
-     * 
-     * 跟踪用户对问题文件的访问模式，用于优化
-     * 最近问题列表和提供使用统计。
-     */
-    private initializeFileAccessTracker(): void {
-        try {
-            FileAccessTracker.initialize(this.context);
-            this.logger.info('      ✓ 文件访问跟踪服务已启动');
-            // FileAccessTracker会自动处理其生命周期管理
-        } catch (error) {
-            this.logger.error('      ✗ 文件访问跟踪服务启动失败:', error);
-            // 非关键服务，失败不影响主要功能
         }
     }
 
