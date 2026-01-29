@@ -295,9 +295,15 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
 
         const results: IssueSearchResult[] = [];
         matches.forEach(match => {
-            const absPath = path.isAbsolute(match.filePath)
-                ? match.filePath
-                : path.join(issueDir, match.filePath);
+            const absPath = path.resolve(issueDir, match.filePath);
+
+            // 安全性校验：确保解析后的路径仍在 issueDir 目录内，防止路径遍历
+            const relativeToIssueDir = path.relative(issueDir, absPath);
+            if (relativeToIssueDir.startsWith("..") || path.isAbsolute(relativeToIssueDir)) {
+                Logger.getInstance().warn(`AI 返回的路径可能存在遍历风险，已跳过: ${match.filePath}`);
+                return;
+            }
+
             const issue = issueMap.get(absPath);
             if (!issue) {
                 return;
