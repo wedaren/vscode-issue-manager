@@ -48,6 +48,35 @@ const getSearchHistoryPath = async (): Promise<string | null> => {
     return path.join(dataDir, SEARCH_HISTORY_FILE);
 };
 
+function isIssueSearchResult(item: unknown): item is IssueSearchResult {
+    if (!item || typeof item !== "object") {
+        return false;
+    }
+    const r = item as Record<string, unknown>;
+    return (
+        typeof r.filePath === "string" &&
+        typeof r.title === "string" &&
+        (r.briefSummary === undefined || typeof r.briefSummary === "string")
+    );
+}
+
+function isIssueSearchRecord(item: unknown): item is IssueSearchRecord {
+    if (!item || typeof item !== "object") {
+        return false;
+    }
+    const r = item as Record<string, unknown>;
+    if (
+        typeof r.id !== "string" ||
+        typeof r.keyword !== "string" ||
+        !(r.type === "ai" || r.type === "filter") ||
+        typeof r.createdAt !== "number" ||
+        !Array.isArray(r.results)
+    ) {
+        return false;
+    }
+    return (r.results as unknown[]).every(isIssueSearchResult);
+}
+
 export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> {
     const historyPath = await getSearchHistoryPath();
     if (!historyPath) {
@@ -60,17 +89,7 @@ export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> 
         if (!Array.isArray(data.records)) {
             return { ...DEFAULT_HISTORY_DATA };
         }
-        const records = data.records.filter((item: any) => {
-            return (
-                item &&
-                typeof item === "object" &&
-                typeof item.id === "string" &&
-                typeof item.keyword === "string" &&
-                (item.type === "ai" || item.type === "filter") &&
-                typeof item.createdAt === "number" &&
-                Array.isArray(item.results)
-            );
-        }) as IssueSearchRecord[];
+        const records = data.records.filter(isIssueSearchRecord);
 
         return {
             version: typeof data.version === "string" ? data.version : DEFAULT_HISTORY_DATA.version,
