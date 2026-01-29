@@ -19,6 +19,7 @@ import { GitBranchTreeProvider } from '../gitBranch/GitBranchTreeProvider';
 import { GitBranchCommandHandler } from '../gitBranch/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
+import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
@@ -78,6 +79,9 @@ export class ViewRegistry {
         
         // 注册最近问题视图
         const { recentIssuesProvider, recentIssuesView } = this.registerRecentView();
+
+        // 注册问题搜索视图
+        const { issueSearchProvider, issueSearchView } = this.registerIssueSearchView();
         
         // 注册RSS问题视图
         // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
@@ -112,6 +116,8 @@ export class ViewRegistry {
             overviewView,
             focusedView,
             recentIssuesView,
+            issueSearchProvider,
+            issueSearchView,
             // rssIssuesProvider,
             // rssIssuesView,
             // issueStructureProvider,
@@ -129,6 +135,24 @@ export class ViewRegistry {
             gitBranchProvider,
             gitBranchView
         };
+    }
+
+    /**
+     * 注册问题搜索视图
+     */
+    private registerIssueSearchView(): {
+        issueSearchProvider: IssueSearchViewProvider;
+        issueSearchView: vscode.TreeView<vscode.TreeItem>;
+    } {
+        const issueSearchProvider = new IssueSearchViewProvider(this.context);
+        const issueSearchView = vscode.window.createTreeView('issueManager.views.search', {
+            treeDataProvider: issueSearchProvider,
+            showCollapseAll: true
+        });
+
+        this.context.subscriptions.push(issueSearchView);
+
+        return { issueSearchProvider, issueSearchView };
     }
 
     /**

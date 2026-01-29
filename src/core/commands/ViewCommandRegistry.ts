@@ -15,6 +15,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private issueOverviewProvider?: IIssueOverviewProvider;
     private recentIssuesProvider?: IIssueViewProvider;
     private recentView?: vscode.TreeView<vscode.TreeItem>;
+    private issueSearchProvider?: import('../../views/IssueSearchViewProvider').IssueSearchViewProvider;
+    private issueSearchView?: vscode.TreeView<vscode.TreeItem>;
     private paraViewProvider?: ParaViewProvider;
     private overviewView?: vscode.TreeView<IssueNode>;
     private focusedView?: vscode.TreeView<IssueNode>;
@@ -32,6 +34,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         paraViewProvider?: ParaViewProvider;
         overviewView: vscode.TreeView<IssueNode>;
         focusedView: vscode.TreeView<IssueNode>;
+        issueSearchProvider: import('../../views/IssueSearchViewProvider').IssueSearchViewProvider;
+        issueSearchView: vscode.TreeView<vscode.TreeItem>;
     }): void {
         this.focusedIssuesProvider = providers.focusedIssuesProvider;
         this.issueOverviewProvider = providers.issueOverviewProvider;
@@ -40,6 +44,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.paraViewProvider = providers.paraViewProvider;
         this.overviewView = providers.overviewView;
         this.focusedView = providers.focusedView;
+        this.issueSearchProvider = providers.issueSearchProvider;
+        this.issueSearchView = providers.issueSearchView;
     }
 
     /**
@@ -79,6 +85,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
                 this.focusedIssuesProvider?.refresh();
                 this.issueOverviewProvider?.refresh();
                 this.recentIssuesProvider?.refresh();
+                this.issueSearchProvider?.refresh();
                 this.paraViewProvider?.refresh();
             },
             '刷新所有视图'
@@ -91,6 +98,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
                 this.focusedIssuesProvider?.refresh();
                 this.issueOverviewProvider?.refresh();
                 this.recentIssuesProvider?.refresh();
+                this.issueSearchProvider?.refresh();
                 this.paraViewProvider?.refresh();
             },
             '刷新视图'

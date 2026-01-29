@@ -14,7 +14,8 @@ const ISSUE_TREE_VIEWS = [
     'issueManager.views.overview',
     'issueManager.views.focused',
     'issueManager.views.recent',
-    'issueManager.views.related'
+    'issueManager.views.related',
+    'issueManager.views.search'
 ];
 
 /**
