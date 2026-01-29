@@ -6,11 +6,8 @@ import { IssueDragAndDropController } from '../views/IssueDragAndDropController'
 import { RSSIssuesProvider } from '../views/RSSIssuesProvider';
 import { RSSIssueDragAndDropController } from '../views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
-import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
-import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
-// NoteMappingViewProvider 已移除，不再导入
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
