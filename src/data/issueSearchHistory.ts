@@ -30,7 +30,7 @@ const DEFAULT_HISTORY_DATA: IssueSearchHistoryData = {
     records: []
 };
 
-const getSearchHistoryPath = (): string | null => {
+const getSearchHistoryPath = async (): Promise<string | null> => {
     const issueDir = getIssueDir();
     if (!issueDir) {
         return null;
@@ -38,9 +38,7 @@ const getSearchHistoryPath = (): string | null => {
 
     const dataDir = path.join(issueDir, ".issueManager");
     try {
-        if (!require("fs").existsSync(dataDir)) {
-            require("fs").mkdirSync(dataDir, { recursive: true });
-        }
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(dataDir));
     } catch (error) {
         vscode.window.showErrorMessage("创建 .issueManager 目录失败。");
         Logger.getInstance().error("创建 .issueManager 目录失败", error);
@@ -51,7 +49,7 @@ const getSearchHistoryPath = (): string | null => {
 };
 
 export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> {
-    const historyPath = getSearchHistoryPath();
+    const historyPath = await getSearchHistoryPath();
     if (!historyPath) {
         return { ...DEFAULT_HISTORY_DATA };
     }
@@ -85,7 +83,7 @@ export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> 
 }
 
 export async function writeIssueSearchHistory(data: IssueSearchHistoryData): Promise<void> {
-    const historyPath = getSearchHistoryPath();
+    const historyPath = await getSearchHistoryPath();
     if (!historyPath) {
         vscode.window.showErrorMessage("无法写入搜索历史，问题目录未配置。");
         return;
