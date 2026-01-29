@@ -4,6 +4,7 @@ import { getIssueDir } from "../config";
 import { getAllIssueMarkdowns, IssueMarkdown, FrontmatterData } from "../data/IssueMarkdowns";
 import { LLMService } from "../llm/LLMService";
 import { Logger } from "../core/utils/Logger";
+import { v4 as uuidv4 } from 'uuid';
 import { addIssueSearchRecord, IssueSearchRecord, IssueSearchResult, readIssueSearchHistory } from "../data/issueSearchHistory";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "../commands/openIssueNode";
@@ -51,7 +52,7 @@ function createSearchRecord(
     results: IssueSearchResult[]
 ): IssueSearchRecord {
     return {
-        id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `${type}-${uuidv4()}`,
         keyword,
         type,
         createdAt: Date.now(),
@@ -61,7 +62,7 @@ function createSearchRecord(
 
 function createPendingRecord(keyword: string): IssueSearchRecord {
     return {
-        id: `pending-ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `pending-ai-${uuidv4()}`,
         keyword,
         type: "ai",
         createdAt: Date.now(),
