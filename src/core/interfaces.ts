@@ -84,6 +84,12 @@ export interface IViewRegistryResult {
     
     /** 最近问题树视图实例 */
     recentIssuesView: vscode.TreeView<vscode.TreeItem>;
+
+    /** 问题搜索视图提供者实例 */
+    issueSearchProvider: import('../views/IssueSearchViewProvider').IssueSearchViewProvider;
+
+    /** 问题搜索树视图实例 */
+    issueSearchView: vscode.TreeView<vscode.TreeItem>;
     
     // /** RSS问题视图提供者实例 */
     // rssIssuesProvider: IIssueViewProvider<vscode.TreeItem>;

@@ -192,6 +192,84 @@ ${JSON.stringify(
     }
 
     /**
+     * AI 搜索：从现有笔记中找出与输入最相关的问题文件路径
+     */
+    public static async searchIssueMarkdowns(
+        query: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<{ filePath: string; title?: string }[]> {
+        const trimmed = (query || "").trim();
+        if (!trimmed) {
+            return [];
+        }
+
+        const allIssues = await getAllIssueMarkdowns();
+        const prompt = `
+你是一个问题管理助手。请根据用户的搜索关键词，从提供的笔记列表中选出最相关的笔记（最多 20 条）。
+
+请仅返回 JSON，格式如下：
+{
+  "matches": [
+    { "filePath": "/abs/path/to/note.md", "title": "标题" }
+  ]
+}
+
+用户搜索关键词: "${trimmed}"
+
+笔记列表（标题与路径）：
+${JSON.stringify(
+    allIssues.map(i => ({ title: i.title, filePath: i.uri.fsPath })),
+    null,
+    2
+)}
+`;
+
+        try {
+            const fullResp = await LLMService._request(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                options
+            );
+            if (fullResp === null) {
+                return [];
+            }
+
+            const fullResponse = fullResp.text;
+            Logger.getInstance().info("LLM searchIssueMarkdowns Raw Response:", fullResponse);
+
+            const jsonBlockMatch = fullResponse.match(/```json\s*([\s\S]*?)\s*```/i);
+            let jsonCandidate = "";
+            if (jsonBlockMatch && jsonBlockMatch[1]) {
+                jsonCandidate = jsonBlockMatch[1];
+            } else {
+                const firstBrace = fullResponse.indexOf("{");
+                const lastBrace = fullResponse.lastIndexOf("}");
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                    jsonCandidate = fullResponse.substring(firstBrace, lastBrace + 1);
+                }
+            }
+
+            if (!jsonCandidate) {
+                return [];
+            }
+
+            const parsed = JSON.parse(jsonCandidate);
+            const matches = Array.isArray(parsed?.matches) ? parsed.matches : [];
+            return matches
+                .filter((item: any) => item && typeof item.filePath === "string")
+                .map((item: any) => ({
+                    filePath: item.filePath,
+                    title: typeof item.title === "string" ? item.title : undefined
+                }));
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return [];
+            }
+            Logger.getInstance().error("LLM searchIssueMarkdowns error:", error);
+            return [];
+        }
+    }
+
+    /**
      * 根据输入文本生成一个简洁精确的 Markdown 一级标题（单条）。
      * 如果失败或没有生成结果，返回空字符串。
      */

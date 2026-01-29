@@ -246,6 +246,8 @@ export class ExtensionInitializer {
                 views.recentIssuesView,
                 views.overviewView,
                 views.focusedView,
+                views.issueSearchProvider,
+                views.issueSearchView,
                 // views.issueStructureProvider,
                 // views.issueLogicalTreeProvider,
                 views.paraViewProvider,
