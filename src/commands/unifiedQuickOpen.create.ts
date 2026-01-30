@@ -45,16 +45,18 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
             }
             const nodes = await createIssueNodes([uri], currentEditorIssueId);
             vscode.commands.executeCommand("issueManager.refreshAllViews");
-            if (nodes && nodes[0] && nodes[0].id) {
-                await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
-                const prompt = `用户向你提了： ${issue}。
+                if (nodes && nodes[0] && nodes[0].id) {
+                    await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
+                    const prompt = `用户向你提了： ${issue}。
 可能有用的上下文:
 当前编辑器内容是：${currentEditorContent}。
 当前选中的文本是：${currentSelectedText}。
 当前选中的范围是：${currentSelection}。
 请根据这些信息生成 Markdown（包含标题和详细描述）`;
-                await backgroundFillIssue(uri, prompt, nodes[0].id);
-            }
+                    backgroundFillIssue(uri, prompt, nodes[0].id).catch((e) => {
+                        console.error("create-mode background fill failed", e);
+                    });
+                }
         },
     };
 
@@ -76,11 +78,13 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                 const nodes = await createIssueNodes([uri], currentEditorIssueId);
                 try {
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
-                    await backgroundFillIssue(
+                    backgroundFillIssue(
                         uri,
                         buildPromptWithContent(currentEditorContent, p.template),
                         nodes && nodes[0] ? nodes[0].id : undefined
-                    );
+                    ).catch((e) => {
+                        console.error("create-mode prompt fill failed", e);
+                    });
                 } catch (e) {
                     console.error("create-mode prompt fill failed", e);
                 }
@@ -130,12 +134,10 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
             }
             const nodes = await createIssueNodes([uri]);
             vscode.commands.executeCommand("issueManager.refreshAllViews");
-            try {
-                const prompt = title;
-                backgroundFillIssue(uri, prompt, nodes && nodes[0] ? nodes[0].id : undefined);
-            } catch (e) {
+            const prompt = title;
+            backgroundFillIssue(uri, prompt, nodes && nodes[0] ? nodes[0].id : undefined).catch((e) => {
                 console.error("create-mode background fill failed", e);
-            }
+            });
         },
     };
 
