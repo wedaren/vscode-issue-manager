@@ -161,24 +161,25 @@ export function formatRelativeTime(date: Date, now: Date = new Date()): string {
  * - 其他：YYYY-MM-DD
  */
 export function formatCompactDateTime(date: Date, now: Date = new Date()): string {
+    let options: Intl.DateTimeFormatOptions;
     if (isSameDay(date, now)) {
-        return new Intl.DateTimeFormat('zh-CN', {
+        options = {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
-        }).format(date);
-    }
-
-    if (date.getFullYear() === now.getFullYear()) {
-        return new Intl.DateTimeFormat('zh-CN', {
+        };
+    } else if (date.getFullYear() === now.getFullYear()) {
+        options = {
             month: '2-digit',
             day: '2-digit',
-        }).format(date);
+        };
+    } else {
+        options = {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        };
     }
 
-    return new Intl.DateTimeFormat('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(date);
+    return new Intl.DateTimeFormat('zh-CN', options).format(date);
 }
