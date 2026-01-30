@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
 import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+import { formatCompactDateTime, formatRelativeTime } from '../utils/dateUtils';
 import {
   getRecentIssuesStats,
   groupIssuesByTime,
@@ -259,9 +260,13 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     
     // 根据排序方式选择时间戳，根据视图模式选择格式
     const timestamp = this.sortOrder === 'ctime' ? stat.ctime : stat.mtime;
-    item.description = this.viewMode === 'list' 
-      ? timestamp.toLocaleString() 
-      : timestamp.toLocaleTimeString();
+    if (this.viewMode === 'list') {
+      const relative = formatRelativeTime(timestamp);
+      const compact = formatCompactDateTime(timestamp);
+      item.description = `${relative} · ${compact}`;
+    } else {
+      item.description = timestamp.toLocaleTimeString();
+    }
     
     this.itemCache.set(key, item);
     return item;
