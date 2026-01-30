@@ -145,13 +145,13 @@ export function formatRelativeTime(date: Date, now: Date = new Date()): string {
         return `${days} 天${suffix}`;
     }
 
-    const months = Math.floor(days / 30);
-    if (months < 12) {
-        return `${months} 个月${suffix}`;
+    const years = Math.floor(days / 365);
+    if (years >= 1) {
+        return `${years} 年${suffix}`;
     }
 
-    const years = Math.floor(days / 365);
-    return `${years} 年${suffix}`;
+    const months = Math.floor(days / 30);
+    return `${months} 个月${suffix}`;
 }
 
 /**
