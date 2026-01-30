@@ -112,3 +112,73 @@ export function dateKeyToLabel(dateKey: string): string {
     const date = new Date(dateKey);
     return formatDate(date);
 }
+
+function isSameDay(a: Date, b: Date): boolean {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/**
+ * 格式化为中文相对时间文案（如“3 分钟前 / 刚刚”）
+ */
+export function formatRelativeTime(date: Date, now: Date = new Date()): string {
+    const diffMs = now.getTime() - date.getTime();
+    const isFuture = diffMs < 0;
+    const diffAbsMs = Math.abs(diffMs);
+
+    const seconds = Math.floor(diffAbsMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    const suffix = isFuture ? '后' : '前';
+
+    if (seconds < 30) {
+        return isFuture ? '即将' : '刚刚';
+    }
+    if (minutes < 60) {
+        return `${minutes} 分钟${suffix}`;
+    }
+    if (hours < 24) {
+        return `${hours} 小时${suffix}`;
+    }
+    if (days < 30) {
+        return `${days} 天${suffix}`;
+    }
+
+    const months = Math.floor(days / 30);
+    if (months < 12) {
+        return `${months} 个月${suffix}`;
+    }
+
+    const years = Math.floor(days / 365);
+    return `${years} 年${suffix}`;
+}
+
+/**
+ * 用于列表展示的紧凑绝对时间：
+ * - 同一天：HH:mm
+ * - 同一年：MM-DD
+ * - 其他：YYYY-MM-DD
+ */
+export function formatCompactDateTime(date: Date, now: Date = new Date()): string {
+    if (isSameDay(date, now)) {
+        return new Intl.DateTimeFormat('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        }).format(date);
+    }
+
+    if (date.getFullYear() === now.getFullYear()) {
+        return new Intl.DateTimeFormat('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+        }).format(date);
+    }
+
+    return new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(date);
+}
