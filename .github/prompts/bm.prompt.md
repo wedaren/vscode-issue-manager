@@ -66,6 +66,35 @@ subject 规则：
 - compare 分支：你的功能分支
 - 变更较大/未完成：先创建 Draft PR
 
+### 使用 GitHub CLI（gh）创建/维护 PR（推荐）
+前置：本机已登录 GitHub
+- 登录：`gh auth login`
+- 验证：`gh auth status`
+
+创建 PR（从当前分支到 main）：
+- Draft：`gh pr create --base main --head <branchName> --draft --title "<prTitle>" --body "<prBody>"`
+- 非 Draft：`gh pr create --base main --head <branchName> --title "<prTitle>" --body "<prBody>"`
+
+创建后常用操作：
+- 打开网页：`gh pr view --web`
+- 查看详情：`gh pr view --comments --checks`
+- 补充/修改标题与正文：`gh pr edit --title "<prTitle>" --body "<prBody>"`
+- 从 Draft 转为 Ready：`gh pr ready`
+
+可选：补充协作信息（按需使用）：
+- 指定 reviewer：`gh pr edit --add-reviewer <user1,user2>`
+- 加 label：`gh pr edit --add-label <label1,label2>`
+- 指定 assignee：`gh pr edit --add-assignee <user>`
+
+检查 CI / 状态：
+- 查看 checks：`gh pr checks`
+- 查看本地与远端 PR 状态：`gh pr status`
+
+合并（建议在 checks 全绿后）：
+- Squash：`gh pr merge --squash --delete-branch`
+- Merge commit：`gh pr merge --merge --delete-branch`
+- Rebase merge：`gh pr merge --rebase --delete-branch`
+
 输出（必须给出可复制模板）：
 - `prTitle`
 - `prBody`
