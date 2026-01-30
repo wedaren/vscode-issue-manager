@@ -17,6 +17,7 @@ import { GitBranchCommandHandler } from '../gitBranch/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
+import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
@@ -139,10 +140,10 @@ export class ViewRegistry {
      */
     private registerIssueSearchView(): {
         issueSearchProvider: IssueSearchViewProvider;
-        issueSearchView: vscode.TreeView<vscode.TreeItem>;
+        issueSearchView: vscode.TreeView<IssueSearchViewNode>;
     } {
         const issueSearchProvider = new IssueSearchViewProvider(this.context);
-        const issueSearchView = vscode.window.createTreeView('issueManager.views.search', {
+        const issueSearchView = vscode.window.createTreeView<IssueSearchViewNode>('issueManager.views.search', {
             treeDataProvider: issueSearchProvider,
             showCollapseAll: true
         });

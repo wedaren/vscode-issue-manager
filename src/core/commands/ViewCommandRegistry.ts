@@ -16,7 +16,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private recentIssuesProvider?: IIssueViewProvider;
     private recentView?: vscode.TreeView<vscode.TreeItem>;
     private issueSearchProvider?: import('../../views/IssueSearchViewProvider').IssueSearchViewProvider;
-    private issueSearchView?: vscode.TreeView<vscode.TreeItem>;
+    private issueSearchView?: vscode.TreeView<import('../../views/IssueSearchViewProvider').IssueSearchViewNode>;
     private paraViewProvider?: ParaViewProvider;
     private overviewView?: vscode.TreeView<IssueNode>;
     private focusedView?: vscode.TreeView<IssueNode>;
@@ -35,7 +35,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         overviewView: vscode.TreeView<IssueNode>;
         focusedView: vscode.TreeView<IssueNode>;
         issueSearchProvider: import('../../views/IssueSearchViewProvider').IssueSearchViewProvider;
-        issueSearchView: vscode.TreeView<vscode.TreeItem>;
+        issueSearchView: vscode.TreeView<import('../../views/IssueSearchViewProvider').IssueSearchViewNode>;
     }): void {
         this.focusedIssuesProvider = providers.focusedIssuesProvider;
         this.issueOverviewProvider = providers.issueOverviewProvider;
