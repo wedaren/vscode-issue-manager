@@ -953,6 +953,17 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerUnifiedQuickOpenCommand(this.context);
         // marker 插入到关联问题的命令
         registerInsertMarksCommand(this.context, this.markerManager);
+        registerReviewPlanCommands(this.context);
+
+        // 注册智能 Agent 相关命令
+        import('../commands/smartResearchCommand').then(({ registerSmartResearchCommand }) => {
+            registerSmartResearchCommand(this.context);
+        });
+        import('../commands/saveAgentResearchReport').then(({ registerSaveAgentResearchReport }) => {
+            registerSaveAgentResearchReport(this.context);
+        });
+
+        this.logger.info('✅ LLM 相关命令注册完成');
 
         // note: copilotDiffSaveResult command was removed per user request
     }

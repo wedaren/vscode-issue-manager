@@ -124,6 +124,18 @@
         "icon": "$(git-branch)"
       },
       {
+        "command": "issueManager.smartResearch",
+        "title": "🤖 智能研究",
+        "category": "Issue Manager",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "issueManager.saveAgentResearchReport",
+        "title": "💾 保存 Agent 研究报告",
+        "category": "Issue Manager",
+        "icon": "$(save)"
+      },
+      {
         "command": "issueManager.unifiedQuickOpen",
         "title": "Issue Manager: 统一入口",
         "category": "Issue Manager",
