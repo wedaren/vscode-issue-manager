@@ -59,6 +59,8 @@ import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
 import { openIssueNode } from '../commands/openIssueNode';
 import { registerReviewPlanCommands } from '../commands/reviewPlanCommands';
+import { registerDecompositionCommands } from '../commands/decompositionCommands';
+import { registerOrganizeCommands } from '../commands/organizeCommands';
 
 
 
@@ -521,6 +523,12 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // Review/计划相关命令
         registerReviewPlanCommands(this.context);
+
+        // 🧩 问题分解专家相关命令
+        registerDecompositionCommands(this.context);
+
+        // 🔗 知识织网者（智能归档）相关命令
+        registerOrganizeCommands(this.context);
     }
 
     /**

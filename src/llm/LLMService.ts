@@ -891,4 +891,399 @@ ${JSON.stringify(
             return "";
         }
     }
+
+    /**
+     * 🧩 问题分解专家：将复杂问题智能分解为可执行的子问题树
+     * @param question 用户输入的复杂问题
+     * @param options 可选参数（支持取消）
+     * @returns 分解后的子问题树结构
+     */
+    public static async decomposeQuestion(
+        question: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<DecomposedQuestion | null> {
+        if (!question || question.trim().length === 0) {
+            return null;
+        }
+
+        const prompt = `你是一个专业的知识架构师和问题分解专家。用户将给你一个复杂的问题或主题，你需要将其分解为一个可执行的子问题树结构。
+
+要求：
+1. 将复杂问题分解为 5-10 个相互关联的子问题
+2. 每个子问题应该：
+   - 足够具体，可以独立研究和记录
+   - 有明确的边界和范围
+   - 与其他子问题形成逻辑关系（前置依赖或并列）
+3. 为每个子问题提供：
+   - 简洁的标题（适合作为笔记标题）
+   - 1-2 句话的描述（解释为什么这个子问题重要）
+   - 优先级（P0: 核心基础, P1: 重要扩展, P2: 可选深入）
+   - 依赖关系（哪些子问题应该先完成）
+4. 提供一个建议的学习/研究路径
+
+请仅返回 JSON 格式，结构如下：
+{
+  "rootQuestion": "原始问题的精炼表述",
+  "overview": "对整个问题域的简要概述（2-3句话）",
+  "subQuestions": [
+    {
+      "id": 1,
+      "title": "子问题标题",
+      "description": "为什么这个子问题重要，它解决什么",
+      "priority": "P0|P1|P2",
+      "dependencies": [其他子问题的id数组，如 [2, 3]，无依赖则为空数组],
+      "keywords": ["相关关键词1", "关键词2"],
+      "suggestedContent": "建议在这个问题文档中包含的内容大纲"
+    }
+  ],
+  "suggestedPath": "建议的学习/研究路径说明",
+  "estimatedTotalTime": "预估完成所有子问题的总时间"
+}
+
+用户的问题：${question}`;
+
+        try {
+            const fullResp = await LLMService._request(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                options
+            );
+            if (fullResp === null) {
+                return null;
+            }
+            const full = fullResp.text;
+            Logger.getInstance().info("LLM decomposeQuestion Raw Response:", full);
+
+            // 提取 JSON
+            const jsonBlockMatch = full.match(/```json\s*([\s\S]*?)\s*```/i);
+            let jsonCandidate = "";
+            if (jsonBlockMatch && jsonBlockMatch[1]) {
+                jsonCandidate = jsonBlockMatch[1];
+            } else {
+                const first = full.indexOf("{");
+                const last = full.lastIndexOf("}");
+                if (first !== -1 && last !== -1 && last > first) {
+                    jsonCandidate = full.substring(first, last + 1);
+                }
+            }
+
+            if (jsonCandidate) {
+                try {
+                    const parsed = JSON.parse(jsonCandidate) as DecomposedQuestion;
+                    // 验证基本结构
+                    if (
+                        parsed &&
+                        typeof parsed.rootQuestion === "string" &&
+                        Array.isArray(parsed.subQuestions)
+                    ) {
+                        return parsed;
+                    }
+                } catch (err) {
+                    Logger.getInstance().warn("解析 decomposeQuestion JSON 失败", err);
+                }
+            }
+
+            return null;
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return null;
+            }
+            Logger.getInstance().error("decomposeQuestion error:", error);
+            vscode.window.showErrorMessage("调用 Copilot 分解问题失败。");
+            return null;
+        }
+    }
+
+    /**
+     * 🔗 知识织网者：分析孤立问题并智能推荐归档位置
+     * @param isolatedIssues 孤立问题列表（标题和路径）
+     * @param existingTree 现有的问题树结构（标题和路径）
+     * @param options 可选参数
+     * @returns 归档建议列表
+     */
+    public static async organizeIsolatedIssues(
+        isolatedIssues: Array<{ title: string; filePath: string; content?: string }>,
+        existingTree: Array<{ title: string; filePath: string; level: number; children?: string[] }>,
+        options?: { signal?: AbortSignal }
+    ): Promise<OrganizeSuggestion[] | null> {
+        if (isolatedIssues.length === 0) {
+            return [];
+        }
+
+        const prompt = `你是一个知识管理专家，擅长组织和分类信息。用户有一些"孤立问题"（未分类的笔记），需要你帮助将它们归档到现有的知识树结构中。
+
+**现有知识树结构：**
+${JSON.stringify(existingTree.map(n => ({ 
+    title: n.title, 
+    filePath: n.filePath,
+    level: n.level,
+    hasChildren: (n.children?.length ?? 0) > 0
+})), null, 2)}
+
+**需要归档的孤立问题：**
+${JSON.stringify(isolatedIssues.map(i => ({ 
+    title: i.title, 
+    filePath: i.filePath,
+    contentPreview: i.content?.substring(0, 200) || '无内容预览'
+})), null, 2)}
+
+请分析每个孤立问题的内容和标题，为其推荐最合适的归档位置。
+
+要求：
+1. 为每个孤立问题推荐一个最合适的父节点（从现有知识树中选择）
+2. 如果没有合适的父节点，建议创建一个新的父节点
+3. 提供置信度评分（0-100）和推荐理由
+4. 如果发现多个孤立问题可以归为同一类，指出它们的关联
+
+请仅返回 JSON 格式：
+{
+  "suggestions": [
+    {
+      "isolatedIssue": {
+        "title": "孤立问题标题",
+        "filePath": "文件路径"
+      },
+      "recommendedParent": {
+        "title": "推荐的父节点标题（如果是现有节点）",
+        "filePath": "父节点文件路径（如果是现有节点）",
+        "isNew": false
+      } | {
+        "title": "建议创建的新父节点标题",
+        "isNew": true,
+        "suggestedContent": "新父节点的建议内容"
+      },
+      "confidence": 85,
+      "reason": "推荐理由",
+      "relatedIssues": ["其他可能相关的孤立问题的filePath"]
+    }
+  ],
+  "newParentSuggestions": [
+    {
+      "title": "建议创建的新分类标题",
+      "description": "这个分类应该包含什么内容",
+      "potentialChildren": ["可能归属此分类的孤立问题filePath列表"]
+    }
+  ],
+  "summary": "整体归档建议的摘要"
+}`;
+
+        try {
+            const fullResp = await LLMService._request(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                options
+            );
+            if (fullResp === null) {
+                return null;
+            }
+            const full = fullResp.text;
+            Logger.getInstance().info("LLM organizeIsolatedIssues Raw Response:", full);
+
+            // 提取 JSON
+            const jsonBlockMatch = full.match(/```json\s*([\s\S]*?)\s*```/i);
+            let jsonCandidate = "";
+            if (jsonBlockMatch && jsonBlockMatch[1]) {
+                jsonCandidate = jsonBlockMatch[1];
+            } else {
+                const first = full.indexOf("{");
+                const last = full.lastIndexOf("}");
+                if (first !== -1 && last !== -1 && last > first) {
+                    jsonCandidate = full.substring(first, last + 1);
+                }
+            }
+
+            if (jsonCandidate) {
+                try {
+                    const parsed = JSON.parse(jsonCandidate) as OrganizeResult;
+                    if (parsed && Array.isArray(parsed.suggestions)) {
+                        return parsed.suggestions;
+                    }
+                } catch (err) {
+                    Logger.getInstance().warn("解析 organizeIsolatedIssues JSON 失败", err);
+                }
+            }
+
+            return null;
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return null;
+            }
+            Logger.getInstance().error("organizeIsolatedIssues error:", error);
+            vscode.window.showErrorMessage("调用 Copilot 分析孤立问题失败。");
+            return null;
+        }
+    }
+
+    /**
+     * 🔬 知识洞察：分析整个知识库的健康状况和成长建议
+     * @param allIssues 所有问题列表
+     * @param recentActivity 最近活动统计
+     * @param options 可选参数
+     * @returns 知识洞察报告
+     */
+    public static async generateKnowledgeInsights(
+        allIssues: Array<{ title: string; filePath: string; mtime: number; isOrphan: boolean }>,
+        recentActivity: { created: number; modified: number; period: string },
+        options?: { signal?: AbortSignal }
+    ): Promise<KnowledgeInsights | null> {
+        const prompt = `你是一个知识管理教练，帮助用户优化他们的个人知识库。请分析以下知识库数据并提供洞察。
+
+**知识库统计：**
+- 总问题数：${allIssues.length}
+- 孤立问题数：${allIssues.filter(i => i.isOrphan).length}
+- 最近${recentActivity.period}：新建 ${recentActivity.created} 个，修改 ${recentActivity.modified} 个
+
+**问题标题列表（按最近修改排序）：**
+${JSON.stringify(allIssues.slice(0, 50).map(i => ({ 
+    title: i.title, 
+    isOrphan: i.isOrphan,
+    daysSinceModified: Math.floor((Date.now() - i.mtime) / (1000 * 60 * 60 * 24))
+})), null, 2)}
+
+请提供：
+1. 知识库健康度评分（0-100）和依据
+2. 发现的知识主题/领域分布
+3. 可能被遗忘的重要问题（长时间未更新但标题看起来重要的）
+4. 知识孤岛问题（大量孤立问题可能意味着什么）
+5. 具体的改进建议（可执行的下一步）
+
+请仅返回 JSON 格式：
+{
+  "healthScore": 75,
+  "healthAnalysis": "健康度分析说明",
+  "topicDistribution": [
+    { "topic": "主题名", "count": 10, "percentage": 25 }
+  ],
+  "forgottenIssues": [
+    { "title": "可能被遗忘的问题标题", "reason": "为什么认为它重要但被遗忘" }
+  ],
+  "orphanAnalysis": {
+    "severity": "low|medium|high",
+    "analysis": "孤立问题分析",
+    "suggestions": ["建议1", "建议2"]
+  },
+  "actionItems": [
+    { "action": "具体行动", "priority": "high|medium|low", "estimatedTime": "预估时间" }
+  ],
+  "encouragement": "给用户的鼓励语"
+}`;
+
+        try {
+            const fullResp = await LLMService._request(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                options
+            );
+            if (fullResp === null) {
+                return null;
+            }
+            const full = fullResp.text;
+            Logger.getInstance().info("LLM generateKnowledgeInsights Raw Response:", full);
+
+            // 提取 JSON
+            const jsonBlockMatch = full.match(/```json\s*([\s\S]*?)\s*```/i);
+            let jsonCandidate = "";
+            if (jsonBlockMatch && jsonBlockMatch[1]) {
+                jsonCandidate = jsonBlockMatch[1];
+            } else {
+                const first = full.indexOf("{");
+                const last = full.lastIndexOf("}");
+                if (first !== -1 && last !== -1 && last > first) {
+                    jsonCandidate = full.substring(first, last + 1);
+                }
+            }
+
+            if (jsonCandidate) {
+                try {
+                    const parsed = JSON.parse(jsonCandidate) as KnowledgeInsights;
+                    if (parsed && typeof parsed.healthScore === "number") {
+                        return parsed;
+                    }
+                } catch (err) {
+                    Logger.getInstance().warn("解析 generateKnowledgeInsights JSON 失败", err);
+                }
+            }
+
+            return null;
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return null;
+            }
+            Logger.getInstance().error("generateKnowledgeInsights error:", error);
+            return null;
+        }
+    }
+}
+
+// ==================== 类型定义 ====================
+
+/** 问题分解结果类型 */
+export interface DecomposedQuestion {
+    rootQuestion: string;
+    overview: string;
+    subQuestions: SubQuestion[];
+    suggestedPath: string;
+    estimatedTotalTime: string;
+}
+
+/** 子问题类型 */
+export interface SubQuestion {
+    id: number;
+    title: string;
+    description: string;
+    priority: "P0" | "P1" | "P2";
+    dependencies: number[];
+    keywords: string[];
+    suggestedContent: string;
+}
+
+/** 归档建议类型 */
+export interface OrganizeSuggestion {
+    isolatedIssue: {
+        title: string;
+        filePath: string;
+    };
+    recommendedParent: {
+        title: string;
+        filePath?: string;
+        isNew: boolean;
+        suggestedContent?: string;
+    };
+    confidence: number;
+    reason: string;
+    relatedIssues: string[];
+}
+
+/** 归档结果类型 */
+export interface OrganizeResult {
+    suggestions: OrganizeSuggestion[];
+    newParentSuggestions: Array<{
+        title: string;
+        description: string;
+        potentialChildren: string[];
+    }>;
+    summary: string;
+}
+
+/** 知识洞察类型 */
+export interface KnowledgeInsights {
+    healthScore: number;
+    healthAnalysis: string;
+    topicDistribution: Array<{
+        topic: string;
+        count: number;
+        percentage: number;
+    }>;
+    forgottenIssues: Array<{
+        title: string;
+        reason: string;
+    }>;
+    orphanAnalysis: {
+        severity: "low" | "medium" | "high";
+        analysis: string;
+        suggestions: string[];
+    };
+    actionItems: Array<{
+        action: string;
+        priority: "high" | "medium" | "low";
+        estimatedTime: string;
+    }>;
+    encouragement: string;
 }

@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { getIssueDir } from "../config";
-import { LLMService } from "../llm/LLMService";
-import { getFlatTree } from "../data/issueTreeManager";
+import { LLMService, DecomposedQuestion, SubQuestion, OrganizeSuggestion } from "../llm/LLMService";
+import { getFlatTree, getAssociatedFiles } from "../data/issueTreeManager";
+import { getAllIssueMarkdowns } from "../data/IssueMarkdowns";
 import * as path from "path";
 import { Logger } from "../core/utils/Logger";
 import { createIssueMarkdown } from "../data/IssueMarkdowns";
@@ -14,6 +15,9 @@ const SEARCH_COMMANDS = ["搜索", "search", "find"] as const;
 const REVIEW_COMMANDS = ["审阅", "review"] as const;
 const RESEARCH_COMMANDS = ["研究", "research", "deep", "doc", "文档"] as const;
 const HELP_COMMANDS = ["帮助", "help"] as const;
+const DECOMPOSE_COMMANDS = ["分解", "decompose", "break", "拆解"] as const;
+const ORGANIZE_COMMANDS = ["整理", "organize", "archive", "归档"] as const;
+const INSIGHTS_COMMANDS = ["洞察", "insights", "health", "健康"] as const;
 
 /**
  * 意图配置 - 定义每种意图的检测关键词和噪音词
@@ -63,6 +67,14 @@ const INTENT_CONFIG = {
     research: {
         keywords: ["研究", "research", "deep", "撰写", "生成文档"],
         noiseWords: ["帮我研究", "帮我撰写", "帮我生成", "关于", "文档", "研究", "撰写"],
+    },
+    decompose: {
+        keywords: ["分解", "拆解", "拆分", "decompose", "break down"],
+        noiseWords: ["帮我分解", "帮我拆解", "帮我拆分", "这个问题", "问题", "分解", "拆解", "拆分"],
+    },
+    organize: {
+        keywords: ["整理", "归档", "organize", "archive"],
+        noiseWords: ["帮我整理", "帮我归档", "孤立问题", "问题", "整理", "归档"],
     },
 } as const;
 
@@ -211,6 +223,12 @@ export class IssueChatParticipant {
                 await this.handleReviewCommand(prompt, request, stream, token);
             } else if ((RESEARCH_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleResearchCommand(prompt, stream, token);
+            } else if ((DECOMPOSE_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleDecomposeCommand(prompt, stream, token);
+            } else if ((ORGANIZE_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleOrganizeCommand(stream, token);
+            } else if ((INSIGHTS_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleInsightsCommand(stream, token);
             } else if ((HELP_COMMANDS as readonly string[]).includes(command)) {
                 this.handleHelpCommand(stream);
             } else {
@@ -630,6 +648,404 @@ export class IssueChatParticipant {
     }
 
     /**
+     * 🧩 处理问题分解命令 - 将复杂问题智能分解为可执行的子问题树
+     */
+    private async handleDecomposeCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (!prompt) {
+            stream.markdown("❓ 请提供一个需要分解的复杂问题。例如:\n");
+            stream.markdown("- `/分解 如何构建一个高可用的微服务架构`\n");
+            stream.markdown("- `/分解 学习机器学习需要掌握哪些知识`\n");
+            stream.markdown("- `/分解 如何从零开始创业`\n");
+            return;
+        }
+
+        stream.progress("🧩 正在分析问题结构...");
+
+        const controller = new AbortController();
+        const cancellationListener = token.onCancellationRequested(() => {
+            controller.abort();
+        });
+
+        try {
+            const result = await LLMService.decomposeQuestion(prompt, {
+                signal: controller.signal,
+            });
+
+            if (!result) {
+                stream.markdown("❌ 问题分解失败，请稍后重试。\n");
+                return;
+            }
+
+            // 显示分解结果
+            stream.markdown(`# 🧩 问题分解结果\n\n`);
+            stream.markdown(`## 📋 核心问题\n\n**${result.rootQuestion}**\n\n`);
+            stream.markdown(`${result.overview}\n\n`);
+
+            stream.markdown(`## 🌳 子问题树 (${result.subQuestions.length} 个子问题)\n\n`);
+
+            // 按优先级分组显示
+            const p0Questions = result.subQuestions.filter(q => q.priority === "P0");
+            const p1Questions = result.subQuestions.filter(q => q.priority === "P1");
+            const p2Questions = result.subQuestions.filter(q => q.priority === "P2");
+
+            if (p0Questions.length > 0) {
+                stream.markdown(`### 🔴 P0 - 核心基础\n\n`);
+                for (const q of p0Questions) {
+                    this.renderSubQuestion(stream, q, result.subQuestions);
+                }
+            }
+
+            if (p1Questions.length > 0) {
+                stream.markdown(`### 🟡 P1 - 重要扩展\n\n`);
+                for (const q of p1Questions) {
+                    this.renderSubQuestion(stream, q, result.subQuestions);
+                }
+            }
+
+            if (p2Questions.length > 0) {
+                stream.markdown(`### 🟢 P2 - 可选深入\n\n`);
+                for (const q of p2Questions) {
+                    this.renderSubQuestion(stream, q, result.subQuestions);
+                }
+            }
+
+            stream.markdown(`## 📍 建议学习路径\n\n${result.suggestedPath}\n\n`);
+            stream.markdown(`**预估总时间**: ${result.estimatedTotalTime}\n\n`);
+
+            // 添加批量创建按钮
+            stream.markdown(`---\n\n`);
+            stream.button({
+                command: "issueManager.batchCreateFromDecomposition",
+                arguments: [result],
+                title: "🚀 一键创建所有子问题",
+            });
+
+            stream.button({
+                command: "issueManager.createIssueFromDecompositionRoot",
+                arguments: [result],
+                title: "📝 创建父问题文档",
+            });
+
+            stream.button({
+                command: "issueManager.decomposition.openViewWithResult",
+                arguments: [result],
+                title: "📋 在分解视图中管理",
+            });
+
+        } catch (error) {
+            if (
+                token.isCancellationRequested ||
+                (error instanceof Error && error.message === "请求已取消")
+            ) {
+                stream.markdown("❌ 操作已取消\n");
+                return;
+            }
+            Logger.getInstance().error("[IssueChatParticipant] Decompose failed", error);
+            stream.markdown("❌ 问题分解过程中发生错误\n");
+        } finally {
+            cancellationListener.dispose();
+        }
+    }
+
+    /**
+     * 渲染单个子问题
+     */
+    private renderSubQuestion(
+        stream: vscode.ChatResponseStream,
+        question: SubQuestion,
+        allQuestions: SubQuestion[]
+    ): void {
+        const depNames = question.dependencies
+            .map(depId => {
+                const dep = allQuestions.find(q => q.id === depId);
+                return dep ? `#${dep.id}` : `#${depId}`;
+            })
+            .join(", ");
+
+        stream.markdown(`**${question.id}. ${question.title}**\n`);
+        stream.markdown(`> ${question.description}\n\n`);
+        
+        if (question.dependencies.length > 0) {
+            stream.markdown(`- 📎 前置依赖: ${depNames}\n`);
+        }
+        if (question.keywords.length > 0) {
+            stream.markdown(`- 🏷️ 关键词: ${question.keywords.join(", ")}\n`);
+        }
+        stream.markdown(`\n`);
+
+        // 为每个子问题添加单独创建按钮
+        stream.button({
+            command: "issueManager.createIssueFromSubQuestion",
+            arguments: [question],
+            title: `➕ 创建: ${question.title.substring(0, 20)}...`,
+        });
+        stream.markdown(`\n`);
+    }
+
+    /**
+     * 🔗 处理智能整理命令 - 分析孤立问题并推荐归档位置
+     */
+    private async handleOrganizeCommand(
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        stream.progress("🔗 正在分析孤立问题...");
+
+        const controller = new AbortController();
+        const cancellationListener = token.onCancellationRequested(() => {
+            controller.abort();
+        });
+
+        try {
+            // 获取所有问题和已关联的问题
+            const allIssues = await getAllIssueMarkdowns();
+            const associatedFiles = await getAssociatedFiles();
+            const flatTree = await getFlatTree();
+
+            // 找出孤立问题（未在树中关联的问题）
+            const isolatedIssues = allIssues.filter(
+                issue => !associatedFiles.has(path.basename(issue.uri.fsPath))
+            );
+
+            if (isolatedIssues.length === 0) {
+                stream.markdown("✅ **太棒了！** 你的知识库没有孤立问题。\n\n");
+                stream.markdown("所有问题都已妥善归档。继续保持！ 💪\n");
+                return;
+            }
+
+            stream.markdown(`# 🔗 智能整理建议\n\n`);
+            stream.markdown(`发现 **${isolatedIssues.length}** 个孤立问题等待归档。\n\n`);
+
+            // 构建现有树结构供 LLM 分析
+            const existingTree = flatTree.map(node => ({
+                title: node.title,
+                filePath: node.filePath,
+                level: node.parentPath.length,
+                children: [], // 简化结构
+            }));
+
+            // 准备孤立问题数据（包含内容预览）
+            const isolatedData = await Promise.all(
+                isolatedIssues.slice(0, 20).map(async issue => {
+                    // 读取部分内容作为上下文
+                    let content = "";
+                    try {
+                        const doc = await vscode.workspace.openTextDocument(issue.uri);
+                        content = doc.getText().substring(0, 500);
+                    } catch {
+                        // 忽略读取失败
+                    }
+                    return {
+                        title: issue.title,
+                        filePath: path.basename(issue.uri.fsPath),
+                        content,
+                    };
+                })
+            );
+
+            // 调用 LLM 分析
+            const suggestions = await LLMService.organizeIsolatedIssues(
+                isolatedData,
+                existingTree,
+                { signal: controller.signal }
+            );
+
+            if (!suggestions || suggestions.length === 0) {
+                stream.markdown("❌ 无法生成归档建议，请稍后重试。\n");
+                return;
+            }
+
+            // 按置信度排序
+            const sortedSuggestions = suggestions.sort((a, b) => b.confidence - a.confidence);
+
+            // 显示建议
+            stream.markdown(`## 📊 归档建议\n\n`);
+
+            for (const suggestion of sortedSuggestions) {
+                const confidenceEmoji = suggestion.confidence >= 80 ? "🟢" : suggestion.confidence >= 60 ? "🟡" : "🔴";
+                
+                stream.markdown(`### ${confidenceEmoji} ${suggestion.isolatedIssue.title}\n\n`);
+                
+                if (suggestion.recommendedParent.isNew) {
+                    stream.markdown(`**建议**: 创建新分类「${suggestion.recommendedParent.title}」并归入\n`);
+                } else {
+                    stream.markdown(`**建议归入**: 「${suggestion.recommendedParent.title}」\n`);
+                }
+                
+                stream.markdown(`- 置信度: ${suggestion.confidence}%\n`);
+                stream.markdown(`- 理由: ${suggestion.reason}\n`);
+
+                if (suggestion.relatedIssues.length > 0) {
+                    stream.markdown(`- 相关问题: ${suggestion.relatedIssues.join(", ")}\n`);
+                }
+
+                stream.markdown(`\n`);
+
+                // 添加操作按钮
+                stream.button({
+                    command: "issueManager.acceptOrganizeSuggestion",
+                    arguments: [suggestion],
+                    title: `✅ 接受归档建议`,
+                });
+                stream.markdown(`\n`);
+            }
+
+            if (isolatedIssues.length > 20) {
+                stream.markdown(`\n_注: 仅分析了前 20 个孤立问题，还有 ${isolatedIssues.length - 20} 个待整理_\n\n`);
+            }
+
+            // 批量操作按钮
+            stream.markdown(`---\n\n`);
+            stream.button({
+                command: "issueManager.acceptAllOrganizeSuggestions",
+                arguments: [sortedSuggestions.filter(s => s.confidence >= 70)],
+                title: "🚀 一键接受高置信度建议 (≥70%)",
+            });
+
+        } catch (error) {
+            if (
+                token.isCancellationRequested ||
+                (error instanceof Error && error.message === "请求已取消")
+            ) {
+                stream.markdown("❌ 操作已取消\n");
+                return;
+            }
+            Logger.getInstance().error("[IssueChatParticipant] Organize failed", error);
+            stream.markdown("❌ 整理分析过程中发生错误\n");
+        } finally {
+            cancellationListener.dispose();
+        }
+    }
+
+    /**
+     * 🔬 处理知识洞察命令 - 分析知识库健康状况
+     */
+    private async handleInsightsCommand(
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        stream.progress("🔬 正在分析知识库健康状况...");
+
+        const controller = new AbortController();
+        const cancellationListener = token.onCancellationRequested(() => {
+            controller.abort();
+        });
+
+        try {
+            // 获取所有问题
+            const allIssues = await getAllIssueMarkdowns();
+            const associatedFiles = await getAssociatedFiles();
+
+            // 计算统计数据
+            const now = Date.now();
+            const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+            
+            const recentCreated = allIssues.filter(i => i.ctime > oneWeekAgo).length;
+            const recentModified = allIssues.filter(i => i.mtime > oneWeekAgo).length;
+
+            // 准备数据
+            const issueData = allIssues.map(issue => ({
+                title: issue.title,
+                filePath: path.basename(issue.uri.fsPath),
+                mtime: issue.mtime,
+                isOrphan: !associatedFiles.has(path.basename(issue.uri.fsPath)),
+            }));
+
+            // 调用 LLM 生成洞察
+            const insights = await LLMService.generateKnowledgeInsights(
+                issueData,
+                { created: recentCreated, modified: recentModified, period: "7天" },
+                { signal: controller.signal }
+            );
+
+            if (!insights) {
+                stream.markdown("❌ 无法生成知识洞察，请稍后重试。\n");
+                return;
+            }
+
+            // 显示洞察报告
+            stream.markdown(`# 🔬 知识库健康报告\n\n`);
+
+            // 健康度评分
+            const healthEmoji = insights.healthScore >= 80 ? "🟢" : insights.healthScore >= 60 ? "🟡" : "🔴";
+            stream.markdown(`## ${healthEmoji} 健康度评分: ${insights.healthScore}/100\n\n`);
+            stream.markdown(`${insights.healthAnalysis}\n\n`);
+
+            // 统计概览
+            stream.markdown(`## 📊 统计概览\n\n`);
+            stream.markdown(`- **总问题数**: ${allIssues.length}\n`);
+            stream.markdown(`- **孤立问题**: ${issueData.filter(i => i.isOrphan).length}\n`);
+            stream.markdown(`- **近 7 天新建**: ${recentCreated}\n`);
+            stream.markdown(`- **近 7 天修改**: ${recentModified}\n\n`);
+
+            // 主题分布
+            if (insights.topicDistribution.length > 0) {
+                stream.markdown(`## 🏷️ 主题分布\n\n`);
+                for (const topic of insights.topicDistribution.slice(0, 5)) {
+                    const bar = "█".repeat(Math.ceil(topic.percentage / 10));
+                    stream.markdown(`- **${topic.topic}**: ${topic.count} (${topic.percentage}%) ${bar}\n`);
+                }
+                stream.markdown(`\n`);
+            }
+
+            // 被遗忘的问题
+            if (insights.forgottenIssues.length > 0) {
+                stream.markdown(`## 💤 可能被遗忘的问题\n\n`);
+                for (const issue of insights.forgottenIssues.slice(0, 5)) {
+                    stream.markdown(`- **${issue.title}**: ${issue.reason}\n`);
+                }
+                stream.markdown(`\n`);
+            }
+
+            // 孤立问题分析
+            stream.markdown(`## 🏝️ 孤立问题分析\n\n`);
+            const severityEmoji = insights.orphanAnalysis.severity === "high" ? "🔴" : 
+                                  insights.orphanAnalysis.severity === "medium" ? "🟡" : "🟢";
+            stream.markdown(`**严重程度**: ${severityEmoji} ${insights.orphanAnalysis.severity}\n\n`);
+            stream.markdown(`${insights.orphanAnalysis.analysis}\n\n`);
+
+            // 行动建议
+            if (insights.actionItems.length > 0) {
+                stream.markdown(`## 🎯 行动建议\n\n`);
+                for (const action of insights.actionItems) {
+                    const priorityEmoji = action.priority === "high" ? "🔴" : 
+                                          action.priority === "medium" ? "🟡" : "🟢";
+                    stream.markdown(`- ${priorityEmoji} **${action.action}** (预估: ${action.estimatedTime})\n`);
+                }
+                stream.markdown(`\n`);
+            }
+
+            // 鼓励语
+            stream.markdown(`---\n\n`);
+            stream.markdown(`💬 ${insights.encouragement}\n\n`);
+
+            // 快捷操作
+            stream.button({
+                command: "issueManager.chat",
+                arguments: ["/整理"],
+                title: "🔗 开始整理孤立问题",
+            });
+
+        } catch (error) {
+            if (
+                token.isCancellationRequested ||
+                (error instanceof Error && error.message === "请求已取消")
+            ) {
+                stream.markdown("❌ 操作已取消\n");
+                return;
+            }
+            Logger.getInstance().error("[IssueChatParticipant] Insights failed", error);
+            stream.markdown("❌ 生成知识洞察过程中发生错误\n");
+        } finally {
+            cancellationListener.dispose();
+        }
+    }
+
+    /**
      * 处理帮助命令
      */
     private handleHelpCommand(stream: vscode.ChatResponseStream): void {
@@ -661,13 +1077,32 @@ export class IssueChatParticipant {
         stream.markdown("- `@issueManager /审阅`\n");
         stream.markdown("- `@issueManager /审阅 优化本周工作计划可执行性`\n\n");
 
+        stream.markdown("### 🧩 `/分解` - 问题分解专家 (新!)\n");
+        stream.markdown("将复杂问题智能分解为可执行的子问题树，支持一键批量创建。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /分解 如何构建一个高可用的微服务架构`\n");
+        stream.markdown("- `@issueManager /分解 学习机器学习需要掌握哪些知识`\n");
+        stream.markdown("- `@issueManager /分解 如何从零开始创业`\n\n");
+
+        stream.markdown("### 🔗 `/整理` - 知识织网者 (新!)\n");
+        stream.markdown("智能分析孤立问题，为每个问题推荐最佳归档位置，支持批量归档。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /整理`\n\n");
+
+        stream.markdown("### 🔬 `/洞察` - 知识库健康报告 (新!)\n");
+        stream.markdown("分析知识库健康状况，发现被遗忘的问题，提供改进建议。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /洞察`\n\n");
+
         stream.markdown("### `/帮助` - 显示此帮助\n\n");
 
         stream.markdown("## 💡 智能模式\n\n");
         stream.markdown("不使用命令时,AI 会理解您的意图:\n");
         stream.markdown("- `@issueManager 创建一个关于性能优化的问题`\n");
         stream.markdown("- `@issueManager 帮我找找登录相关的问题`\n");
-        stream.markdown("- `@issueManager 帮我研究一下分布式事务`\n\n");
+        stream.markdown("- `@issueManager 帮我研究一下分布式事务`\n");
+        stream.markdown("- `@issueManager 帮我分解一下这个复杂问题`\n");
+        stream.markdown("- `@issueManager 整理一下我的孤立问题`\n\n");
 
         // 添加快捷按钮
         stream.button({
@@ -731,12 +1166,39 @@ export class IssueChatParticipant {
             return;
         }
 
+        // 检测分解意图
+        const decomposeTopic = detectIntent(
+            prompt,
+            INTENT_CONFIG.decompose.keywords,
+            INTENT_CONFIG.decompose.noiseWords
+        );
+        if (decomposeTopic) {
+            stream.markdown(`💡 检测到问题分解意图...\n\n`);
+            await this.handleDecomposeCommand(decomposeTopic, stream, token);
+            return;
+        }
+
+        // 检测整理意图
+        const organizeTopic = detectIntent(
+            prompt,
+            INTENT_CONFIG.organize.keywords,
+            INTENT_CONFIG.organize.noiseWords
+        );
+        if (organizeTopic !== null) {
+            stream.markdown(`💡 检测到整理归档意图...\n\n`);
+            await this.handleOrganizeCommand(stream, token);
+            return;
+        }
+
         // 默认显示帮助
         stream.markdown("💡 我可以帮您管理问题。\n\n");
         stream.markdown("试试:\n");
         stream.markdown("- `/新建 [标题]` - 创建新问题\n");
         stream.markdown("- `/搜索 [关键词]` - 搜索问题\n");
         stream.markdown("- `/研究 [主题]` - 深度研究并生成文档\n");
+        stream.markdown("- `/分解 [复杂问题]` - 🧩 智能分解问题\n");
+        stream.markdown("- `/整理` - 🔗 智能归档孤立问题\n");
+        stream.markdown("- `/洞察` - 🔬 知识库健康报告\n");
         stream.markdown("- `/帮助` - 查看所有命令\n\n");
     }
 }

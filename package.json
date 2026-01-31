@@ -53,6 +53,46 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.decomposition.addTask",
+        "title": "新建分解任务",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.decomposition.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.decomposition.batchCreate",
+        "title": "批量创建所有子问题",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "issueManager.decomposition.createSubQuestion",
+        "title": "创建此子问题",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.decomposition.deleteRecord",
+        "title": "删除分解记录",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.decomposition.openParent",
+        "title": "打开父问题",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "issueManager.decomposition.cancel",
+        "title": "取消分解任务",
+        "icon": "$(close)"
+      },
+      {
+        "command": "issueManager.decomposition.retry",
+        "title": "重新分解",
+        "icon": "$(sync)"
+      },
+      {
         "command": "issueManager.createIssueFromOverview",
         "title": "新建问题",
         "icon": "$(add)"
@@ -641,6 +681,18 @@
             "description": "深度研究并生成文档"
           },
           {
+            "name": "分解",
+            "description": "🧩 将复杂问题智能分解为子问题树"
+          },
+          {
+            "name": "整理",
+            "description": "🔗 智能分析孤立问题并推荐归档位置"
+          },
+          {
+            "name": "洞察",
+            "description": "🔬 分析知识库健康状况并提供改进建议"
+          },
+          {
             "name": "帮助",
             "description": "显示帮助信息"
           }
@@ -678,6 +730,16 @@
           "command": "issueManager.issueSearch.addTask",
           "when": "view == issueManager.views.search",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.decomposition.addTask",
+          "when": "view == issueManager.views.decomposition",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.decomposition.refresh",
+          "when": "view == issueManager.views.decomposition",
+          "group": "navigation@2"
         },
         {
           "command": "issueManager.createIssueFromOverview",
@@ -890,6 +952,56 @@
           "command": "issueManager.moveTo",
           "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
           "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.decomposition.batchCreate",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecord'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.openParent",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecordCompleted'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.deleteRecord",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.createSubQuestion",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionSubQuestion'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.batchCreate",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecord'",
+          "group": "decomposition@1"
+        },
+        {
+          "command": "issueManager.decomposition.openParent",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "decomposition@2"
+        },
+        {
+          "command": "issueManager.decomposition.retry",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "decomposition@3"
+        },
+        {
+          "command": "issueManager.decomposition.cancel",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecord'",
+          "group": "decomposition@4"
+        },
+        {
+          "command": "issueManager.decomposition.deleteRecord",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "decomposition@5"
+        },
+        {
+          "command": "issueManager.decomposition.createSubQuestion",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionSubQuestion'",
+          "group": "decomposition@1"
         },
         {
           "command": "issueManager.rss.removeFeed",
@@ -1563,6 +1675,11 @@
           "icon": "resources/icon.svg"
         },
         {
+          "id": "issueManager.views.decomposition",
+          "name": "问题分解",
+          "icon": "resources/icon.svg"
+        },
+        {
           "id": "issueManager.views.related",
           "name": "相关联问题",
           "icon": "resources/icon.svg"
@@ -1604,6 +1721,16 @@
         "view": "issueManager.views.search",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.decomposition",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.decomposition",
+        "contents": "🧩 **问题分解专家**\n\n将复杂问题智能分解为可执行的子问题树。\n\n[新建分解任务](command:issueManager.decomposition.addTask)\n\n或在 Chat 中使用 `/分解` 命令。",
+        "when": "issueManager.isDirConfigured"
       },
       {
         "view": "issueManager.views.rss",

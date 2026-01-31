@@ -18,6 +18,8 @@ import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider'
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
 import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
+import { DecompositionViewProvider } from '../views/DecompositionViewProvider';
+import type { DecompositionViewNode } from '../views/DecompositionViewProvider';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
@@ -80,6 +82,9 @@ export class ViewRegistry {
 
         // 注册问题搜索视图
         const { issueSearchProvider, issueSearchView } = this.registerIssueSearchView();
+
+        // 注册问题分解视图
+        const { decompositionProvider, decompositionView } = this.registerDecompositionView();
         
         // 注册RSS问题视图
         // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
@@ -116,6 +121,8 @@ export class ViewRegistry {
             recentIssuesView,
             issueSearchProvider,
             issueSearchView,
+            decompositionProvider,
+            decompositionView,
             // rssIssuesProvider,
             // rssIssuesView,
             // issueStructureProvider,
@@ -151,6 +158,24 @@ export class ViewRegistry {
         this.context.subscriptions.push(issueSearchView);
 
         return { issueSearchProvider, issueSearchView };
+    }
+
+    /**
+     * 注册问题分解视图
+     */
+    private registerDecompositionView(): {
+        decompositionProvider: DecompositionViewProvider;
+        decompositionView: vscode.TreeView<DecompositionViewNode>;
+    } {
+        const decompositionProvider = new DecompositionViewProvider(this.context);
+        const decompositionView = vscode.window.createTreeView<DecompositionViewNode>('issueManager.views.decomposition', {
+            treeDataProvider: decompositionProvider,
+            showCollapseAll: true
+        });
+
+        this.context.subscriptions.push(decompositionView);
+
+        return { decompositionProvider, decompositionView };
     }
 
     /**
