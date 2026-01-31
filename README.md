@@ -147,6 +147,14 @@
   "issueManager.createIssue.optimizedPhrasingsCount": 3,
   "issueManager.recentIssues.defaultMode": "grouped",
   
+  // 全文搜索配置
+  "issueManager.search.fulltext.caseSensitive": false,
+  "issueManager.search.fulltext.useRegex": false,
+  "issueManager.search.fulltext.wholeWord": false,
+  "issueManager.search.fulltext.maxResults": 100,
+  "issueManager.search.fulltext.maxSnippetsPerFile": 3,
+  "issueManager.search.fulltext.contextLines": 1,
+  
   // Git 自动同步配置
   "issueManager.sync.enableAutosync": true,
   "issueManager.sync.autoCommitMessage": "[Auto-Sync] Changes at {date}",
