@@ -333,23 +333,37 @@ export function registerDeepResearchCommands(
 
     // 取消深度调研任务
     context.subscriptions.push(
-        vscode.commands.registerCommand("issueManager.deepResearch.cancelTask", async (node: any) => {
-            if (node && node.task) {
-                const task = node.task as DeepResearchTask;
-                viewProvider.cancelTask(task.id);
-                vscode.window.showInformationMessage(`已取消调研任务: ${task.topic}`);
+        vscode.commands.registerCommand("issueManager.deepResearch.cancelTask", async (node: unknown) => {
+            // 类型守卫：检查节点是否包含 task 属性
+            if (!node || typeof node !== 'object') {
+                return;
             }
+            
+            const nodeObj = node as { task?: DeepResearchTask };
+            if (!nodeObj.task) {
+                return;
+            }
+
+            const task = nodeObj.task;
+            viewProvider.cancelTask(task.id);
+            vscode.window.showInformationMessage(`已取消调研任务: ${task.topic}`);
         })
     );
 
     // 删除深度调研文档
     context.subscriptions.push(
-        vscode.commands.registerCommand("issueManager.deepResearch.deleteDoc", async (node: any) => {
-            if (!node || !node.document) {
+        vscode.commands.registerCommand("issueManager.deepResearch.deleteDoc", async (node: unknown) => {
+            // 类型守卫：检查节点是否包含 document 属性
+            if (!node || typeof node !== 'object') {
                 return;
             }
 
-            const document = node.document as DeepResearchDocument;
+            const nodeObj = node as { document?: DeepResearchDocument };
+            if (!nodeObj.document) {
+                return;
+            }
+
+            const document = nodeObj.document;
             const answer = await vscode.window.showWarningMessage(
                 `确定要删除深度调研文档"${document.topic}"吗？`,
                 { modal: true },

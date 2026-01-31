@@ -131,9 +131,21 @@ export class DeepResearchViewProvider implements vscode.TreeDataProvider<DeepRes
 
     private documentCache: DeepResearchDocument[] | null = null;
     private activeTasks: Map<string, DeepResearchTask> = new Map();
+    private taskTimers: Map<string, NodeJS.Timeout> = new Map();
 
     constructor(private context: vscode.ExtensionContext) {
         this.registerCommands();
+    }
+
+    /**
+     * 清理资源
+     */
+    dispose(): void {
+        // 清理所有定时器
+        for (const timer of this.taskTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.taskTimers.clear();
     }
 
     private registerCommands(): void {
@@ -184,10 +196,12 @@ export class DeepResearchViewProvider implements vscode.TreeDataProvider<DeepRes
             task.status = "completed";
             task.updatedAt = Date.now();
             // 完成的任务保留一段时间后自动移除
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 this.activeTasks.delete(taskId);
+                this.taskTimers.delete(taskId);
                 this.refresh();
             }, 5000); // 5秒后移除
+            this.taskTimers.set(taskId, timer);
             this.refresh();
         }
     }
@@ -203,10 +217,12 @@ export class DeepResearchViewProvider implements vscode.TreeDataProvider<DeepRes
             }
             task.status = "cancelled";
             task.updatedAt = Date.now();
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 this.activeTasks.delete(taskId);
+                this.taskTimers.delete(taskId);
                 this.refresh();
             }, 3000); // 3秒后移除
+            this.taskTimers.set(taskId, timer);
             this.refresh();
         }
     }
