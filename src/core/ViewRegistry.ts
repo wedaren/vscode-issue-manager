@@ -18,6 +18,13 @@ import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider'
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
 import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
+<<<<<<< Updated upstream
+=======
+import { DecompositionViewProvider } from '../views/DecompositionViewProvider';
+import type { DecompositionViewNode } from '../views/DecompositionViewProvider';
+import { CodeReviewViewProvider } from '../views/CodeReviewViewProvider';
+import type { CodeReviewViewNode } from '../views/CodeReviewViewProvider';
+>>>>>>> Stashed changes
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
@@ -80,6 +87,15 @@ export class ViewRegistry {
 
         // 注册问题搜索视图
         const { issueSearchProvider, issueSearchView } = this.registerIssueSearchView();
+<<<<<<< Updated upstream
+=======
+
+        // 注册问题分解视图
+        const { decompositionProvider, decompositionView } = this.registerDecompositionView();
+
+        // 注册代码审阅视图
+        const { codeReviewProvider, codeReviewView } = this.registerCodeReviewView();
+>>>>>>> Stashed changes
         
         // 注册RSS问题视图
         // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
@@ -116,6 +132,13 @@ export class ViewRegistry {
             recentIssuesView,
             issueSearchProvider,
             issueSearchView,
+<<<<<<< Updated upstream
+=======
+            decompositionProvider,
+            decompositionView,
+            codeReviewProvider,
+            codeReviewView,
+>>>>>>> Stashed changes
             // rssIssuesProvider,
             // rssIssuesView,
             // issueStructureProvider,
@@ -154,6 +177,49 @@ export class ViewRegistry {
     }
 
     /**
+<<<<<<< Updated upstream
+=======
+     * 注册问题分解视图
+     */
+    private registerDecompositionView(): {
+        decompositionProvider: DecompositionViewProvider;
+        decompositionView: vscode.TreeView<DecompositionViewNode>;
+    } {
+        const decompositionProvider = new DecompositionViewProvider(this.context);
+        const decompositionView = vscode.window.createTreeView<DecompositionViewNode>('issueManager.views.decomposition', {
+            treeDataProvider: decompositionProvider,
+            showCollapseAll: true
+        });
+
+        this.context.subscriptions.push(decompositionView);
+
+        return { decompositionProvider, decompositionView };
+    }
+
+    /**
+     * 注册代码审阅视图
+     */
+    private registerCodeReviewView(): {
+        codeReviewProvider: CodeReviewViewProvider;
+        codeReviewView: vscode.TreeView<CodeReviewViewNode>;
+    } {
+        const codeReviewProvider = new CodeReviewViewProvider(this.context);
+        const codeReviewView = vscode.window.createTreeView<CodeReviewViewNode>('issueManager.views.codeReview', {
+            treeDataProvider: codeReviewProvider,
+            showCollapseAll: true
+        });
+
+        this.context.subscriptions.push(codeReviewView);
+
+        // 注册命令
+        const commandDisposables = codeReviewProvider.registerCommands();
+        commandDisposables.forEach(d => this.context.subscriptions.push(d));
+
+        return { codeReviewProvider, codeReviewView };
+    }
+
+    /**
+>>>>>>> Stashed changes
      * 注册 Git 分支视图
      */
     private registerGitBranchView(): {

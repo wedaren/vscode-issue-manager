@@ -53,6 +53,121 @@
         "icon": "$(add)"
       },
       {
+<<<<<<< Updated upstream
+=======
+        "command": "issueManager.decomposition.addTask",
+        "title": "新建分解任务",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.decomposition.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.decomposition.batchCreate",
+        "title": "批量创建所有子问题",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "issueManager.decomposition.createSubQuestion",
+        "title": "创建此子问题",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.decomposition.deleteRecord",
+        "title": "删除分解记录",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.codeReview.start",
+        "title": "开始代码审阅",
+        "category": "Issue Manager",
+        "icon": "$(play)"
+      },
+      {
+        "command": "issueManager.codeReview.startFolder",
+        "title": "审阅此文件夹",
+        "category": "Issue Manager",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "issueManager.codeReview.startFile",
+        "title": "审阅此文件",
+        "category": "Issue Manager",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "issueManager.codeReview.cancel",
+        "title": "取消代码审阅",
+        "category": "Issue Manager",
+        "icon": "$(close)"
+      },
+      {
+        "command": "issueManager.codeReview.refresh",
+        "title": "刷新代码审阅视图",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.codeReview.markFixed",
+        "title": "标记为已修复",
+        "category": "Issue Manager",
+        "icon": "$(check)"
+      },
+      {
+        "command": "issueManager.codeReview.markWontFix",
+        "title": "标记为不修复",
+        "category": "Issue Manager",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "issueManager.codeReview.markFalsePositive",
+        "title": "标记为误报",
+        "category": "Issue Manager",
+        "icon": "$(x)"
+      },
+      {
+        "command": "issueManager.codeReview.reopen",
+        "title": "重新打开",
+        "category": "Issue Manager",
+        "icon": "$(issue-reopened)"
+      },
+      {
+        "command": "issueManager.codeReview.createIssue",
+        "title": "创建为问题",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.codeReview.goToCode",
+        "title": "跳转到代码",
+        "category": "Issue Manager",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "issueManager.codeReview.deleteReview",
+        "title": "删除审阅记录",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.decomposition.openParent",
+        "title": "打开父问题",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "issueManager.decomposition.cancel",
+        "title": "取消分解任务",
+        "icon": "$(close)"
+      },
+      {
+        "command": "issueManager.decomposition.retry",
+        "title": "重新分解",
+        "icon": "$(sync)"
+      },
+      {
+>>>>>>> Stashed changes
         "command": "issueManager.createIssueFromOverview",
         "title": "新建问题",
         "icon": "$(add)"
@@ -637,6 +752,14 @@
             "description": "审阅当前文档并生成可执行计划"
           },
           {
+            "name": "代码审阅",
+            "description": "🤖 使用 AI Agent 深度审阅代码，发现问题和改进机会"
+          },
+          {
+            "name": "cr",
+            "description": "🤖 代码审阅的简写命令"
+          },
+          {
             "name": "研究",
             "description": "深度研究并生成文档"
           },
@@ -680,6 +803,29 @@
           "group": "navigation@1"
         },
         {
+<<<<<<< Updated upstream
+=======
+          "command": "issueManager.decomposition.addTask",
+          "when": "view == issueManager.views.decomposition",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.decomposition.refresh",
+          "when": "view == issueManager.views.decomposition",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.codeReview.start",
+          "when": "view == issueManager.views.codeReview",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.codeReview.refresh",
+          "when": "view == issueManager.views.codeReview",
+          "group": "navigation@2"
+        },
+        {
+>>>>>>> Stashed changes
           "command": "issueManager.createIssueFromOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
@@ -892,6 +1038,94 @@
           "group": "navigation@4"
         },
         {
+<<<<<<< Updated upstream
+=======
+          "command": "issueManager.decomposition.batchCreate",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecord'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.openParent",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecordCompleted'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.deleteRecord",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.createSubQuestion",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionSubQuestion'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.decomposition.batchCreate",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecord'",
+          "group": "decomposition@1"
+        },
+        {
+          "command": "issueManager.decomposition.openParent",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "decomposition@2"
+        },
+        {
+          "command": "issueManager.decomposition.retry",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "decomposition@3"
+        },
+        {
+          "command": "issueManager.decomposition.cancel",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionRecord'",
+          "group": "decomposition@4"
+        },
+        {
+          "command": "issueManager.decomposition.deleteRecord",
+          "when": "view == 'issueManager.views.decomposition' && viewItem =~ /decompositionRecord.*/",
+          "group": "decomposition@5"
+        },
+        {
+          "command": "issueManager.decomposition.createSubQuestion",
+          "when": "view == 'issueManager.views.decomposition' && viewItem == 'decompositionSubQuestion'",
+          "group": "decomposition@1"
+        },
+        {
+          "command": "issueManager.codeReview.goToCode",
+          "when": "view == 'issueManager.views.codeReview' && viewItem =~ /codeReview.finding.*/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.codeReview.createIssue",
+          "when": "view == 'issueManager.views.codeReview' && viewItem =~ /codeReview.finding.*/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.codeReview.markFixed",
+          "when": "view == 'issueManager.views.codeReview' && viewItem == 'codeReview.finding.open'",
+          "group": "codeReview@1"
+        },
+        {
+          "command": "issueManager.codeReview.markWontFix",
+          "when": "view == 'issueManager.views.codeReview' && viewItem == 'codeReview.finding.open'",
+          "group": "codeReview@2"
+        },
+        {
+          "command": "issueManager.codeReview.markFalsePositive",
+          "when": "view == 'issueManager.views.codeReview' && viewItem == 'codeReview.finding.open'",
+          "group": "codeReview@3"
+        },
+        {
+          "command": "issueManager.codeReview.reopen",
+          "when": "view == 'issueManager.views.codeReview' && viewItem == 'codeReview.finding.closed'",
+          "group": "codeReview@1"
+        },
+        {
+          "command": "issueManager.codeReview.deleteReview",
+          "when": "view == 'issueManager.views.codeReview' && viewItem == 'codeReview.review'",
+          "group": "codeReview@1"
+        },
+        {
+>>>>>>> Stashed changes
           "command": "issueManager.rss.removeFeed",
           "when": "view == 'issueManager.views.rss' && viewItem == 'rssFeed'",
           "group": "inline"
@@ -1563,6 +1797,19 @@
           "icon": "resources/icon.svg"
         },
         {
+<<<<<<< Updated upstream
+=======
+          "id": "issueManager.views.decomposition",
+          "name": "问题分解",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.codeReview",
+          "name": "代码审阅",
+          "icon": "resources/icon.svg"
+        },
+        {
+>>>>>>> Stashed changes
           "id": "issueManager.views.related",
           "name": "相关联问题",
           "icon": "resources/icon.svg"

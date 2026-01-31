@@ -5,6 +5,8 @@ import { getFlatTree } from "../data/issueTreeManager";
 import * as path from "path";
 import { Logger } from "../core/utils/Logger";
 import { createIssueMarkdown } from "../data/IssueMarkdowns";
+import { CodeReviewAgent, CodeReviewReport, CodeFinding } from "../llm/CodeReviewAgent";
+import { addCodeReviewRecord } from "../data/codeReviewHistory";
 
 /**
  * 命令别名常量定义
@@ -12,6 +14,7 @@ import { createIssueMarkdown } from "../data/IssueMarkdowns";
 const CREATE_COMMANDS = ["新建", "new", "create"] as const;
 const SEARCH_COMMANDS = ["搜索", "search", "find"] as const;
 const REVIEW_COMMANDS = ["审阅", "review"] as const;
+const CODE_REVIEW_COMMANDS = ["代码审阅", "codereview", "cr", "code-review"] as const;
 const RESEARCH_COMMANDS = ["研究", "research", "deep", "doc", "文档"] as const;
 const HELP_COMMANDS = ["帮助", "help"] as const;
 
@@ -207,6 +210,8 @@ export class IssueChatParticipant {
                 await this.handleCreateCommand(prompt, stream, token);
             } else if ((SEARCH_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleSearchCommand(prompt, stream, token);
+            } else if ((CODE_REVIEW_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleCodeReviewCommand(prompt, stream, token);
             } else if ((REVIEW_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleReviewCommand(prompt, request, stream, token);
             } else if ((RESEARCH_COMMANDS as readonly string[]).includes(command)) {
@@ -422,6 +427,323 @@ export class IssueChatParticipant {
             title: "📝 保存为文档",
             arguments: [{ title: `Review - ${plan.goal}`, markdown: planMarkdown }],
         });
+    }
+
+    /**
+     * 🤖 处理深度代码审阅命令：使用 Agent 自主探索代码库
+     * 
+     * 这是一个令人惊叹的 LLM + Agent 组合功能：
+     * - Agent 会自主分析代码库结构
+     * - 多轮迭代探索，发现潜在问题
+     * - 将发现与用户的知识库关联
+     * - 生成结构化的审阅报告
+     * - 支持一键将发现转化为可追踪的问题
+     */
+    private async handleCodeReviewCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        stream.markdown("# 🤖 智能代码审阅 Agent\n\n");
+        stream.markdown("正在启动 AI Agent 进行深度代码审阅...\n\n");
+
+        // 获取工作区
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            stream.markdown("❌ 请先打开一个工作区\n");
+            return;
+        }
+
+        // 确定审阅范围
+        let reviewScope: { type: "workspace" | "folder" | "files" | "diff"; paths: string[] };
+        const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
+
+        if (prompt.toLowerCase().includes("当前文件") || prompt.toLowerCase().includes("current file")) {
+            if (!activeFile) {
+                stream.markdown("❌ 请先打开一个文件\n");
+                return;
+            }
+            reviewScope = { type: "files", paths: [activeFile] };
+            stream.markdown(`📄 审阅范围：当前文件 \`${path.basename(activeFile)}\`\n\n`);
+        } else if (prompt.toLowerCase().includes("diff") || prompt.toLowerCase().includes("变更")) {
+            reviewScope = { type: "diff", paths: [] };
+            stream.markdown("📝 审阅范围：Git 变更\n\n");
+        } else {
+            reviewScope = { type: "workspace", paths: [workspaceFolders[0].uri.fsPath] };
+            stream.markdown(`📁 审阅范围：工作区 \`${workspaceFolders[0].name}\`\n\n`);
+        }
+
+        // 解析用户关注点
+        const focusHint = prompt.replace(/当前文件|current file|diff|变更|工作区|workspace/gi, "").trim();
+
+        stream.progress("Agent 正在分析代码库结构...");
+
+        // 创建 Agent
+        const agent = new CodeReviewAgent({
+            maxExplorationRounds: 5,
+            focusAreas: focusHint ? undefined : ["security", "performance", "maintainability", "architecture"],
+        });
+
+        // 设置取消处理
+        const abortController = new AbortController();
+        token.onCancellationRequested(() => {
+            agent.cancel();
+            abortController.abort();
+        });
+
+        // 监听 Agent 进度
+        let currentRound = 0;
+        agent.onProgress = (state, message) => {
+            if (state.currentRound !== currentRound) {
+                currentRound = state.currentRound;
+                stream.markdown(`\n### 🔄 探索轮次 ${state.currentRound}/${state.totalRounds}\n`);
+            }
+            stream.progress(message);
+        };
+
+        agent.onThought = (thought) => {
+            stream.markdown(`> 💭 **${thought.action}**: ${thought.reasoning.substring(0, 100)}${thought.reasoning.length > 100 ? "..." : ""}\n`);
+        };
+
+        agent.onFinding = (finding) => {
+            const severityEmoji = {
+                critical: "🔴",
+                major: "🟠",
+                minor: "🟡",
+                suggestion: "💡",
+            };
+            stream.markdown(`\n${severityEmoji[finding.severity]} **${finding.title}** - \`${path.basename(finding.location.file)}\`\n`);
+        };
+
+        try {
+            // 执行审阅
+            const report = await agent.review(reviewScope, { 
+                signal: abortController.signal,
+                focus: focusHint || undefined,
+            });
+
+            // 保存结果
+            addCodeReviewRecord(report);
+
+            // 显示结果
+            stream.markdown("\n---\n\n");
+            stream.markdown(`# 📊 审阅报告\n\n`);
+            
+            // 综合评分
+            const scoreEmoji = report.summary.overallScore >= 80 ? "🟢" : 
+                             report.summary.overallScore >= 60 ? "🟡" : "🔴";
+            stream.markdown(`## ${scoreEmoji} 综合评分：${report.summary.overallScore}/100\n\n`);
+
+            // 风险等级
+            const riskEmoji = { low: "🟢", medium: "🟡", high: "🔴" };
+            stream.markdown(`**风险等级**：${riskEmoji[report.summary.riskLevel]} ${report.summary.riskLevel.toUpperCase()}\n\n`);
+
+            // 优点
+            if (report.summary.strengths.length > 0) {
+                stream.markdown("### ✅ 优点\n");
+                report.summary.strengths.forEach(s => stream.markdown(`- ${s}\n`));
+                stream.markdown("\n");
+            }
+
+            // 待改进
+            if (report.summary.areasForImprovement.length > 0) {
+                stream.markdown("### 📋 待改进\n");
+                report.summary.areasForImprovement.forEach(s => stream.markdown(`- ${s}\n`));
+                stream.markdown("\n");
+            }
+
+            // 发现的问题
+            if (report.findings.length > 0) {
+                stream.markdown("### 🔍 发现的问题\n\n");
+
+                const severityOrder = ["critical", "major", "minor", "suggestion"] as const;
+                const severityLabels: Record<string, string> = {
+                    critical: "🔴 严重",
+                    major: "🟠 重要",
+                    minor: "🟡 次要",
+                    suggestion: "💡 建议",
+                };
+
+                for (const severity of severityOrder) {
+                    const findings = report.findings.filter(f => f.severity === severity);
+                    if (findings.length === 0) continue;
+
+                    stream.markdown(`#### ${severityLabels[severity]} (${findings.length})\n\n`);
+
+                    for (const finding of findings.slice(0, 5)) {
+                        stream.markdown(`**${finding.title}**\n`);
+                        stream.markdown(`- 文件: \`${path.basename(finding.location.file)}\`${finding.location.startLine ? ` 行 ${finding.location.startLine}` : ""}\n`);
+                        stream.markdown(`- ${finding.description}\n`);
+                        stream.markdown(`- 建议: ${finding.suggestion}\n`);
+
+                        // 添加创建问题按钮
+                        const body = `# ${finding.title}\n\n## 描述\n${finding.description}\n\n## 位置\n\`${finding.location.file}\`${finding.location.startLine ? ` 行 ${finding.location.startLine}` : ""}\n\n## 建议\n${finding.suggestion}`;
+                        stream.button({
+                            command: "issueManager.createIssueFromReviewTask",
+                            title: "➕ 创建问题",
+                            arguments: [{ title: finding.title, body }],
+                        });
+
+                        stream.markdown("\n");
+                    }
+
+                    if (findings.length > 5) {
+                        stream.markdown(`_...还有 ${findings.length - 5} 个${severityLabels[severity]}级别的问题_\n\n`);
+                    }
+                }
+            } else {
+                stream.markdown("### ✨ 太棒了！没有发现明显问题\n\n");
+            }
+
+            // 行动计划
+            if (report.actionPlan.immediate.length > 0 || report.actionPlan.shortTerm.length > 0) {
+                stream.markdown("### 📝 行动计划\n\n");
+                
+                if (report.actionPlan.immediate.length > 0) {
+                    stream.markdown("**⚡ 立即行动**\n");
+                    report.actionPlan.immediate.forEach((a, i) => stream.markdown(`${i + 1}. ${a}\n`));
+                    stream.markdown("\n");
+                }
+
+                if (report.actionPlan.shortTerm.length > 0) {
+                    stream.markdown("**📅 短期改进**\n");
+                    report.actionPlan.shortTerm.forEach((a, i) => stream.markdown(`${i + 1}. ${a}\n`));
+                    stream.markdown("\n");
+                }
+            }
+
+            // 相关知识
+            if (report.relatedIssues.length > 0) {
+                stream.markdown("### 🔗 相关知识库文档\n\n");
+                for (const issue of report.relatedIssues.slice(0, 5)) {
+                    const issueUri = vscode.Uri.file(issue.filePath);
+                    stream.markdown(`- [${issue.title}](${issueUri})\n`);
+                }
+                stream.markdown("\n");
+            }
+
+            // 统计信息
+            stream.markdown("---\n\n");
+            stream.markdown(`_📊 分析了 ${report.metrics.filesAnalyzed} 个文件，共 ${report.metrics.explorationRounds} 轮探索，耗时 ${Math.round(report.metrics.totalDuration / 1000)} 秒_\n\n`);
+
+            // 保存报告按钮
+            const fullReportMarkdown = this.generateFullReportMarkdown(report);
+            stream.button({
+                command: "issueManager.saveReviewPlanAsDoc",
+                title: "💾 保存完整报告",
+                arguments: [{ 
+                    title: `代码审阅报告 - ${new Date().toLocaleDateString("zh-CN")}`, 
+                    markdown: fullReportMarkdown 
+                }],
+            });
+
+            // 打开审阅视图按钮
+            stream.button({
+                command: "issueManager.codeReview.refresh",
+                title: "📋 在审阅视图中查看",
+            });
+
+        } catch (error) {
+            if (abortController.signal.aborted) {
+                stream.markdown("\n\n⚠️ 审阅已取消\n");
+            } else {
+                Logger.getInstance().error("[IssueChatParticipant] Code review failed:", error);
+                stream.markdown(`\n\n❌ 审阅失败: ${error instanceof Error ? error.message : String(error)}\n`);
+            }
+        }
+    }
+
+    /**
+     * 生成完整报告 Markdown
+     */
+    private generateFullReportMarkdown(report: CodeReviewReport): string {
+        const lines: string[] = [];
+        
+        lines.push(`# 代码审阅报告`);
+        lines.push("");
+        lines.push(`**审阅时间**: ${new Date(report.timestamp).toLocaleString("zh-CN")}`);
+        lines.push(`**审阅范围**: ${report.scope.description}`);
+        lines.push(`**综合评分**: ${report.summary.overallScore}/100`);
+        lines.push(`**风险等级**: ${report.summary.riskLevel}`);
+        lines.push("");
+        
+        lines.push("## 优点");
+        report.summary.strengths.forEach(s => lines.push(`- ${s}`));
+        lines.push("");
+        
+        lines.push("## 待改进");
+        report.summary.areasForImprovement.forEach(s => lines.push(`- ${s}`));
+        lines.push("");
+        
+        lines.push("## 发现的问题");
+        lines.push("");
+        
+        const severityOrder = ["critical", "major", "minor", "suggestion"] as const;
+        for (const severity of severityOrder) {
+            const findings = report.findings.filter(f => f.severity === severity);
+            if (findings.length === 0) continue;
+            
+            lines.push(`### ${severity.toUpperCase()} (${findings.length})`);
+            lines.push("");
+            
+            for (const finding of findings) {
+                lines.push(`#### ${finding.title}`);
+                lines.push("");
+                lines.push(`- **文件**: \`${finding.location.file}\``);
+                if (finding.location.startLine) {
+                    lines.push(`- **行号**: ${finding.location.startLine}${finding.location.endLine ? `-${finding.location.endLine}` : ""}`);
+                }
+                lines.push(`- **类别**: ${finding.category}`);
+                lines.push(`- **工作量**: ${finding.effort}`);
+                lines.push("");
+                lines.push(`**描述**: ${finding.description}`);
+                lines.push("");
+                lines.push(`**建议**: ${finding.suggestion}`);
+                lines.push("");
+                
+                if (finding.codeExample) {
+                    lines.push("**修改示例**:");
+                    lines.push("");
+                    lines.push("修改前:");
+                    lines.push("```");
+                    lines.push(finding.codeExample.before);
+                    lines.push("```");
+                    lines.push("");
+                    lines.push("修改后:");
+                    lines.push("```");
+                    lines.push(finding.codeExample.after);
+                    lines.push("```");
+                    lines.push("");
+                }
+            }
+        }
+        
+        lines.push("## 行动计划");
+        lines.push("");
+        
+        if (report.actionPlan.immediate.length > 0) {
+            lines.push("### 立即行动");
+            report.actionPlan.immediate.forEach((a, i) => lines.push(`${i + 1}. ${a}`));
+            lines.push("");
+        }
+        
+        if (report.actionPlan.shortTerm.length > 0) {
+            lines.push("### 短期改进");
+            report.actionPlan.shortTerm.forEach((a, i) => lines.push(`${i + 1}. ${a}`));
+            lines.push("");
+        }
+        
+        if (report.actionPlan.longTerm.length > 0) {
+            lines.push("### 长期规划");
+            report.actionPlan.longTerm.forEach((a, i) => lines.push(`${i + 1}. ${a}`));
+            lines.push("");
+        }
+        
+        lines.push("---");
+        lines.push("");
+        lines.push(`_分析了 ${report.metrics.filesAnalyzed} 个文件，${report.metrics.explorationRounds} 轮探索，耗时 ${Math.round(report.metrics.totalDuration / 1000)} 秒_`);
+        
+        return lines.join("\n");
     }
 
     /**
@@ -661,6 +983,40 @@ export class IssueChatParticipant {
         stream.markdown("- `@issueManager /审阅`\n");
         stream.markdown("- `@issueManager /审阅 优化本周工作计划可执行性`\n\n");
 
+<<<<<<< Updated upstream
+=======
+        stream.markdown("### � `/代码审阅` - 智能代码审阅 Agent (新!)\n");
+        stream.markdown("使用 AI Agent 自主探索代码库，进行多轮迭代分析，发现潜在问题和改进机会。\n\n");
+        stream.markdown("**特色功能:**\n");
+        stream.markdown("- 🔍 Agent 自主探索代码库结构\n");
+        stream.markdown("- 🔄 多轮迭代深入分析\n");
+        stream.markdown("- 📊 生成详细审阅报告（含评分）\n");
+        stream.markdown("- 🔗 将发现与知识库关联\n");
+        stream.markdown("- ➕ 一键将发现创建为问题\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /代码审阅` - 审阅整个工作区\n");
+        stream.markdown("- `@issueManager /代码审阅 当前文件` - 仅审阅当前打开的文件\n");
+        stream.markdown("- `@issueManager /代码审阅 安全性` - 重点关注安全问题\n");
+        stream.markdown("- `@issueManager /cr 性能优化` - 关注性能问题\n\n");
+
+        stream.markdown("### �🧩 `/分解` - 问题分解专家 (新!)\n");
+        stream.markdown("将复杂问题智能分解为可执行的子问题树，支持一键批量创建。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /分解 如何构建一个高可用的微服务架构`\n");
+        stream.markdown("- `@issueManager /分解 学习机器学习需要掌握哪些知识`\n");
+        stream.markdown("- `@issueManager /分解 如何从零开始创业`\n\n");
+
+        stream.markdown("### 🔗 `/整理` - 知识织网者 (新!)\n");
+        stream.markdown("智能分析孤立问题，为每个问题推荐最佳归档位置，支持批量归档。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /整理`\n\n");
+
+        stream.markdown("### 🔬 `/洞察` - 知识库健康报告 (新!)\n");
+        stream.markdown("分析知识库健康状况，发现被遗忘的问题，提供改进建议。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /洞察`\n\n");
+
+>>>>>>> Stashed changes
         stream.markdown("### `/帮助` - 显示此帮助\n\n");
 
         stream.markdown("## 💡 智能模式\n\n");

@@ -90,6 +90,21 @@ export interface IViewRegistryResult {
 
     /** 问题搜索树视图实例 */
     issueSearchView: vscode.TreeView<import('../views/IssueSearchViewProvider').IssueSearchViewNode>;
+<<<<<<< Updated upstream
+=======
+
+    /** 问题分解视图提供者实例 */
+    decompositionProvider: import('../views/DecompositionViewProvider').DecompositionViewProvider;
+
+    /** 问题分解树视图实例 */
+    decompositionView: vscode.TreeView<import('../views/DecompositionViewProvider').DecompositionViewNode>;
+
+    /** 代码审阅视图提供者实例 */
+    codeReviewProvider: import('../views/CodeReviewViewProvider').CodeReviewViewProvider;
+
+    /** 代码审阅树视图实例 */
+    codeReviewView: vscode.TreeView<import('../views/CodeReviewViewProvider').CodeReviewViewNode>;
+>>>>>>> Stashed changes
     
     // /** RSS问题视图提供者实例 */
     // rssIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
