@@ -71,7 +71,13 @@ export function registerSmartResearchCommand(context: vscode.ExtensionContext): 
                             .join("\n")}`;
 
                         // 保存为新问题
-                        const fileUri = await createIssueMarkdown(markdown);
+                        const fileUri = await createIssueMarkdown({
+                            markdownBody: markdown,
+                        });
+
+                        if (!fileUri) {
+                            throw new Error("无法创建问题文件");
+                        }
 
                         // 打开文档
                         const doc = await vscode.workspace.openTextDocument(fileUri);

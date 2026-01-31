@@ -789,12 +789,19 @@ export class IssueChatParticipant {
                 prompt,
                 10,
                 step => {
-                    steps.push(step);
-                    stream.markdown(`\n### 步骤 ${step.stepNumber}: ${step.reasoning}\n`);
-                    if (step.tool) {
-                        stream.markdown(`**工具**: \`${step.tool}\`\n`);
+                    if (step.reasoning) {
+                        steps.push({
+                            stepNumber: step.stepNumber,
+                            reasoning: step.reasoning,
+                            tool: step.tool,
+                            result: step.result,
+                        });
+                        stream.markdown(`\n### 步骤 ${step.stepNumber}: ${step.reasoning}\n`);
+                        if (step.tool) {
+                            stream.markdown(`**工具**: \`${step.tool}\`\n`);
+                        }
+                        stream.progress(`执行步骤 ${step.stepNumber}...`);
                     }
-                    stream.progress(`执行步骤 ${step.stepNumber}...`);
                 },
                 token
             );

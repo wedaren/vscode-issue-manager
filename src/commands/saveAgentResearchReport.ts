@@ -63,7 +63,11 @@ ${s.result ? `**执行结果**:\n\n\`\`\`json\n${JSON.stringify(s.result, null, 
 `;
 
                 // 保存为新问题
-                const fileUri = await createIssueMarkdown(markdown);
+                const fileUri = await createIssueMarkdown({ markdownBody: markdown });
+
+                if (!fileUri) {
+                    throw new Error("创建问题文件失败");
+                }
 
                 // 打开文档
                 const doc = await vscode.workspace.openTextDocument(fileUri);
