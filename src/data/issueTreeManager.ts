@@ -155,7 +155,9 @@ export const readTree = async (): Promise<TreeData> => {
  */
 export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[]> => {
     const issueMarkdown = await getIssueMarkdown(uri);
-    if (!issueMarkdown) return [];
+    if (!issueMarkdown) {
+        return [];
+    }
     return getIssueNodesBy(issueMarkdown);
 };
 

@@ -18,6 +18,7 @@ import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider'
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
 import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
+import { RelationOrganizerProvider } from '../views/RelationOrganizerProvider';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
@@ -103,6 +104,9 @@ export class ViewRegistry {
         
         // 注册相关问题视图
         this.registerRelatedView();
+
+        // 注册关系整理视图
+        const { relationOrganizerProvider, relationOrganizerView } = this.registerRelationOrganizerView();
         
         // 注册RSS虚拟文件提供器
         this.registerRSSVirtualFileProvider();
@@ -131,8 +135,124 @@ export class ViewRegistry {
             markerView,
             gitBranchManager,
             gitBranchProvider,
-            gitBranchView
+            gitBranchView,
+            relationOrganizerProvider,
+            relationOrganizerView
         };
+    }
+
+    /**
+     * 注册关系整理视图
+     */
+    private registerRelationOrganizerView(): {
+        relationOrganizerProvider: RelationOrganizerProvider;
+        relationOrganizerView: vscode.TreeView<import('../views/RelationOrganizerProvider').RelationOrganizerNode>;
+    } {
+        const relationOrganizerProvider = new RelationOrganizerProvider();
+        const relationOrganizerView = vscode.window.createTreeView('issueManager.views.relationOrganizer', {
+            treeDataProvider: relationOrganizerProvider,
+            showCollapseAll: true,
+        });
+
+        this.context.subscriptions.push(relationOrganizerView);
+
+        // 视图命令
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.refresh', async () => {
+                await relationOrganizerProvider.reload();
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.runAgent', async () => {
+                await relationOrganizerProvider.runAgentPlan();
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.applyPlan', async () => {
+                await relationOrganizerProvider.applyPlan(true);
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.clearPlan', async () => {
+                relationOrganizerProvider.clearPlan();
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.applyOperation', async (arg: unknown) => {
+                const index =
+                    typeof arg === 'number'
+                        ? arg
+                        : arg && typeof arg === 'object' && 'index' in arg && typeof (arg as { index: unknown }).index === 'number'
+                            ? (arg as { index: number }).index
+                            : undefined;
+
+                if (typeof index !== 'number') {
+                    return;
+                }
+
+                await relationOrganizerProvider.applyPlan(false, index);
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.removeOperation', async (arg: unknown) => {
+                const index =
+                    typeof arg === 'number'
+                        ? arg
+                        : arg && typeof arg === 'object' && 'index' in arg && typeof (arg as { index: unknown }).index === 'number'
+                            ? (arg as { index: number }).index
+                            : undefined;
+
+                if (typeof index !== 'number') {
+                    return;
+                }
+
+                relationOrganizerProvider.removeOperation(index);
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.openIssue', async (arg: unknown) => {
+                const nodeId =
+                    typeof arg === 'string'
+                        ? arg
+                        : arg && typeof arg === 'object' && 'nodeId' in arg && typeof (arg as { nodeId: unknown }).nodeId === 'string'
+                            ? (arg as { nodeId: string }).nodeId
+                            : undefined;
+
+                if (typeof nodeId !== 'string') {
+                    return;
+                }
+
+                await relationOrganizerProvider.openIssue(nodeId);
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.relationOrganizer.addOrphanFileToTree', async (arg: unknown) => {
+                const filePath =
+                    typeof arg === 'string'
+                        ? arg
+                        : arg && typeof arg === 'object' && 'filePath' in arg && typeof (arg as { filePath: unknown }).filePath === 'string'
+                            ? (arg as { filePath: string }).filePath
+                            : undefined;
+
+                if (typeof filePath !== 'string') {
+                    return;
+                }
+
+                await relationOrganizerProvider.addOrphanFileToTree(filePath);
+            })
+        );
+
+        // 首次加载
+        void relationOrganizerProvider.reload();
+
+        return { relationOrganizerProvider, relationOrganizerView };
     }
 
     /**
