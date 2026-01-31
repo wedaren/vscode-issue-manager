@@ -248,6 +248,8 @@ export class ExtensionInitializer {
                 views.focusedView,
                 views.issueSearchProvider,
                 views.issueSearchView,
+                views.deepResearchProvider,
+                views.deepResearchView,
                 // views.issueStructureProvider,
                 // views.issueLogicalTreeProvider,
                 views.paraViewProvider,

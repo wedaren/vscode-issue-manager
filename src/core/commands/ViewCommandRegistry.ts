@@ -17,6 +17,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private recentView?: vscode.TreeView<vscode.TreeItem>;
     private issueSearchProvider?: import('../../views/IssueSearchViewProvider').IssueSearchViewProvider;
     private issueSearchView?: vscode.TreeView<import('../../views/IssueSearchViewProvider').IssueSearchViewNode>;
+    private deepResearchProvider?: import('../../views/DeepResearchIssuesProvider').DeepResearchIssuesProvider;
+    private deepResearchView?: vscode.TreeView<import('../../views/DeepResearchIssuesProvider').DeepResearchViewNode>;
     private paraViewProvider?: ParaViewProvider;
     private overviewView?: vscode.TreeView<IssueNode>;
     private focusedView?: vscode.TreeView<IssueNode>;
@@ -36,6 +38,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         focusedView: vscode.TreeView<IssueNode>;
         issueSearchProvider: import('../../views/IssueSearchViewProvider').IssueSearchViewProvider;
         issueSearchView: vscode.TreeView<import('../../views/IssueSearchViewProvider').IssueSearchViewNode>;
+        deepResearchProvider?: import('../../views/DeepResearchIssuesProvider').DeepResearchIssuesProvider;
+        deepResearchView?: vscode.TreeView<import('../../views/DeepResearchIssuesProvider').DeepResearchViewNode>;
     }): void {
         this.focusedIssuesProvider = providers.focusedIssuesProvider;
         this.issueOverviewProvider = providers.issueOverviewProvider;
@@ -46,6 +50,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.focusedView = providers.focusedView;
         this.issueSearchProvider = providers.issueSearchProvider;
         this.issueSearchView = providers.issueSearchView;
+        this.deepResearchProvider = providers.deepResearchProvider;
+        this.deepResearchView = providers.deepResearchView;
     }
 
     /**
@@ -86,6 +92,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
                 this.issueOverviewProvider?.refresh();
                 this.recentIssuesProvider?.refresh();
                 this.issueSearchProvider?.refresh();
+                this.deepResearchProvider?.refresh();
                 this.paraViewProvider?.refresh();
             },
             '刷新所有视图'
@@ -99,6 +106,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
                 this.issueOverviewProvider?.refresh();
                 this.recentIssuesProvider?.refresh();
                 this.issueSearchProvider?.refresh();
+                this.deepResearchProvider?.refresh();
                 this.paraViewProvider?.refresh();
             },
             '刷新视图'
