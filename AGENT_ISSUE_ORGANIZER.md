@@ -245,10 +245,11 @@ function getMaxDepth(nodes: IssueNode[], currentDepth = 0): number {
 
 ## 相关文档
 
-- [问题管理插件需求文档.md](../../问题管理插件需求文档.md)
-- [plan-associateTo.prompt.md](../../plan-associateTo.prompt.md)
-- [src/commands/moveTo.ts](../../src/commands/moveTo.ts)
-- [src/commands/attachTo.ts](../../src/commands/attachTo.ts)
+- [使用示例文档](./AGENT_ISSUE_ORGANIZER_EXAMPLES.md) - 详细的使用场景和示例
+- [问题管理插件需求文档](./问题管理插件需求文档.md)
+- [plan-associateTo.prompt.md](./plan-associateTo.prompt.md)
+- [src/commands/moveTo.ts](./src/commands/moveTo.ts)
+- [src/commands/attachTo.ts](./src/commands/attachTo.ts)
 
 ## 反馈和贡献
 
