@@ -313,19 +313,40 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     const timestamp = this.getSortTimestamp(stat);
     item.description = this.formatTimestampDescription(timestamp);
 
+    item.tooltip = this.createTooltipMarkdown(stat, stat.uri);
+    
+    this.itemCache.set(key, item);
+    return item;
+  }
+
+  /**
+   * 创建 tooltip 的 Markdown（IssueMarkdown 与 IssueNode 共用）
+   */
+  private createTooltipMarkdown(stat: RecentIssueStats, uri: vscode.Uri, node?: IssueNode): vscode.MarkdownString {
+    const timestamp = this.getSortTimestamp(stat);
     const tooltipLines: string[] = [
-      `路径: \`${stat.uri.fsPath}\``,
+      `路径: \`${uri.fsPath}\``,
       `\n排序时间(${this.sortOrder}): ${formatRelativeTime(timestamp)} · ${formatCompactDateTime(timestamp)} (${timestamp.toLocaleString()})`,
       `\n修改时间: ${formatRelativeTime(stat.mtime)} · ${formatCompactDateTime(stat.mtime)} (${stat.mtime.toLocaleString()})`,
       `\n创建时间: ${formatRelativeTime(stat.ctime)} · ${formatCompactDateTime(stat.ctime)} (${stat.ctime.toLocaleString()})`,
     ];
+
     if (stat.vtime) {
-      tooltipLines.push(`\n查看时间: ${formatRelativeTime(stat.vtime)} · ${formatCompactDateTime(stat.vtime)} (${stat.vtime.toLocaleString()})`);
+      tooltipLines.push(
+        `\n查看时间: ${formatRelativeTime(stat.vtime)} · ${formatCompactDateTime(stat.vtime)} (${stat.vtime.toLocaleString()})`
+      );
     }
-    item.tooltip = new vscode.MarkdownString(tooltipLines.join('\n'));
-    
-    this.itemCache.set(key, item);
-    return item;
+
+    if (node?.parent?.length) {
+      const parentTitles = node.parent
+        .map(p => getIssueMarkdownTitleFromCache(p.filePath))
+        .filter((t): t is string => !!t);
+      if (parentTitles.length > 0) {
+        tooltipLines.push(`\n\n层级: ${parentTitles.join(' / ')}`);
+      }
+    }
+
+    return new vscode.MarkdownString(tooltipLines.join('\n'));
   }
 
   /**
@@ -386,25 +407,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     item.description = this.formatTimestampDescription(timestamp);
 
     // 将父节点层级信息放入 tooltip（作为 detail 信息）
-    const tooltipLines: string[] = [
-      `路径: \`${uri.fsPath}\``,
-      `\n排序时间(${this.sortOrder}): ${formatRelativeTime(timestamp)} · ${formatCompactDateTime(timestamp)} (${timestamp.toLocaleString()})`,
-      `\n修改时间: ${formatRelativeTime(stat.mtime)} · ${formatCompactDateTime(stat.mtime)} (${stat.mtime.toLocaleString()})`,
-      `\n创建时间: ${formatRelativeTime(stat.ctime)} · ${formatCompactDateTime(stat.ctime)} (${stat.ctime.toLocaleString()})`,
-    ];
-    if (stat.vtime) {
-      tooltipLines.push(`\n查看时间: ${formatRelativeTime(stat.vtime)} · ${formatCompactDateTime(stat.vtime)} (${stat.vtime.toLocaleString()})`);
-    }
-
-    if (node.parent && node.parent.length > 0) {
-      const parentTitles = node.parent
-        .map(p => getIssueMarkdownTitleFromCache(p.filePath))
-        .filter((t): t is string => !!t);
-      if (parentTitles.length > 0) {
-        tooltipLines.push(`\n\n层级: ${parentTitles.join(' / ')}`);
-      }
-    }
-    item.tooltip = new vscode.MarkdownString(tooltipLines.join('\n'));
+    item.tooltip = this.createTooltipMarkdown(stat, uri, node);
 
     this.itemCache.set(key, item);
     return item;
