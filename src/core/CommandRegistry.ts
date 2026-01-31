@@ -953,15 +953,27 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerUnifiedQuickOpenCommand(this.context);
         // marker 插入到关联问题的命令
         registerInsertMarksCommand(this.context, this.markerManager);
-        registerReviewPlanCommands(this.context);
 
         // 注册智能 Agent 相关命令
-        import('../commands/smartResearchCommand').then(({ registerSmartResearchCommand }) => {
-            registerSmartResearchCommand(this.context);
-        });
-        import('../commands/saveAgentResearchReport').then(({ registerSaveAgentResearchReport }) => {
-            registerSaveAgentResearchReport(this.context);
-        });
+        void Promise.resolve()
+            .then(() => {
+                const { registerSmartResearchCommand } =
+                    require('../commands/smartResearchCommand') as typeof import('../commands/smartResearchCommand');
+                registerSmartResearchCommand(this.context);
+            })
+            .catch((error: unknown) => {
+                this.logger.error('注册智能 Agent 命令失败:', error);
+            });
+
+        void Promise.resolve()
+            .then(() => {
+                const { registerSaveAgentResearchReport } =
+                    require('../commands/saveAgentResearchReport') as typeof import('../commands/saveAgentResearchReport');
+                registerSaveAgentResearchReport(this.context);
+            })
+            .catch((error: unknown) => {
+                this.logger.error('注册保存 Agent 报告命令失败:', error);
+            });
 
         this.logger.info('✅ LLM 相关命令注册完成');
 
