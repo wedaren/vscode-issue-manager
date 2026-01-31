@@ -32,6 +32,21 @@ const DEFAULT_OPTIONS: Required<FullTextSearchOptions> = {
 };
 
 /**
+ * 从配置中获取搜索选项
+ */
+function getSearchOptionsFromConfig(): FullTextSearchOptions {
+    const config = vscode.workspace.getConfiguration('issueManager.search.fulltext');
+    return {
+        caseSensitive: config.get<boolean>('caseSensitive') ?? DEFAULT_OPTIONS.caseSensitive,
+        useRegex: config.get<boolean>('useRegex') ?? DEFAULT_OPTIONS.useRegex,
+        wholeWord: config.get<boolean>('wholeWord') ?? DEFAULT_OPTIONS.wholeWord,
+        maxResults: config.get<number>('maxResults') ?? DEFAULT_OPTIONS.maxResults,
+        maxSnippetsPerFile: config.get<number>('maxSnippetsPerFile') ?? DEFAULT_OPTIONS.maxSnippetsPerFile,
+        contextLines: config.get<number>('contextLines') ?? DEFAULT_OPTIONS.contextLines
+    };
+}
+
+/**
  * 全文搜索服务
  */
 export class FullTextSearchService {
@@ -39,15 +54,26 @@ export class FullTextSearchService {
      * 在指定的问题列表中进行全文搜索
      * @param keyword 搜索关键词
      * @param issues 要搜索的问题列表
-     * @param options 搜索选项
+     * @param options 搜索选项（如果未提供，将从配置中读取）
      * @returns 搜索结果列表
      */
     static async searchInContent(
         keyword: string,
         issues: IssueMarkdown[],
-        options: FullTextSearchOptions = {}
+        options?: FullTextSearchOptions
     ): Promise<IssueSearchResult[]> {
-        const opts = { ...DEFAULT_OPTIONS, ...options };
+        // 如果没有提供选项，从配置中读取
+        const configOptions = getSearchOptionsFromConfig();
+        const mergedOptions = { ...configOptions, ...options };
+        // 确保所有选项都有默认值
+        const opts: Required<FullTextSearchOptions> = {
+            caseSensitive: mergedOptions.caseSensitive ?? DEFAULT_OPTIONS.caseSensitive,
+            useRegex: mergedOptions.useRegex ?? DEFAULT_OPTIONS.useRegex,
+            wholeWord: mergedOptions.wholeWord ?? DEFAULT_OPTIONS.wholeWord,
+            maxResults: mergedOptions.maxResults ?? DEFAULT_OPTIONS.maxResults,
+            maxSnippetsPerFile: mergedOptions.maxSnippetsPerFile ?? DEFAULT_OPTIONS.maxSnippetsPerFile,
+            contextLines: mergedOptions.contextLines ?? DEFAULT_OPTIONS.contextLines
+        };
         const normalizedKeyword = keyword.trim();
         
         if (!normalizedKeyword) {

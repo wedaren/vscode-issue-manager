@@ -316,15 +316,8 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         const keyword = pendingRecord.keyword;
         
         try {
-            // 执行全文搜索
-            const results = await FullTextSearchService.searchInContent(keyword, issues, {
-                caseSensitive: false,
-                useRegex: false,
-                wholeWord: false,
-                maxResults: 50,
-                maxSnippetsPerFile: 3,
-                contextLines: 0
-            });
+            // 执行全文搜索（使用配置中的选项）
+            const results = await FullTextSearchService.searchInContent(keyword, issues);
 
             this.pendingAiRecords.delete(pendingRecord.id);
 

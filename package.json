@@ -1276,6 +1276,42 @@
           "minimum": 1,
           "description": "关注列表中保留的最大问题数量。当添加新问题导致超过此数量时，最旧的（列表末尾的）问题会被自动移除。"
         },
+        "issueManager.search.fulltext.caseSensitive": {
+          "type": "boolean",
+          "default": false,
+          "description": "全文搜索时是否区分大小写。"
+        },
+        "issueManager.search.fulltext.useRegex": {
+          "type": "boolean",
+          "default": false,
+          "description": "全文搜索时是否启用正则表达式模式。"
+        },
+        "issueManager.search.fulltext.wholeWord": {
+          "type": "boolean",
+          "default": false,
+          "description": "全文搜索时是否进行全词匹配。"
+        },
+        "issueManager.search.fulltext.maxResults": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 500,
+          "description": "全文搜索返回的最大结果数量。"
+        },
+        "issueManager.search.fulltext.maxSnippetsPerFile": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "每个文件最多显示的匹配片段数量。"
+        },
+        "issueManager.search.fulltext.contextLines": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 5,
+          "description": "匹配片段显示的上下文行数。设置为0表示只显示匹配行本身。"
+        },
         "issueManager.sync.enableAutosync": {
           "type": "boolean",
           "default": false,
