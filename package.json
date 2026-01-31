@@ -63,6 +63,18 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.createIssueFromReviewTask",
+        "title": "从 Review 任务创建问题",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.saveReviewPlanAsDoc",
+        "title": "保存 Review 计划为文档",
+        "category": "Issue Manager",
+        "icon": "$(notebook)"
+      },
+      {
         "command": "issueManager.createIssueFromHtml",
         "title": "从 HTML 创建问题",
         "icon": "$(add)"
@@ -619,6 +631,10 @@
           {
             "name": "搜索",
             "description": "搜索现有问题"
+          },
+          {
+            "name": "审阅",
+            "description": "审阅当前文档并生成可执行计划"
           },
           {
             "name": "研究",
