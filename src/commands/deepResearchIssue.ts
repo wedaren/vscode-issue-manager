@@ -1,18 +1,24 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { LLMService } from '../llm/LLMService';
+import * as vscode from "vscode";
+import * as path from "path";
+import { LLMService } from "../llm/LLMService";
 import {
     createIssueMarkdown,
     updateIssueMarkdownBody,
     updateIssueMarkdownFrontmatter,
     type FrontmatterData,
-} from '../data/IssueMarkdowns';
-import { Logger } from '../core/utils/Logger';
-import { getIssueDir } from '../config';
-import { createIssueNodes, type IssueNode } from '../data/issueTreeManager';
+} from "../data/IssueMarkdowns";
+import { Logger } from "../core/utils/Logger";
+import { getIssueDir } from "../config";
+import { createIssueNodes, type IssueNode } from "../data/issueTreeManager";
+import type { ResearchOutputKind, ResearchSourceMode } from "../types/deepResearch";
+import {
+    promptIncludeEditor,
+    promptKind,
+    promptSourceMode,
+    promptTopic,
+} from "../utils/deepResearchPrompts";
 
-export type ResearchOutputKind = '调研报告' | '技术方案' | '对比分析' | '学习笔记';
-export type ResearchSourceMode = 'local' | 'llmOnly';
+export type { ResearchOutputKind, ResearchSourceMode } from "../types/deepResearch";
 
 interface DeepResearchPlan {
     researchTitle: string;
@@ -61,17 +67,17 @@ function toAbortSignal(token: vscode.CancellationToken): AbortSignal {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
+    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function extractJsonObject(text: string): unknown {
     const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
     const candidate = jsonMatch?.[1] ? jsonMatch[1] : text;
 
-    const firstBrace = candidate.indexOf('{');
-    const lastBrace = candidate.lastIndexOf('}');
+    const firstBrace = candidate.indexOf("{");
+    const lastBrace = candidate.lastIndexOf("}");
     if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-        throw new Error('未在模型响应中找到 JSON 对象');
+        throw new Error("未在模型响应中找到 JSON 对象");
     }
 
     const jsonString = candidate.substring(firstBrace, lastBrace + 1);
@@ -84,14 +90,14 @@ function getStringArray(obj: Record<string, unknown>, key: string): string[] {
         return [];
     }
     return v
-        .filter((x): x is string => typeof x === 'string')
+        .filter((x): x is string => typeof x === "string")
         .map(s => s.trim())
         .filter(Boolean);
 }
 
 function getString(obj: Record<string, unknown>, key: string): string | undefined {
     const v = obj[key];
-    if (typeof v !== 'string') {
+    if (typeof v !== "string") {
         return undefined;
     }
     const trimmed = v.trim();
@@ -103,13 +109,13 @@ function isDeepResearchPlan(value: unknown): value is DeepResearchPlan {
         return false;
     }
 
-    const researchTitle = getString(value, 'researchTitle');
+    const researchTitle = getString(value, "researchTitle");
     if (!researchTitle) {
         return false;
     }
 
-    const keyQuestions = getStringArray(value, 'keyQuestions');
-    const outline = getStringArray(value, 'outline');
+    const keyQuestions = getStringArray(value, "keyQuestions");
+    const outline = getStringArray(value, "outline");
 
     if (keyQuestions.length === 0) {
         return false;
@@ -125,32 +131,32 @@ function formatOptionalList(title: string, items: string[] | undefined): string 
     if (!items || items.length === 0) {
         return `${title}\n（无）`;
     }
-    return `${title}\n${items.map(i => `- ${i}`).join('\n')}`;
+    return `${title}\n${items.map(i => `- ${i}`).join("\n")}`;
 }
 
 function isDeepResearchReviewResult(value: unknown): value is DeepResearchReviewResult {
     if (!isRecord(value)) {
         return false;
     }
-    const reviewNotes = getString(value, 'reviewNotes');
-    const finalMarkdown = getString(value, 'finalMarkdown');
+    const reviewNotes = getString(value, "reviewNotes");
+    const finalMarkdown = getString(value, "finalMarkdown");
     return !!reviewNotes && !!finalMarkdown;
 }
 
 function ensureH1(markdown: string, title: string): string {
     const trimmed = markdown.trimStart();
-    if (trimmed.startsWith('# ')) {
+    if (trimmed.startsWith("# ")) {
         return markdown;
     }
     return `# ${title}\n\n${markdown}`;
 }
 
 function clampExcerpt(text: string, maxChars: number): { excerpt: string; truncated: boolean } {
-    const normalized = text.replace(/\r\n/g, '\n');
+    const normalized = text.replace(/\r\n/g, "\n");
     if (normalized.length <= maxChars) {
         return { excerpt: normalized, truncated: false };
     }
-    return { excerpt: normalized.slice(0, maxChars) + '\n\n（已截断）\n', truncated: true };
+    return { excerpt: normalized.slice(0, maxChars) + "\n\n（已截断）\n", truncated: true };
 }
 
 function fileNameFromUri(uri: vscode.Uri): string {
@@ -165,16 +171,20 @@ function buildFileWikiLink(absFilePath: string, label?: string): string {
 async function readTextFile(filePath: string): Promise<string | null> {
     try {
         const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
-        return Buffer.from(bytes).toString('utf8');
+        return Buffer.from(bytes).toString("utf8");
     } catch (e) {
         Logger.getInstance().warn(`[deepResearch] 读取文件失败: ${filePath}`, e);
         return null;
     }
 }
 
-async function generatePlan(topic: string, kind: ResearchOutputKind, signal: AbortSignal): Promise<DeepResearchPlan> {
+async function generatePlan(
+    topic: string,
+    kind: ResearchOutputKind,
+    signal: AbortSignal
+): Promise<DeepResearchPlan> {
     const kindQualityGate =
-        kind === '学习笔记'
+        kind === "学习笔记"
             ? `
 质量门禁（学习笔记专用，必须满足）：
 - 计划必须包含：学习目标（用 goals 表达）/关键问题/大纲/术语表（glossary）/交付物（deliverables，例如练习题、自测清单、复习卡片）/待验证问题（openQuestions）。
@@ -217,13 +227,22 @@ ${kindQualityGate}
 输出类型：${kind}
 `.trim();
 
-    const resp = await LLMService._request([vscode.LanguageModelChatMessage.User(prompt)], { signal });
+    const resp = await LLMService._request([vscode.LanguageModelChatMessage.User(prompt)], {
+        signal,
+    });
     if (!resp) {
         return {
             researchTitle: `深度调研：${topic}`,
-            keyQuestions: ['问题的本质是什么？', '有哪些可行方案与取舍？'],
+            keyQuestions: ["问题的本质是什么？", "有哪些可行方案与取舍？"],
             localSearchQueries: [topic],
-            outline: ['概述', '背景与现状', '关键问题拆解', '方案与对比', '风险与建议', '参考资料（本地）'],
+            outline: [
+                "概述",
+                "背景与现状",
+                "关键问题拆解",
+                "方案与对比",
+                "风险与建议",
+                "参考资料（本地）",
+            ],
             assumptions: [],
             risks: [],
         };
@@ -233,18 +252,18 @@ ${kindQualityGate}
         const parsed = extractJsonObject(resp.text);
         if (isDeepResearchPlan(parsed)) {
             const record = parsed as unknown as Record<string, unknown>;
-            const localSearchQueries = getStringArray(record, 'localSearchQueries');
-            const goals = getStringArray(record, 'goals');
-            const nonGoals = getStringArray(record, 'nonGoals');
-            const constraints = getStringArray(record, 'constraints');
-            const acceptanceCriteria = getStringArray(record, 'acceptanceCriteria');
-            const measurementPlan = getStringArray(record, 'measurementPlan');
-            const dataScaleAssumptions = getStringArray(record, 'dataScaleAssumptions');
-            const deliverables = getStringArray(record, 'deliverables');
-            const glossary = getStringArray(record, 'glossary');
-            const openQuestions = getStringArray(record, 'openQuestions');
-            const assumptions = getStringArray(record, 'assumptions');
-            const risks = getStringArray(record, 'risks');
+            const localSearchQueries = getStringArray(record, "localSearchQueries");
+            const goals = getStringArray(record, "goals");
+            const nonGoals = getStringArray(record, "nonGoals");
+            const constraints = getStringArray(record, "constraints");
+            const acceptanceCriteria = getStringArray(record, "acceptanceCriteria");
+            const measurementPlan = getStringArray(record, "measurementPlan");
+            const dataScaleAssumptions = getStringArray(record, "dataScaleAssumptions");
+            const deliverables = getStringArray(record, "deliverables");
+            const glossary = getStringArray(record, "glossary");
+            const openQuestions = getStringArray(record, "openQuestions");
+            const assumptions = getStringArray(record, "assumptions");
+            const risks = getStringArray(record, "risks");
 
             return {
                 researchTitle: parsed.researchTitle,
@@ -256,7 +275,8 @@ ${kindQualityGate}
                 constraints: constraints.length > 0 ? constraints : undefined,
                 acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
                 measurementPlan: measurementPlan.length > 0 ? measurementPlan : undefined,
-                dataScaleAssumptions: dataScaleAssumptions.length > 0 ? dataScaleAssumptions : undefined,
+                dataScaleAssumptions:
+                    dataScaleAssumptions.length > 0 ? dataScaleAssumptions : undefined,
                 deliverables: deliverables.length > 0 ? deliverables : undefined,
                 glossary: glossary.length > 0 ? glossary : undefined,
                 openQuestions: openQuestions.length > 0 ? openQuestions : undefined,
@@ -265,30 +285,30 @@ ${kindQualityGate}
             };
         }
     } catch (e) {
-        Logger.getInstance().warn('[deepResearch] 计划 JSON 解析失败，使用兜底计划', e);
+        Logger.getInstance().warn("[deepResearch] 计划 JSON 解析失败，使用兜底计划", e);
     }
 
     return {
         researchTitle: `深度调研：${topic}`,
-        keyQuestions: ['问题的本质是什么？', '有哪些可行方案与取舍？'],
+        keyQuestions: ["问题的本质是什么？", "有哪些可行方案与取舍？"],
         localSearchQueries: [topic],
         outline: [
-            '执行摘要（结论先行）',
-            '目标 / 非目标 / 约束',
-            '现状与问题画像（症状→原因→证据）',
-            '方案选型与对比（含取舍表）',
-            '推荐方案设计（数据结构/流程/接口/并发/取消）',
-            '实施步骤（分阶段）',
-            '验收标准与回归方案（可量化）',
-            '风险与待验证清单',
+            "执行摘要（结论先行）",
+            "目标 / 非目标 / 约束",
+            "现状与问题画像（症状→原因→证据）",
+            "方案选型与对比（含取舍表）",
+            "推荐方案设计（数据结构/流程/接口/并发/取消）",
+            "实施步骤（分阶段）",
+            "验收标准与回归方案（可量化）",
+            "风险与待验证清单",
         ],
-        goals: ['输出一份可落地、可验收的技术方案文档'],
-        nonGoals: ['不提供无法验证的外部事实/数据', '不依赖联网查询'],
-        constraints: ['不联网', '必须基于可实现的 VS Code 扩展能力'],
-        acceptanceCriteria: ['包含可量化的验收标准', '包含可执行的行动清单与回归方法'],
-        measurementPlan: ['建议补充埋点/日志/复现步骤，用于对比优化前后收益'],
-        dataScaleAssumptions: ['给出至少 2 档规模假设，并说明策略如何随规模变化'],
-        deliverables: ['终稿 Markdown', '方案对比表', '行动清单', '待验证清单'],
+        goals: ["输出一份可落地、可验收的技术方案文档"],
+        nonGoals: ["不提供无法验证的外部事实/数据", "不依赖联网查询"],
+        constraints: ["不联网", "必须基于可实现的 VS Code 扩展能力"],
+        acceptanceCriteria: ["包含可量化的验收标准", "包含可执行的行动清单与回归方法"],
+        measurementPlan: ["建议补充埋点/日志/复现步骤，用于对比优化前后收益"],
+        dataScaleAssumptions: ["给出至少 2 档规模假设，并说明策略如何随规模变化"],
+        deliverables: ["终稿 Markdown", "方案对比表", "行动清单", "待验证清单"],
         assumptions: [],
         risks: [],
     };
@@ -305,7 +325,7 @@ async function collectLocalSources(
 
     for (const q of queries) {
         if (signal.aborted) {
-            throw new Error('请求已取消');
+            throw new Error("请求已取消");
         }
 
         const matches = await LLMService.searchIssueMarkdowns(q, { signal });
@@ -329,7 +349,7 @@ async function collectLocalSources(
     const sources: LocalSource[] = [];
     for (const c of candidates.slice(0, maxSources)) {
         if (signal.aborted) {
-            throw new Error('请求已取消');
+            throw new Error("请求已取消");
         }
 
         const content = await readTextFile(c.filePath);
@@ -351,7 +371,8 @@ function getEditorContext(maxChars: number): EditorContext | null {
     }
 
     const doc = editor.document;
-    const selectedText = editor.selection && !editor.selection.isEmpty ? doc.getText(editor.selection) : '';
+    const selectedText =
+        editor.selection && !editor.selection.isEmpty ? doc.getText(editor.selection) : "";
     const raw = selectedText.trim() ? selectedText : doc.getText();
 
     const { excerpt, truncated } = clampExcerpt(raw, maxChars);
@@ -374,18 +395,22 @@ async function generateDocument(
 ): Promise<string> {
     const sourcesBlock =
         sources.length === 0
-            ? '（未检索到可用的本地笔记来源）'
+            ? "（未检索到可用的本地笔记来源）"
             : sources
                   .map((s, idx) => {
                       const display = s.title?.trim() ? s.title : path.basename(s.filePath);
-                      const trunc = s.truncated ? '（节选已截断）' : '';
-                      return `【来源 ${idx + 1}】${display}\n路径：${s.filePath}\n摘录${trunc}：\n${s.excerpt}`;
+                      const trunc = s.truncated ? "（节选已截断）" : "";
+                      return `【来源 ${idx + 1}】${display}\n路径：${s.filePath}\n摘录${trunc}：\n${
+                          s.excerpt
+                      }`;
                   })
-                  .join('\n\n---\n\n');
+                  .join("\n\n---\n\n");
 
     const editorBlock = editorCtx
-        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${editorCtx.truncated ? '（已截断）' : ''}：\n${editorCtx.excerpt}`
-        : '（未包含当前编辑器上下文）';
+        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${
+              editorCtx.truncated ? "（已截断）" : ""
+          }：\n${editorCtx.excerpt}`
+        : "（未包含当前编辑器上下文）";
 
     const prompt = `
 你是一名资深研究员与技术写作者。请基于“本地资料（来源摘录）+ 用户主题 + 当前编辑器上下文”，产出一份专业 Markdown 文档。
@@ -400,16 +425,16 @@ async function generateDocument(
 建议标题：${plan.researchTitle}
 
 关键问题：
-${plan.keyQuestions.map(q => `- ${q}`).join('\n')}
+${plan.keyQuestions.map(q => `- ${q}`).join("\n")}
 
 文档大纲（必须覆盖这些一级标题，允许你在其下扩展二级标题）：
-${plan.outline.map(h => `- ${h}`).join('\n')}
+${plan.outline.map(h => `- ${h}`).join("\n")}
 
 假设/缺口：
-${plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join('\n') : '（无）'}
+${plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join("\n") : "（无）"}
 
 风险：
-${plan.risks.length ? plan.risks.map(r => `- ${r}`).join('\n') : '（无）'}
+${plan.risks.length ? plan.risks.map(r => `- ${r}`).join("\n") : "（无）"}
 
 本地资料（来源摘录）：
 ${sourcesBlock}
@@ -424,7 +449,9 @@ ${editorBlock}
 - “参考资料（本地）”：列出来源路径，并说明其用于支持哪些结论
 `.trim();
 
-    const resp = await LLMService._request([vscode.LanguageModelChatMessage.User(prompt)], { signal });
+    const resp = await LLMService._request([vscode.LanguageModelChatMessage.User(prompt)], {
+        signal,
+    });
     if (!resp) {
         return `# ${plan.researchTitle}\n\n（生成失败：未找到可用 Copilot 模型或请求失败）\n`;
     }
@@ -440,31 +467,33 @@ async function generateDocumentLlmOnly(
     signal: AbortSignal
 ): Promise<{ draft: string; review: DeepResearchReviewResult }> {
     const editorBlock = editorCtx
-        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${editorCtx.truncated ? '（已截断）' : ''}：\n${editorCtx.excerpt}`
-        : '（未包含当前编辑器上下文）';
+        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${
+              editorCtx.truncated ? "（已截断）" : ""
+          }：\n${editorCtx.excerpt}`
+        : "（未包含当前编辑器上下文）";
 
     const kindWritingTemplate =
-        kind === '学习笔记'
+        kind === "学习笔记"
             ? `
 输出要求（学习笔记专用）：
 - 目标：帮助读者真正“学会并能复述/应用”，而不是写成项目方案。
 - 推荐结构（可按大纲微调）：概念地图/核心概念与机制/术语表/易混淆点与常见误区/对比（与相邻概念或替代方案）/自测题（含答案提纲）/复习清单/开放问题与下一步资料线索。
 - 不要硬塞“验收标准/回归方案/数据规模假设/量化 KPI”。如果涉及数字，只能写“待定/待验证/假设”，并解释如何验证。
 `.trim()
-            : kind === '对比分析'
-              ? `
+            : kind === "对比分析"
+            ? `
 输出要求（对比分析专用）：
 - 以对比为中心：至少提供 1 张多维对比表（维度建议：目标、输入/依赖、实现复杂度、风险、可观测性、适用边界、迁移成本）。
 - 给出明确结论：推荐方案 + 不推荐的原因 + 触发条件（何时需要切换方案）。
 - 行动清单必须可执行：每条包含产出物或验证方法。
 `.trim()
-              : kind === '技术方案'
-                ? `
+            : kind === "技术方案"
+            ? `
 输出要求（技术方案专用）：
 - 结构要能指导落地：目标/非目标/约束/总体设计（架构、关键模块职责）/关键数据结构与接口/并发与取消/失败恢复与回滚/可观测性（日志、指标、追踪）/验收与回归（允许定性或步骤化验收，禁止无依据数字）/风险与权衡/里程碑。
 - 至少 1 张对比表（候选方案 vs 取舍）。
 `.trim()
-                : `
+            : `
 输出要求（调研报告专用）：
 - 结论先行：开头给出可直接转述的结论/建议（1-2 段）。
 - 覆盖背景、现状、关键问题、候选路径、对比与建议、风险与待验证清单。
@@ -492,28 +521,28 @@ ${kindWritingTemplate}
 建议标题：${plan.researchTitle}
 
 关键问题：
-${plan.keyQuestions.map(q => `- ${q}`).join('\n')}
+${plan.keyQuestions.map(q => `- ${q}`).join("\n")}
 
 文档大纲（必须覆盖这些一级标题，允许你在其下扩展二级标题）：
-${plan.outline.map(h => `- ${h}`).join('\n')}
+${plan.outline.map(h => `- ${h}`).join("\n")}
 
-${kind === '学习笔记' ? '' : formatOptionalList('目标：', plan.goals)}
+${kind === "学习笔记" ? "" : formatOptionalList("目标：", plan.goals)}
 
-${kind === '学习笔记' ? '' : formatOptionalList('非目标：', plan.nonGoals)}
+${kind === "学习笔记" ? "" : formatOptionalList("非目标：", plan.nonGoals)}
 
-${kind === '学习笔记' ? '' : formatOptionalList('约束：', plan.constraints)}
+${kind === "学习笔记" ? "" : formatOptionalList("约束：", plan.constraints)}
 
 假设/缺口：
-${plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join('\n') : '（无）'}
+${plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join("\n") : "（无）"}
 
 风险：
-${plan.risks.length ? plan.risks.map(r => `- ${r}`).join('\n') : '（无）'}
+${plan.risks.length ? plan.risks.map(r => `- ${r}`).join("\n") : "（无）"}
 
-${kind === '学习笔记' ? '' : formatOptionalList('数据规模假设：', plan.dataScaleAssumptions)}
+${kind === "学习笔记" ? "" : formatOptionalList("数据规模假设：", plan.dataScaleAssumptions)}
 
-${kind === '学习笔记' ? '' : formatOptionalList('验收标准：', plan.acceptanceCriteria)}
+${kind === "学习笔记" ? "" : formatOptionalList("验收标准：", plan.acceptanceCriteria)}
 
-${kind === '学习笔记' ? '' : formatOptionalList('度量与观测方案：', plan.measurementPlan)}
+${kind === "学习笔记" ? "" : formatOptionalList("度量与观测方案：", plan.measurementPlan)}
 
 当前编辑器上下文：
 ${editorBlock}
@@ -521,12 +550,17 @@ ${editorBlock}
 请输出一篇最终可交付的文档，并在文末包含一个“待验证清单”（列出所有依赖外部事实/数据的点，以及验证路径）。
 `.trim();
 
-    const draftResp = await LLMService._request([vscode.LanguageModelChatMessage.User(draftPrompt)], {
-        signal,
-    });
-    const draft = draftResp?.text ?? `# ${plan.researchTitle}\n\n（生成失败：未找到可用 Copilot 模型或请求失败）\n`;
+    const draftResp = await LLMService._request(
+        [vscode.LanguageModelChatMessage.User(draftPrompt)],
+        {
+            signal,
+        }
+    );
+    const draft =
+        draftResp?.text ??
+        `# ${plan.researchTitle}\n\n（生成失败：未找到可用 Copilot 模型或请求失败）\n`;
 
-        const reviewPrompt = `
+    const reviewPrompt = `
 你现在是严苛的审阅者与改写者。请基于下方“初稿”做一次系统性审阅，并输出 JSON（不要输出其它文本）。
 重要约束：
 - 不要输出逐步推理细节（不要暴露思维链），只输出可审计的结论与修改依据要点。
@@ -552,12 +586,16 @@ ${editorBlock}
 ${draft}
 `.trim();
 
-    const finalResp = await LLMService._request([vscode.LanguageModelChatMessage.User(reviewPrompt)], {
-        signal,
-    });
+    const finalResp = await LLMService._request(
+        [vscode.LanguageModelChatMessage.User(reviewPrompt)],
+        {
+            signal,
+        }
+    );
 
     const fallbackReview: DeepResearchReviewResult = {
-        reviewNotes: '- （解析失败）未能从审阅阶段拿到结构化审阅要点；已直接使用审阅响应或初稿作为最终稿。',
+        reviewNotes:
+            "- （解析失败）未能从审阅阶段拿到结构化审阅要点；已直接使用审阅响应或初稿作为最终稿。",
         finalMarkdown: finalResp?.text ?? draft,
     };
 
@@ -577,73 +615,10 @@ ${draft}
             };
         }
     } catch (e) {
-        Logger.getInstance().warn('[deepResearch] 审阅 JSON 解析失败，使用兜底输出', e);
+        Logger.getInstance().warn("[deepResearch] 审阅 JSON 解析失败，使用兜底输出", e);
     }
 
     return { draft, review: fallbackReview };
-}
-
-async function promptTopic(): Promise<string | null> {
-    const topic = (
-        await vscode.window.showInputBox({
-            prompt: '请输入要“深度调研”的问题/主题（取消将中止）',
-            placeHolder: '例如：如何为最近问题视图做更稳定的树渲染与性能优化？',
-        })
-    )?.trim();
-
-    return topic && topic.length > 0 ? topic : null;
-}
-
-async function promptKind(): Promise<ResearchOutputKind | null> {
-    const kindItems: Array<vscode.QuickPickItem & { value: ResearchOutputKind }> = [
-        { label: '调研报告', value: '调研报告' },
-        { label: '技术方案', value: '技术方案' },
-        { label: '对比分析', value: '对比分析' },
-        { label: '学习笔记', value: '学习笔记' },
-    ];
-
-    const pickedKind = await vscode.window.showQuickPick(kindItems, {
-        title: '选择输出类型',
-        canPickMany: false,
-    });
-
-    return pickedKind ? pickedKind.value : null;
-}
-
-async function promptSourceMode(): Promise<ResearchSourceMode | null> {
-    const modeItems: Array<vscode.QuickPickItem & { value: ResearchSourceMode }> = [
-        {
-            label: '本地笔记 + LLM（推荐）',
-            description: '会检索本地 issue 笔记并基于摘录写作（带 [来源N] 标注）',
-            value: 'local',
-        },
-        {
-            label: '纯 LLM 深度思考（不检索本地）',
-            description: '完全基于多步骤推理与整合（不联网，不伪造引用）',
-            value: 'llmOnly',
-        },
-    ];
-
-    const pickedMode = await vscode.window.showQuickPick(modeItems, {
-        title: '选择资料来源模式',
-        canPickMany: false,
-    });
-
-    return pickedMode ? pickedMode.value : null;
-}
-
-async function promptIncludeEditor(): Promise<boolean | null> {
-    const includeEditorItems: Array<vscode.QuickPickItem & { value: boolean }> = [
-        { label: '包含', description: '将当前编辑器（或选中文本）作为调研上下文', value: true },
-        { label: '不包含', description: '不读取当前编辑器内容', value: false },
-    ];
-
-    const includeEditor = await vscode.window.showQuickPick(includeEditorItems, {
-        title: '是否包含当前编辑器上下文？',
-        canPickMany: false,
-    });
-
-    return includeEditor ? includeEditor.value : null;
 }
 
 export async function runDeepResearchFlow(params: {
@@ -657,26 +632,28 @@ export async function runDeepResearchFlow(params: {
     const { topic, kind, sourceMode, includeEditor, progress, token } = params;
     const signal = toAbortSignal(token);
 
-    progress.report({ message: '生成调研计划...' });
+    progress.report({ message: "生成调研计划..." });
     const plan = await generatePlan(topic, kind, signal);
 
     const title = plan.researchTitle?.trim() ? plan.researchTitle.trim() : `深度调研：${topic}`;
 
-    progress.report({ message: '整理编辑器上下文...' });
+    progress.report({ message: "整理编辑器上下文..." });
     const editorCtx = includeEditor ? getEditorContext(8000) : null;
 
     // local 模式：保持原逻辑（单文档落盘）
-    if (sourceMode === 'local') {
+    if (sourceMode === "local") {
         let sources: LocalSource[] = [];
-        progress.report({ message: '检索本地问题库（笔记）...' });
-        const queries = Array.from(new Set([topic, ...plan.localSearchQueries].map(s => s.trim()).filter(Boolean))).slice(0, 6);
+        progress.report({ message: "检索本地问题库（笔记）..." });
+        const queries = Array.from(
+            new Set([topic, ...plan.localSearchQueries].map(s => s.trim()).filter(Boolean))
+        ).slice(0, 6);
         sources = await collectLocalSources(queries, 6, 8000, signal);
 
-        progress.report({ message: '生成专业调研文档...' });
+        progress.report({ message: "生成专业调研文档..." });
         const rawMarkdown = await generateDocument(topic, kind, plan, sources, editorCtx, signal);
         const markdownBody = ensureH1(rawMarkdown, title);
 
-        progress.report({ message: '创建文档并打开...' });
+        progress.report({ message: "创建文档并打开..." });
 
         const frontmatter: Partial<FrontmatterData> = {
             title,
@@ -690,7 +667,7 @@ export async function runDeepResearchFlow(params: {
 
         const uri = await createIssueMarkdown({ markdownBody, frontmatter });
         if (!uri) {
-            vscode.window.showErrorMessage('创建调研文档失败：无法写入 issueDir。');
+            vscode.window.showErrorMessage("创建调研文档失败：无法写入 issueDir。");
             return;
         }
 
@@ -698,22 +675,24 @@ export async function runDeepResearchFlow(params: {
         try {
             await createIssueNodes([uri]);
         } catch (e) {
-            Logger.getInstance().warn('[deepResearch] createIssueNodes 失败（local）', e);
+            Logger.getInstance().warn("[deepResearch] createIssueNodes 失败（local）", e);
         }
 
         await vscode.window.showTextDocument(uri);
-        void vscode.commands.executeCommand('issueManager.refreshAllViews');
+        void vscode.commands.executeCommand("issueManager.refreshAllViews");
         return;
     }
 
     // llmOnly 模式：记录全过程（计划/初稿/审阅/终稿），并用 issue_*_file 字段建立层级
     const issueDir = getIssueDir();
     if (!issueDir) {
-        vscode.window.showErrorMessage('问题目录（issueManager.issueDir）未配置，无法创建调研文档。');
+        vscode.window.showErrorMessage(
+            "问题目录（issueManager.issueDir）未配置，无法创建调研文档。"
+        );
         return;
     }
 
-    progress.report({ message: '创建终稿根文档（容器）...' });
+    progress.report({ message: "创建终稿根文档（容器）..." });
     const rootFrontmatter: Partial<FrontmatterData> = {
         title,
         issue_prompt: true,
@@ -721,13 +700,16 @@ export async function runDeepResearchFlow(params: {
         issue_research_topic: topic,
         issue_research_kind: kind,
         issue_research_source_mode: sourceMode,
-        issue_research_status: 'running',
+        issue_research_status: "running",
         issue_children_files: [],
     };
     const rootPlaceholderBody = `# ${title}\n\n（生成中...）\n`;
-    const rootUri = await createIssueMarkdown({ markdownBody: rootPlaceholderBody, frontmatter: rootFrontmatter });
+    const rootUri = await createIssueMarkdown({
+        markdownBody: rootPlaceholderBody,
+        frontmatter: rootFrontmatter,
+    });
     if (!rootUri) {
-        vscode.window.showErrorMessage('创建调研文档失败：无法写入 issueDir。');
+        vscode.window.showErrorMessage("创建调研文档失败：无法写入 issueDir。");
         return;
     }
 
@@ -739,7 +721,7 @@ export async function runDeepResearchFlow(params: {
             rootNodeId = nodes[0].id;
         }
     } catch (e) {
-        Logger.getInstance().warn('[deepResearch] createIssueNodes 失败（root）', e);
+        Logger.getInstance().warn("[deepResearch] createIssueNodes 失败（root）", e);
     }
 
     const rootFileName = fileNameFromUri(rootUri);
@@ -755,26 +737,74 @@ export async function runDeepResearchFlow(params: {
     const safeFinalizeRoot = async (updates: Partial<FrontmatterData>, body?: string) => {
         try {
             await updateIssueMarkdownFrontmatter(rootUri, updates);
-            if (typeof body === 'string') {
+            if (typeof body === "string") {
                 await updateIssueMarkdownBody(rootUri, body);
             }
         } catch (e) {
-            Logger.getInstance().warn('[deepResearch] 更新根文档失败', e);
+            Logger.getInstance().warn("[deepResearch] 更新根文档失败", e);
         }
     };
 
     try {
-        progress.report({ message: '生成初稿与审阅改写（纯 LLM）...' });
-        const { draft, review } = await generateDocumentLlmOnly(topic, kind, plan, editorCtx, signal);
+        progress.report({ message: "生成初稿与审阅改写（纯 LLM）..." });
+        const { draft, review } = await generateDocumentLlmOnly(
+            topic,
+            kind,
+            plan,
+            editorCtx,
+            signal
+        );
 
-        progress.report({ message: '落盘：计划文档...' });
-        const planBody = `# ${title}（调研计划）\n\n## 计划 JSON\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\n## 关键问题\n${plan.keyQuestions.map(q => `- ${q}`).join('\n')}\n\n## 大纲\n${plan.outline.map(h => `- ${h}`).join('\n')}\n\n## 目标\n${plan.goals && plan.goals.length ? plan.goals.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 非目标\n${plan.nonGoals && plan.nonGoals.length ? plan.nonGoals.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 约束\n${plan.constraints && plan.constraints.length ? plan.constraints.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 数据规模假设\n${plan.dataScaleAssumptions && plan.dataScaleAssumptions.length ? plan.dataScaleAssumptions.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 验收标准\n${plan.acceptanceCriteria && plan.acceptanceCriteria.length ? plan.acceptanceCriteria.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 度量与观测方案\n${plan.measurementPlan && plan.measurementPlan.length ? plan.measurementPlan.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 交付物\n${plan.deliverables && plan.deliverables.length ? plan.deliverables.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 术语表\n${plan.glossary && plan.glossary.length ? plan.glossary.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 待验证问题\n${plan.openQuestions && plan.openQuestions.length ? plan.openQuestions.map(g => `- ${g}`).join('\n') : '（无）'}\n\n## 假设/缺口\n${plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join('\n') : '（无）'}\n\n## 风险\n${plan.risks.length ? plan.risks.map(r => `- ${r}`).join('\n') : '（无）'}\n`;
+        progress.report({ message: "落盘：计划文档..." });
+        const planBody = `# ${title}（调研计划）\n\n## 计划 JSON\n\n\`\`\`json\n${JSON.stringify(
+            plan,
+            null,
+            2
+        )}\n\`\`\`\n\n## 关键问题\n${plan.keyQuestions
+            .map(q => `- ${q}`)
+            .join("\n")}\n\n## 大纲\n${plan.outline.map(h => `- ${h}`).join("\n")}\n\n## 目标\n${
+            plan.goals && plan.goals.length ? plan.goals.map(g => `- ${g}`).join("\n") : "（无）"
+        }\n\n## 非目标\n${
+            plan.nonGoals && plan.nonGoals.length
+                ? plan.nonGoals.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 约束\n${
+            plan.constraints && plan.constraints.length
+                ? plan.constraints.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 数据规模假设\n${
+            plan.dataScaleAssumptions && plan.dataScaleAssumptions.length
+                ? plan.dataScaleAssumptions.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 验收标准\n${
+            plan.acceptanceCriteria && plan.acceptanceCriteria.length
+                ? plan.acceptanceCriteria.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 度量与观测方案\n${
+            plan.measurementPlan && plan.measurementPlan.length
+                ? plan.measurementPlan.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 交付物\n${
+            plan.deliverables && plan.deliverables.length
+                ? plan.deliverables.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 术语表\n${
+            plan.glossary && plan.glossary.length
+                ? plan.glossary.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 待验证问题\n${
+            plan.openQuestions && plan.openQuestions.length
+                ? plan.openQuestions.map(g => `- ${g}`).join("\n")
+                : "（无）"
+        }\n\n## 假设/缺口\n${
+            plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join("\n") : "（无）"
+        }\n\n## 风险\n${plan.risks.length ? plan.risks.map(r => `- ${r}`).join("\n") : "（无）"}\n`;
         const planUri = await createIssueMarkdown({
             markdownBody: planBody,
             frontmatter: {
                 title: `${title}（调研计划）`,
                 issue_prompt: false,
-                issue_research_step: 'plan',
+                issue_research_step: "plan",
                 issue_research_topic: topic,
                 issue_research_kind: kind,
                 issue_research_source_mode: sourceMode,
@@ -791,19 +821,22 @@ export async function runDeepResearchFlow(params: {
                 try {
                     await createIssueNodes([planUri], rootNodeId);
                 } catch (e) {
-                    Logger.getInstance().warn('[deepResearch] createIssueNodes 失败（plan child）', e);
+                    Logger.getInstance().warn(
+                        "[deepResearch] createIssueNodes 失败（plan child）",
+                        e
+                    );
                 }
             }
         }
 
-        progress.report({ message: '落盘：初稿文档...' });
+        progress.report({ message: "落盘：初稿文档..." });
         const draftBody = ensureH1(draft, `${title}（初稿）`);
         const draftUri = await createIssueMarkdown({
             markdownBody: draftBody,
             frontmatter: {
                 title: `${title}（初稿）`,
                 issue_prompt: false,
-                issue_research_step: 'draft',
+                issue_research_step: "draft",
                 issue_research_topic: topic,
                 issue_research_kind: kind,
                 issue_research_source_mode: sourceMode,
@@ -820,19 +853,22 @@ export async function runDeepResearchFlow(params: {
                 try {
                     await createIssueNodes([draftUri], rootNodeId);
                 } catch (e) {
-                    Logger.getInstance().warn('[deepResearch] createIssueNodes 失败（draft child）', e);
+                    Logger.getInstance().warn(
+                        "[deepResearch] createIssueNodes 失败（draft child）",
+                        e
+                    );
                 }
             }
         }
 
-        progress.report({ message: '落盘：审阅记录...' });
+        progress.report({ message: "落盘：审阅记录..." });
         const reviewBody = `# ${title}（审阅记录）\n\n## 审阅要点\n\n${review.reviewNotes.trim()}\n\n## 产出说明\n\n- 本文档记录“审阅阶段的要点与修改依据”。\n- 终稿已写回根文档（便于在结构视图中集中查看）。\n`;
         const reviewUri = await createIssueMarkdown({
             markdownBody: reviewBody,
             frontmatter: {
                 title: `${title}（审阅记录）`,
                 issue_prompt: false,
-                issue_research_step: 'review',
+                issue_research_step: "review",
                 issue_research_topic: topic,
                 issue_research_kind: kind,
                 issue_research_source_mode: sourceMode,
@@ -849,7 +885,10 @@ export async function runDeepResearchFlow(params: {
                 try {
                     await createIssueNodes([reviewUri], rootNodeId);
                 } catch (e) {
-                    Logger.getInstance().warn('[deepResearch] createIssueNodes 失败（review child）', e);
+                    Logger.getInstance().warn(
+                        "[deepResearch] createIssueNodes 失败（review child）",
+                        e
+                    );
                 }
             }
         }
@@ -858,152 +897,111 @@ export async function runDeepResearchFlow(params: {
         const linksBlock = createdChildUris
             .map(u => buildFileWikiLink(u.fsPath, path.basename(u.fsPath)))
             .map(s => `- ${s}`)
-            .join('\n');
-        const enrichedFinalBody = `${finalMarkdownBody}\n\n---\n\n## 过程文档（可审计）\n\n${linksBlock || '（无）'}\n`;
+            .join("\n");
+        const enrichedFinalBody = `${finalMarkdownBody}\n\n---\n\n## 过程文档（可审计）\n\n${
+            linksBlock || "（无）"
+        }\n`;
 
-        progress.report({ message: '写回：终稿内容 + 层级关系...' });
+        progress.report({ message: "写回：终稿内容 + 层级关系..." });
         await safeFinalizeRoot(
             {
                 issue_children_files: createdChildFiles,
-                issue_research_status: 'done',
+                issue_research_status: "done",
                 issue_research_generated_at: new Date().toISOString(),
             },
             enrichedFinalBody
         );
 
-        progress.report({ message: '打开终稿并刷新视图...' });
+        progress.report({ message: "打开终稿并刷新视图..." });
         await vscode.window.showTextDocument(rootUri);
-        void vscode.commands.executeCommand('issueManager.refreshAllViews');
+        void vscode.commands.executeCommand("issueManager.refreshAllViews");
     } catch (e) {
         const isCancelled = token.isCancellationRequested || signal.aborted;
         await safeFinalizeRoot(
             {
-                issue_research_status: isCancelled ? 'cancelled' : 'failed',
+                issue_research_status: isCancelled ? "cancelled" : "failed",
                 issue_children_files: createdChildFiles,
             },
-            `# ${title}\n\n（生成${isCancelled ? '已取消' : '失败'}）\n\n## 已落盘的过程文档\n\n${createdChildUris
-                .map(u => `- ${buildFileWikiLink(u.fsPath, path.basename(u.fsPath))}`)
-                .join('\n') || '（无）'}\n`
+            `# ${title}\n\n（生成${isCancelled ? "已取消" : "失败"}）\n\n## 已落盘的过程文档\n\n${
+                createdChildUris
+                    .map(u => `- ${buildFileWikiLink(u.fsPath, path.basename(u.fsPath))}`)
+                    .join("\n") || "（无）"
+            }\n`
         );
         throw e;
     }
 }
 
+async function runDeepResearchCommand(sourceMode?: ResearchSourceMode): Promise<void> {
+    const topic = await promptTopic();
+    if (!topic) {
+        return;
+    }
+
+    const kind = await promptKind();
+    if (!kind) {
+        return;
+    }
+
+    let finalSourceMode: ResearchSourceMode | null = sourceMode ?? null;
+    if (!finalSourceMode) {
+        finalSourceMode = await promptSourceMode();
+        if (!finalSourceMode) {
+            return;
+        }
+    }
+    const resolvedSourceMode: ResearchSourceMode = finalSourceMode;
+
+    const includeEditor = await promptIncludeEditor();
+    if (includeEditor === null) {
+        return;
+    }
+
+    const title =
+        resolvedSourceMode === "local"
+            ? "Issue Manager：深度调研（本地笔记）"
+            : resolvedSourceMode === "llmOnly"
+            ? "Issue Manager：深度调研（纯 LLM）"
+            : "Issue Manager：深度调研中";
+
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title,
+            cancellable: true,
+        },
+        async (progress, token) =>
+            runDeepResearchFlow({
+                topic,
+                kind,
+                sourceMode: resolvedSourceMode,
+                includeEditor,
+                progress,
+                token,
+            })
+    );
+}
+
 export function registerDeepResearchIssueCommand(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.deepResearchIssue', async () => {
-            const topic = await promptTopic();
-            if (!topic) {
-                return;
-            }
-
-            const kind = await promptKind();
-            if (!kind) {
-                return;
-            }
-
-            const sourceMode = await promptSourceMode();
-            if (!sourceMode) {
-                return;
-            }
-
-            const includeEditor = await promptIncludeEditor();
-            if (includeEditor === null) {
-                return;
-            }
-
-            await vscode.window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Notification,
-                    title: 'Issue Manager：深度调研中',
-                    cancellable: true,
-                },
-                async (progress, token) =>
-                    runDeepResearchFlow({
-                        topic,
-                        kind,
-                        sourceMode,
-                        includeEditor,
-                        progress,
-                        token,
-                    })
-            );
-        })
+        vscode.commands.registerCommand("issueManager.deepResearchIssue", () =>
+            runDeepResearchCommand()
+        )
     );
 }
 
 export function registerDeepResearchIssueLocalCommand(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.deepResearchIssueLocal', async () => {
-            const topic = await promptTopic();
-            if (!topic) {
-                return;
-            }
-
-            const kind = await promptKind();
-            if (!kind) {
-                return;
-            }
-
-            const includeEditor = await promptIncludeEditor();
-            if (includeEditor === null) {
-                return;
-            }
-
-            await vscode.window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Notification,
-                    title: 'Issue Manager：深度调研（本地笔记）',
-                    cancellable: true,
-                },
-                async (progress, token) =>
-                    runDeepResearchFlow({
-                        topic,
-                        kind,
-                        sourceMode: 'local',
-                        includeEditor,
-                        progress,
-                        token,
-                    })
-            );
-        })
+        vscode.commands.registerCommand("issueManager.deepResearchIssueLocal", () =>
+            runDeepResearchCommand("local")
+        )
     );
 }
 
 export function registerDeepResearchIssueLlmOnlyCommand(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.deepResearchIssueLlmOnly', async () => {
-            const topic = await promptTopic();
-            if (!topic) {
-                return;
-            }
-
-            const kind = await promptKind();
-            if (!kind) {
-                return;
-            }
-
-            const includeEditor = await promptIncludeEditor();
-            if (includeEditor === null) {
-                return;
-            }
-
-            await vscode.window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Notification,
-                    title: 'Issue Manager：深度调研（纯 LLM）',
-                    cancellable: true,
-                },
-                async (progress, token) =>
-                    runDeepResearchFlow({
-                        topic,
-                        kind,
-                        sourceMode: 'llmOnly',
-                        includeEditor,
-                        progress,
-                        token,
-                    })
-            );
-        })
+        vscode.commands.registerCommand("issueManager.deepResearchIssueLlmOnly", () =>
+            runDeepResearchCommand("llmOnly")
+        )
     );
 }
