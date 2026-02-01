@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
-import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+import { getIssueMarkdownContextValues, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 import { formatCompactDateTime, formatRelativeTime } from '../utils/dateUtils';
+import { getIssueNodeContextValue, getIssueNodeIconPath, getIssueNodesByUri, type IssueNode } from '../data/issueTreeManager';
 import {
   getRecentIssuesStats,
   groupIssuesByTime,
@@ -28,6 +29,35 @@ class GroupTreeItem extends vscode.TreeItem {
     super(label, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
     this.description = `(${files.length})`;
     this.contextValue = subgroupStrategy ? `group-${subgroupStrategy}` : 'group-direct';
+  }
+}
+
+/**
+ * IssueMarkdown 树节点（用于“最近问题”视图）
+ * - children 为该 IssueMarkdown 对应的 IssueNode（同一文件可对应多个节点）
+ */
+class IssueMarkdownTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly stat: RecentIssueStats,
+    public readonly label: string,
+    collapsibleState: vscode.TreeItemCollapsibleState
+  ) {
+    super(label, collapsibleState);
+    this.resourceUri = stat.uri;
+  }
+}
+
+/**
+ * IssueNode 树节点（用于展示 IssueMarkdown 的节点映射）
+ */
+class IssueNodeTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly node: IssueNode,
+    public readonly label: string,
+    collapsibleState: vscode.TreeItemCollapsibleState
+  ) {
+    super(label, collapsibleState);
+    this.id = node.id;
   }
 }
 
@@ -156,6 +186,14 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
       return this.getGroupChildren(element);
     }
 
+    if (element instanceof IssueMarkdownTreeItem) {
+      return this.getIssueMarkdownChildren(element);
+    }
+
+    if (element instanceof IssueNodeTreeItem) {
+      return [];
+    }
+
     // 根节点：获取所有最近问题
     const { issues, groups } = await this.getOrLoadData();
     if (!issues || issues.length === 0) { return []; }
@@ -243,33 +281,161 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     if (cached) { return cached; }
 
     const title = getIssueMarkdownTitleFromCache(stat.uri);
-    const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
+
+    // 非孤立 issueMarkdown：若仅对应一个 IssueNode，则直接展示该 IssueNode（不展示中间层）
+    if (!stat.isIsolated) {
+      const nodes = await getIssueNodesByUri(stat.uri);
+      if (nodes.length === 1) {
+        const item = await this.createIssueNodeTreeItem(nodes[0], stat);
+        // 同时用 uriKey 缓存，便于 getElementByUri / reveal 走同一对象
+        this.itemCache.set(key, item);
+        return item;
+      }
+    }
+
+    // 非孤立 issueMarkdown：允许展开，children 为对应的 IssueNode
+    const collapsibleState = stat.isIsolated
+      ? vscode.TreeItemCollapsibleState.None
+      : vscode.TreeItemCollapsibleState.Collapsed;
+
+    const item = new IssueMarkdownTreeItem(stat, title, collapsibleState);
     item.resourceUri = stat.uri;
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',
       arguments: [stat.uri],
     };
-    item.contextValue = stat.isIsolated ? 'isolatedIssue' : 'recentIssue';
+    item.contextValue = stat.isIsolated ? 'isolatedIssue' : getIssueMarkdownContextValues();
     item.iconPath = stat.isIsolated
       ? new vscode.ThemeIcon('debug-disconnect')
       : new vscode.ThemeIcon('notebook');
 
-    const tooltipText = `路径: \`${stat.uri.fsPath}\`\n\n修改时间: ${stat.mtime.toLocaleString()}\n\n创建时间: ${stat.ctime.toLocaleString()}`;
-    item.tooltip = new vscode.MarkdownString(tooltipText);
-    
-    // 根据排序方式选择时间戳，根据视图模式选择格式
-    const timestamp = this.sortOrder === 'ctime' ? stat.ctime : stat.mtime;
-    if (this.viewMode === 'list') {
-      const relative = formatRelativeTime(timestamp);
-      const compact = formatCompactDateTime(timestamp);
-      item.description = `${relative} · ${compact}`;
-    } else {
-      item.description = timestamp.toLocaleTimeString();
-    }
+    const timestamp = this.getSortTimestamp(stat);
+    item.description = this.formatTimestampDescription(timestamp);
+
+    item.tooltip = this.createTooltipMarkdown(stat, stat.uri);
     
     this.itemCache.set(key, item);
     return item;
+  }
+
+  /**
+   * 创建 tooltip 的 Markdown（IssueMarkdown 与 IssueNode 共用）
+   */
+  private createTooltipMarkdown(stat: RecentIssueStats, uri: vscode.Uri, node?: IssueNode): vscode.MarkdownString {
+    const timestamp = this.getSortTimestamp(stat);
+    const tooltipLines: string[] = [
+      `路径: \`${uri.fsPath}\``,
+      `\n排序时间(${this.sortOrder}): ${formatRelativeTime(timestamp)} · ${formatCompactDateTime(timestamp)} (${timestamp.toLocaleString()})`,
+      `\n修改时间: ${formatRelativeTime(stat.mtime)} · ${formatCompactDateTime(stat.mtime)} (${stat.mtime.toLocaleString()})`,
+      `\n创建时间: ${formatRelativeTime(stat.ctime)} · ${formatCompactDateTime(stat.ctime)} (${stat.ctime.toLocaleString()})`,
+    ];
+
+    if (stat.vtime) {
+      tooltipLines.push(
+        `\n查看时间: ${formatRelativeTime(stat.vtime)} · ${formatCompactDateTime(stat.vtime)} (${stat.vtime.toLocaleString()})`
+      );
+    }
+
+    if (node?.parent?.length) {
+      const parentTitles = node.parent
+        .map(p => getIssueMarkdownTitleFromCache(p.filePath))
+        .filter((t): t is string => !!t);
+      if (parentTitles.length > 0) {
+        tooltipLines.push(`\n\n层级: ${parentTitles.join(' / ')}`);
+      }
+    }
+
+    return new vscode.MarkdownString(tooltipLines.join('\n'));
+  }
+
+  /**
+   * IssueMarkdown 的 children：对应的 IssueNode 列表
+   */
+  private async getIssueMarkdownChildren(element: IssueMarkdownTreeItem): Promise<vscode.TreeItem[]> {
+    // “孤立问题”没有对应节点
+    if (element.stat.isIsolated) {
+      return [];
+    }
+
+    const nodes = await getIssueNodesByUri(element.stat.uri);
+    if (!nodes || nodes.length === 0) {
+      return [];
+    }
+
+    // 保持稳定顺序：按祖先链长度 + id
+    const sorted = [...nodes].sort((a, b) => {
+      const al = a.parent?.length ?? 0;
+      const bl = b.parent?.length ?? 0;
+      if (al !== bl) { return al - bl; }
+      return a.id.localeCompare(b.id);
+    });
+
+    return Promise.all(sorted.map(n => this.createIssueNodeTreeItem(n, element.stat)));
+  }
+
+  /**
+   * 创建 IssueNode 的 TreeItem（用于展示并触发对应操作菜单）
+   */
+  private async createIssueNodeTreeItem(node: IssueNode, stat: RecentIssueStats): Promise<vscode.TreeItem> {
+    const key = `issueNode:${node.id}`;
+    const cached = this.itemCache.get(key);
+    if (cached) { return cached; }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+      // 理论上不应发生：RecentIssuesProvider 已依赖 issueDir
+      return new vscode.TreeItem('未配置 issueDir', vscode.TreeItemCollapsibleState.None);
+    }
+
+    const title = getIssueMarkdownTitleFromCache(node.filePath) || '';
+    // 在“最近问题”视图中，IssueNode 作为叶子节点展示（不展开子节点）
+    const item = new IssueNodeTreeItem(node, title, vscode.TreeItemCollapsibleState.None);
+
+    const uri = vscode.Uri.file(path.join(issueDir, node.filePath));
+    item.resourceUri = uri;
+    item.contextValue = await getIssueNodeContextValue(node.id, 'issueNode');
+    item.iconPath = await getIssueNodeIconPath(node.id);
+    item.command = {
+      command: 'issueManager.openAndViewRelatedIssues',
+      title: '打开并查看相关联问题',
+      arguments: [uri.with({ query: `issueId=${encodeURIComponent(node.id)}` })],
+    };
+
+    // description 统一展示时间信息
+    const timestamp = this.getSortTimestamp(stat);
+    item.description = this.formatTimestampDescription(timestamp);
+
+    // 将父节点层级信息放入 tooltip（作为 detail 信息）
+    item.tooltip = this.createTooltipMarkdown(stat, uri, node);
+
+    this.itemCache.set(key, item);
+    return item;
+  }
+
+  /**
+   * 根据当前 sortOrder 选择用于展示/排序的时间戳
+   */
+  private getSortTimestamp(stat: RecentIssueStats): Date {
+    if (this.sortOrder === 'ctime') {
+      return stat.ctime;
+    }
+    if (this.sortOrder === 'vtime') {
+      return stat.vtime ?? stat.mtime;
+    }
+    return stat.mtime;
+  }
+
+  /**
+   * description 展示的时间文本
+   */
+  private formatTimestampDescription(timestamp: Date): string {
+    if (this.viewMode === 'list') {
+      const relative = formatRelativeTime(timestamp);
+      const compact = formatCompactDateTime(timestamp);
+      return `${relative} · ${compact}`;
+    }
+    return timestamp.toLocaleTimeString();
   }
 
   /**

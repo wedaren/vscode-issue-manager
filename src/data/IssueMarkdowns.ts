@@ -759,7 +759,7 @@ export async function findNotesLinkedToWorkspace(fileUri: vscode.Uri): Promise<I
 }
 
 export function getIssueMarkdownContextValues() {
-    return "issueMarkdown";
+    return "IssueMarkdown";
 }
 /**
  * 获取 IssueMarkdown 相对于问题目录的路径

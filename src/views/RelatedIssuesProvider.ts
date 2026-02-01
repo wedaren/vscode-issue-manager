@@ -158,26 +158,25 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             contextValue: await getIssueNodeContextValue(parentIssueNode.id, 'issueNode'),
         } : undefined;
 
-        // 当前问题
-        const currentNode: RelatedIssueNode = {
-            label: await getNodeTitle(node),
-            type: 'current',
-            icon: new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue')),
-            filePath: node.filePath,
-            resourceUri: node.resourceUri,
-            id: node.id,
-            parent: node.parent,
-            contextValue: await getIssueNodeContextValue(node.id, 'issueNode'),
-            children: node.children ? await Promise.all(node.children.map(async (child: IssueNode) => ({
-                ...child,
+        const buildRelatedChildNode = async (child: IssueNode): Promise<RelatedIssueNode> => {
+            const isCurrent = child.id === node.id;
+            return {
                 label: await getNodeTitle(child),
-                type: 'child',
-                children: [],
+                type: isCurrent ? 'current' : 'child',
+                icon: isCurrent ? new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue')) : undefined,
+                filePath: child.filePath,
+                resourceUri: child.resourceUri,
+                id: child.id,
+                parent: child.parent,
                 contextValue: await getIssueNodeContextValue(child.id, 'issueNode'),
-            }))) : [],
+                children: [],
+            };
         };
 
         if (parentNode) {
+            const parentChildren = parentIssueNode?.children
+                ? await Promise.all(parentIssueNode.children.map(buildRelatedChildNode))
+                : [];
             const result: RelatedIssueNode = {
                 label: parentNode.label,
                 type: 'parent',
@@ -188,14 +187,13 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
                 resourceUri: parentNode.resourceUri,
                 contextValue: parentNode.contextValue,
                 children: [
-                    currentNode,
-                    // ...siblings
+                    ...parentChildren,
                 ],
             };
             return result;
         } else {
-            currentNode.type = 'current';
-            currentNode.icon = new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
+            const currentNode = await buildRelatedChildNode(node);
+            currentNode.children = node.children ? await Promise.all(node.children.map(buildRelatedChildNode)) : [];
             return currentNode;
         }
     }
@@ -234,7 +232,8 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
         }
         
         item.description = element.type === 'parent' ? element.tooltip : '';
-        item.id = element.id;
+        // TreeItem.id 仅用于展示层去重，内部逻辑仍使用真实的 element.id
+        item.id = this.buildTreeItemId(element);
         item.resourceUri = element.resourceUri;
         
         if(element.type === 'markdown' || element.type === 'workspace'){
@@ -251,6 +250,16 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             } : undefined;
         }
         return item;
+    }
+
+    /**
+     * 生成 TreeItem 的展示层唯一 ID。
+     * 通过节点类型 + 节点 id + 祖先链组成稳定键，避免同层冲突。
+     */
+    private buildTreeItemId(element: RelatedIssueNode): string {
+        const ancestorIds = (element.parent || []).map(parent => parent.id).join('/');
+        const scope = ancestorIds.length > 0 ? `@${ancestorIds}` : '@root';
+        return `ri:${element.type}:${element.id}${scope}`;
     }
 
     /** Pin 节点（会话级，重启后清空） */
