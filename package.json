@@ -583,6 +583,120 @@
         "title": "将工作区/文件夹关联到 IssueNode",
         "category": "Issue Manager",
         "icon": "$(link)"
+      },
+      {
+        "command": "issueManager.knowledgeGraph.analyze",
+        "title": "分析知识图谱",
+        "category": "Issue Manager",
+        "icon": "$(play)"
+      },
+      {
+        "command": "issueManager.knowledgeGraph.refresh",
+        "title": "刷新知识图谱",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.knowledgeGraph.toggleStar",
+        "title": "切换收藏",
+        "category": "Issue Manager",
+        "icon": "$(star)"
+      },
+      {
+        "command": "issueManager.knowledgeGraph.deleteReport",
+        "title": "删除报告",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.knowledgeGraph.exportReport",
+        "title": "导出报告",
+        "category": "Issue Manager",
+        "icon": "$(export)"
+      },
+      {
+        "command": "issueManager.learningPath.generate",
+        "title": "生成学习路径",
+        "category": "Issue Manager",
+        "icon": "$(play)"
+      },
+      {
+        "command": "issueManager.learningPath.refresh",
+        "title": "刷新学习路径",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.learningPath.toggleStar",
+        "title": "切换收藏",
+        "category": "Issue Manager",
+        "icon": "$(star)"
+      },
+      {
+        "command": "issueManager.learningPath.deletePath",
+        "title": "删除学习路径",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.learningPath.exportPath",
+        "title": "导出学习路径",
+        "category": "Issue Manager",
+        "icon": "$(export)"
+      },
+      {
+        "command": "issueManager.learningPath.resetProgress",
+        "title": "重置进度",
+        "category": "Issue Manager",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "issueManager.ideaSpark.generate",
+        "title": "生成创意",
+        "category": "Issue Manager",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "issueManager.ideaSpark.refresh",
+        "title": "刷新创意",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.ideaSpark.toggleSessionStar",
+        "title": "切换会话收藏",
+        "category": "Issue Manager",
+        "icon": "$(star)"
+      },
+      {
+        "command": "issueManager.ideaSpark.toggleSparkFavorite",
+        "title": "收藏创意",
+        "category": "Issue Manager",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "issueManager.ideaSpark.deleteSession",
+        "title": "删除会话",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.ideaSpark.exportSession",
+        "title": "导出会话",
+        "category": "Issue Manager",
+        "icon": "$(export)"
+      },
+      {
+        "command": "issueManager.ideaSpark.viewFavorites",
+        "title": "查看收藏创意",
+        "category": "Issue Manager",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "issueManager.ideaSpark.createIssueFromSpark",
+        "title": "转为问题文档",
+        "category": "Issue Manager",
+        "icon": "$(new-file)"
       }
     ],
     "submenus": [
@@ -639,6 +753,30 @@
           {
             "name": "研究",
             "description": "深度研究并生成文档"
+          },
+          {
+            "name": "知识图谱",
+            "description": "🧠 发现知识库中隐藏的关联，识别知识孤岛"
+          },
+          {
+            "name": "连接",
+            "description": "🧠 知识图谱的简写命令"
+          },
+          {
+            "name": "学习路径",
+            "description": "🎯 基于知识库生成个性化学习路径"
+          },
+          {
+            "name": "学习",
+            "description": "🎯 学习路径的简写命令"
+          },
+          {
+            "name": "创意",
+            "description": "💡 跨领域知识碰撞，激发创新灵感"
+          },
+          {
+            "name": "灵感",
+            "description": "💡 创意激发的简写命令"
           },
           {
             "name": "帮助",
@@ -794,6 +932,41 @@
           "command": "issueManager.para.refresh",
           "when": "view == issueManager.views.para",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.knowledgeGraph.analyze",
+          "when": "view == issueManager.views.knowledgeGraph",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.knowledgeGraph.refresh",
+          "when": "view == issueManager.views.knowledgeGraph",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.learningPath.generate",
+          "when": "view == issueManager.views.learningPath",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.learningPath.refresh",
+          "when": "view == issueManager.views.learningPath",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.ideaSpark.generate",
+          "when": "view == issueManager.views.ideaSpark",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.ideaSpark.viewFavorites",
+          "when": "view == issueManager.views.ideaSpark",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.ideaSpark.refresh",
+          "when": "view == issueManager.views.ideaSpark",
+          "group": "navigation@3"
         }
       ],
       "issueManager.recentSortSubmenu": [
@@ -1129,6 +1302,76 @@
         {
           "command": "issueManager.marker.fillFromArchived",
           "when": "view == issueManager.views.marker && viewItem == archivedTask",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.knowledgeGraph.toggleStar",
+          "when": "view == issueManager.views.knowledgeGraph && viewItem =~ /knowledgeGraph\\.report/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.knowledgeGraph.exportReport",
+          "when": "view == issueManager.views.knowledgeGraph && viewItem =~ /knowledgeGraph\\.report/",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.knowledgeGraph.deleteReport",
+          "when": "view == issueManager.views.knowledgeGraph && viewItem =~ /knowledgeGraph\\.report/",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.knowledgeGraph.createIssueFromConnection",
+          "when": "view == issueManager.views.knowledgeGraph && viewItem == knowledgeGraph.connection",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.learningPath.toggleStar",
+          "when": "view == issueManager.views.learningPath && viewItem =~ /learningPath\\.path/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.learningPath.exportPath",
+          "when": "view == issueManager.views.learningPath && viewItem =~ /learningPath\\.path/",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.learningPath.resetProgress",
+          "when": "view == issueManager.views.learningPath && viewItem =~ /learningPath\\.path/",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.learningPath.deletePath",
+          "when": "view == issueManager.views.learningPath && viewItem =~ /learningPath\\.path/",
+          "group": "inline@4"
+        },
+        {
+          "command": "issueManager.learningPath.goToResource",
+          "when": "view == issueManager.views.learningPath && viewItem =~ /learningPath\\.node/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.ideaSpark.toggleSessionStar",
+          "when": "view == issueManager.views.ideaSpark && viewItem =~ /ideaSpark\\.session/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.ideaSpark.exportSession",
+          "when": "view == issueManager.views.ideaSpark && viewItem =~ /ideaSpark\\.session/",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.ideaSpark.deleteSession",
+          "when": "view == issueManager.views.ideaSpark && viewItem =~ /ideaSpark\\.session/",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.ideaSpark.toggleSparkFavorite",
+          "when": "view == issueManager.views.ideaSpark && viewItem =~ /ideaSpark\\.spark/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.ideaSpark.createIssueFromSpark",
+          "when": "view == issueManager.views.ideaSpark && viewItem =~ /ideaSpark\\.spark/",
           "group": "inline@2"
         }
       ],
@@ -1580,6 +1823,21 @@
         {
           "id": "issueManager.views.gitBranches",
           "name": "Git 分支",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.knowledgeGraph",
+          "name": "🌐 知识图谱",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.learningPath",
+          "name": "📚 学习路径",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.ideaSpark",
+          "name": "✨ 创意激发",
           "icon": "resources/icon.svg"
         }
       ]
