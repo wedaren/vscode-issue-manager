@@ -10,6 +10,13 @@ import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
  */
 const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
+        label: "整理 IssueNode 关系（Agent）",
+        description: "基于指令自动规划 move/attach/disassociate 并整理问题树结构",
+        execute: () => {
+            vscode.commands.executeCommand("issueManager.organizeIssueRelationsAgent");
+        },
+    },
+    {
         label: "生成项目名",
         description: "基于活动编辑器内容生成项目名并复制",
         execute: () => {

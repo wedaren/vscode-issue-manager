@@ -124,10 +124,75 @@
         "icon": "$(git-branch)"
       },
       {
+        "command": "issueManager.smartResearch",
+        "title": "🤖 智能研究",
+        "category": "Issue Manager",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "issueManager.organizeIssueRelationsAgent",
+        "title": "🤖 整理 IssueNode 关系（Agent）",
+        "category": "Issue Manager",
+        "icon": "$(repo)"
+      },
+      {
+        "command": "issueManager.saveAgentResearchReport",
+        "title": "💾 保存 Agent 研究报告",
+        "category": "Issue Manager",
+        "icon": "$(save)"
+      },
+      {
         "command": "issueManager.unifiedQuickOpen",
         "title": "Issue Manager: 统一入口",
         "category": "Issue Manager",
         "icon": "$(search)"
+      },
+      {
+        "command": "issueManager.relationOrganizer.refresh",
+        "title": "关系整理：刷新",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.relationOrganizer.runAgent",
+        "title": "关系整理：运行 Agent 生成计划",
+        "category": "Issue Manager",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "issueManager.relationOrganizer.applyPlan",
+        "title": "关系整理：应用全部计划",
+        "category": "Issue Manager",
+        "icon": "$(check)"
+      },
+      {
+        "command": "issueManager.relationOrganizer.clearPlan",
+        "title": "关系整理：清空计划",
+        "category": "Issue Manager",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "issueManager.relationOrganizer.applyOperation",
+        "title": "关系整理：应用此操作",
+        "category": "Issue Manager",
+        "icon": "$(run)"
+      },
+      {
+        "command": "issueManager.relationOrganizer.removeOperation",
+        "title": "关系整理：移除此操作",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.relationOrganizer.openIssue",
+        "title": "关系整理：打开 Issue",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.relationOrganizer.addOrphanFileToTree",
+        "title": "关系整理：加入问题树",
+        "category": "Issue Manager",
+        "icon": "$(add)"
       },
       {
         "command": "issueManager.focusIssue",
@@ -680,6 +745,26 @@
           "group": "navigation@1"
         },
         {
+          "command": "issueManager.relationOrganizer.runAgent",
+          "when": "view == issueManager.views.relationOrganizer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.relationOrganizer.applyPlan",
+          "when": "view == issueManager.views.relationOrganizer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.relationOrganizer.refresh",
+          "when": "view == issueManager.views.relationOrganizer",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.relationOrganizer.clearPlan",
+          "when": "view == issueManager.views.relationOrganizer",
+          "group": "navigation@4"
+        },
+        {
           "command": "issueManager.createIssueFromOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
@@ -811,6 +896,21 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "issueManager.relationOrganizer.applyOperation",
+          "when": "view == 'issueManager.views.relationOrganizer' && viewItem =~ /relationOrganizer\\.planOperation/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.relationOrganizer.removeOperation",
+          "when": "view == 'issueManager.views.relationOrganizer' && viewItem =~ /relationOrganizer\\.planOperation/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.relationOrganizer.addOrphanFileToTree",
+          "when": "view == 'issueManager.views.relationOrganizer' && viewItem =~ /relationOrganizer\\.orphanFile/",
+          "group": "navigation@1"
+        },
         {
           "command": "issueManager.deleteIssue",
           "when": "view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/",
@@ -1581,6 +1681,11 @@
           "id": "issueManager.views.gitBranches",
           "name": "Git 分支",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.relationOrganizer",
+          "name": "关系整理",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -1622,6 +1727,11 @@
       },
       {
         "view": "issueManager.views.marker",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.relationOrganizer",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
       },

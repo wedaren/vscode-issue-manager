@@ -131,6 +131,12 @@ export interface IViewRegistryResult {
     gitBranchProvider: import('../gitBranch/GitBranchTreeProvider').GitBranchTreeProvider;
     /** Git 分支树视图实例 */
     gitBranchView: vscode.TreeView<vscode.TreeItem>;
+
+    /** 关系整理视图提供者实例 */
+    relationOrganizerProvider: import('../views/RelationOrganizerProvider').RelationOrganizerProvider;
+
+    /** 关系整理树视图实例 */
+    relationOrganizerView: vscode.TreeView<import('../views/RelationOrganizerProvider').RelationOrganizerNode>;
 }
 
 /**
