@@ -22,6 +22,10 @@ import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
+// 新增 Agent 视图导入
+import { KnowledgeGraphViewProvider } from '../views/KnowledgeGraphViewProvider';
+import { LearningPathViewProvider } from '../views/LearningPathViewProvider';
+import { IdeaSparkViewProvider } from '../views/IdeaSparkViewProvider';
 
 /**
  * 视图注册管理器
@@ -107,6 +111,11 @@ export class ViewRegistry {
         // 注册RSS虚拟文件提供器
         this.registerRSSVirtualFileProvider();
 
+        // 注册 Agent 视图
+        const knowledgeGraphProvider = this.registerKnowledgeGraphView();
+        const learningPathProvider = this.registerLearningPathView();
+        const ideaSparkProvider = this.registerIdeaSparkView();
+
         return {
             issueOverviewProvider,
             focusedIssuesProvider,
@@ -131,7 +140,11 @@ export class ViewRegistry {
             markerView,
             gitBranchManager,
             gitBranchProvider,
-            gitBranchView
+            gitBranchView,
+            // Agent 视图
+            knowledgeGraphProvider,
+            learningPathProvider,
+            ideaSparkProvider
         };
     }
 
@@ -378,5 +391,26 @@ export class ViewRegistry {
         commandHandler.registerCommands(this.context);
         
         return { markerManager, markerTreeProvider, markerView };
+    }
+
+    /**
+     * 注册知识图谱视图
+     */
+    private registerKnowledgeGraphView(): KnowledgeGraphViewProvider {
+        return KnowledgeGraphViewProvider.register(this.context);
+    }
+
+    /**
+     * 注册学习路径视图
+     */
+    private registerLearningPathView(): LearningPathViewProvider {
+        return LearningPathViewProvider.register(this.context);
+    }
+
+    /**
+     * 注册创意激发视图
+     */
+    private registerIdeaSparkView(): IdeaSparkViewProvider {
+        return IdeaSparkViewProvider.register(this.context);
     }
 }

@@ -5,6 +5,9 @@ import { getFlatTree } from "../data/issueTreeManager";
 import * as path from "path";
 import { Logger } from "../core/utils/Logger";
 import { createIssueMarkdown } from "../data/IssueMarkdowns";
+import { KnowledgeGraphAgent, KnowledgeGraphReport, DiscoveredConnection } from "../llm/KnowledgeGraphAgent";
+import { LearningPathAgent, LearningPath, LearningStage } from "../llm/LearningPathAgent";
+import { IdeaSparkAgent, IdeaSession, IdeaSpark, saveSparkAsIssue } from "../llm/IdeaSparkAgent";
 
 /**
  * 命令别名常量定义
@@ -14,6 +17,10 @@ const SEARCH_COMMANDS = ["搜索", "search", "find"] as const;
 const REVIEW_COMMANDS = ["审阅", "review"] as const;
 const RESEARCH_COMMANDS = ["研究", "research", "deep", "doc", "文档"] as const;
 const HELP_COMMANDS = ["帮助", "help"] as const;
+// 🆕 三个超能力 Agent 命令
+const KNOWLEDGE_GRAPH_COMMANDS = ["知识图谱", "知识连接", "连接", "graph", "connect"] as const;
+const LEARNING_PATH_COMMANDS = ["学习路径", "学习", "learn", "path"] as const;
+const IDEA_SPARK_COMMANDS = ["创意", "灵感", "激发", "spark", "idea"] as const;
 
 /**
  * 意图配置 - 定义每种意图的检测关键词和噪音词
@@ -211,6 +218,13 @@ export class IssueChatParticipant {
                 await this.handleReviewCommand(prompt, request, stream, token);
             } else if ((RESEARCH_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleResearchCommand(prompt, stream, token);
+            // 🆕 三个超能力 Agent 命令
+            } else if ((KNOWLEDGE_GRAPH_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleKnowledgeGraphCommand(prompt, stream, token);
+            } else if ((LEARNING_PATH_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleLearningPathCommand(prompt, stream, token);
+            } else if ((IDEA_SPARK_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleIdeaSparkCommand(prompt, stream, token);
             } else if ((HELP_COMMANDS as readonly string[]).includes(command)) {
                 this.handleHelpCommand(stream);
             } else {
@@ -424,6 +438,7 @@ export class IssueChatParticipant {
         });
     }
 
+
     /**
      * 处理创建问题命令
      */
@@ -458,7 +473,7 @@ export class IssueChatParticipant {
         }
 
         // 创建问题文件
-        const uri = await createIssueMarkdown({ markdownBody: `# ${optimizedTitle}\n\n` })
+        const uri = await createIssueMarkdown({ markdownBody: `# ${optimizedTitle}\n\n` });
 
         if (uri) {
             const filename = path.basename(uri.fsPath);
@@ -629,6 +644,361 @@ export class IssueChatParticipant {
         }
     }
 
+    // ==================== 🆕 三个超能力 Agent ====================
+
+    /**
+     * 🧠 处理知识图谱命令：发现知识库中隐藏的关联
+     * 
+     * 这是一个令人惊叹的 LLM + Agent 组合功能！
+     * Agent 会深度分析每个问题的内容，发现语义上的隐藏关联，
+     * 并建议应该建立的知识连接。
+     */
+    private async handleKnowledgeGraphCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        stream.markdown("# 🧠 知识连接 Agent\n\n");
+        stream.markdown("正在深度分析你的知识库，发现隐藏的关联...\n\n");
+
+        const abortController = new AbortController();
+        token.onCancellationRequested(() => abortController.abort());
+
+        const agent = new KnowledgeGraphAgent({
+            maxAnalysisRounds: 3,
+            minConfidenceThreshold: 0.6,
+        });
+
+        // 监听进度
+        agent.onProgress = (state, message) => {
+            stream.progress(message);
+        };
+
+        agent.onThought = (thought) => {
+            stream.markdown(`> 💭 **${thought.action}**: ${thought.reasoning.substring(0, 80)}${thought.reasoning.length > 80 ? "..." : ""}\n`);
+        };
+
+        agent.onConnection = (conn) => {
+            const typeEmoji: Record<string, string> = {
+                "semantic-similar": "🔗",
+                "concept-overlap": "🎯",
+                "causal-relation": "⚡",
+                "prerequisite": "📚",
+                "extension": "🌱",
+                "contradiction": "⚔️",
+                "example-of": "💡",
+                "part-of": "🧩",
+            };
+            stream.markdown(`\n${typeEmoji[conn.relationshipType] || "🔗"} 发现连接: **${conn.sourceNode.title}** ↔ **${conn.targetNode.title}** (${Math.round(conn.confidence * 100)}%)\n`);
+        };
+
+        try {
+            const report = await agent.analyze({ signal: abortController.signal });
+
+            stream.markdown("\n---\n\n");
+            stream.markdown("# 📊 知识图谱分析报告\n\n");
+
+            // 概览
+            stream.markdown(`## 📈 概览\n\n`);
+            stream.markdown(`| 指标 | 数值 |\n|------|------|\n`);
+            stream.markdown(`| 总知识节点 | ${report.summary.totalNodes} |\n`);
+            stream.markdown(`| 现有连接 | ${report.summary.existingConnections} |\n`);
+            stream.markdown(`| 发现新连接 | ${report.summary.discoveredConnections} |\n`);
+            stream.markdown(`| 知识孤岛 | ${report.summary.knowledgeIslands} |\n`);
+            stream.markdown(`| 覆盖度评分 | ${report.summary.coverageScore}/100 |\n`);
+            stream.markdown(`| 内聚度评分 | ${report.summary.cohesionScore}/100 |\n\n`);
+
+            // 发现的连接
+            if (report.discoveredConnections.length > 0) {
+                stream.markdown(`## 🔗 发现的隐藏关联 (${report.discoveredConnections.length})\n\n`);
+
+                const topConnections = report.discoveredConnections
+                    .sort((a, b) => b.confidence - a.confidence)
+                    .slice(0, 10);
+
+                for (const conn of topConnections) {
+                    stream.markdown(`### ${conn.sourceNode.title} ↔ ${conn.targetNode.title}\n`);
+                    stream.markdown(`- **关系类型**: ${conn.relationshipType}\n`);
+                    stream.markdown(`- **置信度**: ${Math.round(conn.confidence * 100)}%\n`);
+                    stream.markdown(`- **解释**: ${conn.explanation}\n`);
+                    if (conn.sharedConcepts.length > 0) {
+                        stream.markdown(`- **共享概念**: ${conn.sharedConcepts.join(", ")}\n`);
+                    }
+                    stream.markdown("\n");
+
+                    // 添加创建连接按钮
+                    stream.button({
+                        command: "vscode.open",
+                        arguments: [vscode.Uri.file(conn.sourceNode.filePath)],
+                        title: `📄 打开 ${conn.sourceNode.title}`,
+                    });
+                }
+            }
+
+            // 知识孤岛
+            if (report.knowledgeIslands.length > 0) {
+                stream.markdown(`## 🏝️ 知识孤岛\n\n`);
+                for (const island of report.knowledgeIslands) {
+                    stream.markdown(`### ${island.theme}\n`);
+                    stream.markdown(`- **孤立原因**: ${island.isolationReason}\n`);
+                    stream.markdown(`- **整合建议**: ${island.integrationSuggestion}\n`);
+                    stream.markdown(`- **包含节点**: ${island.nodes.map(n => n.title).join(", ")}\n\n`);
+                }
+            }
+
+            // 建议
+            if (report.recommendations.length > 0) {
+                stream.markdown(`## 💡 改进建议\n\n`);
+                for (const rec of report.recommendations) {
+                    const priorityEmoji = { high: "🔴", medium: "🟡", low: "🟢" };
+                    stream.markdown(`- ${priorityEmoji[rec.priority]} **${rec.type}**: ${rec.description}\n`);
+                }
+            }
+
+            stream.markdown(`\n---\n_分析了 ${report.metrics.nodesAnalyzed} 个节点，耗时 ${Math.round(report.metrics.totalDuration / 1000)} 秒_\n`);
+
+        } catch (error) {
+            if (abortController.signal.aborted) {
+                stream.markdown("\n\n⚠️ 分析已取消\n");
+            } else {
+                Logger.getInstance().error("[IssueChatParticipant] Knowledge graph failed:", error);
+                stream.markdown(`\n\n❌ 分析失败: ${error instanceof Error ? error.message : String(error)}\n`);
+            }
+        }
+    }
+
+    /**
+     * 🎯 处理学习路径命令：生成个性化学习路径
+     * 
+     * 这是一个令人惊叹的 LLM + Agent 组合功能！
+     * Agent 会理解你的学习目标，分析知识库中的内容和依赖关系，
+     * 为你生成最优的学习路径。
+     */
+    private async handleLearningPathCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (!prompt) {
+            stream.markdown("❓ 请提供你的学习目标。例如: `/学习路径 掌握 TypeScript`\n");
+            return;
+        }
+
+        stream.markdown("# 🎯 学习路径 Agent\n\n");
+        stream.markdown(`正在为你的学习目标生成个性化路径: **${prompt}**\n\n`);
+
+        const abortController = new AbortController();
+        token.onCancellationRequested(() => abortController.abort());
+
+        const agent = new LearningPathAgent({
+            maxNodesPerPath: 15,
+        });
+
+        agent.onProgress = (state, message) => {
+            stream.progress(message);
+        };
+
+        agent.onThought = (thought) => {
+            stream.markdown(`> 💭 **${thought.action}**: ${thought.reasoning.substring(0, 100)}${thought.reasoning.length > 100 ? "..." : ""}\n`);
+        };
+
+        try {
+            const learningPath = await agent.generatePath(prompt, { signal: abortController.signal });
+
+            stream.markdown("\n---\n\n");
+            stream.markdown(`# 📚 你的学习路径\n\n`);
+            stream.markdown(`**学习目标**: ${learningPath.goal}\n`);
+            stream.markdown(`**适合人群**: ${learningPath.targetAudience}\n\n`);
+
+            // 概览
+            stream.markdown(`## 📊 学习概览\n\n`);
+            stream.markdown(`| 指标 | 数值 |\n|------|------|\n`);
+            stream.markdown(`| 知识点数量 | ${learningPath.totalNodes} |\n`);
+            stream.markdown(`| 学习阶段 | ${learningPath.stages.length} |\n`);
+            stream.markdown(`| 预计总时长 | ${Math.round(learningPath.totalDuration / 60)} 小时 |\n`);
+            stream.markdown(`| 建议周期 | ${learningPath.suggestedSchedule.totalWeeks} 周 |\n\n`);
+
+            // 难度分布
+            stream.markdown(`**难度分布**: 🟢 入门 ${learningPath.difficultyProgression.beginner} | 🟡 进阶 ${learningPath.difficultyProgression.intermediate} | 🔴 高级 ${learningPath.difficultyProgression.advanced}\n\n`);
+
+            // 学习阶段
+            stream.markdown(`## 🗺️ 学习阶段\n\n`);
+
+            for (let i = 0; i < learningPath.stages.length; i++) {
+                const stage = learningPath.stages[i];
+                stream.markdown(`### 阶段 ${i + 1}: ${stage.name}\n`);
+                stream.markdown(`📝 ${stage.description}\n\n`);
+                stream.markdown(`⏱️ 预计时长: ${Math.round(stage.estimatedDuration / 60)} 小时\n`);
+                stream.markdown(`🏆 里程碑: ${stage.milestone}\n\n`);
+
+                stream.markdown(`**知识点:**\n`);
+                for (const node of stage.nodes) {
+                    const difficultyEmoji = { beginner: "🟢", intermediate: "🟡", advanced: "🔴" };
+                    stream.markdown(`- ${difficultyEmoji[node.difficulty]} [${node.title}](${vscode.Uri.file(node.filePath)}) (${node.estimatedTime}分钟)\n`);
+                    if (node.keyTakeaways.length > 0) {
+                        stream.markdown(`  - 要点: ${node.keyTakeaways.slice(0, 2).join("; ")}\n`);
+                    }
+                }
+                stream.markdown("\n");
+
+                if (stage.checkQuestions.length > 0) {
+                    stream.markdown(`**✅ 检验问题:**\n`);
+                    stage.checkQuestions.forEach((q, j) => {
+                        stream.markdown(`${j + 1}. ${q}\n`);
+                    });
+                    stream.markdown("\n");
+                }
+            }
+
+            // 学习成果
+            if (learningPath.learningOutcomes.length > 0) {
+                stream.markdown(`## 🎓 学习成果\n\n`);
+                stream.markdown(`完成这条学习路径后，你将掌握:\n`);
+                learningPath.learningOutcomes.forEach(outcome => {
+                    stream.markdown(`- ✅ ${outcome}\n`);
+                });
+            }
+
+            stream.markdown(`\n---\n_基于你的知识库生成，共 ${learningPath.stages.length} 个阶段、${learningPath.totalNodes} 个知识点_\n`);
+
+        } catch (error) {
+            if (abortController.signal.aborted) {
+                stream.markdown("\n\n⚠️ 生成已取消\n");
+            } else {
+                Logger.getInstance().error("[IssueChatParticipant] Learning path failed:", error);
+                stream.markdown(`\n\n❌ 生成失败: ${error instanceof Error ? error.message : String(error)}\n`);
+            }
+        }
+    }
+
+    /**
+     * 💡 处理创意激发命令：跨领域知识碰撞产生创新
+     * 
+     * 这是一个令人惊叹的 LLM + Agent 组合功能！
+     * Agent 会从你的知识库中随机或智能选择不同领域的概念，
+     * 让它们相互碰撞，产生意想不到的创新想法。
+     */
+    private async handleIdeaSparkCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        stream.markdown("# 💡 创意激发 Agent\n\n");
+        stream.markdown("正在从你的知识库中提取概念，准备进行跨领域碰撞...\n\n");
+
+        if (prompt) {
+            stream.markdown(`🎯 聚焦主题: **${prompt}**\n\n`);
+        }
+
+        const abortController = new AbortController();
+        token.onCancellationRequested(() => abortController.abort());
+
+        const agent = new IdeaSparkAgent({
+            sparksPerSession: 5,
+            creativityLevel: "moderate",
+        });
+
+        agent.onProgress = (state, message) => {
+            stream.progress(message);
+        };
+
+        agent.onThought = (thought) => {
+            stream.markdown(`> 💭 **${thought.action}**: ${thought.reasoning.substring(0, 80)}${thought.reasoning.length > 80 ? "..." : ""}\n`);
+        };
+
+        agent.onSpark = (spark) => {
+            stream.markdown(`\n✨ **新创意**: ${spark.idea.title}\n`);
+        };
+
+        try {
+            const session = await agent.spark({
+                signal: abortController.signal,
+                theme: prompt || undefined,
+            });
+
+            stream.markdown("\n---\n\n");
+            stream.markdown(`# 🌟 创意会话报告\n\n`);
+            stream.markdown(`共探索 **${session.totalConceptsExplored}** 个概念，产生 **${session.sparks.length}** 个创意火花\n\n`);
+
+            // 按综合评分排序展示
+            const sortedSparks = session.sparks.sort((a, b) => {
+                const scoreA = (a.idea.noveltyScore + a.idea.feasibilityScore + a.idea.impactScore) / 3;
+                const scoreB = (b.idea.noveltyScore + b.idea.feasibilityScore + b.idea.impactScore) / 3;
+                return scoreB - scoreA;
+            });
+
+            for (let i = 0; i < sortedSparks.length; i++) {
+                const spark = sortedSparks[i];
+                const avgScore = Math.round((spark.idea.noveltyScore + spark.idea.feasibilityScore + spark.idea.impactScore) / 3);
+
+                stream.markdown(`## 💡 创意 ${i + 1}: ${spark.idea.title}\n\n`);
+                stream.markdown(`${spark.idea.description}\n\n`);
+
+                // 评分
+                stream.markdown(`**评分**: 🆕 新颖度 ${spark.idea.noveltyScore} | ⚙️ 可行性 ${spark.idea.feasibilityScore} | 🎯 影响力 ${spark.idea.impactScore} | 📊 综合 **${avgScore}**\n\n`);
+
+                // 碰撞来源
+                const collisionTypeLabels: Record<string, string> = {
+                    analogy: "类比迁移",
+                    combination: "组合融合",
+                    contrast: "对比启发",
+                    abstraction: "抽象提升",
+                    inversion: "逆向思考",
+                };
+                stream.markdown(`**碰撞方法**: ${collisionTypeLabels[spark.collisionType] || spark.collisionType}\n`);
+                stream.markdown(`**概念碰撞**: ${spark.inputs.concept1.concept} (${spark.inputs.concept1.domain}) × ${spark.inputs.concept2.concept} (${spark.inputs.concept2.domain})${spark.inputs.concept3 ? ` × ${spark.inputs.concept3.concept}` : ""}\n\n`);
+
+                // 核心洞见
+                stream.markdown(`**🎯 核心洞见**: ${spark.elaboration.coreInsight}\n\n`);
+
+                // 如何运作
+                if (spark.elaboration.howItWorks) {
+                    stream.markdown(`**⚙️ 如何运作**: ${spark.elaboration.howItWorks}\n\n`);
+                }
+
+                // 潜在应用
+                if (spark.elaboration.potentialApplications.length > 0) {
+                    stream.markdown(`**🌍 潜在应用**:\n`);
+                    spark.elaboration.potentialApplications.forEach(app => {
+                        stream.markdown(`- ${app}\n`);
+                    });
+                    stream.markdown("\n");
+                }
+
+                // 下一步
+                if (spark.elaboration.nextSteps.length > 0) {
+                    stream.markdown(`**📋 下一步**:\n`);
+                    spark.elaboration.nextSteps.slice(0, 3).forEach((step, j) => {
+                        stream.markdown(`${j + 1}. ${step}\n`);
+                    });
+                    stream.markdown("\n");
+                }
+
+                // 保存按钮
+                stream.button({
+                    command: "issueManager.createIssueFromReviewTask",
+                    title: "💾 保存为问题",
+                    arguments: [{
+                        title: `💡 ${spark.idea.title}`,
+                        body: `# 💡 ${spark.idea.title}\n\n${spark.idea.description}\n\n## 核心洞见\n${spark.elaboration.coreInsight}\n\n## 碰撞来源\n- ${spark.inputs.concept1.concept} × ${spark.inputs.concept2.concept}`,
+                    }],
+                });
+
+                stream.markdown("\n---\n\n");
+            }
+
+            stream.markdown(`_创意会话完成，耗时 ${Math.round(session.duration / 1000)} 秒_\n`);
+
+        } catch (error) {
+            if (abortController.signal.aborted) {
+                stream.markdown("\n\n⚠️ 创意会话已取消\n");
+            } else {
+                Logger.getInstance().error("[IssueChatParticipant] Idea spark failed:", error);
+                stream.markdown(`\n\n❌ 创意激发失败: ${error instanceof Error ? error.message : String(error)}\n`);
+            }
+        }
+    }
+
     /**
      * 处理帮助命令
      */
@@ -660,6 +1030,44 @@ export class IssueChatParticipant {
         stream.markdown("**示例:**\n");
         stream.markdown("- `@issueManager /审阅`\n");
         stream.markdown("- `@issueManager /审阅 优化本周工作计划可执行性`\n\n");
+
+        stream.markdown("### 🔍 `/代码审阅` - 智能代码审阅 Agent\n");
+        stream.markdown("使用 AI Agent 自主探索代码库，进行多轮迭代分析，发现潜在问题和改进机会。\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /代码审阅` - 审阅整个工作区\n");
+        stream.markdown("- `@issueManager /cr 安全性` - 重点关注安全问题\n\n");
+
+        stream.markdown("### 🧠 `/知识图谱` - 知识连接 Agent ⚡NEW\n");
+        stream.markdown("深度分析知识库，发现问题之间隐藏的语义关联，自动建议应该建立的连接。\n\n");
+        stream.markdown("**特色功能:**\n");
+        stream.markdown("- 🌐 发现隐藏的知识关联\n");
+        stream.markdown("- 🏝️ 识别知识孤岛\n");
+        stream.markdown("- 📊 生成知识覆盖度报告\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /知识图谱`\n");
+        stream.markdown("- `@issueManager /连接`\n\n");
+
+        stream.markdown("### 🎯 `/学习路径` - 学习路径 Agent ⚡NEW\n");
+        stream.markdown("基于知识库内容和你的学习目标，生成个性化的学习路径。\n\n");
+        stream.markdown("**特色功能:**\n");
+        stream.markdown("- 📚 智能分析知识依赖关系\n");
+        stream.markdown("- 🗺️ 生成最优学习顺序\n");
+        stream.markdown("- ⏱️ 估算学习时间\n");
+        stream.markdown("- ✅ 提供阶段检验问题\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /学习路径 掌握 TypeScript`\n");
+        stream.markdown("- `@issueManager /学习 系统设计`\n\n");
+
+        stream.markdown("### 💡 `/创意` - 创意激发 Agent ⚡NEW\n");
+        stream.markdown("随机碰撞不同领域的知识，激发创新灵感！\n\n");
+        stream.markdown("**特色功能:**\n");
+        stream.markdown("- 🎲 跨领域知识碰撞\n");
+        stream.markdown("- 🔀 多种创意方法（类比/组合/逆向...）\n");
+        stream.markdown("- 🌟 评估创意可行性\n");
+        stream.markdown("- 📝 一键保存精彩创意\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /创意` - 随机激发\n");
+        stream.markdown("- `@issueManager /灵感 AI产品` - 聚焦主题\n\n");
 
         stream.markdown("### `/帮助` - 显示此帮助\n\n");
 

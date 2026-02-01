@@ -131,6 +131,13 @@ export interface IViewRegistryResult {
     gitBranchProvider: import('../gitBranch/GitBranchTreeProvider').GitBranchTreeProvider;
     /** Git 分支树视图实例 */
     gitBranchView: vscode.TreeView<vscode.TreeItem>;
+
+    /** 知识图谱视图提供者实例 */
+    knowledgeGraphProvider: import('../views/KnowledgeGraphViewProvider').KnowledgeGraphViewProvider;
+    /** 学习路径视图提供者实例 */
+    learningPathProvider: import('../views/LearningPathViewProvider').LearningPathViewProvider;
+    /** 创意激发视图提供者实例 */
+    ideaSparkProvider: import('../views/IdeaSparkViewProvider').IdeaSparkViewProvider;
 }
 
 /**
