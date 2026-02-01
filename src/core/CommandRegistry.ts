@@ -59,6 +59,7 @@ import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
 import { openIssueNode } from '../commands/openIssueNode';
 import { registerReviewPlanCommands } from '../commands/reviewPlanCommands';
+import { registerDeepResearchCommands } from '../commands/deepResearchCommands';
 
 
 
@@ -145,6 +146,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         focusedView: vscode.TreeView<IssueNode>,
         issueSearchProvider: import('../views/IssueSearchViewProvider').IssueSearchViewProvider,
         issueSearchView: vscode.TreeView<import('../views/IssueSearchViewProvider').IssueSearchViewNode>,
+        deepResearchProvider: import('../views/DeepResearchViewProvider').DeepResearchViewProvider,
         // issueStructureProvider: IssueStructureProvider,
         // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
@@ -221,7 +223,10 @@ export class CommandRegistry extends BaseCommandRegistry {
             // 9. 注册 PARA 视图命令
             this.registerParaCommands();
 
-            // 10. 注册 LLM 相关命令
+            // 10. 注册深度调研命令
+            registerDeepResearchCommands(this.context, deepResearchProvider);
+
+            // 11. 注册 LLM 相关命令
             this.registerLLMCommands();
 
             // 新命令：在激活的编辑器旁边打开问题（如果编辑器包含 issueId）

@@ -90,6 +90,12 @@ export interface IViewRegistryResult {
 
     /** 问题搜索树视图实例 */
     issueSearchView: vscode.TreeView<import('../views/IssueSearchViewProvider').IssueSearchViewNode>;
+
+    /** 深度调研视图提供者实例 */
+    deepResearchProvider: import('../views/DeepResearchViewProvider').DeepResearchViewProvider;
+
+    /** 深度调研树视图实例 */
+    deepResearchView: vscode.TreeView<import('../views/DeepResearchViewProvider').DeepResearchViewNode>;
     
     // /** RSS问题视图提供者实例 */
     // rssIssuesProvider: IIssueViewProvider<vscode.TreeItem>;

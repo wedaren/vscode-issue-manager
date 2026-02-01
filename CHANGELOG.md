@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [Unreleased]
+
+### ✨ 新功能
+- **feat(deep-research): 深度调研功能** 
+  - 新增 AI 驱动的深度调研功能，支持针对特定主题进行深入分析
+  - 提供三种调研模式：自动、本地笔记、纯 LLM
+  - 新增"深度调研"视图，实时显示活动任务和历史文档
+  - 支持取消正在运行的任务和删除历史文档
+  - 自动生成结构化的 Markdown 调研报告，包含概述、核心发现、深度分析、结论与建议等部分
+  - 本地笔记模式会引用相关的本地笔记作为参考依据
+
 ## v3.0.1 - 2025-12-18
 
 - fix(menus): update context menu commands for note mapping (5b26fb6)

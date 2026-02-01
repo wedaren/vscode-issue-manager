@@ -18,6 +18,7 @@ import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider'
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
 import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
+import { DeepResearchViewProvider, DeepResearchViewNode } from '../views/DeepResearchViewProvider';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
@@ -81,6 +82,9 @@ export class ViewRegistry {
         // 注册问题搜索视图
         const { issueSearchProvider, issueSearchView } = this.registerIssueSearchView();
         
+        // 注册深度调研视图
+        const { deepResearchProvider, deepResearchView } = this.registerDeepResearchView();
+        
         // 注册RSS问题视图
         // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
         
@@ -116,6 +120,8 @@ export class ViewRegistry {
             recentIssuesView,
             issueSearchProvider,
             issueSearchView,
+            deepResearchProvider,
+            deepResearchView,
             // rssIssuesProvider,
             // rssIssuesView,
             // issueStructureProvider,
@@ -151,6 +157,24 @@ export class ViewRegistry {
         this.context.subscriptions.push(issueSearchView);
 
         return { issueSearchProvider, issueSearchView };
+    }
+
+    /**
+     * 注册深度调研视图
+     */
+    private registerDeepResearchView(): {
+        deepResearchProvider: DeepResearchViewProvider;
+        deepResearchView: vscode.TreeView<DeepResearchViewNode>;
+    } {
+        const deepResearchProvider = new DeepResearchViewProvider(this.context);
+        const deepResearchView = vscode.window.createTreeView<DeepResearchViewNode>('issueManager.views.deepResearch', {
+            treeDataProvider: deepResearchProvider,
+            showCollapseAll: true
+        });
+
+        this.context.subscriptions.push(deepResearchView);
+
+        return { deepResearchProvider, deepResearchView };
     }
 
     /**
