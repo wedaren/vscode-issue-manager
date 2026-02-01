@@ -192,17 +192,8 @@ export class RelatedIssuesProvider implements vscode.TreeDataProvider<RelatedIss
             };
             return result;
         } else {
-            const currentNode: RelatedIssueNode = {
-                label: await getNodeTitle(node),
-                type: 'current',
-                icon: new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue')),
-                filePath: node.filePath,
-                resourceUri: node.resourceUri,
-                id: node.id,
-                parent: node.parent,
-                contextValue: await getIssueNodeContextValue(node.id, 'issueNode'),
-                children: node.children ? await Promise.all(node.children.map(buildRelatedChildNode)) : [],
-            };
+            const currentNode = await buildRelatedChildNode(node);
+            currentNode.children = node.children ? await Promise.all(node.children.map(buildRelatedChildNode)) : [];
             return currentNode;
         }
     }
