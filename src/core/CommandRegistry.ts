@@ -59,6 +59,12 @@ import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
 import { openIssueNode } from '../commands/openIssueNode';
 import { registerReviewPlanCommands } from '../commands/reviewPlanCommands';
+import {
+    registerDeepResearchIssueCommand,
+    registerDeepResearchIssueLocalCommand,
+    registerDeepResearchIssueLlmOnlyCommand,
+} from '../commands/deepResearchIssue';
+import { registerDeepResearchDocCommands } from '../commands/deepResearchDocCommands';
 
 
 
@@ -145,6 +151,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         focusedView: vscode.TreeView<IssueNode>,
         issueSearchProvider: import('../views/IssueSearchViewProvider').IssueSearchViewProvider,
         issueSearchView: vscode.TreeView<import('../views/IssueSearchViewProvider').IssueSearchViewNode>,
+        deepResearchProvider: import('../views/DeepResearchIssuesProvider').DeepResearchIssuesProvider,
+        deepResearchView: vscode.TreeView<import('../views/DeepResearchIssuesProvider').DeepResearchViewNode>,
         // issueStructureProvider: IssueStructureProvider,
         // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
@@ -171,7 +179,9 @@ export class CommandRegistry extends BaseCommandRegistry {
                 overviewView,
                 focusedView,
                 issueSearchProvider,
-                issueSearchView
+                issueSearchView,
+                deepResearchProvider,
+                deepResearchView
             });
             this.viewCommandRegistry.registerCommands();
 
@@ -521,6 +531,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // Review/计划相关命令
         registerReviewPlanCommands(this.context);
+
+        // 深度调研文档维护命令（例如删除）
+        registerDeepResearchDocCommands(this.context);
     }
 
     /**
@@ -953,6 +966,11 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerUnifiedQuickOpenCommand(this.context);
         // marker 插入到关联问题的命令
         registerInsertMarksCommand(this.context, this.markerManager);
+
+        // 深度调研问题（生成专业文档并落盘到 issueDir）
+        registerDeepResearchIssueCommand(this.context);
+        registerDeepResearchIssueLocalCommand(this.context);
+        registerDeepResearchIssueLlmOnlyCommand(this.context);
 
         // note: copilotDiffSaveResult command was removed per user request
     }

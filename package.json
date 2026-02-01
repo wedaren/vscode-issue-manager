@@ -442,6 +442,54 @@
         "icon": "$(hubot)"
       },
       {
+        "command": "issueManager.deepResearchIssue",
+        "title": "深度调研问题",
+        "category": "Issue Manager",
+        "icon": "$(book)"
+      },
+      {
+        "command": "issueManager.deepResearchIssueLocal",
+        "title": "深度调研（本地笔记）",
+        "category": "Issue Manager",
+        "icon": "$(book)"
+      },
+      {
+        "command": "issueManager.deepResearchIssueLlmOnly",
+        "title": "深度调研（纯 LLM）",
+        "category": "Issue Manager",
+        "icon": "$(book)"
+      },
+      {
+        "command": "issueManager.deepResearch.refresh",
+        "title": "刷新深度调研视图",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.deepResearch.addTaskLocal",
+        "title": "深度调研：新建任务（本地笔记）",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.deepResearch.addTaskLlmOnly",
+        "title": "深度调研：新建任务（纯 LLM）",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.deepResearch.cancelTask",
+        "title": "取消深度调研任务",
+        "category": "Issue Manager",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "issueManager.deepResearch.deleteDoc",
+        "title": "删除深度调研文档",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
         "command": "issueManager.copilotDiffSend",
         "title": "Copilot: 发送并展示 Diff",
         "category": "Issue Manager",
@@ -794,6 +842,21 @@
           "command": "issueManager.para.refresh",
           "when": "view == issueManager.views.para",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.deepResearch.addTaskLocal",
+          "when": "view == issueManager.views.deepResearch",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.deepResearch.addTaskLlmOnly",
+          "when": "view == issueManager.views.deepResearch",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.deepResearch.refresh",
+          "when": "view == issueManager.views.deepResearch",
+          "group": "navigation@3"
         }
       ],
       "issueManager.recentSortSubmenu": [
@@ -825,6 +888,26 @@
           "command": "issueManager.addIssueToTree",
           "when": "view == 'issueManager.views.recent' && viewItem =~ /isolatedIssue/",
           "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.deepResearch.deleteDoc",
+          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchDoc'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.deepResearch.deleteDoc",
+          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchDoc'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.deepResearch.cancelTask",
+          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchTaskLoading'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.deepResearch.cancelTask",
+          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchTaskLoading'",
+          "group": "inline"
         },
         {
           "command": "issueManager.generateTitleCommand",
@@ -1563,6 +1646,11 @@
           "icon": "resources/icon.svg"
         },
         {
+          "id": "issueManager.views.deepResearch",
+          "name": "深度调研",
+          "icon": "resources/icon.svg"
+        },
+        {
           "id": "issueManager.views.related",
           "name": "相关联问题",
           "icon": "resources/icon.svg"
@@ -1602,6 +1690,11 @@
       },
       {
         "view": "issueManager.views.search",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.deepResearch",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
       },

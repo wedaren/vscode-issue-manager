@@ -18,6 +18,7 @@ import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider'
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
 import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
+import { DeepResearchIssuesProvider, type DeepResearchViewNode } from '../views/DeepResearchIssuesProvider';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
@@ -80,6 +81,9 @@ export class ViewRegistry {
 
         // 注册问题搜索视图
         const { issueSearchProvider, issueSearchView } = this.registerIssueSearchView();
+
+        // 注册深度调研问题视图
+        const { deepResearchProvider, deepResearchView } = this.registerDeepResearchView();
         
         // 注册RSS问题视图
         // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
@@ -116,6 +120,8 @@ export class ViewRegistry {
             recentIssuesView,
             issueSearchProvider,
             issueSearchView,
+            deepResearchProvider,
+            deepResearchView,
             // rssIssuesProvider,
             // rssIssuesView,
             // issueStructureProvider,
@@ -133,6 +139,25 @@ export class ViewRegistry {
             gitBranchProvider,
             gitBranchView
         };
+    }
+
+    /**
+     * 注册“深度调研问题”视图
+     */
+    private registerDeepResearchView(): {
+        deepResearchProvider: DeepResearchIssuesProvider;
+        deepResearchView: vscode.TreeView<DeepResearchViewNode>;
+    } {
+        const deepResearchProvider = new DeepResearchIssuesProvider(this.context);
+        const deepResearchView = vscode.window.createTreeView<DeepResearchViewNode>('issueManager.views.deepResearch', {
+            treeDataProvider: deepResearchProvider,
+            showCollapseAll: true,
+        });
+
+        this.context.subscriptions.push(deepResearchView);
+        this.viewContextManager.registerTreeView('issueManager.views.deepResearch', deepResearchView);
+
+        return { deepResearchProvider, deepResearchView };
     }
 
     /**
