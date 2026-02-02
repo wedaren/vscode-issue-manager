@@ -4,6 +4,7 @@ import { Logger } from '../core/utils/Logger';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { getIssueDir } from '../config';
 import { readTree, type IssueNode } from '../data/issueTreeManager';
+import { isIssueMarkdownFile } from '../data/IssueMarkdowns';
 
 /**
  * 管理与编辑器相关的上下文，特别是从 URI query 中提取的 issueId。
@@ -79,11 +80,20 @@ export class EditorContextService implements vscode.Disposable {
             }
         }
         
-        const isInIssueDir = this.isFileInIssueDir(editor?.document?.uri);
-        
+        // 是否为 issue markdown 文件（.md 且在 issueDir 下）
+        let isIssueMarkdown = false;
+        try {
+            isIssueMarkdown = !!(editor?.document?.uri && isIssueMarkdownFile(editor.document.uri));
+        } catch (e) {
+            this.logger.warn('检查是否为 issue markdown 文件时发生错误', e);
+            isIssueMarkdown = false;
+        }
+
+        // 设置上下文键：
+        // - editorHasIssueId: 是否包含有效的 issueId（用于表示编辑器对应的树节点存在）
+        // - editorIsIssueMarkdown: 文件是否为 issue markdown
         vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', !!validIssueId);
-        vscode.commands.executeCommand('setContext', 'issueManager.editorActiveIssueId', validIssueId);
-        vscode.commands.executeCommand('setContext', 'issueManager.editorHasIssueId', isInIssueDir);
+        vscode.commands.executeCommand('setContext', 'issueManager.editorIsIssueMarkdown', isIssueMarkdown);
     }
 
     /**

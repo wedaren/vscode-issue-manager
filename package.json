@@ -202,6 +202,12 @@
         "category": "Issue Manager"
       },
       {
+        "command": "issueManager.revealInViewsFromEditor",
+        "title": "在视图中快速查看",
+        "icon": "$(eye)",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.openAndViewRelatedIssues",
         "title": "打开并查看相关联问题"
       },
@@ -867,6 +873,13 @@
           "command": "issueManager.deepResearch.refresh",
           "when": "view == issueManager.views.deepResearch",
           "group": "navigation@3"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "issueManager.revealInViewsFromEditor",
+          "when": "resourceScheme == file && issueManager.editorIsIssueMarkdown",
+          "group": "navigation"
         }
       ],
       "issueManager.recentSortSubmenu": [

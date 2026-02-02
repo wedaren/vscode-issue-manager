@@ -141,4 +141,25 @@ export function registerFocusCommands(context: vscode.ExtensionContext) {
         }
     });
     context.subscriptions.push(revealInOverviewFromEditorCommand);
+
+    // 注册从编辑器在总览或最近视图中定位（根据当前编辑器 URI 决定）
+    const revealInViewsFromEditorCommand = vscode.commands.registerCommand('issueManager.revealInViewsFromEditor', async () => {
+        const issueDir = getIssueDir();
+        if (!issueDir) { vscode.window.showErrorMessage('请先配置问题目录。'); return; }
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) { vscode.window.showWarningMessage('未找到活动的编辑器。'); return; }
+
+        const uri = editor.document.uri;
+        const issueId = getIssueIdFromUri(uri);
+
+        if (issueId) {
+            // 如果包含 issueId，则在问题总览中定位
+            await vscode.commands.executeCommand('issueManager.revealInOverviewFromEditor');
+        } else {
+            // 否则在最近问题视图中定位
+            await vscode.commands.executeCommand('issueManager.revealInRecentFromEditor');
+        }
+    });
+    context.subscriptions.push(revealInViewsFromEditorCommand);
 }
