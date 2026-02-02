@@ -779,6 +779,16 @@
           "group": "navigation@4"
         },
         {
+          "command": "issueManager.revealInRecentFromEditor",
+          "when": "view == issueManager.views.overview",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.revealInOverviewFromEditor",
+          "when": "view == issueManager.views.recent",
+          "group": "navigation@1"
+        },
+        {
           "command": "issueManager.rss.cleanupOldItems",
           "when": "view == issueManager.views.rss",
           "group": "navigation@5"
