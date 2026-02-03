@@ -112,6 +112,13 @@ export class CommandRegistry extends BaseCommandRegistry {
             this.webviewManager = deps.webviewManager;
             this.graphDataService = deps.graphDataService;
         }
+        // 初始化视图上下文：自动删除设置
+        try {
+            const v = this.context.globalState.get<boolean>('issueManager.autoDeleteOnDisassociate', false);
+            void vscode.commands.executeCommand('setContext', 'issueManager.autoDeleteOnDisassociate', !!v);
+        } catch (err) {
+            this.logger.warn('初始化 issueManager.autoDeleteOnDisassociate 上下文失败', err);
+        }
     }
 
     /**
@@ -509,6 +516,24 @@ export class CommandRegistry extends BaseCommandRegistry {
                 await command.execute(uri);
             },
             '显示思维导图'
+        );
+        // 自动删除切换命令（用于问题总览标题栏图标）
+        this.registerCommand(
+            'issueManager.autoDeleteOnDisassociate.enable',
+            async () => {
+                await this.context.globalState.update('issueManager.autoDeleteOnDisassociate', true);
+                await vscode.commands.executeCommand('setContext', 'issueManager.autoDeleteOnDisassociate', true);
+            },
+            '启用自动删除'
+        );
+
+        this.registerCommand(
+            'issueManager.autoDeleteOnDisassociate.disable',
+            async () => {
+                await this.context.globalState.update('issueManager.autoDeleteOnDisassociate', false);
+                await vscode.commands.executeCommand('setContext', 'issueManager.autoDeleteOnDisassociate', false);
+            },
+            '禁用自动删除'
         );
     }
 
