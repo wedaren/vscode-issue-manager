@@ -96,7 +96,21 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                     const autoDelete = context.globalState.get<boolean>('issueManager.autoDeleteOnDisassociate', false);
                     for (const p of orphanPaths) {
                         const fileName = path.basename(p);
-                        if (autoDelete) {
+                        let shouldDelete = autoDelete;
+
+                        if (!autoDelete) {
+                            const confirm = await vscode.window.showWarningMessage(
+                                `问题 "${fileName}" 已没有任何关联引用，是否删除该问题文件？`,
+                                { modal: false },
+                                '删除文件',
+                                '保留文件'
+                            );
+                            if (confirm === '删除文件') {
+                                shouldDelete = true;
+                            }
+                        }
+
+                        if (shouldDelete) {
                             const issueDir = getIssueDir();
                             if (!issueDir) {
                                 vscode.window.showErrorMessage('无法获取问题目录配置。');
@@ -108,29 +122,6 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                                 await vscode.workspace.fs.delete(fileUri);
                             } catch (error) {
                                 vscode.window.showErrorMessage(`删除文件失败: ${error instanceof Error ? error.message : '未知错误'}`);
-                            }
-                        } else {
-                            const confirm = await vscode.window.showWarningMessage(
-                                `问题 "${fileName}" 已没有任何关联引用，是否删除该问题文件？`,
-                                { modal: false },
-                                '删除文件',
-                                '保留文件'
-                            );
-
-                            if (confirm === '删除文件') {
-                                const issueDir = getIssueDir();
-                                if (!issueDir) {
-                                    vscode.window.showErrorMessage('无法获取问题目录配置。');
-                                    return;
-                                }
-
-                                const fullPath = path.join(issueDir, p);
-                                const fileUri = vscode.Uri.file(fullPath);
-                                try {
-                                    await vscode.workspace.fs.delete(fileUri);
-                                } catch (error) {
-                                    vscode.window.showErrorMessage(`删除文件失败: ${error instanceof Error ? error.message : '未知错误'}`);
-                                }
                             }
                         }
                     }
