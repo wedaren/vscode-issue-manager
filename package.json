@@ -90,6 +90,16 @@
         "title": "解除关联"
       },
       {
+        "command": "issueManager.autoDeleteOnDisassociate.enable",
+        "icon": "resources/trash-grey.svg",
+        "title": "自动删除：关闭"
+      },
+      {
+        "command": "issueManager.autoDeleteOnDisassociate.disable",
+        "icon": "resources/trash-blue.svg",
+        "title": "自动删除：开启"
+      },
+      {
         "command": "issueManager.createSubIssue",
         "title": "新建子问题",
         "icon": "$(add)"
@@ -783,6 +793,16 @@
           "command": "issueManager.refreshAllViews",
           "when": "view == issueManager.views.overview",
           "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.autoDeleteOnDisassociate.enable",
+          "when": "view == issueManager.views.overview && !issueManager.autoDeleteOnDisassociate",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.autoDeleteOnDisassociate.disable",
+          "when": "view == issueManager.views.overview && issueManager.autoDeleteOnDisassociate",
+          "group": "navigation@1"
         },
         {
           "command": "issueManager.revealInRecentFromEditor",

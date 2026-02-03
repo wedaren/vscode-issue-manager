@@ -65,7 +65,6 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
 
         if (success) {
             await writeTree(treeData);
-            vscode.commands.executeCommand('issueManager.refreshAllViews');
             await EditorContextService.getInstance()?.recheckCurrentEditor();
 
             // 检查是否还有其他引用 — 收集所有被移除的节点（包括子节点），按唯一文件路径去重后再提示删除
@@ -93,22 +92,16 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                         if (!associated.has(p)) orphanPaths.push(p);
                     }
 
+                    // 检查是否启用了自动删除设置；若启用则不询问直接删除孤立文件
+                    const autoDelete = context.globalState.get<boolean>('issueManager.autoDeleteOnDisassociate', false);
                     for (const p of orphanPaths) {
                         const fileName = path.basename(p);
-                        const confirm = await vscode.window.showWarningMessage(
-                            `问题 "${fileName}" 已没有任何关联引用，是否删除该问题文件？`,
-                            { modal: false },
-                            '删除文件',
-                            '保留文件'
-                        );
-
-                        if (confirm === '删除文件') {
+                        if (autoDelete) {
                             const issueDir = getIssueDir();
                             if (!issueDir) {
                                 vscode.window.showErrorMessage('无法获取问题目录配置。');
                                 return;
                             }
-
                             const fullPath = path.join(issueDir, p);
                             const fileUri = vscode.Uri.file(fullPath);
                             try {
@@ -116,9 +109,35 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                             } catch (error) {
                                 vscode.window.showErrorMessage(`删除文件失败: ${error instanceof Error ? error.message : '未知错误'}`);
                             }
+                        } else {
+                            const confirm = await vscode.window.showWarningMessage(
+                                `问题 "${fileName}" 已没有任何关联引用，是否删除该问题文件？`,
+                                { modal: false },
+                                '删除文件',
+                                '保留文件'
+                            );
+
+                            if (confirm === '删除文件') {
+                                const issueDir = getIssueDir();
+                                if (!issueDir) {
+                                    vscode.window.showErrorMessage('无法获取问题目录配置。');
+                                    return;
+                                }
+
+                                const fullPath = path.join(issueDir, p);
+                                const fileUri = vscode.Uri.file(fullPath);
+                                try {
+                                    await vscode.workspace.fs.delete(fileUri);
+                                } catch (error) {
+                                    vscode.window.showErrorMessage(`删除文件失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                                }
+                            }
                         }
                     }
                 }
+
+                // 无论是否有孤立文件被删除或被询问，均刷新视图以反映树的最新状态
+                void vscode.commands.executeCommand('issueManager.refreshAllViews');
             } catch (error) {
                 console.error('检查孤立问题或删除时出错:', error);
             }
