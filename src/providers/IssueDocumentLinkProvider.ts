@@ -214,30 +214,19 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             // 创建 URI
             let uri = vscode.Uri.file(absolutePath);
 
-            // 如果有查询参数，优先检查是否包含 issueId
+            const issueNode = await getSingleIssueNodeByUri(uri);
+
+
             if (queryString) {
-                let issueId;
-                const issueIdMatch = queryString.match(/issueId=([^&]+)/);
+                const issueIdMatch = queryString.match(/(?:^|&)issueId=([^&]+)/);
                 if (issueIdMatch) {
-                    issueId = decodeURIComponent(issueIdMatch[1]);
-                } else {
-                    const issueNode = await getSingleIssueNodeByUri(uri);
-                    if (issueNode) {
-                        issueId = issueNode.id;
-                    }
+                    const issueId = decodeURIComponent(issueIdMatch[1]);
+                    return makeQuickPeek(issueId);
                 }
-
-                if(issueId){
-                    // 使用 command URI 调用快速查看命令，传入 issueId
-                    const cmdUri = vscode.Uri.parse(`command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([issueId]))}`);
-                    return {
-                        uri: cmdUri,
-                        tooltip: `快速查看 Issue (${issueId})`
-                    };
-                }
-
-                // 其余查询参数保留在文件 URI 上
+                // 保留其余查询参数在文件 URI 上
                 uri = uri.with({ query: queryString });
+            } else if (issueNode) {
+                return makeQuickPeek(issueNode.id);
             }
 
             return { uri };
@@ -248,3 +237,10 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
         }
     }
 }
+
+function makeQuickPeek(id: string) {
+    const cmdUri = vscode.Uri.parse(
+        `command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([id]))}`
+    );
+    return { uri: cmdUri, tooltip: `快速查看 Issue (${id})`};
+};
