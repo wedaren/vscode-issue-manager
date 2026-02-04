@@ -3,7 +3,7 @@ import * as path from 'path';
 import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../config';
 import { getIssueMarkdownContextValues, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 import { formatCompactDateTime, formatRelativeTime } from '../utils/dateUtils';
-import { getIssueNodeContextValue, getIssueNodeIconPath, getIssueNodesByUri, type IssueNode } from '../data/issueTreeManager';
+import { getIssueNodeContextValue, getIssueNodeIconPath, getIssueNodesByUri, getSingleIssueNodeByUri, type IssueNode } from '../data/issueTreeManager';
 import {
   getRecentIssuesStats,
   groupIssuesByTime,
@@ -15,6 +15,7 @@ import {
   type SubgroupStrategy,
   type SortOrder,
 } from '../data/recentIssuesManager';
+import { getIssueIdFromUri } from '../utils/uriUtils';
 
 /**
  * 分组树节点
@@ -109,6 +110,15 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
         this.setSortOrder('vtime');
       }),
       vscode.commands.registerCommand('issueManager.openAndViewRelatedIssues', async (uri: vscode.Uri) => {
+        let issueId = getIssueIdFromUri(uri);
+        if (!issueId) {
+          const node = await getSingleIssueNodeByUri(uri);
+          issueId = node?.id;
+          if (issueId) {
+            uri = uri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
+          }
+        }
+
         try {
           await vscode.window.showTextDocument(uri);
         } catch (error) {

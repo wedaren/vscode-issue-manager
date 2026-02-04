@@ -39,7 +39,6 @@ export async function executeCreateIssueFromCompletion(...args: unknown[]): Prom
                 editor,
                 uri,
                 title,
-                newNodeId,
                 insertMode,
                 hasTrigger,
                 background
@@ -70,7 +69,6 @@ async function insertLinkIntoEditor(
     editor: vscode.TextEditor,
     uri: vscode.Uri,
     title: string,
-    newNodeId: string | undefined,
     insertMode = "relativePath",
     hasTrigger = false,
     background = false
@@ -84,9 +82,7 @@ async function insertLinkIntoEditor(
             if (hasTrigger) {
                 insertText = `${title}]]`;
             } else {
-                insertText = `[${title}](${relativePath}${
-                    newNodeId ? "?issueId=" + encodeURIComponent(newNodeId) : ""
-                })`;
+                insertText = `[${title}](${relativePath})`;
             }
             break;
         case "filename":
