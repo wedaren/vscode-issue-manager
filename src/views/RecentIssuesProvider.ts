@@ -115,7 +115,13 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
           const node = await getSingleIssueNodeByUri(uri);
           issueId = node?.id;
           if (issueId) {
-            uri = uri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
+            let newQuery = uri.query;  
+            if (newQuery) {  
+              newQuery += `&issueId=${encodeURIComponent(issueId)}`;  
+            } else {  
+              newQuery = `issueId=${encodeURIComponent(issueId)}`;  
+            }  
+            uri = uri.with({ query: newQuery });  
           }
         }
 
