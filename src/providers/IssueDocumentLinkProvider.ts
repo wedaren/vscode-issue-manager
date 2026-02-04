@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 import { parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
+import { getSingleIssueNodeByUri } from '../data/issueTreeManager';
 
 /**
  * 解析 IssueMarkdown 文档中的链接，特别是包含 ?issueId= 查询参数的链接
@@ -12,10 +13,10 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
     /**
      * 提供文档中的链接
      */
-    provideDocumentLinks(
+    async provideDocumentLinks(
         document: vscode.TextDocument,
         token: vscode.CancellationToken
-    ): vscode.ProviderResult<vscode.DocumentLink[]> {
+    ): Promise<vscode.DocumentLink[]> {
         // 只处理 markdown 文档
         if (document.languageId !== 'markdown') {
             return [];
@@ -40,7 +41,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             const startIndex = match.index! + match[1].length + 3;
             const endIndex = startIndex + linkPath.length;
 
-            const parsed = this.parseLinkPath(linkPath, document, issueDir);
+            const parsed = await this.parseLinkPath(linkPath, document, issueDir);
             if (parsed) {
                 const range = new vscode.Range(
                     document.positionAt(startIndex),
@@ -152,11 +153,11 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
     /**
      * 解析链接路径，提取文件路径和查询参数
      */
-    private parseLinkPath(
+    private async parseLinkPath(
         linkPath: string,
         document: vscode.TextDocument,
         issueDir: string
-    ): { uri: vscode.Uri; tooltip?: string } | null {
+    ): Promise<{ uri: vscode.Uri; tooltip?: string } | null> {
         try {
             // 分离路径和查询参数
             const queryIndex = linkPath.indexOf('?');
@@ -215,9 +216,18 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
 
             // 如果有查询参数，优先检查是否包含 issueId
             if (queryString) {
+                let issueId;
                 const issueIdMatch = queryString.match(/issueId=([^&]+)/);
                 if (issueIdMatch) {
-                    const issueId = decodeURIComponent(issueIdMatch[1]);
+                    issueId = decodeURIComponent(issueIdMatch[1]);
+                } else {
+                    const issueNode = await getSingleIssueNodeByUri(uri);
+                    if (issueNode) {
+                        issueId = issueNode.id;
+                    }
+                }
+
+                if(issueId){
                     // 使用 command URI 调用快速查看命令，传入 issueId
                     const cmdUri = vscode.Uri.parse(`command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([issueId]))}`);
                     return {

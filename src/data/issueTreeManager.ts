@@ -160,6 +160,19 @@ export const getIssueNodesByUri = async (uri: vscode.Uri): Promise<IssueNode[]> 
 };
 
 /**
+ * 如果一个 IssueMarkdown 仅对应一个 IssueNode，则返回该 IssueNode
+ */
+export const getSingleIssueNodeByUri = async (
+    uri: vscode.Uri
+): Promise<IssueNode | undefined> => {
+    const issueNodes = await getIssueNodesByUri(uri);
+    if (issueNodes.length === 1) {
+        return issueNodes[0];
+    }
+    return undefined;
+};
+
+/**
  * 根据 IssueMarkdown 获取对应的 IssueNode 列表。
  */
 export const getIssueNodesBy = async (issueMarkdown: IssueMarkdown): Promise<IssueNode[]> => {

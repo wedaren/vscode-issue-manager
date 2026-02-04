@@ -4,8 +4,6 @@ import { getFlatTree, FlatTreeNode, FocusedData } from '../data/issueTreeManager
 import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completionUtils';
 import { getIssueDir } from '../config';
 import { readFocused } from '../data/focusedManager';
-import { getIssueNodeIconPath } from '../data/issueTreeManager';
-import { getIssueFilePath } from '../data/IssueMarkdowns';
 
 /**
  * 带节点信息的补全项
@@ -261,10 +259,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
                     // 如果有触发前缀（如 [[），插入 wiki 风格链接
                     item.insertText = `${title}]]`;
                 } else {
-                    // 普通 markdown 链接：恢复为相对路径并带 issueId 查询
-                    item.insertText = `[${title}](${relativePath}?issueId=${encodeURIComponent(node.id)})`;
-                    // 在用户接受该补全项后，在侧边打开对应的 markdown 文件
-                    item.command = { command: 'issueManager.quickPeekIssue', title: '在侧边打开', arguments: [node.id] };
+                    item.insertText = `[${title}](${relativePath})`;
                 }
                 break;
             
