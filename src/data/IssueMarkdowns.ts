@@ -20,6 +20,13 @@ function extractTitleFromContent(content: string): string | undefined {
 /**
  * Frontmatter 数据结构
  */
+export interface TermDefinition {
+    name: string;
+    definition?: string;
+    links?: string[];
+    [key: string]: unknown;
+}
+
 export interface FrontmatterData {
     issue_root_file?: string;
     issue_parent_file?: string | null;
@@ -47,6 +54,14 @@ export interface FrontmatterData {
      * - 由 LLM 自动生成或手动编辑。
      */
     issue_brief_summary?: string | string[];
+    /**
+     * 术语定义列表
+     */
+    terms?: TermDefinition[];
+    /**
+     * 术语引用的 IssueMarkdown 文件列表（wiki-link 或路径）
+     */
+    terms_references?: string[];
     [key: string]: unknown; // 支持其他字段
 }
 
