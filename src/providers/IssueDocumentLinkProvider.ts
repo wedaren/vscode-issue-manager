@@ -4,6 +4,8 @@ import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 import { parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
 import { getSingleIssueNodeByUri } from '../data/issueTreeManager';
+import { collectTermsForDocument } from '../utils/issueMarkdownTerms';
+import { isDocumentInDirectory } from '../utils/completionUtils';
 
 /**
  * 解析 IssueMarkdown 文档中的链接，特别是包含 ?issueId= 查询参数的链接
@@ -145,6 +147,97 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             const link = new vscode.DocumentLink(range, cmdUri);
             link.tooltip = '在当前窗口打开工作区/文件夹';
             links.push(link);
+        }
+
+        if (token.isCancellationRequested) {
+            return links;
+        }
+
+        // 4) 处理术语反引号链接（`术语` 或 `术语::文件名`）
+        const termLinks = await this.buildTermLinks(document, issueDir, token);
+        links.push(...termLinks);
+
+        return links;
+    }
+
+    private async buildTermLinks(
+        document: vscode.TextDocument,
+        issueDir: string,
+        token: vscode.CancellationToken
+    ): Promise<vscode.DocumentLink[]> {
+        const links: vscode.DocumentLink[] = [];
+        if (!isDocumentInDirectory(document, issueDir)) {
+            return links;
+        }
+        const termItems = await collectTermsForDocument(document, issueDir);
+        if (termItems.length === 0) {
+            return links;
+        }
+
+        const termMap = new Map<string, typeof termItems[number]>();
+        for (const item of termItems) {
+            termMap.set(item.displayName, item);
+        }
+
+        const lines = document.getText().split(/\r?\n/);
+        let inCodeFence = false;
+
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            if (token.isCancellationRequested) {
+                return links;
+            }
+
+            const line = lines[lineIndex];
+            const trimmed = line.trim();
+
+            if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+                inCodeFence = !inCodeFence;
+                continue;
+            }
+
+            if (inCodeFence) {
+                continue;
+            }
+
+            const regex = /`([^`\n]+)`/g;
+            let match: RegExpExecArray | null;
+            while ((match = regex.exec(line)) !== null) {
+                const termText = match[1].trim();
+                if (!termText) {
+                    continue;
+                }
+
+                const termItem = termMap.get(termText);
+                if (!termItem) {
+                    continue;
+                }
+
+                const startChar = match.index + 1;
+                const endChar = startChar + match[1].length;
+                const range = new vscode.Range(
+                    new vscode.Position(lineIndex, startChar),
+                    new vscode.Position(lineIndex, endChar)
+                );
+
+                const location: FileLocation = { filePath: termItem.sourceUri.fsPath };
+                if (termItem.location?.line) {
+                    location.startLine = termItem.location.line;
+                    location.startColumn = termItem.location.column;
+                }
+
+                const args = {
+                    location,
+                    source: document.uri.toString()
+                };
+
+                const cmdUri = vscode.Uri.parse(
+                    `command:extension.openInSplit?${encodeURIComponent(JSON.stringify([args]))}`
+                );
+
+                const link = new vscode.DocumentLink(range, cmdUri);
+                link.tooltip = `打开术语定义: ${termItem.displayName}`;
+                links.push(link);
+            }
         }
 
         return links;

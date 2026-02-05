@@ -4,6 +4,7 @@ import { GitSyncService } from './services/GitSyncService';
 import { ChromeIntegrationServer } from './integration/ChromeIntegrationServer';
 import { SharedConfig } from './config/SharedConfig';
 import { IssueNodeCompletionProvider } from './providers/IssueNodeCompletionProvider';
+import { IssueTermCompletionProvider } from './providers/IssueTermCompletionProvider';
 import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
 import { registerOpenInSplit } from './commands/openInSplit';
 import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
@@ -34,6 +35,15 @@ export function activate(context: vscode.ExtensionContext) {
 		...triggerCharacters
 	);
 	context.subscriptions.push(completionDisposable);
+
+	// 注册 Issue 术语补全提供器（反引号触发）
+	const termCompletionProvider = new IssueTermCompletionProvider();
+	const termCompletionDisposable = vscode.languages.registerCompletionItemProvider(
+		'markdown',
+		termCompletionProvider,
+		'`'
+	);
+	context.subscriptions.push(termCompletionDisposable);
 	
 	// 注册 Issue 文档链接提供器
 	const linkProvider = new IssueDocumentLinkProvider();
