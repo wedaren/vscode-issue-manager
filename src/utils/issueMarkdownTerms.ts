@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import * as yaml from "js-yaml";
-import { parseLinkedFileString, type TermDefinition } from "../data/IssueMarkdowns";
+import { parseLinkedFileString, type TermDefinition, extractFrontmatterLines, normalizeYamlScalar, buildTermLocationMap, isValidObject, extractFrontmatterAndBody, FrontmatterData } from "../data/IssueMarkdowns";
+import { Logger } from "../core/utils/Logger";
 
 export interface TermLocation {
     line: number;
@@ -25,126 +25,17 @@ interface TermsParseResult {
     termLocations: Map<string, TermLocation>;
 }
 
-function isValidObject(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isTermDefinition(value: unknown): value is TermDefinition {
     return isValidObject(value) && typeof value.name === "string" && value.name.trim().length > 0;
 }
 
-function extractFrontmatterLines(content: string): { lines: string[]; startLineNumber: number } | null {
-    if (!content.startsWith("---")) {
-        return null;
-    }
-
-    const lines = content.split(/\r?\n/);
-    let endIndex = -1;
-    for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === "---") {
-            endIndex = i;
-            break;
-        }
-    }
-
-    if (endIndex === -1) {
-        return null;
-    }
-
-    const frontmatterLines = lines.slice(1, endIndex);
-    const startLineNumber = 2; // frontmatter 第一行在文件的第 2 行
-    return { lines: frontmatterLines, startLineNumber };
-}
-
-function normalizeYamlScalar(value: string): string {
-    let result = value.trim();
-    if ((result.startsWith("\"") && result.endsWith("\"")) || (result.startsWith("'") && result.endsWith("'"))) {
-        result = result.slice(1, -1).trim();
-    }
-    return result;
-}
-
-function buildTermLocationMap(frontmatterLines: string[], startLineNumber: number): Map<string, TermLocation> {
-    const map = new Map<string, TermLocation>();
-
-    let termsLineIndex = -1;
-    let termsIndent = 0;
-
-    for (let i = 0; i < frontmatterLines.length; i++) {
-        const line = frontmatterLines[i];
-        const match = line.match(/^(\s*)terms\s*:\s*$/);
-        if (match) {
-            termsLineIndex = i;
-            termsIndent = match[1].length;
-            break;
-        }
-    }
-
-    if (termsLineIndex === -1) {
-        return map;
-    }
-
-    for (let i = termsLineIndex + 1; i < frontmatterLines.length; i++) {
-        const line = frontmatterLines[i];
-        if (!line.trim()) {
-            continue;
-        }
-        const indentMatch = line.match(/^(\s*)/);
-        const indent = indentMatch ? indentMatch[1].length : 0;
-
-        if (indent <= termsIndent && /^\s*\w+\s*:/u.test(line)) {
-            break;
-        }
-
-        const nameMatch = line.match(/^\s*-\s*name\s*:\s*(.+?)\s*$/u);
-        let rawName: string | undefined;
-        let valueIndex = -1;
-
-        if (nameMatch) {
-            rawName = nameMatch[1];
-            valueIndex = line.indexOf(rawName);
-        } else {
-            const inlineMatch = line.match(/\bname\s*:\s*([^,#}]+?)(?:\s*(?:,|$|\}))/u);
-            if (inlineMatch) {
-                rawName = inlineMatch[1];
-                valueIndex = line.indexOf(rawName);
-            }
-        }
-
-        if (!rawName) {
-            continue;
-        }
-
-        const name = normalizeYamlScalar(rawName);
-        if (!name || map.has(name)) {
-            continue;
-        }
-
-        const lineNumber = startLineNumber + i;
-        const columnNumber = valueIndex >= 0 ? valueIndex + 1 : 1;
-        map.set(name, { line: lineNumber, column: columnNumber });
-    }
-
-    return map;
-}
-
 function parseTermsFromContent(content: string): TermsParseResult {
-    const frontmatterInfo = extractFrontmatterLines(content);
-    if (!frontmatterInfo) {
+    const parsed = extractFrontmatterAndBody(content);
+    if (!parsed.frontmatter) {
         return { terms: [], termsReferences: [], termLocations: new Map() };
     }
 
-    const frontmatterText = frontmatterInfo.lines.join("\n");
-    let frontmatter: Record<string, unknown> = {};
-
-    try {
-        const parsed = yaml.load(frontmatterText);
-        if (isValidObject(parsed)) {
-            frontmatter = parsed;
-        }
-    } catch {
-        return { terms: [], termsReferences: [], termLocations: new Map() };
-    }
+    const frontmatter: FrontmatterData = parsed.frontmatter;
 
     const termsRaw = frontmatter.terms;
     const terms = Array.isArray(termsRaw) ? termsRaw.filter(isTermDefinition) : [];
@@ -154,7 +45,8 @@ function parseTermsFromContent(content: string): TermsParseResult {
         ? referencesRaw.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
         : [];
 
-    const termLocations = buildTermLocationMap(frontmatterInfo.lines, frontmatterInfo.startLineNumber);
+    const frontmatterInfo = extractFrontmatterLines(content);
+    const termLocations = frontmatterInfo ? buildTermLocationMap(frontmatterInfo.lines, frontmatterInfo.startLineNumber) : new Map<string, TermLocation>();
 
     return { terms, termsReferences, termLocations };
 }

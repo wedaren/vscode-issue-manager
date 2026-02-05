@@ -65,8 +65,109 @@ export interface FrontmatterData {
     [key: string]: unknown; // 支持其他字段
 }
 
-function isValidObject(value: unknown): value is Record<string, unknown> {
+export function isValidObject(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * 提取 frontmatter 的行（不包括起始/结束的 '---'），以及 frontmatter 在文件中的起始行号
+ */
+export function extractFrontmatterLines(content: string): { lines: string[]; startLineNumber: number } | null {
+    if (!content.startsWith("---")) {
+        return null;
+    }
+
+    const lines = content.split(/\r?\n/);
+    let endIndex = -1;
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === "---") {
+            endIndex = i;
+            break;
+        }
+    }
+
+    if (endIndex === -1) {
+        return null;
+    }
+
+    const frontmatterLines = lines.slice(1, endIndex);
+    const startLineNumber = 2; // frontmatter 第一行在文件的第 2 行
+    return { lines: frontmatterLines, startLineNumber };
+}
+
+export function normalizeYamlScalar(value: string): string {
+    let result = value.trim();
+    if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith("'") && result.endsWith("'"))) {
+        result = result.slice(1, -1).trim();
+    }
+    return result;
+}
+
+/**
+ * 从 frontmatter 的行中构建术语位置索引（name -> {line,column}）
+ */
+export function buildTermLocationMap(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
+    const map = new Map<string, { line: number; column: number }>();
+
+    let termsLineIndex = -1;
+    let termsIndent = 0;
+
+    for (let i = 0; i < frontmatterLines.length; i++) {
+        const line = frontmatterLines[i];
+        const match = line.match(/^(\s*)terms\s*:\s*$/);
+        if (match) {
+            termsLineIndex = i;
+            termsIndent = match[1].length;
+            break;
+        }
+    }
+
+    if (termsLineIndex === -1) {
+        return map;
+    }
+
+    for (let i = termsLineIndex + 1; i < frontmatterLines.length; i++) {
+        const line = frontmatterLines[i];
+        if (!line.trim()) {
+            continue;
+        }
+        const indentMatch = line.match(/^(\s*)/);
+        const indent = indentMatch ? indentMatch[1].length : 0;
+
+        if (indent <= termsIndent && /^\s*\w+\s*:/u.test(line)) {
+            break;
+        }
+
+        const nameMatch = line.match(/^\s*-\s*name\s*:\s*(.+?)\s*$/u);
+        let rawName: string | undefined;
+        let valueIndex = -1;
+
+        if (nameMatch) {
+            rawName = nameMatch[1];
+            valueIndex = line.indexOf(rawName);
+        } else {
+            const inlineMatch = line.match(/\bname\s*:\s*([^,#}]+?)(?:\s*(?:,|$|\}))/u);
+            if (inlineMatch) {
+                rawName = inlineMatch[1];
+                valueIndex = line.indexOf(rawName);
+            }
+        }
+
+        if (!rawName) {
+            continue;
+        }
+
+        const name = normalizeYamlScalar(rawName);
+        if (!name || map.has(name)) {
+            continue;
+        }
+
+        const lineNumber = startLineNumber + i;
+        const columnNumber = valueIndex >= 0 ? valueIndex + 1 : 1;
+        map.set(name, { line: lineNumber, column: columnNumber });
+    }
+
+    return map;
 }
 
 /**
@@ -91,7 +192,7 @@ export function extractIssueTitleFromFrontmatter(
 /**
  * 分离 frontmatter 与正文，返回解析后的 frontmatter（如果存在）和剩余 body 文本。
  */
-function extractFrontmatterAndBody(content: string): {
+export function extractFrontmatterAndBody(content: string): {
     frontmatter: FrontmatterData | null;
     body: string;
 } {
