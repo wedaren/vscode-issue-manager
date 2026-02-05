@@ -96,6 +96,13 @@ export function extractFrontmatterLines(content: string): { lines: string[]; sta
     return { lines: frontmatterLines, startLineNumber };
 }
 
+export function normalizeYamlScalar(value: string): string {
+    let result = value.trim();
+    if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith("'") && result.endsWith("'"))) {
+        result = result.slice(1, -1).trim();
+    }
+    return result;
+}
 
 function offsetToLineColumn(text: string, offset: number): { line: number; column: number } {
     const safeOffset = Math.max(0, Math.min(offset, text.length));
