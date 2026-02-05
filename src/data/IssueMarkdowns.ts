@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import * as yaml from "js-yaml";
+import * as jsYaml from "js-yaml";
+import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import * as os from "os";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
@@ -95,18 +96,77 @@ export function extractFrontmatterLines(content: string): { lines: string[]; sta
     return { lines: frontmatterLines, startLineNumber };
 }
 
-export function normalizeYamlScalar(value: string): string {
-    let result = value.trim();
-    if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith("'") && result.endsWith("'"))) {
-        result = result.slice(1, -1).trim();
+
+function offsetToLineColumn(text: string, offset: number): { line: number; column: number } {
+    const safeOffset = Math.max(0, Math.min(offset, text.length));
+    let line = 1;
+    let lastLineStart = 0;
+    for (let i = 0; i < safeOffset; i++) {
+        if (text.charCodeAt(i) === 10) {
+            line += 1;
+            lastLineStart = i + 1;
+        }
     }
-    return result;
+    const column = safeOffset - lastLineStart + 1;
+    return { line, column };
 }
 
-/**
- * 从 frontmatter 的行中构建术语位置索引（name -> {line,column}）
- */
-export function buildTermLocationMap(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
+function buildTermLocationMapFromYaml(frontmatterText: string, startLineNumber: number): Map<string, { line: number; column: number }> {
+    const map = new Map<string, { line: number; column: number }>();
+    if (!frontmatterText.trim()) {
+        return map;
+    }
+
+    let doc;
+    try {
+        doc = parseDocument(frontmatterText);
+    } catch {
+        return map;
+    }
+
+    if (!doc || !doc.contents || !isMap(doc.contents)) {
+        return map;
+    }
+
+    const termsNode = doc.contents.get("terms", true);
+    if (!termsNode || !isSeq(termsNode)) {
+        return map;
+    }
+
+    for (const item of termsNode.items) {
+        if (!item || !isMap(item)) {
+            continue;
+        }
+
+        const nameNode = item.get("name", true);
+        if (!nameNode || !isScalar(nameNode)) {
+            continue;
+        }
+
+        const nameValue = nameNode.value;
+        if (typeof nameValue !== "string") {
+            continue;
+        }
+
+        const name = nameValue.trim();
+        if (!name || map.has(name)) {
+            continue;
+        }
+
+        const range = nameNode.range;
+        if (!range || range.length < 2) {
+            continue;
+        }
+
+        const pos = offsetToLineColumn(frontmatterText, range[0]);
+        const lineNumber = startLineNumber + (pos.line - 1);
+        map.set(name, { line: lineNumber, column: pos.column });
+    }
+
+    return map;
+}
+
+function buildTermLocationMapByRegex(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
     const map = new Map<string, { line: number; column: number }>();
 
     let termsLineIndex = -1;
@@ -171,6 +231,19 @@ export function buildTermLocationMap(frontmatterLines: string[], startLineNumber
 }
 
 /**
+ * 从 frontmatter 的行中构建术语位置索引（name -> {line,column}）
+ */
+export function buildTermLocationMap(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
+    const frontmatterText = frontmatterLines.join("\n");
+    const parsed = buildTermLocationMapFromYaml(frontmatterText, startLineNumber);
+    if (parsed.size > 0) {
+        return parsed;
+    }
+
+    return buildTermLocationMapByRegex(frontmatterLines, startLineNumber);
+}
+
+/**
  * 从 frontmatter 的 `issue_title` 字段安全提取字符串标题（支持 string 或 string[]）。
  */
 export function extractIssueTitleFromFrontmatter(
@@ -213,7 +286,7 @@ export function extractFrontmatterAndBody(content: string): {
     const body = lines.slice(endIndex + 1).join("\n");
     const yamlContent = lines.slice(1, endIndex).join("\n");
     try {
-        const parsed = yaml.load(yamlContent);
+        const parsed = jsYaml.load(yamlContent);
         if (isValidObject(parsed)) {
             return { frontmatter: parsed as FrontmatterData, body };
         }
@@ -462,7 +535,7 @@ export async function updateIssueMarkdownFrontmatter(
         }
 
         // 生成新内容
-        const fmYaml = yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim();
+        const fmYaml = jsYaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim();
         const newContent = `---\n${fmYaml}\n---\n${body}`;
 
         // 应用文件编辑
@@ -503,7 +576,7 @@ export async function updateIssueMarkdownBody(
 
         // 生成新内容（保留原有 frontmatter）
         const fm: FrontmatterData | null = frontmatter ? { ...frontmatter } : null;
-        const fmYaml = fm ? yaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim() : null;
+        const fmYaml = fm ? jsYaml.dump(fm, { flowLevel: -1, lineWidth: -1 }).trim() : null;
         const newContent = fmYaml ? `---\n${fmYaml}\n---\n${newBody}` : newBody;
 
         // 应用文件编辑
@@ -557,7 +630,7 @@ export async function createIssueMarkdown(opts?: {
 
         // 生成内容（包含 frontmatter，如果有的话）
         const fmYaml = frontmatter
-            ? yaml.dump(frontmatter, { flowLevel: -1, lineWidth: -1 }).trim()
+            ? jsYaml.dump(frontmatter, { flowLevel: -1, lineWidth: -1 }).trim()
             : null;
         const content = fmYaml ? `---\n${fmYaml}\n---\n${markdownBody}` : markdownBody;
 

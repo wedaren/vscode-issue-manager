@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { parseLinkedFileString, type TermDefinition, extractFrontmatterLines, normalizeYamlScalar, buildTermLocationMap, isValidObject, extractFrontmatterAndBody, FrontmatterData } from "../data/IssueMarkdowns";
+import { type TermDefinition, extractFrontmatterLines, buildTermLocationMap, isValidObject, extractFrontmatterAndBody, FrontmatterData, getIssueMarkdown } from "../data/IssueMarkdowns";
 import { Logger } from "../core/utils/Logger";
+import { parseFileLink } from "./fileLinkFormatter";
+import { resolveIssueUri } from "./pathUtils";
 
 export interface TermLocation {
     line: number;
@@ -51,44 +53,6 @@ function parseTermsFromContent(content: string): TermsParseResult {
     return { terms, termsReferences, termLocations };
 }
 
-function resolveReferenceUris(
-    documentUri: vscode.Uri,
-    issueDir: string,
-    references: string[]
-): vscode.Uri[] {
-    const result: vscode.Uri[] = [];
-    const seen = new Set<string>();
-
-    for (const raw of references) {
-        const parsed = parseLinkedFileString(raw);
-        let candidatePath: string | undefined;
-
-        if (parsed.fsPath) {
-            candidatePath = parsed.fsPath;
-        } else if (parsed.linkPath) {
-            candidatePath = path.isAbsolute(parsed.linkPath)
-                ? parsed.linkPath
-                : path.resolve(issueDir, parsed.linkPath);
-        }
-
-        if (!candidatePath || !candidatePath.toLowerCase().endsWith(".md")) {
-            continue;
-        }
-
-        const normalized = path.normalize(candidatePath);
-        if (normalized === path.normalize(documentUri.fsPath)) {
-            continue;
-        }
-
-        if (seen.has(normalized)) {
-            continue;
-        }
-        seen.add(normalized);
-        result.push(vscode.Uri.file(normalized));
-    }
-
-    return result;
-}
 
 async function readFileContent(uri: vscode.Uri): Promise<string | null> {
     try {
@@ -117,14 +81,25 @@ export async function collectTermsForDocument(
         });
     }
 
-    const referenceUris = resolveReferenceUris(document.uri, issueDir, currentParsed.termsReferences);
+    const fileLinks = currentParsed.termsReferences
+        .map((ref) => parseFileLink(ref))
+        .filter((link): link is { filePath: string } =>
+            isValidObject(link) &&
+            typeof (link as { filePath?: unknown }).filePath === "string" &&
+            (link as { filePath: string }).filePath.trim().length > 0
+        );
+
+    const resolvedUris = fileLinks
+        .map((link) => resolveIssueUri(link.filePath))
+        .filter((uri): uri is vscode.Uri => uri !== undefined && (uri as vscode.Uri).fsPath !== undefined);
 
     const referenceContents = await Promise.all(
-        referenceUris.map(async (uri) => ({ uri, content: await readFileContent(uri) }))
+        resolvedUris.map(async (uri) => ({ uri, content: await readFileContent(uri) }))
     );
 
     for (const { uri, content } of referenceContents) {
         if (!content) {
+            Logger.getInstance().warn(`无法读取术语参考文件: ${uri.fsPath}`);
             continue;
         }
         const parsed = parseTermsFromContent(content);
