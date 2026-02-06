@@ -76,13 +76,17 @@ export function parseFileLink(link: string): FileLocation | null {
     // 去除 [[ ]] 包裹
     const cleaned = link.trim().replace(/^\[\[|\]\]$/g, '');
     
-    // 检查是否以 file: 开头
-    if (!cleaned.startsWith('file:')) {
-        return null;
+    // 支持两种输入：
+    // - 带前缀的 [[file:...]] / file:... 格式
+    // - 直接传入的路径字符串（例如 IssueDir/xxxx.md 或 相对/绝对路径）
+    let content: string;
+    if (cleaned.startsWith('file:')) {
+        // 移除 file: 前缀
+        content = cleaned.substring(5);
+    } else {
+        // 直接将 cleaned 作为路径处理
+        content = cleaned;
     }
-    
-    // 移除 file: 前缀
-    const content = cleaned.substring(5);
     
     // 分离路径和 fragment
     const hashIndex = content.indexOf('#');
