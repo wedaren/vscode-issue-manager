@@ -1318,7 +1318,7 @@
         "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured",
         "args": {
-          "mode": "issue"
+          "mode": "vtime"
         }
       },
       {

@@ -4,6 +4,7 @@ import { getAllIssueMarkdowns, getIssueMarkdownTitleFromCache } from "../data/Is
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "./openIssueNode";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
+import { formatCompactDateTime, formatRelativeTime } from "../utils/dateUtils";
 
 type SortBy = "mtime" | "ctime" | "vtime";
 
@@ -16,7 +17,9 @@ function toItem(m: { title: string; uri: vscode.Uri; mtime: number; ctime: numbe
     } else {
         time = m.ctime;
     }
-    const desc = new Date(time).toLocaleString() || "Unknown";
+    const timestamp = new Date(time);
+    const desc =  `${formatRelativeTime(timestamp)} · ${formatCompactDateTime(timestamp)} (${timestamp.toLocaleString()})` ;
+
     return {
         label: m.title,
         description: desc,
