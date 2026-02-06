@@ -7,16 +7,16 @@ import { getIssueNodeById } from '../data/issueTreeManager';
  * @param issueId Issue ID
  */
 export async function quickPeekIssue(issueId: string): Promise<void> {
-    try {
-        // 1. 保存当前活动编辑器和当前编辑器组数量
-        const currentEditor = vscode.window.activeTextEditor;
-        const currentViewColumn = currentEditor?.viewColumn;
-        
-        // 获取当前所有可见编辑器组
-        const tabGroups = vscode.window.tabGroups;
-        const currentGroupCount = tabGroups.all.length;
+    await openIssueInSplit(issueId, false);
+}
 
-        // 2. 获取 Issue 节点
+export async function quickPeekIssueEvenSplit(issueId: string): Promise<void> {
+    await openIssueInSplit(issueId, true);
+}
+
+async function openIssueInSplit(issueId: string, evenSplit: boolean): Promise<void> {
+    try {
+        // 1. 获取 Issue 节点
         const node = await getIssueNodeById(issueId);
         if (!node || !node.resourceUri) {
             vscode.window.showErrorMessage(`未找到 Issue: ${issueId}`);
@@ -24,8 +24,15 @@ export async function quickPeekIssue(issueId: string): Promise<void> {
         }
 
         const issueUri = node.resourceUri.with({ query: `issueId=${encodeURIComponent(issueId)}` });
-        await vscode.window.showTextDocument(issueUri, { preview: true, viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+        await vscode.window.showTextDocument(issueUri, {
+            preview: true,
+            viewColumn: vscode.ViewColumn.Beside,
+            preserveFocus: true
+        });
 
+        if (evenSplit) {
+            await vscode.commands.executeCommand('workbench.action.evenEditorWidths');
+        }
     } catch (error) {
         console.error('快速查看 Issue 失败', error);
         vscode.window.showErrorMessage('快速查看 Issue 失败');
@@ -46,6 +53,16 @@ export function registerQuickPeekIssue(context: vscode.ExtensionContext): void {
             const issueId = typeof args[0] === 'string' ? args[0] : String(args[0]);
 
             await quickPeekIssue(issueId);
+        }),
+        vscode.commands.registerCommand('issueManager.quickPeekIssueEvenSplit', async (...args: unknown[]) => {
+            if (args.length < 1) {
+                vscode.window.showErrorMessage('QuickPeekIssueEvenSplit 命令需要一个 Issue ID 参数');
+                return;
+            }
+
+            const issueId = typeof args[0] === 'string' ? args[0] : String(args[0]);
+
+            await quickPeekIssueEvenSplit(issueId);
         })
     );
 }
