@@ -76,11 +76,16 @@ export function parseFileLink(link: string): FileLocation | null {
     // 去除 [[ ]] 包裹
     const cleaned = link.trim().replace(/^\[\[|\]\]$/g, '');
     
-    // 支持两种输入：
+    // 支持三种输入：
+    // - 完整的 Markdown 内联链接，如 `[text](path)`
     // - 带前缀的 [[file:...]] / file:... 格式
     // - 直接传入的路径字符串（例如 IssueDir/xxxx.md 或 相对/绝对路径）
+    // 优先识别 Markdown 内联链接
+    const mdInlineMatch = cleaned.match(/^\[[^\]]+\]\(([^)]+)\)$/);
     let content: string;
-    if (cleaned.startsWith('file:')) {
+    if (mdInlineMatch) {
+        content = mdInlineMatch[1].trim();
+    } else if (cleaned.startsWith('file:')) {
         // 移除 file: 前缀
         content = cleaned.substring(5);
     } else {
