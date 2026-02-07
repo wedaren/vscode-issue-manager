@@ -82,7 +82,7 @@ export async function collectTermsForDocument(
     }
 
     const fileLinks = currentParsed.termsReferences
-        .map((ref) => parseFileLink(ref))
+        .map((ref) => parseFileLink(ref, issueDir))
         .filter((link): link is { filePath: string } =>
             isValidObject(link) &&
             typeof (link as { filePath?: unknown }).filePath === "string" &&
