@@ -97,11 +97,10 @@ export function parseFileLink(link: string, baseIssueDir?: string): FileLocation
 
     // 如果提供了 baseIssueDir，则把以 IssueDir 开头的路径映射到 baseIssueDir
     if (baseIssueDir) {
-        // 支持 IssueDir/ 或 IssueDir: 前缀
-        const issueDirPrefix = /^IssueDir(?::|[\\/]|$)/i;
+        const issueDirPrefix = /^IssueDir(?:[\\/]|$)/i;
         if (issueDirPrefix.test(content)) {
-            // 将 IssueDir:relative 或 IssueDir/relative 替换为 baseIssueDir/relative
-            const relative = content.replace(/^IssueDir(?::|[\\/]{0,1})/i, '');
+            // 将 IssueDir/relative 替换为 baseIssueDir/relative
+            const relative = content.replace(/^IssueDir[\\/]{0,1}/i, '');
             content = path.join(baseIssueDir, relative);
         }
     }
@@ -182,6 +181,6 @@ export function createLocationFromEditor(editor: {
  * @param link 链接字符串
  * @returns 是否为有效的文件链接格式
  */
-export function isValidFileLink(link: string): boolean {
-    return parseFileLink(link) !== null;
+export function isValidFileLink(link: string, baseIssueDir?: string): boolean {
+    return parseFileLink(link, baseIssueDir) !== null;
 }
