@@ -72,7 +72,9 @@ export function formatFileLink(location: FileLocation): string {
  * @param link 链接字符串
  * @returns 解析后的位置信息，如果解析失败返回 null
  */
-export function parseFileLink(link: string): FileLocation | null {
+import * as path from 'path';
+
+export function parseFileLink(link: string, baseIssueDir?: string): FileLocation | null {
     // 去除 [[ ]] 包裹
     const cleaned = link.trim().replace(/^\[\[|\]\]$/g, '');
     
@@ -91,6 +93,16 @@ export function parseFileLink(link: string): FileLocation | null {
     } else {
         // 直接将 cleaned 作为路径处理
         content = cleaned;
+    }
+
+    // 如果提供了 baseIssueDir，则把以 IssueDir 开头的路径映射到 baseIssueDir
+    if (baseIssueDir) {
+        const issueDirPrefix = /^IssueDir(?:[\\/]|$)/i;
+        if (issueDirPrefix.test(content)) {
+            // 将 IssueDir/relative 替换为 baseIssueDir/relative
+            const relative = content.replace(/^IssueDir[\\/]{0,1}/i, '');
+            content = path.join(baseIssueDir, relative);
+        }
     }
     
     // 分离路径和 fragment

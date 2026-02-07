@@ -72,7 +72,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
 
             // 使用统一的解析器解析位置信息
             const linkText = `[[file:${filePath}]]`;
-            const fileLocation = parseFileLink(linkText);
+            const fileLocation = parseFileLink(linkText, issueDir);
             
             if (!fileLocation) {
                 // 解析失败，跳过
