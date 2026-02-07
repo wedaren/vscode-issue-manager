@@ -43,7 +43,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             const startIndex = match.index! + match[1].length + 3;
             const endIndex = startIndex + linkPath.length;
 
-            const parsed = await this.parseLinkPath(linkPath, document, issueDir);
+            const parsed = await parseIssueLinkPath(linkPath, document, issueDir);
             if (parsed) {
                 const range = new vscode.Range(
                     document.positionAt(startIndex),
@@ -72,7 +72,7 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
 
             // 使用统一的解析器解析位置信息
             const linkText = `[[file:${filePath}]]`;
-            const fileLocation = parseFileLink(linkText);
+            const fileLocation = parseFileLink(linkText, issueDir);
             
             if (!fileLocation) {
                 // 解析失败，跳过
@@ -243,97 +243,157 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
         return links;
     }
 
-    /**
-     * 解析链接路径，提取文件路径和查询参数
-     */
-    private async parseLinkPath(
-        linkPath: string,
+}
+
+export class IssueDocumentHoverProvider implements vscode.HoverProvider {
+    async provideHover(
         document: vscode.TextDocument,
-        issueDir: string
-    ): Promise<{ uri: vscode.Uri; tooltip?: string } | null> {
-        try {
-            // 分离路径和查询参数
-            const queryIndex = linkPath.indexOf('?');
-            let filePath: string;
-            let queryString: string | undefined;
-
-            if (queryIndex !== -1) {
-                filePath = linkPath.substring(0, queryIndex);
-                queryString = linkPath.substring(queryIndex + 1);
-            } else {
-                filePath = linkPath;
-            }
-
-            // 跳过外部链接（http/https）
-            if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-                return null;
-            }
-
-            // 跳过锚点链接
-            if (filePath.startsWith('#')) {
-                return null;
-            }
-
-            // 解析相对路径
-            let absolutePath: string;
-            if (path.isAbsolute(filePath)) {
-                absolutePath = filePath;
-            } else {
-                // 相对于当前文档的路径
-                const currentDir = path.dirname(document.uri.fsPath);
-                absolutePath = path.resolve(currentDir, filePath);
-            }
-
-            // 确保路径在 issueDir 内，使用 path.relative 进行更健壮的验证
-            const normalizedIssuePath = path.normalize(issueDir);
-            let normalizedAbsPath = path.normalize(absolutePath);
-            
-            // 使用 path.relative 检查路径关系
-            let relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
-            
-            // 如果相对路径以 .. 开头，说明不在 issueDir 内
-            if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-                // 路径不在 issueDir 内，尝试将其作为相对于 issueDir 的路径
-                absolutePath = path.join(issueDir, filePath);
-                normalizedAbsPath = path.normalize(absolutePath);
-                relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
-                
-                // 再次验证路径在 issueDir 内，防止 ../ 逃逸
-                if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-                    return null;
-                }
-            }
-
-            // 创建 URI
-            let uri = vscode.Uri.file(absolutePath);
-
-            const issueNode = await getSingleIssueNodeByUri(uri);
-
-
-            if (queryString) {
-                const issueIdMatch = queryString.match(/(?:^|&)issueId=([^&]+)/);
-                if (issueIdMatch) {
-                    const issueId = decodeURIComponent(issueIdMatch[1]);
-                    return makeQuickPeek(issueId);
-                }
-                // 保留其余查询参数在文件 URI 上
-                uri = uri.with({ query: queryString });
-            } else if (issueNode) {
-                return makeQuickPeek(issueNode.id);
-            }
-
-            return { uri };
-        } catch (error) {
-            // 解析失败，使用 Logger 记录
-            Logger.getInstance().error(`解析链接失败: ${linkPath}`, error);
-            return null;
+        position: vscode.Position,
+        token: vscode.CancellationToken
+    ): Promise<vscode.Hover | undefined> {
+        if (document.languageId !== 'markdown') {
+            return;
         }
+
+        const issueDir = getIssueDir();
+        if (!issueDir) {
+            return;
+        }
+
+        const text = document.getText();
+        const inlineLinkPattern = /\x5B([^\]]+)\x5D\(([^\s)]+)\)/g;
+
+        for (const match of text.matchAll(inlineLinkPattern)) {
+            if (token.isCancellationRequested) {
+                return;
+            }
+
+            const linkPath = match[2];
+            const linkStartIndex = match.index!;
+            const linkEndIndex = linkStartIndex + match[0].length;
+            const range = new vscode.Range(
+                document.positionAt(linkStartIndex),
+                document.positionAt(linkEndIndex)
+            );
+
+            if (!range.contains(position)) {
+                continue;
+            }
+
+            const parsed = await parseIssueLinkPath(linkPath, document, issueDir);
+            if (!parsed?.issueId) {
+                return;
+            }
+
+            const evenSplitCmdUri = `command:issueManager.quickPeekIssueEvenSplit?${encodeURIComponent(JSON.stringify([parsed.issueId]))}`;
+            const tooltip = new vscode.MarkdownString(
+                `快速查看 Issue (${parsed.issueId})\n\n[$(split-horizontal) 对半打开](${evenSplitCmdUri})`,
+                true
+            );
+            tooltip.isTrusted = true;
+            return new vscode.Hover(tooltip, range);
+        }
+
+        return;
     }
 }
 
-function makeQuickPeek(id: string) {
+interface ParsedIssueLink {
+    uri: vscode.Uri;
+    tooltip?: string;
+    issueId?: string;
+}
+
+async function parseIssueLinkPath(
+    linkPath: string,
+    document: vscode.TextDocument,
+    issueDir: string
+): Promise<ParsedIssueLink | null> {
+    try {
+        // 分离路径和查询参数
+        const queryIndex = linkPath.indexOf('?');
+        let filePath: string;
+        let queryString: string | undefined;
+
+        if (queryIndex !== -1) {
+            filePath = linkPath.substring(0, queryIndex);
+            queryString = linkPath.substring(queryIndex + 1);
+        } else {
+            filePath = linkPath;
+        }
+
+        // 跳过外部链接（http/https）
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+            return null;
+        }
+
+        // 跳过锚点链接
+        if (filePath.startsWith('#')) {
+            return null;
+        }
+
+        // 解析相对路径
+        let absolutePath: string;
+        const issueDirPrefix = /^IssueDir[\\/]/i;
+        if (issueDirPrefix.test(filePath)) {
+            const relativeToIssueDir = filePath.replace(issueDirPrefix, '');
+            absolutePath = path.resolve(issueDir, relativeToIssueDir);
+        } else if (path.isAbsolute(filePath)) {
+            absolutePath = filePath;
+        } else {
+            // 相对于当前文档的路径
+            const currentDir = path.dirname(document.uri.fsPath);
+            absolutePath = path.resolve(currentDir, filePath);
+        }
+
+        // 确保路径在 issueDir 内，使用 path.relative 进行更健壮的验证
+        const normalizedIssuePath = path.normalize(issueDir);
+        let normalizedAbsPath = path.normalize(absolutePath);
+        
+        // 使用 path.relative 检查路径关系
+        let relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
+        
+        // 如果相对路径以 .. 开头，说明不在 issueDir 内
+        if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+            // 路径不在 issueDir 内，尝试将其作为相对于 issueDir 的路径
+            absolutePath = path.join(issueDir, filePath);
+            normalizedAbsPath = path.normalize(absolutePath);
+            relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
+            
+            // 再次验证路径在 issueDir 内，防止 ../ 逃逸
+            if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+                return null;
+            }
+        }
+
+        // 创建 URI
+        let uri = vscode.Uri.file(absolutePath);
+
+        const issueNode = await getSingleIssueNodeByUri(uri);
+
+        if (queryString) {
+            const issueIdMatch = queryString.match(/(?:^|&)issueId=([^&]+)/);
+            if (issueIdMatch) {
+                const issueId = decodeURIComponent(issueIdMatch[1]);
+                return makeQuickPeek(issueId);
+            }
+            // 保留其余查询参数在文件 URI 上
+            uri = uri.with({ query: queryString });
+        } else if (issueNode) {
+            return makeQuickPeek(issueNode.id);
+        }
+
+        return { uri };
+    } catch (error) {
+        // 解析失败，使用 Logger 记录
+        Logger.getInstance().error(`解析链接失败: ${linkPath}`, error);
+        return null;
+    }
+}
+
+function makeQuickPeek(id: string): ParsedIssueLink {
     const cmdUri = vscode.Uri.parse(
         `command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([id]))}`
     );
-    return { uri: cmdUri, tooltip: `快速查看 Issue (${id})`};
+    return { uri: cmdUri, tooltip: `快速查看 Issue (${id})`, issueId: id };
 };

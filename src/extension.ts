@@ -5,7 +5,7 @@ import { ChromeIntegrationServer } from './integration/ChromeIntegrationServer';
 import { SharedConfig } from './config/SharedConfig';
 import { IssueNodeCompletionProvider } from './providers/IssueNodeCompletionProvider';
 import { IssueTermCompletionProvider } from './providers/IssueTermCompletionProvider';
-import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
+import { IssueDocumentHoverProvider, IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
 import { CsvDocumentLinkProvider } from './providers/CsvDocumentLinkProvider';
 import { registerOpenInSplit } from './commands/openInSplit';
 import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
@@ -53,6 +53,14 @@ export function activate(context: vscode.ExtensionContext) {
 		linkProvider
 	);
 	context.subscriptions.push(linkProviderDisposable);
+
+	// 注册 Issue 文档 Hover 提示（支持 Markdown 按钮）
+	const hoverProvider = new IssueDocumentHoverProvider();
+	const hoverProviderDisposable = vscode.languages.registerHoverProvider(
+		'markdown',
+		hoverProvider
+	);
+	context.subscriptions.push(hoverProviderDisposable);
 
 	// 注册 CSV 文档链接提供器（为特定列生成可点击链接）
 	try {

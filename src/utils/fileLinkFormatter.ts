@@ -72,17 +72,38 @@ export function formatFileLink(location: FileLocation): string {
  * @param link 链接字符串
  * @returns 解析后的位置信息，如果解析失败返回 null
  */
-export function parseFileLink(link: string): FileLocation | null {
+import * as path from 'path';
+
+export function parseFileLink(link: string, baseIssueDir?: string): FileLocation | null {
     // 去除 [[ ]] 包裹
     const cleaned = link.trim().replace(/^\[\[|\]\]$/g, '');
     
-    // 检查是否以 file: 开头
-    if (!cleaned.startsWith('file:')) {
-        return null;
+    // 支持三种输入：
+    // - 完整的 Markdown 内联链接，如 `[text](path)`
+    // - 带前缀的 [[file:...]] / file:... 格式
+    // - 直接传入的路径字符串（例如 IssueDir/xxxx.md 或 相对/绝对路径）
+    // 优先识别 Markdown 内联链接
+    const mdInlineMatch = cleaned.match(/^\[[^\]]+\]\(([^)]+)\)$/);
+    let content: string;
+    if (mdInlineMatch) {
+        content = mdInlineMatch[1].trim();
+    } else if (cleaned.startsWith('file:')) {
+        // 移除 file: 前缀
+        content = cleaned.substring(5);
+    } else {
+        // 直接将 cleaned 作为路径处理
+        content = cleaned;
     }
-    
-    // 移除 file: 前缀
-    const content = cleaned.substring(5);
+
+    // 如果提供了 baseIssueDir，则把以 IssueDir 开头的路径映射到 baseIssueDir
+    if (baseIssueDir) {
+        const issueDirPrefix = /^IssueDir(?:[\\/]|$)/i;
+        if (issueDirPrefix.test(content)) {
+            // 将 IssueDir/relative 替换为 baseIssueDir/relative
+            const relative = content.replace(/^IssueDir[\\/]{0,1}/i, '');
+            content = path.join(baseIssueDir, relative);
+        }
+    }
     
     // 分离路径和 fragment
     const hashIndex = content.indexOf('#');
@@ -160,6 +181,6 @@ export function createLocationFromEditor(editor: {
  * @param link 链接字符串
  * @returns 是否为有效的文件链接格式
  */
-export function isValidFileLink(link: string): boolean {
-    return parseFileLink(link) !== null;
+export function isValidFileLink(link: string, baseIssueDir?: string): boolean {
+    return parseFileLink(link, baseIssueDir) !== null;
 }
