@@ -6,6 +6,7 @@ import { SharedConfig } from './config/SharedConfig';
 import { IssueNodeCompletionProvider } from './providers/IssueNodeCompletionProvider';
 import { IssueTermCompletionProvider } from './providers/IssueTermCompletionProvider';
 import { IssueDocumentLinkProvider } from './providers/IssueDocumentLinkProvider';
+import { CsvDocumentLinkProvider } from './providers/CsvDocumentLinkProvider';
 import { registerOpenInSplit } from './commands/openInSplit';
 import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
 import { registerLinkWorkspaceToIssue } from './commands/linkWorkspaceToIssue';
@@ -53,6 +54,15 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(linkProviderDisposable);
 
+	// 注册 CSV 文档链接提供器（为特定列生成可点击链接）
+	try {
+		const csvLinkProvider = new CsvDocumentLinkProvider();
+		const csvLinkDisposable = vscode.languages.registerDocumentLinkProvider({ language: 'csv', scheme: 'file' }, csvLinkProvider);
+		context.subscriptions.push(csvLinkDisposable);
+	} catch (err) {
+		console.error('Failed to register CSV link provider:', err);
+	}
+
 	// 在 commands 目录中注册 openInSplit 命令
 	registerOpenInSplit(context);
 
@@ -64,6 +74,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册快速查看 Issue 命令
 	registerQuickPeekIssue(context);
+
+	// 注册 CSV 搜索命令（由文档链接触发）
+	const csvSearchDisposable = vscode.commands.registerCommand('issueManager.csvSearch', (value: string) => {
+		if (!value) return;
+		void vscode.commands.executeCommand('workbench.action.findInFiles', { query: value });
+	});
+	context.subscriptions.push(csvSearchDisposable);
 
 	// 注册 Copilot 虚拟文档提供者（用于展示不提示保存的虚拟编辑窗口）
 	const providerDisposable = vscode.workspace.registerTextDocumentContentProvider('copilot', copilotDocumentProvider);

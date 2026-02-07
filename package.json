@@ -22,6 +22,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.csvSearch",
+        "title": "CSV: 在工作区中搜索该值",
+        "category": "Issue Manager",
+        "icon": "$(search)"
+      },
+      {
         "command": "issueManager.selectOrCreateIssue",
         "title": "查看或新建问题",
         "icon": "$(add)"
@@ -1486,6 +1492,12 @@
               }
             }
           }
+        },
+        "issueManager.csvSearch.enabledColumns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "为 CSV 指定可触发 Cmd+Click 搜索的列。支持列名或列索引（从 0 开始），例如 [\"Name\", \"0\"]。"
         },
         "issueManager.rss.contentProcessing.defaultPreset": {
           "type": "string",
