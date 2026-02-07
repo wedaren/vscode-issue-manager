@@ -334,9 +334,9 @@ async function parseIssueLinkPath(
 
         // 解析相对路径
         let absolutePath: string;
-        const issueDirPrefix = /^IssueDir[\\/]/i;
+        const issueDirPrefix = /^IssueDir(?::|[\\/]|$)/i;
         if (issueDirPrefix.test(filePath)) {
-            const relativeToIssueDir = filePath.replace(issueDirPrefix, '');
+            const relativeToIssueDir = filePath.replace(/^IssueDir(?::|[\\/]{0,1})/i, '');
             absolutePath = path.resolve(issueDir, relativeToIssueDir);
         } else if (path.isAbsolute(filePath)) {
             absolutePath = filePath;
