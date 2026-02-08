@@ -28,6 +28,15 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "插入 terms_reference 到当前编辑器",
+        description: "从包含术语的 Issue 文件中选择并插入到当前文件的 frontmatter.terms_references",
+        execute: () => {
+            vscode.commands.executeCommand(
+                "issueManager.marker.insertTermsReferencesToActiveEditor"
+            );
+        },
+    },
+    {
         label: "生成 Git 分支名",
         description: "基于活动编辑器内容生成 git 分支名并复制",
         execute: () => {
