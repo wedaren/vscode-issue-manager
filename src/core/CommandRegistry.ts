@@ -54,6 +54,7 @@ import {registerGenerateBriefSummaryCommand} from '../commands/generateBriefSumm
 import { registerGenerateProjectNameCommand, registerGenerateGitBranchCommand } from '../commands/nameGenerators';
 import { registerUnifiedQuickOpenCommand } from '../commands/unifiedQuickOpen';
 import { registerInsertMarksCommand } from '../commands/insertMarksCommand';
+import { registerInsertTermsReferenceCommand } from '../commands/insertTermsReferenceCommand';
 import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
@@ -991,6 +992,8 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerUnifiedQuickOpenCommand(this.context);
         // marker 插入到关联问题的命令
         registerInsertMarksCommand(this.context, this.markerManager);
+        // 插入 terms_references 到当前编辑器
+        registerInsertTermsReferenceCommand(this.context);
 
         // 深度调研问题（生成专业文档并落盘到 issueDir）
         registerDeepResearchIssueCommand(this.context);
