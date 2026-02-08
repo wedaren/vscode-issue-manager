@@ -47,8 +47,8 @@ export function registerInsertTermsReferenceCommand(context: vscode.ExtensionCon
                     const existingFsPaths = new Set<string>();
                     for (const r of existingRefsRaw) {
                         const m = String(r).match(/^\[[^\]]+\]\((IssueDir\/(.+?\.md))\)$/);
-                        if (m && m[1]) {
-                            const rel = m[1].substring('IssueDir/'.length);
+                        if (m && m[2]) {
+                            const rel = m[2];
                             existingFsPaths.add(path.normalize(path.join(issueDir, rel)));
                         }
                     }
@@ -113,5 +113,3 @@ export function registerInsertTermsReferenceCommand(context: vscode.ExtensionCon
         )
     );
 }
-
-export default registerInsertTermsReferenceCommand;
