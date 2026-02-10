@@ -43,33 +43,9 @@ export async function backgroundFillIssue(
 
                 const finalContent = doc.content && doc.content.length > 0 ? doc.content : `# ${doc.title || prompt}\n\n`;
 
-                // 在写回前检查 mtime 是否有变化
-                try {
-                    const statAfterCheck = await readFileStatSafe(uri);
-                    if (statBefore && statAfterCheck && statAfterCheck.mtime !== statBefore.mtime) {
-                        const pendingUri = await savePendingFile(uri, finalContent);
-                        pendingNotification = { message: '后台填充已完成，但目标文件已被修改。已将生成结果保存为临时文件。', action: '打开临时文件', uriToOpen: pendingUri };
-                        return { success: true, message: '目标文件已变更，内容保存为临时文件' };
-                    }
-                } catch (e) {
-                    // stat 失败则继续写入（可能文件不存在）
-                }
-
-                // 原子写回目标文件
-                await updateIssueMarkdownBody(uri, finalContent);
-
-                vscode.window.showInformationMessage('已完成。', '打开文件', '对半打开').then((choice) => {
-                    if (!choice) return;
-                    if (choice === '打开文件') {
-                        issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri);
-                    } else if (choice === '对半打开') {
-                        issueId
-                            ? openIssueNode(issueId, { viewColumn: vscode.ViewColumn.Beside })
-                            : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
-                    }
-                });
-
-                return { success: true };
+                // 使用复用的写回逻辑完成写入与交互
+                const applyResult = await applyGeneratedIssueContent(uri, finalContent, issueId);
+                return applyResult;
             }
         );
 
@@ -82,5 +58,58 @@ export async function backgroundFillIssue(
         return { success: false, message: String(error) };
     } finally {
         clear();
+    }
+}
+
+/**
+ * 将生成的 Markdown 内容写回目标 issue 文件，包含 mtime 冲突检测、临时文件保存与用户交互。
+ */
+export async function applyGeneratedIssueContent(
+    uri: vscode.Uri,
+    finalContent: string,
+    issueId?: string
+): Promise<{ success: boolean; message?: string }> {
+    try {
+        // 在写回前检查 mtime 是否有变化
+        const statBefore = await readFileStatSafe(uri);
+        try {
+            const statAfterCheck = await readFileStatSafe(uri);
+            if (statBefore && statAfterCheck && statAfterCheck.mtime !== statBefore.mtime) {
+                const pendingUri = await savePendingFile(uri, finalContent);
+                // 提示用户并提供打开临时文件操作
+                vscode.window
+                    .showInformationMessage(
+                        '后台填充已完成，但目标文件已被修改。已将生成结果保存为临时文件。',
+                        '打开临时文件'
+                    )
+                    .then((choice) => {
+                        if (choice === '打开临时文件' && pendingUri) {
+                            vscode.window.showTextDocument(pendingUri).catch(() => {});
+                        }
+                    });
+                return { success: true, message: '目标文件已变更，内容保存为临时文件' };
+            }
+        } catch (e) {
+            // stat 失败则继续写入（可能文件不存在）
+        }
+
+        // 原子写回目标文件
+        await updateIssueMarkdownBody(uri, finalContent);
+
+        vscode.window.showInformationMessage('已完成。', '打开文件', '对半打开').then((choice) => {
+            if (!choice) return;
+            if (choice === '打开文件') {
+                issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri);
+            } else if (choice === '对半打开') {
+                issueId
+                    ? openIssueNode(issueId, { viewColumn: vscode.ViewColumn.Beside })
+                    : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
+            }
+        });
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('applyGeneratedIssueContent error:', error);
+        return { success: false, message: String(error) };
     }
 }
