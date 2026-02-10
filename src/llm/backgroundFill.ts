@@ -83,8 +83,12 @@ export async function applyGeneratedIssueContent(
                         '打开临时文件'
                     )
                     .then((choice) => {
-                        if (choice === '打开临时文件' && pendingUri) {
-                            vscode.window.showTextDocument(pendingUri).catch(() => {});
+                            if (choice === '打开临时文件' && pendingUri) {
+                            // Thenable does not have .catch in typings; use then(onFulfilled, onRejected)
+                            vscode.window.showTextDocument(pendingUri).then(
+                                () => {},
+                                () => {}
+                            );
                         }
                     });
                 return { success: true, message: '目标文件已变更，内容保存为临时文件' };
@@ -99,11 +103,11 @@ export async function applyGeneratedIssueContent(
         vscode.window.showInformationMessage('已完成。', '打开文件', '对半打开').then((choice) => {
             if (!choice) return;
             if (choice === '打开文件') {
-                issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri);
+                issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri).then(() => {}, () => {});
             } else if (choice === '对半打开') {
                 issueId
                     ? openIssueNode(issueId, { viewColumn: vscode.ViewColumn.Beside })
-                    : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
+                    : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside }).then(() => {}, () => {});
             }
         });
 
