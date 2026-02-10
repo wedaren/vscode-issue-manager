@@ -36,14 +36,44 @@ import { getIssueDir } from '../config';
  */
 export function registerDisassociateIssueCommand(context: vscode.ExtensionContext) {
     const command = vscode.commands.registerCommand('issueManager.disassociateIssue', async (...args: unknown[]) => {
-        const node = (Array.isArray(args) && args.length > 0) ? args[0] : null;
+        // 支持从不同视图传入的参数：
+        // - IssueNode 对象（Overview/Focused）
+        // - vscode.TreeItem（Recent 视图会传入 TreeItem）
+        // - 其它情况下尝试从 Uri.query 中解析 issueId
+        const raw = (Array.isArray(args) && args.length > 0) ? args[0] : null;
 
-        if (!node || !isIssueNode(node) || node.id === 'placeholder-no-issues') {
-            return;
+        if (!raw) return;
+
+        // 尝试解析出节点 ID 和潜在的 IssueNode 对象
+        let nodeId: string | null = null;
+        let originalNode: IssueNode | undefined;
+
+        if (isIssueNode(raw)) {
+            originalNode = raw as IssueNode;
+            nodeId = stripFocusedId(originalNode.id);
+        } else if ((raw as any)?.id && typeof (raw as any).id === 'string') {
+            // TreeItem 或类似对象
+            nodeId = stripFocusedId((raw as any).id as string);
+        } else if ((raw as vscode.Uri) instanceof Object && (raw as vscode.Uri).scheme) {
+            // 可能直接传入了 Uri（带 query）
+            try {
+                const uri = raw as vscode.Uri;
+                const m = /issueId=([^&]+)/.exec(uri.query || '');
+                if (m && m[1]) {
+                    nodeId = decodeURIComponent(m[1]);
+                }
+            } catch {
+                // ignore
+            }
         }
 
-        // 如果有子节点，需要二次确认
-        if (node.children && node.children.length > 0) {
+        if (!nodeId) return;
+
+        // 如果是占位符或无效 id，则忽略
+        if (nodeId === 'placeholder-no-issues') return;
+
+        // 若原始节点存在且有子节点，提示用户
+        if (originalNode && originalNode.children && originalNode.children.length > 0) {
             const confirm = await vscode.window.showWarningMessage(
                 '该节点下包含子问题，解除关联将一并移除其所有子节点。是否继续？',
                 { modal: true },
@@ -60,7 +90,7 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
             return;
         }
 
-        const issueId = stripFocusedId(node.id);
+        const issueId = nodeId;
         const { removedNode, success } = removeNode(treeData, issueId);
 
         if (success) {
@@ -78,7 +108,7 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                     }
                 };
 
-                collect(removedNode ?? (isIssueNode(node) ? node : undefined));
+                collect(removedNode ?? originalNode);
 
                 const filePathSet = new Set<string>();
                 nodesToCheck.forEach(n => {
