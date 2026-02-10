@@ -30,24 +30,32 @@ async function processLlmCreation(
     errorContext: string
 ) {
     try {
-        const text = await LLMService.rewriteContent(prompt);
-        if (!text || !text.trim()) {
-            console.error(`${errorContext}: rewrite returned empty content`);
-            return;
-        }
-        const lines = text.split(/\r?\n/);
-        let genTitle: string | undefined;
-        let content = text;
-        const m = lines[0]?.match(/^#\s+(.*)/);
-        if (m) {
-            genTitle = m[1].trim();
-            content = lines.slice(1).join('\n').trim();
-        }
-        const finalContent = content && content.length > 0 ? content : `# ${genTitle || fallbackTitle}\n\n`;
-        if (genTitle) {
-            await updateIssueMarkdownFrontmatter(uri, { issue_title: genTitle });
-        }
-        await applyGeneratedIssueContent(uri, finalContent, nodeId);
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: '生成中…', cancellable: true },
+            async (progress, token) => {
+                const controller = new AbortController();
+                token.onCancellationRequested(() => controller.abort());
+
+                const text = await LLMService.rewriteContent(prompt, { signal: controller.signal });
+                if (!text || !text.trim()) {
+                    console.error(`${errorContext}: rewrite returned empty content`);
+                    return;
+                }
+                const lines = text.split(/\r?\n/);
+                let genTitle: string | undefined;
+                let content = text;
+                const m = lines[0]?.match(/^#\s+(.*)/);
+                if (m) {
+                    genTitle = m[1].trim();
+                    content = lines.slice(1).join('\n').trim();
+                }
+                const finalContent = content && content.length > 0 ? content : `# ${genTitle || fallbackTitle}\n\n`;
+                if (genTitle) {
+                    await updateIssueMarkdownFrontmatter(uri, { issue_title: genTitle });
+                }
+                await applyGeneratedIssueContent(uri, finalContent, nodeId);
+            }
+        );
     } catch (e) {
         console.error(`${errorContext}: background fill failed`, e);
     }
