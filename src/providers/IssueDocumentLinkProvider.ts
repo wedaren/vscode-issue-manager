@@ -347,22 +347,28 @@ async function parseIssueLinkPath(
         }
 
         // 确保路径在 issueDir 内，使用 path.relative 进行更健壮的验证
+        // 对于用户输入的绝对路径，我们允许打开（只要路径解析成功），
+        // 对于相对路径或以 IssueDir 前缀的路径，仍然需要保证在 issueDir 范围内。
         const normalizedIssuePath = path.normalize(issueDir);
         let normalizedAbsPath = path.normalize(absolutePath);
-        
-        // 使用 path.relative 检查路径关系
-        let relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
-        
-        // 如果相对路径以 .. 开头，说明不在 issueDir 内
-        if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-            // 路径不在 issueDir 内，尝试将其作为相对于 issueDir 的路径
-            absolutePath = path.join(issueDir, filePath);
-            normalizedAbsPath = path.normalize(absolutePath);
-            relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
-            
-            // 再次验证路径在 issueDir 内，防止 ../ 逃逸
+
+        const isInputAbsolute = path.isAbsolute(filePath);
+
+        if (!isInputAbsolute) {
+            // 使用 path.relative 检查路径关系
+            let relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
+
+            // 如果相对路径以 .. 开头，说明不在 issueDir 内
             if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-                return null;
+                // 路径不在 issueDir 内，尝试将其作为相对于 issueDir 的路径
+                absolutePath = path.join(issueDir, filePath);
+                normalizedAbsPath = path.normalize(absolutePath);
+                relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
+
+                // 再次验证路径在 issueDir 内，防止 ../ 逃逸
+                if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+                    return null;
+                }
             }
         }
 
