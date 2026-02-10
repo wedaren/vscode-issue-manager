@@ -112,7 +112,7 @@ export async function applyGeneratedIssueContent(
         });
 
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('applyGeneratedIssueContent error:', error);
         return { success: false, message: String(error) };
     }
