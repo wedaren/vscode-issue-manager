@@ -22,6 +22,37 @@ function buildPromptWithContent(currentEditorContent: string, template?: string)
         : `${template}\n\n${currentEditorContent}`;
 }
 
+async function processLlmCreation(
+    uri: vscode.Uri,
+    prompt: string,
+    fallbackTitle: string,
+    nodeId: string | undefined,
+    errorContext: string
+) {
+    try {
+        const text = await LLMService.rewriteContent(prompt);
+        if (!text || !text.trim()) {
+            console.error(`${errorContext}: rewrite returned empty content`);
+            return;
+        }
+        const lines = text.split(/\r?\n/);
+        let genTitle: string | undefined;
+        let content = text;
+        const m = lines[0]?.match(/^#\s+(.*)/);
+        if (m) {
+            genTitle = m[1].trim();
+            content = lines.slice(1).join('\n').trim();
+        }
+        const finalContent = content && content.length > 0 ? content : `# ${genTitle || fallbackTitle}\n\n`;
+        if (genTitle) {
+            await updateIssueMarkdownFrontmatter(uri, { issue_title: genTitle });
+        }
+        await applyGeneratedIssueContent(uri, finalContent, nodeId);
+    } catch (e) {
+        console.error(`${errorContext}: background fill failed`, e);
+    }
+}
+
 async function createCreateModeItems(value: string): Promise<QuickPickItemWithId[]> {
     const issue = value || "";
     const currentEditor = vscode.window.activeTextEditor;
@@ -54,30 +85,9 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
 当前选中的文本是：${currentSelectedText}。
 当前选中的范围是：${currentSelection}。
 请根据这些信息生成 Markdown（包含标题和详细描述）`;
-                (async () => {
-                    try {
-                        const text = await LLMService.rewriteContent(prompt);
-                        if (!text || !text.trim()) {
-                            console.error("create-mode rewrite returned empty content");
-                            return;
-                        }
-                        const lines = text.split(/\r?\n/);
-                        let genTitle: string | undefined;
-                        let content = text;
-                        const m = lines[0]?.match(/^#\s+(.*)/);
-                        if (m) {
-                            genTitle = m[1].trim();
-                            content = lines.slice(1).join('\n').trim();
-                        }
-                        const finalContent = content && content.length > 0 ? content : `# ${genTitle || issue}\n\n`;
-                        if (genTitle) {
-                            await updateIssueMarkdownFrontmatter(uri, { issue_title: genTitle });
-                        }
-                        await applyGeneratedIssueContent(uri, finalContent, nodes[0].id);
-                    } catch (e) {
-                        console.error("create-mode background fill failed", e);
-                    }
-                })();
+                processLlmCreation(uri, prompt, issue, nodes[0].id, 'create-mode').catch((e) => {
+                    console.error('create-mode background fill failed', e);
+                });
             }
         },
     };
@@ -100,30 +110,15 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                 const nodes = await createIssueNodes([uri], currentEditorIssueId);
                     try {
                         await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
-                        (async () => {
-                            try {
-                                const text = await LLMService.rewriteContent(buildPromptWithContent(currentEditorContent, p.template));
-                                if (!text || !text.trim()) {
-                                    console.error("create-mode prompt rewrite returned empty content");
-                                    return;
-                                }
-                                const lines = text.split(/\r?\n/);
-                                let genTitle: string | undefined;
-                                let content = text;
-                                const m = lines[0]?.match(/^#\s+(.*)/);
-                                if (m) {
-                                    genTitle = m[1].trim();
-                                    content = lines.slice(1).join('\n').trim();
-                                }
-                                const finalContent = content && content.length > 0 ? content : `# ${genTitle || title}\n\n`;
-                                if (genTitle) {
-                                    await updateIssueMarkdownFrontmatter(uri, { issue_title: genTitle });
-                                }
-                                await applyGeneratedIssueContent(uri, finalContent, nodes && nodes[0] ? nodes[0].id : undefined);
-                            } catch (e) {
-                                console.error("create-mode prompt background fill failed", e);
-                            }
-                        })();
+                        processLlmCreation(
+                            uri,
+                            buildPromptWithContent(currentEditorContent, p.template),
+                            title,
+                            nodes && nodes[0] ? nodes[0].id : undefined,
+                            'create-mode prompt'
+                        ).catch((e) => {
+                            console.error('create-mode prompt background fill failed', e);
+                        });
                     } catch (e) {
                         console.error("create-mode prompt update frontmatter failed", e);
                     }
@@ -174,30 +169,9 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
             const nodes = await createIssueNodes([uri]);
             vscode.commands.executeCommand("issueManager.refreshAllViews");
             const prompt = title;
-            (async () => {
-                try {
-                    const text = await LLMService.rewriteContent(prompt);
-                    if (!text || !text.trim()) {
-                        console.error("create-mode rewrite returned empty content");
-                        return;
-                    }
-                    const lines = text.split(/\r?\n/);
-                    let genTitle: string | undefined;
-                    let content = text;
-                    const m = lines[0]?.match(/^#\s+(.*)/);
-                    if (m) {
-                        genTitle = m[1].trim();
-                        content = lines.slice(1).join('\n').trim();
-                    }
-                    const finalContent = content && content.length > 0 ? content : `# ${genTitle || title}\n\n`;
-                    if (genTitle) {
-                        await updateIssueMarkdownFrontmatter(uri, { issue_title: genTitle });
-                    }
-                    await applyGeneratedIssueContent(uri, finalContent, nodes && nodes[0] ? nodes[0].id : undefined);
-                } catch (e) {
-                    console.error("create-mode background fill failed", e);
-                }
-            })();
+            processLlmCreation(uri, prompt, title, nodes && nodes[0] ? nodes[0].id : undefined, 'create-mode').catch((e) => {
+                console.error('create-mode background fill failed', e);
+            });
         },
     };
 
