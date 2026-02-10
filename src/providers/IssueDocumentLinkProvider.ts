@@ -304,6 +304,48 @@ interface ParsedIssueLink {
     issueId?: string;
 }
 
+/**
+ * 解析并验证用户给出的 filePath，返回可打开的绝对路径或 null。
+ * 规则：
+ * - 如果输入以 `IssueDir/` 前缀开头，按 issueDir 解析
+ * - 如果输入为绝对路径，直接使用（允许打开仓库外部文件）
+ * - 如果输入为相对路径，先相对于当前文档解析；若解析结果不在 issueDir 内，则尝试相对于 issueDir 解析
+ * - 若最终路径仍不在 issueDir 内，则返回 null（以防 ../ 逃逸）
+ */
+function resolveIssueLinkAbsolutePath(filePath: string, document: vscode.TextDocument, issueDir: string): string | null {
+    const issueDirPrefix = /^IssueDir[\\\/]/i;
+    let absolutePath: string;
+
+    if (issueDirPrefix.test(filePath)) {
+        const relativeToIssueDir = filePath.replace(issueDirPrefix, '');
+        absolutePath = path.resolve(issueDir, relativeToIssueDir);
+    } else if (path.isAbsolute(filePath)) {
+        absolutePath = filePath;
+    } else {
+        const currentDir = path.dirname(document.uri.fsPath);
+        absolutePath = path.resolve(currentDir, filePath);
+    }
+
+    const normalizedIssuePath = path.normalize(issueDir);
+    let normalizedAbsPath = path.normalize(absolutePath);
+
+    const isInputAbsolute = path.isAbsolute(filePath);
+
+    if (!isInputAbsolute) {
+        let relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
+        if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+            absolutePath = path.join(issueDir, filePath);
+            normalizedAbsPath = path.normalize(absolutePath);
+            relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
+            if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+                return null;
+            }
+        }
+    }
+
+    return absolutePath;
+}
+
 async function parseIssueLinkPath(
     linkPath: string,
     document: vscode.TextDocument,
@@ -332,38 +374,10 @@ async function parseIssueLinkPath(
             return null;
         }
 
-        // 解析相对路径
-        let absolutePath: string;
-        const issueDirPrefix = /^IssueDir[\\/]/i;
-        if (issueDirPrefix.test(filePath)) {
-            const relativeToIssueDir = filePath.replace(issueDirPrefix, '');
-            absolutePath = path.resolve(issueDir, relativeToIssueDir);
-        } else if (path.isAbsolute(filePath)) {
-            absolutePath = filePath;
-        } else {
-            // 相对于当前文档的路径
-            const currentDir = path.dirname(document.uri.fsPath);
-            absolutePath = path.resolve(currentDir, filePath);
-        }
-
-        // 确保路径在 issueDir 内，使用 path.relative 进行更健壮的验证
-        const normalizedIssuePath = path.normalize(issueDir);
-        let normalizedAbsPath = path.normalize(absolutePath);
-        
-        // 使用 path.relative 检查路径关系
-        let relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
-        
-        // 如果相对路径以 .. 开头，说明不在 issueDir 内
-        if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-            // 路径不在 issueDir 内，尝试将其作为相对于 issueDir 的路径
-            absolutePath = path.join(issueDir, filePath);
-            normalizedAbsPath = path.normalize(absolutePath);
-            relativePath = path.relative(normalizedIssuePath, normalizedAbsPath);
-            
-            // 再次验证路径在 issueDir 内，防止 ../ 逃逸
-            if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-                return null;
-            }
+        // 解析并验证路径（封装为辅助函数以提高可读性）
+        const absolutePath = resolveIssueLinkAbsolutePath(filePath, document, issueDir);
+        if (!absolutePath) {
+            return null;
         }
 
         // 创建 URI
