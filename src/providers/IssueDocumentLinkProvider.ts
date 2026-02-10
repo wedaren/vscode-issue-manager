@@ -79,13 +79,8 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
                 continue;
             }
 
-            // 将必要信息序列化为命令参数：包含原文档 uri 和目标位置信息
-            const args = {
-                location: fileLocation,
-                source: document.uri.toString()
-            };
-
-            const cmdUri = vscode.Uri.parse(`command:extension.openInSplit?${encodeURIComponent(JSON.stringify([args]))}`);
+            // 使用辅助函数生成 command URI 与 tooltip
+            const { uri: cmdUri, tooltip } = makeOpenInSplitCommand(fileLocation, document.uri.toString());
 
             const range = new vscode.Range(
                 document.positionAt(startIndex),
@@ -93,29 +88,6 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             );
 
             const link = new vscode.DocumentLink(range, cmdUri);
-            
-            // 构建更详细的 tooltip
-            let tooltip = '在旁边打开文件';
-            if (fileLocation.startLine) {
-                if (fileLocation.endLine && fileLocation.endLine !== fileLocation.startLine) {
-                    tooltip += ` (L${fileLocation.startLine}`;
-                    if (fileLocation.startColumn) {
-                        tooltip += `:${fileLocation.startColumn}`;
-                    }
-                    tooltip += `-L${fileLocation.endLine}`;
-                    if (fileLocation.endColumn) {
-                        tooltip += `:${fileLocation.endColumn}`;
-                    }
-                    tooltip += ')';
-                } else {
-                    tooltip += ` (L${fileLocation.startLine}`;
-                    if (fileLocation.startColumn) {
-                        tooltip += `:${fileLocation.startColumn}`;
-                    }
-                    tooltip += ')';
-                }
-            }
-            
             link.tooltip = tooltip;
             links.push(link);
         }
@@ -352,16 +324,25 @@ async function parseIssueLinkPath(
     issueDir: string
 ): Promise<ParsedIssueLink | null> {
     try {
-        // 分离路径和查询参数
-        const queryIndex = linkPath.indexOf('?');
+        // 先分离可能存在的片段（#fragment），然后再分离查询参数
+        let fragment: string | undefined;
+        const hashIndex = linkPath.indexOf('#');
+        let pathWithoutFragment = linkPath;
+        if (hashIndex !== -1) {
+            fragment = linkPath.substring(hashIndex + 1);
+            pathWithoutFragment = linkPath.substring(0, hashIndex);
+        }
+
+        // 分离路径和查询参数（注意查询参数位于片段之前）
+        const queryIndex = pathWithoutFragment.indexOf('?');
         let filePath: string;
         let queryString: string | undefined;
 
         if (queryIndex !== -1) {
-            filePath = linkPath.substring(0, queryIndex);
-            queryString = linkPath.substring(queryIndex + 1);
+            filePath = pathWithoutFragment.substring(0, queryIndex);
+            queryString = pathWithoutFragment.substring(queryIndex + 1);
         } else {
-            filePath = linkPath;
+            filePath = pathWithoutFragment;
         }
 
         // 跳过外部链接（http/https）
@@ -369,8 +350,8 @@ async function parseIssueLinkPath(
             return null;
         }
 
-        // 跳过锚点链接
-        if (filePath.startsWith('#')) {
+        // 如果仅为锚点（如 `#something`），忽略
+        if (!filePath && fragment) {
             return null;
         }
 
@@ -380,19 +361,31 @@ async function parseIssueLinkPath(
             return null;
         }
 
-        // 创建 URI
+        // 如果携带了片段（例如 L10:4-L15:8），优先使用 openInSplit 命令打开并传递位置
+        if (fragment) {
+            // 使用 parseFileLink 解析出 FileLocation（基于绝对路径）
+            const fileLinkText = `file:${absolutePath}#${fragment}`;
+            const fileLocation = parseFileLink(fileLinkText, issueDir);
+            if (fileLocation) {
+                const { uri: cmdUri, tooltip } = makeOpenInSplitCommand(fileLocation, document.uri.toString());
+                return { uri: cmdUri, tooltip };
+            }
+        }
+
+        // 创建 URI 并附加 query（如果有）
         let uri = vscode.Uri.file(absolutePath);
+        if (queryString) {
+            uri = uri.with({ query: queryString });
+        }
 
-        const issueNode = await getSingleIssueNodeByUri(uri);
-
+        // 如果文件对应一个 issue 节点且没有显式的 fragment，使用 quick-peek
+        const issueNode = await getSingleIssueNodeByUri(vscode.Uri.file(absolutePath));
         if (queryString) {
             const issueIdMatch = queryString.match(/(?:^|&)issueId=([^&]+)/);
             if (issueIdMatch) {
                 const issueId = decodeURIComponent(issueIdMatch[1]);
                 return makeQuickPeek(issueId);
             }
-            // 保留其余查询参数在文件 URI 上
-            uri = uri.with({ query: queryString });
         } else if (issueNode) {
             return makeQuickPeek(issueNode.id);
         }
@@ -411,3 +404,31 @@ function makeQuickPeek(id: string): ParsedIssueLink {
     );
     return { uri: cmdUri, tooltip: `快速查看 Issue (${id})`, issueId: id };
 };
+
+function makeOpenInSplitCommand(fileLocation: FileLocation, source: string): { uri: vscode.Uri; tooltip: string } {
+    const args = { location: fileLocation, source };
+    const cmdUri = vscode.Uri.parse(`command:extension.openInSplit?${encodeURIComponent(JSON.stringify([args]))}`);
+
+    let tooltip = '在旁边打开文件';
+    if (fileLocation.startLine) {
+        if (fileLocation.endLine && fileLocation.endLine !== fileLocation.startLine) {
+            tooltip += ` (L${fileLocation.startLine}`;
+            if (fileLocation.startColumn) {
+                tooltip += `:${fileLocation.startColumn}`;
+            }
+            tooltip += `-L${fileLocation.endLine}`;
+            if (fileLocation.endColumn) {
+                tooltip += `:${fileLocation.endColumn}`;
+            }
+            tooltip += ')';
+        } else {
+            tooltip += ` (L${fileLocation.startLine}`;
+            if (fileLocation.startColumn) {
+                tooltip += `:${fileLocation.startColumn}`;
+            }
+            tooltip += ')';
+        }
+    }
+
+    return { uri: cmdUri, tooltip };
+}
