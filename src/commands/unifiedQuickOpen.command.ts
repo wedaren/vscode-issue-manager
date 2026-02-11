@@ -92,6 +92,14 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "复制 IssueMarkdown 链接",
+        description: "将当前编辑器对应的 IssueMarkdown 文件以 Markdown 链接格式复制到剪贴板（格式: [标题](IssueDir/相对路径)）",
+        require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
+        execute: () => {
+            vscode.commands.executeCommand("issueManager.copyIssueMarkdownLink");
+        },
+    },
+    {
         label: "在问题总览中查看",
         description: "在问题总览中定位当前编辑器对应的 IssueNode",
         require: ctx => !!ctx.issueId,

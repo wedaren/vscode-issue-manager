@@ -46,6 +46,8 @@ import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { MarkerManager } from '../marker/MarkerManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
+import { getIssueMarkdown } from '../data/IssueMarkdowns';
+import { getRelativeToNoteRoot } from '../utils/pathUtils';
 import { selectLLMModel } from '../commands/llmCommands';
 // note mapping commands removed
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
@@ -722,6 +724,37 @@ export class CommandRegistry extends BaseCommandRegistry {
                 }
             },
             '复制问题 ID'
+        );
+
+        // 复制问题 Markdown 链接命令
+        this.registerCommand(
+            'issueManager.copyIssueMarkdownLink',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showWarningMessage('没有激活的编辑器可复制 IssueMarkdown 链接。');
+                    return;
+                }
+
+                const md = await getIssueMarkdown(editor.document.uri);
+                if (!md) {
+                    vscode.window.showWarningMessage('当前文档不是有效的 IssueMarkdown。');
+                    return;
+                }
+
+                const rawRel = getRelativeToNoteRoot(md.uri.fsPath) ?? vscode.workspace.asRelativePath(md.uri, false);
+                const safeRel = (rawRel || path.basename(md.uri.fsPath)).replace(/\\/g, '/');
+                const link = `[${md.title}](IssueDir/${safeRel})`;
+
+                try {
+                    await vscode.env.clipboard.writeText(link);
+                    vscode.window.showInformationMessage('已复制 IssueMarkdown 链接');
+                } catch (e) {
+                    this.logger.error('复制 IssueMarkdown 链接失败', e);
+                    vscode.window.showErrorMessage('复制 IssueMarkdown 链接失败');
+                }
+            },
+            '复制 IssueMarkdown 链接'
         );
 
         this.registerParaCategoryCommands(
