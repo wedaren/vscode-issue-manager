@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
-import { parseFileLink, type FileLocation } from '../utils/fileLinkFormatter';
+import { parseFileLink, parseFileFragment, type FileLocation } from '../utils/fileLinkFormatter';
 import { getSingleIssueNodeByUri } from '../data/issueTreeManager';
 import { collectTermsForDocument } from '../utils/issueMarkdownTerms';
 import { isDocumentInDirectory } from '../utils/completionUtils';
@@ -363,10 +363,17 @@ async function parseIssueLinkPath(
 
         // 如果携带了片段（例如 L10:4-L15:8），优先使用 openInSplit 命令打开并传递位置
         if (fragment) {
-            // 使用 parseFileLink 解析出 FileLocation（基于绝对路径）
-            const fileLinkText = `file:${absolutePath}#${fragment}`;
-            const fileLocation = parseFileLink(fileLinkText, issueDir);
-            if (fileLocation) {
+            // 直接解析 fragment（避免重新构造并二次解析完整链接）
+            const parsedFragment = parseFileFragment(fragment);
+            if (parsedFragment) {
+                const fileLocation: FileLocation = {
+                    filePath: absolutePath,
+                    startLine: parsedFragment.startLine,
+                    startColumn: parsedFragment.startColumn,
+                    endLine: parsedFragment.endLine,
+                    endColumn: parsedFragment.endColumn
+                };
+
                 const { uri: cmdUri, tooltip } = makeOpenInSplitCommand(fileLocation, document.uri.toString());
                 return { uri: cmdUri, tooltip };
             }
@@ -408,26 +415,21 @@ function makeQuickPeek(id: string): ParsedIssueLink {
 function makeOpenInSplitCommand(fileLocation: FileLocation, source: string): { uri: vscode.Uri; tooltip: string } {
     const args = { location: fileLocation, source };
     const cmdUri = vscode.Uri.parse(`command:extension.openInSplit?${encodeURIComponent(JSON.stringify([args]))}`);
-
     let tooltip = '在旁边打开文件';
-    if (fileLocation.startLine) {
-        if (fileLocation.endLine && fileLocation.endLine !== fileLocation.startLine) {
-            tooltip += ` (L${fileLocation.startLine}`;
-            if (fileLocation.startColumn) {
-                tooltip += `:${fileLocation.startColumn}`;
-            }
-            tooltip += `-L${fileLocation.endLine}`;
-            if (fileLocation.endColumn) {
-                tooltip += `:${fileLocation.endColumn}`;
-            }
-            tooltip += ')';
-        } else {
-            tooltip += ` (L${fileLocation.startLine}`;
-            if (fileLocation.startColumn) {
-                tooltip += `:${fileLocation.startColumn}`;
-            }
-            tooltip += ')';
+    if (fileLocation.startLine !== undefined) {
+        let details = `L${fileLocation.startLine}`;
+        if (fileLocation.startColumn !== undefined) {
+            details += `:${fileLocation.startColumn}`;
         }
+
+        if (fileLocation.endLine !== undefined && fileLocation.endLine !== fileLocation.startLine) {
+            details += `-L${fileLocation.endLine}`;
+            if (fileLocation.endColumn !== undefined) {
+                details += `:${fileLocation.endColumn}`;
+            }
+        }
+
+        tooltip += ` (${details})`;
     }
 
     return { uri: cmdUri, tooltip };
