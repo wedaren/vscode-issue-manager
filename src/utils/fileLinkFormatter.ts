@@ -123,22 +123,48 @@ export function parseFileLink(link: string, baseIssueDir?: string): FileLocation
     
     // 解析 fragment（如果存在）
     if (fragment) {
-        const rangeMatch = fragment.match(/^L(\d+)(?::(\d+))?(?:-L(\d+)(?::(\d+))?)?$/);
-        if (rangeMatch) {
-            location.startLine = parseInt(rangeMatch[1], 10);
-            if (rangeMatch[2]) {
-                location.startColumn = parseInt(rangeMatch[2], 10);
-            }
-            if (rangeMatch[3]) {
-                location.endLine = parseInt(rangeMatch[3], 10);
-                if (rangeMatch[4]) {
-                    location.endColumn = parseInt(rangeMatch[4], 10);
-                }
-            }
+        const parsed = parseFileFragment(fragment);
+        if (parsed) {
+            if (parsed.startLine !== undefined) location.startLine = parsed.startLine;
+            if (parsed.startColumn !== undefined) location.startColumn = parsed.startColumn;
+            if (parsed.endLine !== undefined) location.endLine = parsed.endLine;
+            if (parsed.endColumn !== undefined) location.endColumn = parsed.endColumn;
         }
     }
     
     return location;
+}
+
+/**
+ * 解析 fragment（例如 `L10`, `L10:4`, `L10-L15`, `L10:4-L15:8`）为位置对象
+ * 返回 null 表示无法解析
+ */
+export function parseFileFragment(fragment: string): {
+    startLine?: number;
+    startColumn?: number;
+    endLine?: number;
+    endColumn?: number;
+} | null {
+    if (!fragment) return null;
+
+    const rangeMatch = fragment.match(/^L(\d+)(?::(\d+))?(?:-L(\d+)(?::(\d+))?)?$/);
+    if (!rangeMatch) return null;
+
+    const parsed: {
+        startLine?: number;
+        startColumn?: number;
+        endLine?: number;
+        endColumn?: number;
+    } = {};
+
+    parsed.startLine = parseInt(rangeMatch[1], 10);
+    if (rangeMatch[2]) parsed.startColumn = parseInt(rangeMatch[2], 10);
+    if (rangeMatch[3]) {
+        parsed.endLine = parseInt(rangeMatch[3], 10);
+        if (rangeMatch[4]) parsed.endColumn = parseInt(rangeMatch[4], 10);
+    }
+
+    return parsed;
 }
 
 /**
