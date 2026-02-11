@@ -51,14 +51,14 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
         if (isIssueNode(raw)) {
             originalNode = raw as IssueNode;
             nodeId = stripFocusedId(originalNode.id);
-        } else if ((raw as any)?.id && typeof (raw as any).id === 'string') {
+        } else if (raw && typeof raw === 'object' && 'id' in raw && typeof (raw as { id: unknown }).id === 'string') {
             // TreeItem 或类似对象
-            nodeId = stripFocusedId((raw as any).id as string);
-        } else if ((raw as vscode.Uri) instanceof Object && (raw as vscode.Uri).scheme) {
+            nodeId = stripFocusedId((raw as { id: string }).id);
+
+        } else if (raw instanceof vscode.Uri) {
             // 可能直接传入了 Uri（带 query）
             try {
-                const uri = raw as vscode.Uri;
-                const m = /issueId=([^&]+)/.exec(uri.query || '');
+                const m = /issueId=([^&]+)/.exec(raw.query || '');
                 if (m && m[1]) {
                     nodeId = decodeURIComponent(m[1]);
                 }
@@ -66,6 +66,7 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                 // ignore
             }
         }
+
 
         if (!nodeId) return;
 
@@ -107,6 +108,7 @@ export function registerDisassociateIssueCommand(context: vscode.ExtensionContex
                         n.children.forEach(child => collect(child));
                     }
                 };
+                collect(removedNode);
 
                 collect(removedNode ?? originalNode);
 
