@@ -38,11 +38,7 @@
         "description": "使用快速创建问题并可选择将当前打开的编辑器导入为任务标记、归档并关联到新问题（会提示保存未保存编辑器）",
         "icon": "$(tasklist)"
       },
-      {
-        "command": "issueManager.createIssueFromFocused",
-        "title": "新建问题",
-        "icon": "$(add)"
-      },
+      
       {
         "command": "issueManager.searchIssuesInFocused",
         "title": "搜索问题",
@@ -734,11 +730,7 @@
           "when": "view == issueManager.views.focused",
           "group": "navigation@2"
         },
-        {
-          "command": "issueManager.createIssueFromFocused",
-          "when": "view == issueManager.views.focused",
-          "group": "navigation@3"
-        },
+        
         {
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.recent",
@@ -1313,10 +1305,13 @@
         }
       },
       {
-        "command": "issueManager.createIssueFromFocused",
+        "command": "issueManager.unifiedQuickOpen",
         "key": "ctrl+j ctrl+m",
         "mac": "cmd+j cmd+m",
-        "when": "issueManager.isDirConfigured"
+        "when": "issueManager.isDirConfigured",
+        "args": {
+          "mode": "mtime"
+        }
       },
       {
         "command": "issueManager.unifiedQuickOpen",
