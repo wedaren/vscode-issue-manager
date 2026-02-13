@@ -60,7 +60,7 @@ export function registerReviewPlanCommands(context: vscode.ExtensionContext): vo
         const markdownBody = ensureH1(body, title);
         const uri = await createIssueMarkdown({
           markdownBody,
-          frontmatter: { title, ...(frontmatter ?? {}) },
+          frontmatter: { issue_title: title, ...(frontmatter ?? {}) },
         });
 
         if (!uri) {
@@ -95,7 +95,7 @@ export function registerReviewPlanCommands(context: vscode.ExtensionContext): vo
 
         const uri = await createIssueMarkdown({
           markdownBody,
-          frontmatter: { title, ...(frontmatter ?? {}) },
+          frontmatter: { issue_title: title, ...(frontmatter ?? {}) },
         });
 
         if (!uri) {

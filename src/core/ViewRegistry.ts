@@ -16,6 +16,7 @@ import { GitBranchTreeProvider } from '../gitBranch/GitBranchTreeProvider';
 import { GitBranchCommandHandler } from '../gitBranch/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
+import { registerReviewPlanView } from '../views/reviewPlanViewRegistration';
 import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
 import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
 import { DeepResearchIssuesProvider, type DeepResearchViewNode } from '../views/DeepResearchIssuesProvider';
@@ -107,6 +108,8 @@ export class ViewRegistry {
         
         // 注册相关问题视图
         this.registerRelatedView();
+        // 注册回顾视图
+        this.registerReviewView();
         
         // 注册RSS虚拟文件提供器
         this.registerRSSVirtualFileProvider();
@@ -370,6 +373,13 @@ export class ViewRegistry {
      */
     private registerRelatedView(): void {
         registerRelatedIssuesView(this.context, this.viewContextManager);
+    }
+
+    /**
+     * 注册回顾（Review）视图
+     */
+    private registerReviewView(): void {
+        registerReviewPlanView(this.context, this.viewContextManager);
     }
 
     /**
