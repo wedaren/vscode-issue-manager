@@ -27,3 +27,6 @@
 - 文档被添加至仓库（例如 `docs/<name>-plan.md` 或此 `references/PLAN.md`），并包含可执行步骤与验证说明。
 
 （此文档为通用计划模板，供 `plan-recorder` skill 使用）
+
+ 相关技能（示例）：
+ - `self-iteration` — 位于 `.github/skills/self-iteration/SKILL.md`，提供短循环迭代（Plan → Act → Observe → Reflect → Improve）的模板和记录建议，适合在执行此计划模板时并行使用以提升交付质量。
