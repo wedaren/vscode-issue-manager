@@ -24,8 +24,8 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
             return undefined;
         }
 
-        const filterResult = extractFilterKeyword(document, position, ["`"], 200);
-        if (!filterResult.hasTrigger && context.triggerCharacter !== "`") {
+        const filterResult = extractFilterKeyword(document, position, ["`", "·"], 200);
+        if (!filterResult.hasTrigger && context.triggerCharacter !== "`" && context.triggerCharacter !== "·") {
             return undefined;
         }
 
@@ -54,7 +54,9 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
 
         const lineText = document.lineAt(position.line).text;
         const prefix = lineText.slice(0, position.character);
-        const triggerIndex = prefix.lastIndexOf("`");
+        const backtickIndex = prefix.lastIndexOf("`");
+        const middleDotIndex = prefix.lastIndexOf("·");
+        const triggerIndex = Math.max(backtickIndex, middleDotIndex);
         const replaceStart = triggerIndex >= 0 ? triggerIndex : position.character;
         const replacingRange = new vscode.Range(
             new vscode.Position(position.line, replaceStart),
@@ -70,7 +72,7 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
         replacingRange: vscode.Range,
         sortIndex: number
     ): vscode.CompletionItem {
-        const completionItem = new vscode.CompletionItem(`\`${item.displayName}\``, vscode.CompletionItemKind.Constant);
+        const completionItem = new vscode.CompletionItem(item.displayName, vscode.CompletionItemKind.Constant);
         completionItem.insertText = `\`${item.displayName}\``;
         completionItem.range = replacingRange;
         completionItem.sortText = sortIndex.toString().padStart(6, "0");
@@ -89,6 +91,7 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
             `\`${item.displayName}\``,
             item.term.name,
             item.sourceBaseName,
+            "·",
             item.term.definition || ""
         ].join(" ");
 

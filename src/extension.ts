@@ -42,7 +42,8 @@ export function activate(context: vscode.ExtensionContext) {
 	const termCompletionDisposable = vscode.languages.registerCompletionItemProvider(
 		'markdown',
 		termCompletionProvider,
-		'`'
+		'`',
+		'·'
 	);
 	context.subscriptions.push(termCompletionDisposable);
 	
