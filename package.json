@@ -1652,6 +1652,17 @@
           },
           "description": "触发补全的前缀字符串列表。当输入这些前缀时，会自动触发文件补全。"
         },
+        "issueManager.completion.termTriggers": {
+          "type": "array",
+          "default": [
+            "`",
+            "·"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "触发术语补全的前缀字符列表。当输入这些字符时，会自动触发术语补全（只使用每个字符串的首字符进行注册）。"
+        },
         "issueManager.completion.maxFilterLength": {
           "type": "number",
           "default": 200,
