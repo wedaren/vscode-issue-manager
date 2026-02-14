@@ -24,8 +24,14 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
             return undefined;
         }
 
-        const filterResult = extractFilterKeyword(document, position, ["`"], 200);
-        if (!filterResult.hasTrigger && context.triggerCharacter !== "`") {
+        // 从配置中读取术语补全的触发前缀（package.json: issueManager.completion.termTriggers）
+        const completionConfig = vscode.workspace.getConfiguration('issueManager.completion');
+        const termTriggers = completionConfig.get<string[]>('termTriggers', ['`', '·']);
+        // 注册时只使用每个触发字符串的首字符，这里用于快速匹配触发字符位置
+        const termTriggerChars = [...new Set(termTriggers.map(t => (t || '').charAt(0)).filter(c => !!c))];
+
+        const filterResult = extractFilterKeyword(document, position, termTriggers, 200);
+        if (!filterResult.hasTrigger && (!context.triggerCharacter || !termTriggerChars.includes(context.triggerCharacter))) {
             return undefined;
         }
 
@@ -54,23 +60,28 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
 
         const lineText = document.lineAt(position.line).text;
         const prefix = lineText.slice(0, position.character);
-        const triggerIndex = prefix.lastIndexOf("`");
+        // 根据配置的触发前缀计算最近的触发位置（选择最后出现的触发字符串）
+        const triggerIndex = termTriggers.reduce(
+            (maxIndex, trigger) => Math.max(maxIndex, prefix.lastIndexOf(trigger)),
+            -1
+        );
         const replaceStart = triggerIndex >= 0 ? triggerIndex : position.character;
         const replacingRange = new vscode.Range(
             new vscode.Position(position.line, replaceStart),
             position
         );
 
-        const items = filteredItems.map((item, index) => this.createCompletionItem(item, replacingRange, index));
+        const items = filteredItems.map((item, index) => this.createCompletionItem(item, replacingRange, index, termTriggers));
         return new vscode.CompletionList(items, true);
     }
 
     private createCompletionItem(
         item: TermDisplayItem,
         replacingRange: vscode.Range,
-        sortIndex: number
+        sortIndex: number,
+        termTriggers: string[]
     ): vscode.CompletionItem {
-        const completionItem = new vscode.CompletionItem(`\`${item.displayName}\``, vscode.CompletionItemKind.Constant);
+        const completionItem = new vscode.CompletionItem(item.displayName, vscode.CompletionItemKind.Constant);
         completionItem.insertText = `\`${item.displayName}\``;
         completionItem.range = replacingRange;
         completionItem.sortText = sortIndex.toString().padStart(6, "0");
@@ -89,6 +100,8 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
             `\`${item.displayName}\``,
             item.term.name,
             item.sourceBaseName,
+            // 把所有配置的触发前缀也包含在 filterText 中，保证筛选一致性
+            ...(termTriggers || []),
             item.term.definition || ""
         ].join(" ");
 

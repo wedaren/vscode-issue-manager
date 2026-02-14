@@ -37,12 +37,16 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(completionDisposable);
 
-	// 注册 Issue 术语补全提供器（反引号触发）
+	// 注册 Issue 术语补全提供器（可配置触发字符）
 	const termCompletionProvider = new IssueTermCompletionProvider();
+	// 从配置读取术语补全触发器（例如: "`"、"·"），并提取每个触发器的首字符用于注册
+	const termCompletionConfig = vscode.workspace.getConfiguration('issueManager.completion');
+	const termTriggers = termCompletionConfig.get<string[]>('termTriggers', ['`', '·']);
+	const termTriggerChars = [...new Set(termTriggers.map(t => (t || '').charAt(0)).filter(c => !!c))];
 	const termCompletionDisposable = vscode.languages.registerCompletionItemProvider(
 		'markdown',
 		termCompletionProvider,
-		'`'
+		...termTriggerChars
 	);
 	context.subscriptions.push(termCompletionDisposable);
 	
