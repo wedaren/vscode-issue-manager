@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "3.0.94",
+  "version": "3.0.95",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -38,7 +38,6 @@
         "description": "使用快速创建问题并可选择将当前打开的编辑器导入为任务标记、归档并关联到新问题（会提示保存未保存编辑器）",
         "icon": "$(tasklist)"
       },
-      
       {
         "command": "issueManager.searchIssuesInFocused",
         "title": "搜索问题",
@@ -730,7 +729,6 @@
           "when": "view == issueManager.views.focused",
           "group": "navigation@2"
         },
-        
         {
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.recent",
