@@ -74,6 +74,75 @@ export class LLMService {
         return { text, modelFamily };
     }
 
+    /**
+     * 对外的聊天接口：接收一组 `LanguageModelChatMessage`，返回聚合后的文本结果。
+     */
+    public static async chat(
+        messages: vscode.LanguageModelChatMessage[],
+        options?: { signal?: AbortSignal }
+    ): Promise<{ text: string; modelFamily?: string } | null> {
+        return LLMService._request(messages, options);
+    }
+
+    /**
+     * 流式调用：对每个接收到的 chunk 调用 onChunk，并返回最终聚合文本与模型信息。
+     */
+    public static async stream(
+        messages: vscode.LanguageModelChatMessage[],
+        onChunk: (chunk: string) => void,
+        options?: { signal?: AbortSignal }
+    ): Promise<{ text: string; modelFamily?: string } | null> {
+        if (options?.signal?.aborted) {
+            throw new Error('请求已取消');
+        }
+
+        const model = await LLMService.selectModel(options);
+        if (!model) {
+            vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
+            return null;
+        }
+
+        const cts = new vscode.CancellationTokenSource();
+        let onAbort: (() => void) | undefined;
+        if (options?.signal) {
+            onAbort = () => cts.cancel();
+            try {
+                options.signal.addEventListener('abort', onAbort);
+            } catch {
+                onAbort = undefined;
+            }
+        }
+
+        const resp = await model.sendRequest(messages, undefined, cts.token);
+        let full = '';
+        try {
+            for await (const chunk of resp.text) {
+                const s = String(chunk);
+                full += s;
+                try {
+                    onChunk(s);
+                } catch (e) {
+                    // 忽略回调错误，继续流
+                    Logger.getInstance().warn('onChunk callback failed', e as Error ?? e);
+                }
+
+                if (cts.token.isCancellationRequested) {
+                    throw new Error('请求已取消');
+                }
+            }
+        } finally {
+            try {
+                if (options?.signal && onAbort) {
+                    options.signal.removeEventListener('abort', onAbort);
+                }
+            } catch {}
+            cts.dispose();
+        }
+
+        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        return { text: full, modelFamily };
+    }
+
     private static async selectModel(options?: {
         signal?: AbortSignal;
     }): Promise<vscode.LanguageModelChat | undefined> {

@@ -465,6 +465,49 @@ export class ChromeIntegrationServer {
           } else if (message.type === 'ping') {
             // 心跳响应
             ws.send(JSON.stringify({ type: 'pong', id: message.id }));
+          } else if (message.type === 'llm-request') {
+            // 来自 Chrome 扩展的 LLM 请求（转发到 Copilot/LLMService），支持流式推送
+            try {
+              const payload = message.data as any || {};
+              const prompt = payload.prompt || payload.text || '';
+
+              if (!prompt || typeof prompt !== 'string') {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing prompt', id: message.id }));
+                return;
+              }
+
+              // 动态导入以避免循环依赖问题
+              const mod = await import('../llm/LLMService');
+              const LLMServiceClass = (mod as any).LLMService;
+
+              const msgId = message?.id;
+              // 先发送一个 started 推送（可选）
+              ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'started' }, id: msgId }));
+
+              // 流式调用：对每个 chunk 发送 llm-push
+              const result = await LLMServiceClass.stream([
+                vscode.LanguageModelChatMessage.User(prompt)
+              ], (chunk: string) => {
+                try {
+                  ws.send(JSON.stringify({ type: 'llm-push', data: { chunk }, id: msgId }));
+                } catch (e) {
+                  this.logger.warn('[ChromeIntegration] 发送 llm-push chunk 失败', e as Error ?? e);
+                }
+              }, { /* no signal by default */ });
+
+              if (!result) {
+                ws.send(JSON.stringify({ type: 'error', error: 'No available LLM model', id: msgId }));
+                return;
+              }
+
+              // 流结束，发送最终回复
+              ws.send(JSON.stringify({ type: 'llm-reply', data: { reply: result.text, modelFamily: result.modelFamily }, id: msgId }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              try {
+                ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message?.id }));
+              } catch {}
+            }
           } else {
             ws.send(JSON.stringify({ 
               type: 'error', 

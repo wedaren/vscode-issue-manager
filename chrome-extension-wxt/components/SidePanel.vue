@@ -2,14 +2,13 @@
   <div class="container fullscreen-focused">
     <!-- 自动登录工具视图 -->
     <AutoLoginPanel v-if="showAutoLogin" @back="showAutoLogin = false" />
-    
+
+    <!-- LLM 对话窗口 -->
+    <LLMPanel v-else-if="showLLM" @back="showLLM = false" />
+
     <!-- 问题总览视图 - 全屏模式 -->
     <div v-else class="focused-section-fullscreen">
       <div class="section-header-fullscreen">
-        <h2>
-          <span class="section-icon">⭐</span>
-          问题总览
-        </h2>
         <div class="header-actions">
           <button 
             id="auto-login-btn" 
@@ -26,6 +25,14 @@
             @click="handleStartSelection"
           >
             <span class="btn-icon">✨</span>
+          </button>
+          <button
+            id="open-llm-btn"
+            class="action-btn"
+            title="LLM 对话"
+            @click="showLLM = true"
+          >
+            <span class="btn-icon">💬</span>
           </button>
           <button
             id="open-issue-dir-btn"
@@ -62,14 +69,7 @@
       </div>
     </div>
 
-    <!-- WebSocket 连接状态 - 右下角 -->
-    <div class="ws-status-bottom-right">
-      <div 
-        class="ws-status-indicator" 
-        :class="wsStatusClass"
-      ></div>
-      <span class="ws-status-text">{{ wsStatusText }}</span>
-    </div>
+    
 
     <!-- 消息提示 -->
     <div 
@@ -79,6 +79,21 @@
     >
       {{ message.text }}
     </div>
+    <!-- WebSocket 连接状态 - 页面底部状态栏（类似 VSCode 状态栏） -->
+    <div class="ws-status-bar" :title="wsStatusText" aria-hidden="true">
+      <div class="ws-status-left">
+        <div
+          class="ws-status-dot"
+          :class="wsStatusClass"
+          role="status"
+          aria-label="WebSocket 状态"
+        ></div>
+        <div class="ws-status-text">{{ wsStatusText }}</div>
+      </div>
+      <div class="ws-status-right">
+        <!-- 占位：将来可放置分支、模型等状态项 -->
+      </div>
+    </div>
   </div>
 </template>
 
@@ -86,6 +101,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import TreeNode from './TreeNode.vue';
 import AutoLoginPanel from './AutoLoginPanel.vue';
+import LLMPanel from './LLMPanel.vue';
 
 interface FocusedIssue {
   id: string;
@@ -114,6 +130,7 @@ const loading = ref(true);
 const wsStatus = ref<'connected' | 'connecting' | 'disconnected'>('connecting');
 const message = ref<Message>({ show: false, text: '', type: 'info' });
 const showAutoLogin = ref(false);
+const showLLM = ref(false);
 
 const wsStatusClass = computed(() => {
   return {
@@ -308,6 +325,8 @@ onUnmounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
+  padding-bottom: 36px; /* 为底部状态栏预留空间，避免遮挡 */
 }
 
 .fullscreen-focused {
@@ -387,6 +406,49 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
+  padding-bottom: 56px; /* 额外底部内边距，防止列表最后一项被状态栏覆盖 */
+}
+
+/* 右下角的连接状态点，不影响其他布局 */
+
+.ws-status-bottom-right {
+  position: fixed; /* detach from layout so it's always a single dot */
+  left: 10px;
+  bottom: 20px; /* lift above bottom message bar */
+  z-index: 99999; /* ensure it's above message bars */
+  width: auto;
+  height: auto;
+  display: block;
+  background: transparent; /* no background */
+  pointer-events: auto; /* allow tooltip hover */
+}
+
+.ws-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-clip: padding-box;
+  background-color: transparent; /* will be set by state classes */
+  box-shadow: none; /* remove inner background */
+  transition: background-color 160ms ease, transform 120ms ease;
+  display: inline-block;
+  pointer-events: auto; /* 允许在小圆点上悬停/点击以显示 tooltip */
+}
+
+.ws-status-dot.ws-connected {
+  background-color: #34d399; /* green */
+  box-shadow: 0 0 10px rgba(52,211,153,0.18);
+}
+
+.ws-status-dot.ws-connecting {
+  background-color: #f59e0b; /* amber */
+  box-shadow: 0 0 8px rgba(245,158,11,0.14);
+  transform: scale(1.05);
+}
+
+.ws-status-dot.ws-disconnected {
+  background-color: #6b7280; /* gray */
+  box-shadow: none;
 }
 
 .loading,
@@ -402,50 +464,39 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.ws-status-bottom-right {
+/* 保留最小化的固定定位容器，点本身通过 .ws-status-dot 的状态类着色（无背景容器） */
+.ws-status-bar {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
+  left: 0;
+  right: 0;
+  bottom: 0; /* 紧贴最底部 */
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  z-index: 99999; /* 确保在其他元素之上 */
+  background: #252526; /* 类似 VSCode 状态栏的暗色背景 */
+  border-top: 1px solid #2f2f31;
+  color: #d4d4d4;
+  font-size: 12px;
+  pointer-events: none; /* 让状态栏本体不拦截页面点击，避免遮挡交互 */
+}
+
+.ws-status-left {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  background-color: #2d2d30;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #d4d4d4;
-  z-index: 1000;
 }
 
-.ws-status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #858585;
+.ws-status-text {
+  color: #9aa0a6;
 }
 
-.ws-status-indicator.ws-connected {
-  background-color: #4ec9b0;
-  box-shadow: 0 0 4px #4ec9b0;
-}
-
-.ws-status-indicator.ws-connecting {
-  background-color: #dcdcaa;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-.ws-status-indicator.ws-disconnected {
-  background-color: #f48771;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+.ws-status-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .message {
