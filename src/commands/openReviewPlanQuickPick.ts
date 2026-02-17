@@ -27,7 +27,7 @@ export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext
           const dayNum = tmp.getUTCDay() || 7;
           tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
           const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
-          const weekNum = Math.ceil((((tmp as any) - (yearStart as any)) / 86400000 + 1)/7);
+          const weekNum = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1)/7);
           return `${tmp.getUTCFullYear()}-W${String(weekNum).padStart(2,'0')}`;
         }
 
