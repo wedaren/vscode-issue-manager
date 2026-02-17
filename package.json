@@ -76,6 +76,12 @@
         "icon": "$(notebook)"
       },
       {
+        "command": "issueManager.openReviewPlanQuickPick",
+        "title": "打开回顾视图",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
         "command": "issueManager.createIssueFromHtml",
         "title": "从 HTML 创建问题",
         "icon": "$(add)"
@@ -743,6 +749,12 @@
           "command": "issueManager.createIssueFromOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.openReviewPlanQuickPick",
+          "when": "view == issueManager.views.review",
+          "group": "navigation@1",
+          "icon": "$(add)"
         },
         {
           "command": "issueManager.setRecentIssuesViewMode.group",
@@ -1729,6 +1741,12 @@
         {
           "id": "issueManager.views.gitBranches",
           "name": "Git 分支",
+          "icon": "resources/icon.svg"
+        }
+        ,
+        {
+          "id": "issueManager.views.review",
+          "name": "回顾视图",
           "icon": "resources/icon.svg"
         }
       ]
