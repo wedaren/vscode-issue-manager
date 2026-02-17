@@ -19,6 +19,14 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "刷新当前活动编辑器",
+        description: "从磁盘重新加载当前活动编辑器的内容（刷新）",
+        require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
+        execute: () => {
+            vscode.commands.executeCommand("workbench.action.files.revert");
+        },
+    },
+    {
         label: "插入 marks 到当前编辑器",
         description: "将当前任务的 marks 插入到当前活动编辑器",
         execute: () => {
