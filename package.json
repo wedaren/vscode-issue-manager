@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "3.0.97",
+  "version": "3.0.98",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -1742,8 +1742,7 @@
           "id": "issueManager.views.gitBranches",
           "name": "Git 分支",
           "icon": "resources/icon.svg"
-        }
-        ,
+        },
         {
           "id": "issueManager.views.review",
           "name": "回顾视图",
