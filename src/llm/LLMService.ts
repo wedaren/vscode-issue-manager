@@ -480,6 +480,71 @@ ${JSON.stringify(
     }
 
     /**
+     * 使用 LLM 翻译给定文本到目标语言。
+     * - 会对超长输入进行截断提示（以防模型拒绝或超时）。
+     * - 返回模型生成的翻译文本（不包含原始 frontmatter）。
+     */
+    public static async translate(
+        text: string,
+        targetLang: string,
+        options?: { signal?: AbortSignal }
+    ): Promise<string> {
+        if (!text || text.trim().length === 0) {
+            return "";
+        }
+
+        const MAX_CHARS = 200000; // 保守截断，避免超长
+        let sentText = text;
+        let truncated = false;
+        if (text.length > MAX_CHARS) {
+            sentText = text.slice(0, MAX_CHARS);
+            truncated = true;
+        }
+
+        const promptLines: string[] = [];
+        promptLines.push(`请将下面的 Markdown 文本翻译为 ${targetLang}，保持专有名词、术语与人名不被不必要地翻译，保持原有的 Markdown 结构（标题、代码块、列表等）。`);
+        promptLines.push('仅返回翻译后的 Markdown 正文，不要包含额外说明、步骤或标记。');
+        if (truncated) {
+            promptLines.push('(注意：原文已被截断，仅提供部分内容，请尽量基于可见内容进行连贯翻译)');
+        }
+        promptLines.push('原文如下：');
+        promptLines.push('---');
+        promptLines.push(sentText);
+        promptLines.push('---');
+
+        const prompt = promptLines.join('\n');
+
+        try {
+            const fullResp = await LLMService._request(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                options
+            );
+            if (fullResp === null) {
+                return "";
+            }
+            const full = fullResp.text;
+            Logger.getInstance().info('LLM translate Raw Response:', full);
+
+            // 尝试提取代码块或直接返回文本
+            // 如果响应包含 ```markdown``` 块，提取其中内容
+            const mdBlock = full.match(/```(?:markdown)?\n([\s\S]*?)\n```/i);
+            if (mdBlock && mdBlock[1]) {
+                return mdBlock[1].trim();
+            }
+
+            // 否则直接返回全部文本
+            return full.trim();
+        } catch (error) {
+            if (options?.signal?.aborted) {
+                return "";
+            }
+            Logger.getInstance().error('LLM translate error:', error);
+            vscode.window.showErrorMessage('调用 Copilot 翻译失败。');
+            return "";
+        }
+    }
+
+    /**
      * 根据输入文本生成一个简明的摘要（3-5句话）。
      * 如果失败或没有生成结果，返回空字符串。
      */

@@ -76,6 +76,16 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "新建译文",
+        description: "为当前 IssueMarkdown 创建译文文件并打开",
+        require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
+        execute: async () => {
+            await vscode.commands.executeCommand(
+                "issueManager.createTranslationFromEditor"
+            );
+        },
+    },
+    {
         label: "复制文件名",
         description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
         require: ctx => !!ctx.issueId,

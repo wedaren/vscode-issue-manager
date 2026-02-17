@@ -33,6 +33,7 @@ import { registerDeleteIssueCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
+import { registerCreateTranslationFromEditorCommand } from '../commands/createTranslationFromEditor';
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { selectOrCreateIssue } from '../commands/selectOrCreateIssue';
 import { executeCreateIssueFromCompletion } from '../commands/createIssueFromCompletion';
@@ -556,6 +557,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 注册外部实现的子问题创建命令
         registerCreateSubIssueCommand(this.context);
         registerCreateSubIssueFromEditorCommand(this.context);
+        registerCreateTranslationFromEditorCommand(this.context);
 
         // Review/计划相关命令
         registerReviewPlanCommands(this.context);
