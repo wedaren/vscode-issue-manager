@@ -175,6 +175,15 @@ export default defineBackground(() => {
             // 关注列表已更新，通知 Side Panel 刷新
             console.log('[WebSocket] 关注列表已更新');
             notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
+          } else if (message.type === 'llm-push' || message.type === 'llm-stream' || message.type === 'llm-reply') {
+            // LLM 推送/流式消息，直接转发给 Side Panel（例如聊天界面）
+            chrome.runtime.sendMessage({ type: 'LLM_PUSH', payload: message.data }).catch((err) => {
+              if (isReceiverNotExistError(err)) {
+                console.log('[WebSocket] Side Panel 未打开，跳过 LLM 推送');
+              } else {
+                console.error('[WebSocket] 转发 LLM 推送失败:', err);
+              }
+            });
           }
         } catch (e: unknown) {
           console.error('[WebSocket] 消息解析失败:', e);
@@ -460,6 +469,51 @@ export default defineBackground(() => {
             }
           } catch (e: unknown) {
             console.error('[Background] GET_ISSUE_MARKDOWN failed:', e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      case 'LLM_REQUEST':
+        (async () => {
+          try {
+            // 从消息体中提取 model 与 prompt（允许两种字段位置）
+            const model = (message as any).model || (message.data && (message.data as any).model);
+            const prompt = (message as any).prompt || (message.data && (message.data as any).prompt) || (message.data && (message.data as any).text);
+
+            if (!prompt) {
+              sendResponse({ success: false, error: 'Missing prompt' });
+              return;
+            }
+
+            // 确保 WebSocket 已连接
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              await initWebSocket();
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              sendResponse({ success: false, error: 'WebSocket not connected' });
+              return;
+            }
+
+            // 转发到 VSCode（由 VSCode 插件负责调用 Copilot） - 采用流式：不等待最终回复，直接发送请求并立刻返回成功
+            try {
+              const msgId = generateMessageId();
+              const msg = { type: 'llm-request', id: msgId, data: { model, prompt } };
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(msg));
+                // 立即返回，后续的流式 chunk 与最终回复会由 ws.onmessage 转发给 SidePanel
+                sendResponse({ success: true, data: { requestId: msgId } });
+              } else {
+                sendResponse({ success: false, error: 'WebSocket not connected' });
+              }
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              sendResponse({ success: false, error: errMsg });
+            }
+          } catch (e: unknown) {
+            console.error('LLM_REQUEST failed:', e);
             const errorMessage = e instanceof Error ? e.message : String(e);
             sendResponse({ success: false, error: errorMessage });
           }
