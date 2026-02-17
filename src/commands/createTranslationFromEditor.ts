@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as jsYaml from 'js-yaml';
-import { getIssueMarkdown, getIssueMarkdownContent, createIssueMarkdown, updateIssueMarkdownBody } from '../data/IssueMarkdowns';
+import { getIssueMarkdown, getIssueMarkdownContent, createIssueMarkdown } from '../data/IssueMarkdowns';
 import { createIssueNodes } from '../data/issueTreeManager';
 import { GitSyncService } from '../services/git-sync';
 import { LLMService } from '../llm/LLMService';
@@ -82,10 +82,11 @@ export function registerCreateTranslationFromEditorCommand(context: vscode.Exten
                 (newFrontmatter as any).translation_of = `IssueDir/${rel}`;
                 (newFrontmatter as any).translation_language = lang;
 
-                const frontYaml = jsYaml.dump(newFrontmatter, { lineWidth: 120 });
+
                 const bodyTitle = md.title ? `# ${md.title}（译文 - ${lang}）\n\n` : '';
 
-                let content = `---\n${frontYaml}---\n\n${bodyTitle}`;
+                // 构建最终的正文（不包含 frontmatter），稍后一次性通过 createIssueMarkdown 写入文件
+                let bodyContent = bodyTitle;
 
                 if (includeBody) {
                     // 读取正文（不包含原 frontmatter）并询问是否使用 LLM 翻译
@@ -103,7 +104,7 @@ export function registerCreateTranslationFromEditorCommand(context: vscode.Exten
                         }
 
                         if (choice === '复制原文（不翻译）') {
-                            content += body;
+                            bodyContent += body;
                         } else if (choice === '翻译正文（使用 LLM）') {
                             // 使用 LLM 翻译正文，支持取消
                             function toAbortSignal(token: vscode.CancellationToken): AbortSignal {
@@ -150,7 +151,7 @@ export function registerCreateTranslationFromEditorCommand(context: vscode.Exten
                             if (!translated || translated.trim().length === 0) {
                                 vscode.window.showWarningMessage('LLM 未返回有效翻译，已创建空译文。');
                             } else {
-                                content += translated;
+                                bodyContent += translated;
                             }
                         }
                     } catch (err) {
@@ -158,17 +159,11 @@ export function registerCreateTranslationFromEditorCommand(context: vscode.Exten
                         Logger.getInstance().warn('读取原文正文失败，已创建空译文', err);
                     }
                 }
-
-                // 使用 createIssueMarkdown 创建文件并用 updateIssueMarkdownBody 写入完整内容，随后将其注册到问题树
-                const initialUri = await createIssueMarkdown({ markdownBody: bodyTitle || undefined, frontmatter: newFrontmatter });
+                // 通过一次调用创建完整的文件（frontmatter + markdownBody），避免重复写盘与 frontmatter 重复
+                const initialUri = await createIssueMarkdown({ frontmatter: newFrontmatter, markdownBody: bodyContent || undefined });
                 if (!initialUri) {
                     vscode.window.showErrorMessage('创建译文文件失败。');
                     return;
-                }
-
-                const updateOk = await updateIssueMarkdownBody(initialUri, content);
-                if (!updateOk) {
-                    vscode.window.showWarningMessage('已创建译文文件，但写入内容失败。');
                 }
 
                 try {
