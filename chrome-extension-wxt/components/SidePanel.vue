@@ -9,53 +9,105 @@
     <!-- 问题总览视图 - 全屏模式 -->
     <div v-else class="focused-section-fullscreen">
       <div class="section-header-fullscreen">
+        <!-- 左侧标题区 -->
+        <div class="header-title">
+          <div class="header-logo">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="3" width="18" height="18" rx="3" fill="url(#logoGrad)"/>
+              <path d="M7 8h10M7 12h7M7 16h5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="18" cy="16" r="3" fill="#34d399"/>
+              <path d="M16.5 16l1 1 1.5-1.5" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+              <defs>
+                <linearGradient id="logoGrad" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#0ea5e9"/>
+                  <stop offset="1" stop-color="#6366f1"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <span class="header-title-text">Issue Manager</span>
+        </div>
+
+        <!-- 右侧操作按钮 -->
         <div class="header-actions">
-          <button 
-            id="auto-login-btn" 
-            class="action-btn tool-btn" 
+          <button
+            id="auto-login-btn"
+            class="icon-btn"
             title="自动登录工具"
             @click="showAutoLogin = true"
           >
-            <span class="btn-icon">🔐</span>
+            <!-- 钥匙/安全图标 -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="8" cy="8" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M11.5 11.5L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M14 15l1.5-1.5M15.5 16.5L17 15" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
           </button>
-          <button 
-            id="start-selection-btn" 
-            class="action-btn" 
+          <button
+            id="start-selection-btn"
+            class="icon-btn icon-btn--primary"
             title="新建笔记"
             @click="handleStartSelection"
           >
-            <span class="btn-icon">✨</span>
+            <!-- 加号/新建图标 -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 8h7M4 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <rect x="2" y="3" width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="15.5" cy="14.5" r="3" fill="currentColor" opacity="0.15"/>
+              <path d="M15.5 13v3M14 14.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
           </button>
           <button
             id="open-llm-btn"
-            class="action-btn"
+            class="icon-btn"
             title="LLM 对话"
             @click="showLLM = true"
           >
-            <span class="btn-icon">💬</span>
+            <!-- 对话气泡图标 -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v7a2 2 0 01-2 2H8l-4 3V5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M7 8h6M7 11h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
           </button>
           <button
             id="open-issue-dir-btn"
-            class="action-btn"
+            class="icon-btn"
             title="在 VS Code 中打开问题目录"
             @click="handleOpenIssueDir"
           >
-            <span class="btn-icon">📁</span>
+            <!-- 文件夹图标 -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 6a2 2 0 012-2h3.17a2 2 0 011.42.59L9.83 6H16a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
           </button>
-          <button 
-            id="refresh-focused-btn" 
-            class="action-btn" 
+          <button
+            id="refresh-focused-btn"
+            class="icon-btn"
+            :class="{ 'spinning': loading }"
             title="刷新问题总览"
             @click="loadFocusedIssues"
           >
-            <span class="btn-icon">🔄</span>
+            <!-- 刷新图标 -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4.5 10A5.5 5.5 0 0110 4.5c1.8 0 3.4.87 4.4 2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M15.5 10A5.5 5.5 0 0110 15.5c-1.8 0-3.4-.87-4.4-2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M13.5 6.5h1.5V5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M6.5 13.5H5v1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
           </button>
         </div>
       </div>
       <div id="focused-list" class="focused-list-fullscreen">
-        <div v-if="loading" class="loading">加载中...</div>
+        <div v-if="loading" class="loading">
+          <div class="loading-spinner"></div>
+          <span>加载中...</span>
+        </div>
         <div v-else-if="focusedIssues.length === 0" class="empty-message">
-          暂无问题
+          <svg class="empty-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="6" width="32" height="36" rx="4" stroke="currentColor" stroke-width="2"/>
+            <path d="M16 16h16M16 22h12M16 28h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <p>暂无问题</p>
         </div>
         <div v-else class="focused-issues">
           <TreeNode
@@ -69,17 +121,21 @@
       </div>
     </div>
 
-    
-
     <!-- 消息提示 -->
-    <div 
-      v-if="message.show" 
-      class="message" 
+    <div
+      v-if="message.show"
+      class="message"
       :class="message.type"
     >
+      <span class="message-icon">
+        <svg v-if="message.type === 'success'" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#34d399" opacity="0.2"/><path d="M5 8l2 2 4-4" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg v-else-if="message.type === 'error'" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#f87171" opacity="0.2"/><path d="M10 6L6 10M6 6l4 4" stroke="#f87171" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <svg v-else viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#60a5fa" opacity="0.2"/><path d="M8 7v4M8 5.5v.5" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </span>
       {{ message.text }}
     </div>
-    <!-- WebSocket 连接状态 - 页面底部状态栏（类似 VSCode 状态栏） -->
+
+    <!-- WebSocket 连接状态 - 页面底部状态栏 -->
     <div class="ws-status-bar" :title="wsStatusText" aria-hidden="true">
       <div class="ws-status-left">
         <div
@@ -267,13 +323,13 @@ function handleBackgroundMessage(msg: BackgroundMessage) {
 
   switch (msg.type) {
     case 'CREATION_SUCCESS':
-      showMessage('✅ 笔记创建成功！', 'success');
+      showMessage('笔记创建成功！', 'success');
       // 刷新关注问题列表
       loadFocusedIssues();
       break;
       
     case 'CREATION_ERROR':
-      showMessage('❌ ' + (msg.error || '创建笔记失败'), 'error');
+      showMessage((msg.error || '创建笔记失败'), 'error');
       break;
       
     case 'WS_CONNECTED':
@@ -316,17 +372,33 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ========== 全局变量 ========== */
 .container {
+  --bg-deep: #0f1117;
+  --bg-base: #161b22;
+  --bg-card: #1c2130;
+  --bg-hover: #242938;
+  --border-subtle: #2a3040;
+  --border-focus: #388bfd;
+  --accent-blue: #388bfd;
+  --accent-teal: #34d399;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #484f58;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
   width: 100%;
   height: 100vh;
-  background-color: #1e1e1e;
-  color: #d4d4d4;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
-  padding-bottom: 36px; /* 为底部状态栏预留空间，避免遮挡 */
+  padding-bottom: 28px; /* 为底部状态栏预留空间 */
 }
 
 .fullscreen-focused {
@@ -336,204 +408,216 @@ onUnmounted(() => {
 .focused-section-fullscreen {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
 }
 
+/* ========== 头部 ========== */
 .section-header-fullscreen {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  background-color: #252526;
-  border-bottom: 1px solid #3c3c3c;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #1a2030 0%, #161b22 100%);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+/* 左侧标题 */
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-logo {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 6px rgba(56, 139, 253, 0.35));
+}
+
+.header-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.header-title-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ========== 图标按钮 ========== */
+.header-actions {
+  display: flex;
+  gap: 4px;
   flex-shrink: 0;
 }
 
-.section-header-fullscreen h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+.icon-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.section-icon {
-  font-size: 20px;
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.action-btn {
-  background-color: #0e639c;
-  color: #ffffff;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: background-color 0.2s;
+  transition: all 0.15s ease;
+  padding: 0;
 }
 
-.tool-btn {
-  background-color: #5a3e1e;
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
-.tool-btn:hover {
-  background-color: #6e4c23;
+.icon-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
 }
 
-.action-btn:hover {
-  background-color: #1177bb;
+.icon-btn:active {
+  background: #2d3548;
+  transform: scale(0.94);
 }
 
-.action-btn:active {
-  background-color: #0d5a8f;
+/* 主要操作按钮（新建笔记）高亮 */
+.icon-btn--primary {
+  color: var(--accent-blue);
+  border-color: rgba(56, 139, 253, 0.25);
+  background: rgba(56, 139, 253, 0.08);
 }
 
-.btn-icon {
-  font-size: 16px;
+.icon-btn--primary:hover {
+  background: rgba(56, 139, 253, 0.18);
+  border-color: rgba(56, 139, 253, 0.5);
+  color: #60a5fa;
 }
 
+/* 刷新图标旋转动画 */
+.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ========== 问题列表 ========== */
 .focused-list-fullscreen {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
-  padding-bottom: 56px; /* 额外底部内边距，防止列表最后一项被状态栏覆盖 */
-}
-
-/* 右下角的连接状态点，不影响其他布局 */
-
-.ws-status-bottom-right {
-  position: fixed; /* detach from layout so it's always a single dot */
-  left: 10px;
-  bottom: 20px; /* lift above bottom message bar */
-  z-index: 99999; /* ensure it's above message bars */
-  width: auto;
-  height: auto;
-  display: block;
-  background: transparent; /* no background */
-  pointer-events: auto; /* allow tooltip hover */
-}
-
-.ws-status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background-clip: padding-box;
-  background-color: transparent; /* will be set by state classes */
-  box-shadow: none; /* remove inner background */
-  transition: background-color 160ms ease, transform 120ms ease;
-  display: inline-block;
-  pointer-events: auto; /* 允许在小圆点上悬停/点击以显示 tooltip */
-}
-
-.ws-status-dot.ws-connected {
-  background-color: #34d399; /* green */
-  box-shadow: 0 0 10px rgba(52,211,153,0.18);
-}
-
-.ws-status-dot.ws-connecting {
-  background-color: #f59e0b; /* amber */
-  box-shadow: 0 0 8px rgba(245,158,11,0.14);
-  transform: scale(1.05);
-}
-
-.ws-status-dot.ws-disconnected {
-  background-color: #6b7280; /* gray */
-  box-shadow: none;
-}
-
-.loading,
-.empty-message {
-  text-align: center;
-  padding: 40px 20px;
-  color: #858585;
-  font-size: 14px;
+  padding: 10px 10px 52px;
 }
 
 .focused-issues {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-/* 保留最小化的固定定位容器，点本身通过 .ws-status-dot 的状态类着色（无背景容器） */
-.ws-status-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0; /* 紧贴最底部 */
-  height: 28px;
+/* ========== 加载 & 空状态 ========== */
+.loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-  z-index: 99999; /* 确保在其他元素之上 */
-  background: #252526; /* 类似 VSCode 状态栏的暗色背景 */
-  border-top: 1px solid #2f2f31;
-  color: #d4d4d4;
-  font-size: 12px;
-  pointer-events: none; /* 让状态栏本体不拦截页面点击，避免遮挡交互 */
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
-.ws-status-left {
+.loading-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.empty-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* ========== 消息提示 ========== */
+.message {
+  position: fixed;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  z-index: 2000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.04);
+  animation: slideDown 0.25s ease-out;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
 }
 
-.ws-status-text {
-  color: #9aa0a6;
-}
-
-.ws-status-right {
+.message-icon {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-shrink: 0;
 }
 
-.message {
-  position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 12px 24px;
-  border-radius: 6px;
-  font-size: 14px;
-  z-index: 2000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  animation: slideDown 0.3s ease-out;
+.message-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .message.success {
-  background-color: #1e3a20;
-  color: #4ec9b0;
-  border: 1px solid #4ec9b0;
+  background: rgba(20, 50, 35, 0.92);
+  color: #4ade80;
+  border: 1px solid rgba(52, 211, 153, 0.3);
 }
 
 .message.error {
-  background-color: #3a1e1e;
-  color: #f48771;
-  border: 1px solid #f48771;
+  background: rgba(50, 20, 20, 0.92);
+  color: #fb7185;
+  border: 1px solid rgba(248, 113, 113, 0.3);
 }
 
 .message.info {
-  background-color: #1e2a3a;
-  color: #569cd6;
-  border: 1px solid #569cd6;
+  background: rgba(20, 30, 55, 0.92);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.3);
 }
 
 @keyframes slideDown {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
+    transform: translateX(-50%) translateY(-12px);
   }
   to {
     opacity: 1;
@@ -541,21 +625,83 @@ onUnmounted(() => {
   }
 }
 
-/* 自定义滚动条样式 */
+/* ========== 状态栏 ========== */
+.ws-status-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  z-index: 99999;
+  background: #161b22;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.ws-status-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transition: background-color 160ms ease;
+}
+
+.ws-status-dot.ws-connected {
+  background-color: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+}
+
+.ws-status-dot.ws-connecting {
+  background-color: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.ws-status-dot.ws-disconnected {
+  background-color: #6b7280;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.ws-status-text {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.ws-status-right {
+  display: flex;
+  align-items: center;
+}
+
+/* ========== 自定义滚动条 ========== */
 .focused-list-fullscreen::-webkit-scrollbar {
-  width: 10px;
+  width: 6px;
 }
 
 .focused-list-fullscreen::-webkit-scrollbar-track {
-  background: #1e1e1e;
+  background: transparent;
 }
 
 .focused-list-fullscreen::-webkit-scrollbar-thumb {
-  background: #424242;
-  border-radius: 5px;
+  background: #2a3040;
+  border-radius: 3px;
 }
 
 .focused-list-fullscreen::-webkit-scrollbar-thumb:hover {
-  background: #4e4e4e;
+  background: #3a4258;
 }
 </style>

@@ -6,14 +6,23 @@
       :class="{ expanded: isExpanded }"
       @click="toggleExpand"
     >
-      <span class="toggle-icon">{{ isExpanded ? '▼' : '▶' }}</span>
+      <!-- 展开/收起箭头 -->
+      <span class="toggle-icon" :class="{ 'is-expanded': isExpanded }">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
       <span class="node-title">{{ nodeTitle }}</span>
+      <!-- 生成标题按钮 -->
       <button
         class="generate-btn"
-        title="生成标题"
+        title="AI 生成标题"
         @click.stop="handleGenerateTitle"
       >
-        生成标题
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 2l1.2 3.6L13 5l-3 2.3 1 3.7L8 9l-3 2 1-3.7L3 5l3.8.6L8 2z" fill="currentColor" opacity="0.85"/>
+        </svg>
+        <span>生成</span>
       </button>
     </div>
 
@@ -235,85 +244,134 @@ function parseMarkdown(markdown: string): string {
 </script>
 
 <style scoped>
+/* ========== 变量 ========== */
 .tree-node {
-  margin-bottom: 8px;
+  --bg-card: #1c2130;
+  --bg-hover: #242938;
+  --bg-expanded: #1e2535;
+  --border-subtle: #2a3040;
+  --border-active: rgba(56, 139, 253, 0.4);
+  --accent-blue: #388bfd;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #484f58;
+
+  margin-bottom: 4px;
 }
 
 .tree-node-header-compact {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 9px 12px;
   cursor: pointer;
-  background: #2d2d30;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-  transition: all 0.2s;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  transition: all 0.18s ease;
   user-select: none;
 }
 
 .tree-node-header-compact:hover {
-  background: #37373d;
-  border-color: #0e639c;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  background: var(--bg-hover);
+  border-color: rgba(56, 139, 253, 0.3);
 }
 
 .tree-node-header-compact.expanded {
-  background: #37373d;
+  background: var(--bg-expanded);
+  border-color: var(--border-active);
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
-  border-bottom-color: transparent;
+  border-bottom-color: rgba(56, 139, 253, 0.15);
 }
 
+/* 展开箭头 */
 .toggle-icon {
-  font-size: 10px;
-  color: #858585;
-  min-width: 12px;
-  text-align: center;
-  transition: transform 0.2s;
+  display: flex;
+  align-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s ease, color 0.15s ease;
+}
+
+.toggle-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.toggle-icon.is-expanded {
+  transform: rotate(90deg);
+  color: var(--accent-blue);
+}
+
+.tree-node-header-compact:hover .toggle-icon {
+  color: var(--text-secondary);
 }
 
 .node-title {
   flex: 1;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: #cccccc;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
+/* 生成标题按钮 */
 .generate-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   background: transparent;
-  border: 1px solid #0e639c;
-  color: #d4d4d4;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
   cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.generate-btn svg {
+  width: 12px;
+  height: 12px;
+  color: #fbbf24;
+}
+
+.generate-btn:hover {
+  background: var(--bg-hover);
+  border-color: rgba(56, 139, 253, 0.4);
+  color: var(--text-primary);
 }
 
 .node-status {
-  margin: 6px 0 8px 0;
-  color: #9bd5ff;
-  font-size: 12px;
+  margin: 4px 0 6px 12px;
+  color: #60a5fa;
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .tree-node-content {
-  background: #2d2d30;
-  border: 1px solid #3c3c3c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-active);
   border-top: none;
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-  padding: 16px 20px;
-  margin-bottom: 8px;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 4px;
 }
 
 .tree-node-children {
-  margin-left: 20px;
-  margin-top: 8px;
-  padding-left: 12px;
-  border-left: 2px solid #3c3c3c;
+  margin-left: 18px;
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(56, 139, 253, 0.2);
 }
 
 .markdown-body {
@@ -576,8 +634,8 @@ function parseMarkdown(markdown: string): string {
 }
 
 .no-content {
-  color: #858585;
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: 12px;
   font-style: italic;
 }
 </style>
