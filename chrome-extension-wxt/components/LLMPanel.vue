@@ -220,11 +220,33 @@
         </svg>
         对话生成中，消息已排队…
       </div>
-      <div class="input-wrapper">
+      <div class="input-wrapper" style="position: relative;">
+        <!-- 提及菜单 -->
+        <div v-show="showMentionMenu && filteredMentions.length > 0" class="mention-menu">
+          <div 
+            v-for="(opt, idx) in filteredMentions" 
+            :key="opt.id"
+            class="mention-item"
+            :class="{ active: idx === mentionSelectedIndex }"
+            @mousedown.prevent="selectMention(opt)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+              <line x1="9" y1="21" x2="9" y2="9"></line>
+            </svg>
+            <span>{{ opt.label }}</span>
+          </div>
+        </div>
+
         <textarea
+          ref="inputRef"
           v-model="inputText"
           :placeholder="loadingLLM ? '输入下一条消息，将在回复完成后自动发送…' : '输入消息，Enter 发送，Shift+Enter 换行…'"
-          @keydown.enter.exact.prevent="handleSend"
+          @input="handleInput"
+          @keydown.up="handleMentionUp"
+          @keydown.down="handleMentionDown"
+          @keydown.enter.exact.prevent="handleEnter"
         />
         <button class="send-btn" @click="handleSend" :disabled="!inputText.trim()" :title="loadingLLM ? '加入排列' : '发送'">
           <svg v-if="loadingLLM" viewBox="0 0 20 20" fill="none">
@@ -249,6 +271,7 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   text: string;
+  pageContext?: { title: string; text: string }; // 隐藏的网页上下文，用于发给 LLM 但不在界面展示长内容
 }
 
 interface Conversation {
@@ -527,6 +550,11 @@ function copyAllMessages() {
   });
 }
 
+// ===== 提取网页上下文 =====
+const fetchingPage = ref(false);
+
+
+
 // ===== 滚动 =====
 function scrollToBottom() {
   nextTick(() => {
@@ -535,8 +563,125 @@ function scrollToBottom() {
   });
 }
 
+// ===== # 提及菜单 (Mention) 与区域选取状态 =====
+const inputRef = ref<HTMLTextAreaElement | null>(null);
+const showMentionMenu = ref(false);
+const mentionSearch = ref('');
+const mentionSelectedIndex = ref(0);
+
+// 用于保存通过 #当前区域 触发获取到的独立上下文
+const selectedAreaContext = ref<{ title: string; text: string } | null>(null);
+
+const mentionOptions = [
+  { id: 'page', label: '当前网页' },
+  { id: 'selection', label: '当前划选' },
+  { id: 'area', label: '当前区域' }
+];
+
+const filteredMentions = computed(() => {
+  const q = mentionSearch.value.toLowerCase();
+  return mentionOptions.filter(o => o.label.toLowerCase().includes(q));
+});
+
+function handleInput(e: Event) {
+  const el = e.target as HTMLTextAreaElement;
+  const cursor = el.selectionStart;
+  const textBeforeCursor = inputText.value.slice(0, cursor);
+  const match = textBeforeCursor.match(/#([^\s#]*)$/);
+  
+  if (match) {
+    showMentionMenu.value = true;
+    mentionSearch.value = match[1];
+    mentionSelectedIndex.value = 0;
+  } else {
+    showMentionMenu.value = false;
+  }
+}
+
+// 监听完整的手写输入或者别的触发方式，一旦完整的 "#当前区域" 出现在文本中并且尚未有选区数据，立即触发。
+// 为防止多次触发，也可以绑定在 selectMention 里为主，手输的则依靠 watch 文本正则查找。
+watch(inputText, (newVal, oldVal) => {
+  if (newVal.endsWith('#当前区域') && !oldVal.endsWith('#当前区域')) {
+    triggerAreaSelection();
+  }
+});
+
+async function triggerAreaSelection() {
+  if (fetchingPage.value) return;
+  fetchingPage.value = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'START_LLM_SELECTION' });
+    if (response && response.success && response.data?.html) {
+      const pageTitle = response.data.title || '指定区域';
+      const areaHtml = response.data.html.trim();
+      selectedAreaContext.value = {
+        title: pageTitle,
+        text: `\n--- 页面指定区域结构 ---\n${areaHtml}\n`
+      };
+      // 可选：将 #当前区域 替换成选中成功标记，让用户感知到已经绑定数据
+      inputText.value = inputText.value.replace(/#当前区域/g, `【已选定区域: ${pageTitle}】`);
+    } else {
+      console.warn('[LLMPanel] #当前区域 选取失败或取消:', response?.error);
+      inputText.value = inputText.value.replace(/#当前区域/g, ''); // 取消则移除标签
+    }
+  } catch (err) {
+    console.error('[LLMPanel] 触发区域选取异常', err);
+    inputText.value = inputText.value.replace(/#当前区域/g, '');
+  } finally {
+    fetchingPage.value = false;
+  }
+}
+
+function handleMentionUp(e: KeyboardEvent) {
+  if (showMentionMenu.value && filteredMentions.value.length > 0) {
+    e.preventDefault();
+    mentionSelectedIndex.value = (mentionSelectedIndex.value - 1 + filteredMentions.value.length) % filteredMentions.value.length;
+  }
+}
+
+function handleMentionDown(e: KeyboardEvent) {
+  if (showMentionMenu.value && filteredMentions.value.length > 0) {
+    e.preventDefault();
+    mentionSelectedIndex.value = (mentionSelectedIndex.value + 1) % filteredMentions.value.length;
+  }
+}
+
+function handleEnter(e: KeyboardEvent) {
+  if (showMentionMenu.value && filteredMentions.value.length > 0) {
+    e.preventDefault();
+    selectMention(filteredMentions.value[mentionSelectedIndex.value]);
+    return;
+  }
+  handleSend();
+}
+
+function selectMention(option: { id: string, label: string }) {
+  const el = inputRef.value;
+  if (!el) return;
+  const cursor = el.selectionStart;
+  const textBeforeCursor = inputText.value.slice(0, cursor);
+  const match = textBeforeCursor.match(/#([^\s#]*)$/);
+  
+  if (match) {
+    const textAfterCursor = inputText.value.slice(cursor);
+    const replacement = `#${option.label} `;
+    
+    inputText.value = textBeforeCursor.slice(0, match.index) + replacement + textAfterCursor;
+    showMentionMenu.value = false;
+    
+    nextTick(() => {
+      const newCursor = (match.index || 0) + replacement.length;
+      el.setSelectionRange(newCursor, newCursor);
+      el.focus();
+      if (option.id === 'area') {
+        triggerAreaSelection();
+      }
+    });
+  }
+}
+
 // ===== 发送逻辑 =====
-function handleSend() {
+async function handleSend() {
   const text = inputText.value.trim();
   if (!text) return;
 
@@ -547,13 +692,68 @@ function handleSend() {
   }
 
   inputText.value = '';
-  doSend(text);
+  showMentionMenu.value = false;
+  
+  let finalPrompt = text;
+  let pageContextData: { title: string; text: string } | undefined;
+
+  // 标记是否需要请求
+  const needsPage = finalPrompt.includes('#当前网页');
+  const needsSelection = finalPrompt.includes('#当前划选');
+  // 已选中的区域直接从 selectedAreaContext 取
+
+  if (needsPage || needsSelection || selectedAreaContext.value) {
+    fetchingPage.value = true;
+    try {
+      let mergedText = '';
+      let pageTitle = '当前网页';
+
+      if (needsPage) {
+        const response = await chrome.runtime.sendMessage({ type: 'GET_PAGE_CONTENT' });
+        if (response && response.success && response.data?.text) {
+          pageTitle = response.data.title || '当前网页';
+          finalPrompt = finalPrompt.replace(/#当前网页/g, `【已引用当前网页上下文: ${pageTitle}】`);
+          mergedText += `\n--- 网页全文 ---\n${response.data.text.trim()}\n`;
+        } else {
+          console.warn('[LLMPanel] #当前网页 引用内容失败:', response?.error);
+        }
+      }
+
+      if (needsSelection) {
+        const response = await chrome.runtime.sendMessage({ type: 'GET_PAGE_SELECTION' });
+        if (response && response.success && response.data?.text) {
+          pageTitle = response.data.title || pageTitle; // 以防未请求全文时需要 title
+          finalPrompt = finalPrompt.replace(/#当前划选/g, `【已引用网页当前划选部分: ${pageTitle}】`);
+          mergedText += `\n--- 网页划选内容 ---\n${response.data.text.trim()}\n`;
+        } else {
+          console.warn('[LLMPanel] #当前划选 引用内容失败:', response?.error);
+        }
+      }
+
+      if (selectedAreaContext.value) {
+        pageTitle = selectedAreaContext.value.title || pageTitle;
+        mergedText += selectedAreaContext.value.text;
+        selectedAreaContext.value = null; // 消费后清空
+      }
+
+      if (mergedText) {
+        pageContextData = { title: pageTitle, text: mergedText };
+      }
+
+    } catch (err) {
+      console.error('[LLMPanel] 提取网页 API 异常', err);
+    } finally {
+      fetchingPage.value = false;
+    }
+  }
+
+  doSend(finalPrompt, currentConvId.value, pageContextData);
 }
 
 // placeholderId → convId 映射：用于将流式 chunk 路由到发起请求的会话（而非当前活跃会话）
 const _placeholderConvMap: Record<string, string> = {};
 
-async function doSend(text: string, targetConvId?: string) {
+async function doSend(text: string, targetConvId?: string, pageContextData?: { title: string; text: string }) {
   // 在函数开头捕获 convId，防止后续 await 期间用户切换会话导致路由错误
   const convId = targetConvId ?? currentConvId.value;
   const conv = conversations.value.find(c => c.id === convId);
@@ -561,12 +761,19 @@ async function doSend(text: string, targetConvId?: string) {
 
   const id = genId();
 
-  // 快照历史（不含当前消息），用于多轮上下文
+  // 快照历史（不含当前消息），组装给后端的完整上下文
   const history = conv.messages
     .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => ({ role: m.role, content: m.text }));
+    .map(m => {
+      let content = m.text;
+      if (m.pageContext) {
+        content = `${content}\n\n\`\`\`page-context\n【当前网页: ${m.pageContext.title}】\n${m.pageContext.text}\n\`\`\``;
+      }
+      return { role: m.role, content };
+    });
 
-  conv.messages.push({ id, role: 'user', text });
+  // UI 展示的消息体
+  conv.messages.push({ id, role: 'user', text, pageContext: pageContextData });
   // 更新标题（第一次发消息时）
   if (conv.messages.filter(m => m.role === 'user').length === 1) {
     conv.title = autoTitle(conv);
@@ -576,10 +783,16 @@ async function doSend(text: string, targetConvId?: string) {
 
   try {
     _loadingMap.value[convId] = true;
+    
+    let realPrompt = text;
+    if (pageContextData) {
+      realPrompt = `${realPrompt}\n\n\`\`\`page-context\n【当前网页: ${pageContextData.title}】\n${pageContextData.text}\n\`\`\`\n`;
+    }
+
     const response = await chrome.runtime.sendMessage({
       type: 'LLM_REQUEST',
       model: 'copilot',
-      prompt: text,
+      prompt: realPrompt,
       history,
     });
 
@@ -1208,31 +1421,7 @@ onUnmounted(() => {
   50% { opacity: 0; }
 }
 
-/* ========== 策略二：打字气泡 ========== */
-.typing-bubble {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 10px 13px;
-  min-height: 38px;
-}
 
-.typing-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent-blue);
-  opacity: 0.4;
-  animation: typingBounce 1.2s ease-in-out infinite;
-}
-
-.typing-dot:nth-child(2) { animation-delay: 0.18s; }
-.typing-dot:nth-child(3) { animation-delay: 0.36s; }
-
-@keyframes typingBounce {
-  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-4px); }
-}
 
 /* ========== 消息区域 ========== */
 .llm-messages {
@@ -1354,7 +1543,43 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
+/* ========== 提及菜单 ========== */
+.mention-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  padding: 4px;
+  min-width: 140px;
+  z-index: 100;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.mention-item:hover,
+.mention-item.active {
+  background: rgba(56, 139, 253, 0.15);
+  color: #60a5fa;
+}
+
+.mention-item svg { width: 14px; height: 14px; color: currentColor; }
+
 .input-wrapper {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -1409,4 +1634,25 @@ onUnmounted(() => {
 .send-btn:hover { background: #4d9bff; }
 .send-btn:active { transform: scale(0.92); }
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+.page-context-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+  margin-bottom: 2px;
+}
+.page-context-btn svg { width: 14px; height: 14px; }
+.page-context-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent-blue); }
+.page-context-btn:active { transform: scale(0.92); }
+.page-context-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 </style>

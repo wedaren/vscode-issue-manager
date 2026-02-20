@@ -53,11 +53,14 @@ export default defineBackground(() => {
   const URI_FALLBACK_MAX_LENGTH = 60000;
   const configManager = ChromeConfigManager.getInstance();
 
-  // WebSocket 连接管理
   let ws: WebSocket | null = null;
   let wsReconnectTimer: NodeJS.Timeout | null = null;
   let wsPingTimer: NodeJS.Timeout | null = null;
   let wsConnected = false;
+
+  // 存储 LLM 交互的选取挂起 Promise resolve 和 reject
+  let llmSelectionResolver: ((value: any) => void) | null = null;
+  let llmSelectionRejector: ((reason?: any) => void) | null = null;
   let messageIdCounter = 0;
   const pendingMessages = new Map<string, { resolve: (value: WebSocketMessage) => void; reject: (reason?: Error) => void }>();
   // 简单的 markdown 缓存与并发请求去重
@@ -307,7 +310,9 @@ export default defineBackground(() => {
   }
 
   async function getIssueTreeFromWs(): Promise<any[]> {
-    if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('WebSocket 未连接');
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket 未连接');
+    }
     const response = await sendWebSocketMessage({ type: 'get-issue-tree' }, 5000);
     if (response && response.type === 'issue-tree') {
       return (response as any).data || [];
@@ -352,7 +357,9 @@ export default defineBackground(() => {
             // 简单回收策略：删除 Map 中最旧（最少使用）的键（Map 按插入顺序迭代）
             if (issueMarkdownCache.size > MAX_CACHE_ITEMS) {
               const oldestKey = issueMarkdownCache.keys().next().value as string | undefined;
-              if (oldestKey) issueMarkdownCache.delete(oldestKey);
+              if (oldestKey) {
+                issueMarkdownCache.delete(oldestKey);
+              }
             }
           } catch (e) {
             console.warn('[Background] Failed to update issue markdown cache:', e);
@@ -412,7 +419,7 @@ export default defineBackground(() => {
       case 'START_SELECTION':
         (async () => {
           try {
-            await handleStartSelection(message.tabId || sender.tab?.id);
+            await handleStartSelection(message.tabId || sender.tab?.id, 'START_SELECTION');
             sendResponse({ success: true });
           } catch (e: unknown) {
             console.error('Failed to activate selection mode:', e);
@@ -422,12 +429,58 @@ export default defineBackground(() => {
         })();
         break;
 
+      case 'START_LLM_SELECTION':
+        (async () => {
+          try {
+            // 清理上一个未完成的任务
+            if (llmSelectionRejector) {
+              llmSelectionRejector(new Error('Interrupted by new selection'));
+              llmSelectionRejector = null;
+              llmSelectionResolver = null;
+            }
+
+            // 建立挂起的 Promise
+            const selectionPromise = new Promise((resolve, reject) => {
+              llmSelectionResolver = resolve;
+              llmSelectionRejector = reject;
+            });
+
+            await handleStartSelection(message.tabId || sender.tab?.id, 'START_LLM_SELECTION');
+
+            // 等待用户操作
+            const data = await selectionPromise;
+            sendResponse({ success: true, data });
+          } catch (e: unknown) {
+            console.error('Failed or cancelled LLM selection:', e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          } finally {
+            llmSelectionResolver = null;
+            llmSelectionRejector = null;
+          }
+        })();
+        break;
+
       case 'CONTENT_SELECTED':
         handleContentSelected(message.data!);
         sendResponse({ success: true });
         break;
 
+      case 'LLM_CONTENT_SELECTED':
+        if (llmSelectionResolver) {
+          llmSelectionResolver(message.data);
+          llmSelectionResolver = null;
+          llmSelectionRejector = null;
+        }
+        sendResponse({ success: true });
+        break;
+
       case 'CANCEL_SELECTION':
+        if (llmSelectionRejector) {
+          llmSelectionRejector(new Error('User cancelled selection'));
+          llmSelectionResolver = null;
+          llmSelectionRejector = null;
+        }
         handleCancelSelection(message.tabId || sender.tab?.id);
         sendResponse({ success: true });
         break;
@@ -454,6 +507,19 @@ export default defineBackground(() => {
             sendResponse({ success: true, data });
           } catch (e: unknown) {
             console.error('[Background] Failed to get page selection:', e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      case 'GET_PAGE_CONTENT':
+        (async () => {
+          try {
+            const data = await getPageContent(message.tabId || sender.tab?.id);
+            sendResponse({ success: true, data });
+          } catch (e: unknown) {
+            console.error('[Background] Failed to get page content:', e);
             const errorMessage = e instanceof Error ? e.message : String(e);
             sendResponse({ success: false, error: errorMessage });
           }
@@ -622,7 +688,7 @@ export default defineBackground(() => {
     return true;
   });
 
-  async function handleStartSelection(tabId?: number) {
+  async function handleStartSelection(tabId?: number, actionType: 'START_SELECTION' | 'START_LLM_SELECTION' = 'START_SELECTION') {
     if (!tabId) {
       try {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -633,14 +699,16 @@ export default defineBackground(() => {
 
       if (!tabId) {
         console.error('No tab ID provided');
-        notifySidePanel({ type: 'CREATION_ERROR', error: '无法获取当前标签页，无法进入选取模式。' });
-        return;
+        if (actionType === 'START_SELECTION') {
+          notifySidePanel({ type: 'CREATION_ERROR', error: '无法获取当前标签页，无法进入选取模式。' });
+        }
+        throw new Error('无法获取当前标签页，无法进入选取模式。');
       }
     }
 
     try {
-      await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
-      console.log('Selection mode activated in tab', tabId);
+      await chrome.tabs.sendMessage(tabId, { type: actionType });
+      console.log('Selection mode activated in tab', tabId, 'action:', actionType);
       return;
     } catch (error: unknown) {
       console.warn('First attempt to activate selection failed, trying to inject content script...', error);
@@ -648,8 +716,8 @@ export default defineBackground(() => {
 
     try {
       await ensureContentScriptInjected(tabId);
-      await chrome.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
-      console.log('Selection mode activated after injection in tab', tabId);
+      await chrome.tabs.sendMessage(tabId, { type: actionType });
+      console.log('Selection mode activated after injection in tab', tabId, 'action:', actionType);
     } catch (error: unknown) {
       try {
         const tab = await chrome.tabs.get(tabId);
@@ -704,6 +772,46 @@ export default defineBackground(() => {
       }
 
       throw new Error(response?.error || '获取划线内容失败');
+    }
+  }
+
+  async function getPageContent(tabId?: number): Promise<PageSelectionData> {
+    let resolvedTabId = tabId;
+    if (!resolvedTabId) {
+      resolvedTabId = await getActiveTabId();
+    }
+
+    if (!resolvedTabId) {
+      throw new Error('无法获取当前标签页');
+    }
+
+    try {
+      const response = await chrome.tabs.sendMessage(resolvedTabId, { type: 'GET_PAGE_CONTENT' }) as {
+        success?: boolean;
+        data?: PageSelectionData;
+        error?: string;
+      };
+
+      if (response?.success && response.data) {
+        return response.data;
+      }
+
+      throw new Error(response?.error || '获取页面内容失败');
+    } catch (firstError: unknown) {
+      console.warn('[Background] First GET_PAGE_CONTENT failed, try inject content script:', firstError);
+      await ensureContentScriptInjected(resolvedTabId);
+
+      const response = await chrome.tabs.sendMessage(resolvedTabId, { type: 'GET_PAGE_CONTENT' }) as {
+        success?: boolean;
+        data?: PageSelectionData;
+        error?: string;
+      };
+
+      if (response?.success && response.data) {
+        return response.data;
+      }
+
+      throw new Error(response?.error || '获取页面内容失败');
     }
   }
 

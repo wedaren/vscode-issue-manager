@@ -21,6 +21,7 @@ export interface SelectionModeState {
   navigationHistory: HTMLElement[];
   lastMouseX: number;
   lastMouseY: number;
+  selectionPurpose: 'issue' | 'llm';
 }
 
 const debouncedShowToast = debounce(showToast, TIMEOUTS.toastDebounce);
@@ -41,19 +42,21 @@ export function createSelectionState(): SelectionModeState {
     navigationHistory: [],
     lastMouseX: 0,
     lastMouseY: 0,
+    selectionPurpose: 'issue',
   };
 }
 
 /**
  * 开始选取模式
  */
-export function startSelectionMode(state: SelectionModeState): void {
+export function startSelectionMode(state: SelectionModeState, purpose: 'issue' | 'llm' = 'issue'): void {
   if (state.isActive) {
     return;
   }
 
-  console.log('Starting selection mode');
+  console.log('Starting selection mode, purpose:', purpose);
   state.isActive = true;
+  state.selectionPurpose = purpose;
   state.frozenByClick = false;
   state.currentElement = null;
   state.navigationHistory = [];
@@ -74,7 +77,7 @@ export function startSelectionMode(state: SelectionModeState): void {
     if (document.body && typeof (document.body as any).focus === 'function') {
       (document.body as any).focus();
     }
-  } catch {}
+  } catch { }
 
   debouncedShowToast('请点击页面任意区域以选中内容');
 }
@@ -131,9 +134,9 @@ function handleMouseMove(event: MouseEvent, state: SelectionModeState): void {
   event.stopPropagation();
   state.lastMouseX = event.clientX;
   state.lastMouseY = event.clientY;
-  
+
   const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement;
-  
+
   if (!element || element === state.overlay || element === state.highlightBox) {
     return;
   }
@@ -216,7 +219,7 @@ function handleConfirm(state: SelectionModeState): void {
   if (!state.currentElement) {
     seedCurrentFromHoverOrCenter(state);
   }
-  
+
   if (state.currentElement) {
     confirmSelection(state);
   } else {
@@ -243,19 +246,26 @@ function confirmSelection(state: SelectionModeState): void {
   if (!state.currentElement) {
     return;
   }
-  
+
   const html = state.currentElement.outerHTML;
   const title = extractTitle();
   const url = window.location.href;
 
-  console.log('Element selected:', { html: html.substring(0, 100), title, url });
+  console.log('Element selected:', { html: html.substring(0, 100), title, url, purpose: state.selectionPurpose });
 
-  chrome.runtime.sendMessage({
-    type: 'CONTENT_SELECTED',
-    data: { html, title, url }
-  });
-
-  debouncedShowToast('✓ 内容已选取，正在创建笔记...', 'success');
+  if (state.selectionPurpose === 'llm') {
+    chrome.runtime.sendMessage({
+      type: 'LLM_CONTENT_SELECTED',
+      data: { html, title, url }
+    });
+    debouncedShowToast('✓ 区域已选择', 'success');
+  } else {
+    chrome.runtime.sendMessage({
+      type: 'CONTENT_SELECTED',
+      data: { html, title, url }
+    });
+    debouncedShowToast('✓ 内容已选取，正在创建笔记...', 'success');
+  }
 
   setTimeout(() => {
     cancelSelectionMode(state);
@@ -282,11 +292,11 @@ function seedCurrentFromHoverOrCenter(state: SelectionModeState): void {
     updateHighlight(state.highlightBox, state.currentElement);
     return;
   }
-  
+
   const centerX = Math.round(window.innerWidth / 2);
   const centerY = Math.round(window.innerHeight / 2);
   const el = document.elementFromPoint(centerX, centerY) as HTMLElement;
-  
+
   if (el && isSelectable(el, state)) {
     state.currentElement = el;
     updateHighlight(state.highlightBox, state.currentElement);
@@ -301,13 +311,13 @@ function hasMouseMovedSignificantly(state: SelectionModeState): boolean {
   if (!el) {
     return true;
   }
-  
+
   const rect = el.getBoundingClientRect();
-  const dx = state.lastMouseX < rect.left ? rect.left - state.lastMouseX : 
-              (state.lastMouseX > rect.right ? state.lastMouseX - rect.right : 0);
-  const dy = state.lastMouseY < rect.top ? rect.top - state.lastMouseY : 
-              (state.lastMouseY > rect.bottom ? state.lastMouseY - rect.bottom : 0);
-  
+  const dx = state.lastMouseX < rect.left ? rect.left - state.lastMouseX :
+    (state.lastMouseX > rect.right ? state.lastMouseX - rect.right : 0);
+  const dy = state.lastMouseY < rect.top ? rect.top - state.lastMouseY :
+    (state.lastMouseY > rect.bottom ? state.lastMouseY - rect.bottom : 0);
+
   return (dx > MOUSE_SWITCH_THRESHOLD || dy > MOUSE_SWITCH_THRESHOLD);
 }
 
@@ -334,7 +344,7 @@ function isOurUiElement(el: HTMLElement | null, controlPanel: HTMLElement | null
   if (!el) {
     return false;
   }
-  
+
   if (el.classList) {
     for (const cls of UI_CLASSES) {
       if (el.classList.contains(cls)) {
@@ -342,15 +352,15 @@ function isOurUiElement(el: HTMLElement | null, controlPanel: HTMLElement | null
       }
     }
   }
-  
+
   if (controlPanel && (el === controlPanel || el.closest?.('.issue-manager-control'))) {
     return true;
   }
-  
+
   const toast = document.querySelector('.issue-manager-toast');
   if (toast && (el === toast || el.closest?.('.issue-manager-toast'))) {
     return true;
   }
-  
+
   return false;
 }

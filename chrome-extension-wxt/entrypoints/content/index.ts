@@ -46,11 +46,20 @@ function getPageSelectionData(): PageSelectionData {
   };
 }
 
+function getPageContentData(): PageSelectionData {
+  return {
+    text: document.body.innerText || '',
+    html: document.body.innerHTML || '',
+    title: document.title || '未命名页面',
+    url: window.location.href,
+  };
+}
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_start',
   allFrames: true,
-  
+
   main() {
     // 幂等注入哨兵，避免重复注入
     if ((window as any).__ISSUE_MANAGER_CONTENT_INJECTED__) {
@@ -73,7 +82,7 @@ export default defineContentScript({
       try {
         const result = await chrome.storage.local.get(STORAGE_KEYS.accountSwitchState);
         const state: AccountSwitchState | undefined = result.accountSwitchState;
-        
+
         if (!state || !state.inProgress) {
           return;
         }
@@ -93,7 +102,7 @@ export default defineContentScript({
 
         console.log('[Account Switch] 检测到待恢复的账号替换操作');
         console.log('[Account Switch] 原始路径:', state.originalPath);
-        
+
         // 等待页面加载完成后执行自动登录
         const executeResume = () => {
           setTimeout(() => {
@@ -125,6 +134,13 @@ export default defineContentScript({
         return true;
       }
 
+      if (message.type === 'START_LLM_SELECTION') {
+        console.log('Starting LLM selection mode');
+        startSelectionMode(selectionState, 'llm');
+        sendResponse({ success: true });
+        return true;
+      }
+
       if (message.type === 'CANCEL_SELECTION') {
         console.log('Cancelling selection mode');
         cancelSelectionMode(selectionState);
@@ -135,6 +151,17 @@ export default defineContentScript({
       if (message.type === 'GET_PAGE_SELECTION') {
         try {
           const data = getPageSelectionData();
+          sendResponse({ success: true, data });
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          sendResponse({ success: false, error: errorMessage });
+        }
+        return true;
+      }
+
+      if (message.type === 'GET_PAGE_CONTENT') {
+        try {
+          const data = getPageContentData();
           sendResponse({ success: true, data });
         } catch (error: unknown) {
           const errorMessage = error instanceof Error ? error.message : String(error);
