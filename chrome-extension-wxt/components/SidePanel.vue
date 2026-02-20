@@ -6,6 +6,9 @@
     <!-- LLM 对话窗口 -->
     <LLMPanel v-else-if="showLLM" @back="showLLM = false" />
 
+    <!-- 划线助手窗口 -->
+    <SelectionAssistPanel v-else-if="showSelectionAssist" @back="showSelectionAssist = false" />
+
     <!-- 问题总览视图 - 全屏模式 -->
     <div v-else class="focused-section-fullscreen">
       <div class="section-header-fullscreen">
@@ -67,6 +70,19 @@
             <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v7a2 2 0 01-2 2H8l-4 3V5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
               <path d="M7 8h6M7 11h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button
+            id="open-selection-assist-btn"
+            class="icon-btn"
+            title="划线助手"
+            @click="showSelectionAssist = true"
+          >
+            <!-- 翻译/对照图标 -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3.5 5h7M3.5 8h5M3.5 11h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <path d="M11 5h5.5M13.5 5c0 3-1.5 5.2-4 6.8M13.5 5c0 3 1.5 5.2 4 6.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              <path d="M11 15h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
             </svg>
           </button>
           <button
@@ -158,6 +174,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import TreeNode from './TreeNode.vue';
 import AutoLoginPanel from './AutoLoginPanel.vue';
 import LLMPanel from './LLMPanel.vue';
+import SelectionAssistPanel from './SelectionAssistPanel.vue';
 
 interface FocusedIssue {
   id: string;
@@ -187,6 +204,7 @@ const wsStatus = ref<'connected' | 'connecting' | 'disconnected'>('connecting');
 const message = ref<Message>({ show: false, text: '', type: 'info' });
 const showAutoLogin = ref(false);
 const showLLM = ref(false);
+const showSelectionAssist = ref(false);
 
 const wsStatusClass = computed(() => {
   return {

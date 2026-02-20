@@ -10,6 +10,42 @@ import { type AccountSwitchState } from './features/auth/storage';
 import { createSelectionState, startSelectionMode, cancelSelectionMode } from './features/selection';
 import { TIMEOUTS, STORAGE_KEYS, LOGIN_PATH } from './config/constants';
 
+interface PageSelectionData {
+  text: string;
+  html: string;
+  title: string;
+  url: string;
+}
+
+function getSelectionHtml(): string {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return '';
+  }
+
+  const container = document.createElement('div');
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    const range = selection.getRangeAt(index);
+    const fragment = range.cloneContents();
+    container.appendChild(fragment);
+  }
+
+  return container.innerHTML;
+}
+
+function getPageSelectionData(): PageSelectionData {
+  const selection = window.getSelection();
+  const text = selection?.toString().trim() ?? '';
+  const html = getSelectionHtml();
+
+  return {
+    text,
+    html,
+    title: document.title || '未命名页面',
+    url: window.location.href,
+  };
+}
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_start',
@@ -93,6 +129,17 @@ export default defineContentScript({
         console.log('Cancelling selection mode');
         cancelSelectionMode(selectionState);
         sendResponse({ success: true });
+        return true;
+      }
+
+      if (message.type === 'GET_PAGE_SELECTION') {
+        try {
+          const data = getPageSelectionData();
+          sendResponse({ success: true, data });
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          sendResponse({ success: false, error: errorMessage });
+        }
         return true;
       }
 
