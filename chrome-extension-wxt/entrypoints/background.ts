@@ -21,6 +21,13 @@ interface ContentData {
   url: string;
 }
 
+interface PageSelectionData {
+  text: string;
+  html: string;
+  title: string;
+  url: string;
+}
+
 interface FocusedIssue {
   id: string;
   title: string;
@@ -58,7 +65,7 @@ export default defineBackground(() => {
   const issueMarkdownCache = new Map<string, { content: string; mtime?: number; sizeBytes: number }>();
   const pendingMarkdownRequests = new Map<string, Promise<{ success: boolean; content?: string; error?: string; mtime?: number }>>();
   const MAX_CACHE_ITEMS = 50; // 可配置
-  
+
   // WebSocket 配置（从配置管理器获取）
   let wsConfig: {
     url: string;
@@ -80,7 +87,7 @@ export default defineBackground(() => {
       reconnectInterval: config.retryDelay,
       pingInterval: 30000 // 30秒心跳
     };
-    
+
     return wsConfig;
   }
 
@@ -90,7 +97,7 @@ export default defineBackground(() => {
   async function getWsUrl(): Promise<string> {
     try {
       const config = await configManager.getWebSocketConfig();
-      
+
       // 如果启用了端口发现，尝试发现可用端口
       if (config.enablePortDiscovery) {
         console.log('[Config] 端口自动发现已启用');
@@ -100,7 +107,7 @@ export default defineBackground(() => {
           return `ws://${config.host}:${discoveredPort}/ws`;
         }
       }
-      
+
       // 使用配置中的 URL
       return config.url;
     } catch (error) {
@@ -118,16 +125,16 @@ export default defineBackground(() => {
     // 获取配置
     const config = await getWsConfig();
     const wsUrl = await getWsUrl();
-    
+
     console.log(`[WebSocket] 尝试连接到: ${wsUrl}`);
-    
+
     try {
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         console.log('[WebSocket] 连接已建立');
         wsConnected = true;
-        
+
         if (wsReconnectTimer) {
           clearTimeout(wsReconnectTimer);
           wsReconnectTimer = null;
@@ -157,7 +164,7 @@ export default defineBackground(() => {
 
           if (message.type === 'connected') {
             console.log('[WebSocket] 服务端欢迎消息:', message.message);
-            
+
             // 保存服务器返回的配置信息
             const serverConfig = (message as any).config;
             if (serverConfig) {
@@ -177,7 +184,8 @@ export default defineBackground(() => {
             notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
           } else if (message.type === 'llm-push' || message.type === 'llm-stream' || message.type === 'llm-reply') {
             // LLM 推送/流式消息，直接转发给 Side Panel（例如聊天界面）
-            chrome.runtime.sendMessage({ type: 'LLM_PUSH', payload: message.data }).catch((err) => {
+            // 附带 requestId（= WebSocket 消息的 id），前端用于精确路由到发起该请求的会话
+            chrome.runtime.sendMessage({ type: 'LLM_PUSH', payload: message.data, requestId: message.id }).catch((err) => {
               if (isReceiverNotExistError(err)) {
                 console.log('[WebSocket] Side Panel 未打开，跳过 LLM 推送');
               } else {
@@ -199,7 +207,7 @@ export default defineBackground(() => {
         console.log('[WebSocket] 连接已关闭');
         wsConnected = false;
         stopPing();
-        
+
         pendingMessages.forEach(({ reject }) => {
           reject(new Error('WebSocket connection closed'));
         });
@@ -218,7 +226,7 @@ export default defineBackground(() => {
     if (wsReconnectTimer) {
       return;
     }
-    
+
     const config = await getWsConfig();
     wsReconnectTimer = setTimeout(() => {
       wsReconnectTimer = null;
@@ -229,7 +237,7 @@ export default defineBackground(() => {
 
   async function startPing() {
     await stopPing();
-    
+
     const config = await getWsConfig();
     wsPingTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -338,17 +346,17 @@ export default defineBackground(() => {
           const mtime = data.mtime;
 
           // 缓存
-            try {
-              const sizeBytes = new TextEncoder().encode(content).length;
-              issueMarkdownCache.set(filePath, { content, mtime, sizeBytes });
-              // 简单回收策略：删除 Map 中最旧（最少使用）的键（Map 按插入顺序迭代）
-              if (issueMarkdownCache.size > MAX_CACHE_ITEMS) {
-                const oldestKey = issueMarkdownCache.keys().next().value as string | undefined;
-                if (oldestKey) issueMarkdownCache.delete(oldestKey);
-              }
-            } catch (e) {
-              console.warn('[Background] Failed to update issue markdown cache:', e);  
+          try {
+            const sizeBytes = new TextEncoder().encode(content).length;
+            issueMarkdownCache.set(filePath, { content, mtime, sizeBytes });
+            // 简单回收策略：删除 Map 中最旧（最少使用）的键（Map 按插入顺序迭代）
+            if (issueMarkdownCache.size > MAX_CACHE_ITEMS) {
+              const oldestKey = issueMarkdownCache.keys().next().value as string | undefined;
+              if (oldestKey) issueMarkdownCache.delete(oldestKey);
             }
+          } catch (e) {
+            console.warn('[Background] Failed to update issue markdown cache:', e);
+          }
 
           return { success: true, content, mtime };
         } else if (response && response.type === 'error') {
@@ -387,7 +395,7 @@ export default defineBackground(() => {
 
   chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendResponse) => {
     console.log('Background received message:', message);
-    
+
     if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
       console.log('[WebSocket] 检测到连接未建立,尝试重新连接');
       initWebSocket();
@@ -395,12 +403,12 @@ export default defineBackground(() => {
 
     switch (message.type) {
       case 'GET_WS_STATUS':
-        const status = wsConnected && ws && ws.readyState === WebSocket.OPEN 
-          ? 'connected' 
+        const status = wsConnected && ws && ws.readyState === WebSocket.OPEN
+          ? 'connected'
           : (ws && ws.readyState === WebSocket.CONNECTING ? 'connecting' : 'disconnected');
         sendResponse({ status });
         break;
-        
+
       case 'START_SELECTION':
         (async () => {
           try {
@@ -433,6 +441,19 @@ export default defineBackground(() => {
             sendResponse({ success: true, data });
           } catch (e: unknown) {
             console.error('[Background] Failed to get focused issues:', e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      case 'GET_PAGE_SELECTION':
+        (async () => {
+          try {
+            const data = await getPageSelection(message.tabId || sender.tab?.id);
+            sendResponse({ success: true, data });
+          } catch (e: unknown) {
+            console.error('[Background] Failed to get page selection:', e);
             const errorMessage = e instanceof Error ? e.message : String(e);
             sendResponse({ success: false, error: errorMessage });
           }
@@ -537,7 +558,7 @@ export default defineBackground(() => {
               type: 'execute-command',
               data: {
                 command: 'issueManager.generateTitleCommand',
-                args: [ { filePath } ]
+                args: [{ filePath }]
               }
             }, 15000);
 
@@ -545,7 +566,7 @@ export default defineBackground(() => {
               // 请求成功，通知 Side Panel 刷新关注列表
               notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
               sendResponse({ success: true });
-            } else if (wsResponse) {  
+            } else if (wsResponse) {
               sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });
             } else {
               sendResponse({ success: false, error: 'Unexpected response from VSCode' });
@@ -572,7 +593,7 @@ export default defineBackground(() => {
               type: 'execute-command',
               data: {
                 command: 'issueManager.generateBriefSummaryCommand',
-                args: [ { filePath } ]
+                args: [{ filePath }]
               }
             }, 15000);
 
@@ -580,8 +601,8 @@ export default defineBackground(() => {
               // 请求成功，通知 Side Panel 刷新关注列表
               notifySidePanel({ type: 'FOCUSED_LIST_UPDATED' });
               sendResponse({ success: true });
-            } else if (wsResponse) {  
-              sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });  
+            } else if (wsResponse) {
+              sendResponse({ success: false, error: wsResponse.error || 'VSCode error' });
             } else {
               sendResponse({ success: false, error: 'Unexpected response from VSCode' });
             }
@@ -636,8 +657,53 @@ export default defineBackground(() => {
         if (/^(chrome|chrome-extension|edge|about|chrome-search):/i.test(url) || /chromewebstore\.google\.com/i.test(url)) {
           throw new Error('该页面不支持内容脚本（如 chrome:// 或 Chrome Web Store），无法进入选取模式。请在普通网页中重试。');
         }
-      } catch (_: unknown) {}
+      } catch (_: unknown) { }
       throw error;
+    }
+  }
+
+  async function getActiveTabId(): Promise<number | undefined> {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return activeTab?.id;
+  }
+
+  async function getPageSelection(tabId?: number): Promise<PageSelectionData> {
+    let resolvedTabId = tabId;
+    if (!resolvedTabId) {
+      resolvedTabId = await getActiveTabId();
+    }
+
+    if (!resolvedTabId) {
+      throw new Error('无法获取当前标签页');
+    }
+
+    try {
+      const response = await chrome.tabs.sendMessage(resolvedTabId, { type: 'GET_PAGE_SELECTION' }) as {
+        success?: boolean;
+        data?: PageSelectionData;
+        error?: string;
+      };
+
+      if (response?.success && response.data) {
+        return response.data;
+      }
+
+      throw new Error(response?.error || '获取划线内容失败');
+    } catch (firstError: unknown) {
+      console.warn('[Background] First GET_PAGE_SELECTION failed, try inject content script:', firstError);
+      await ensureContentScriptInjected(resolvedTabId);
+
+      const response = await chrome.tabs.sendMessage(resolvedTabId, { type: 'GET_PAGE_SELECTION' }) as {
+        success?: boolean;
+        data?: PageSelectionData;
+        error?: string;
+      };
+
+      if (response?.success && response.data) {
+        return response.data;
+      }
+
+      throw new Error(response?.error || '获取划线内容失败');
     }
   }
 
@@ -699,7 +765,7 @@ export default defineBackground(() => {
           type: 'create-note',
           data: params
         }, 5000);
-        
+
         if (response && response.type === 'success') {
           console.log('Note created successfully in VSCode via WebSocket');
           notifySidePanel({ type: 'CREATION_SUCCESS' });
@@ -713,32 +779,32 @@ export default defineBackground(() => {
     } catch (error: unknown) {
       console.error('Failed to send content to VSCode via WebSocket:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      notifySidePanel({ 
-        type: 'CREATION_ERROR', 
+      notifySidePanel({
+        type: 'CREATION_ERROR',
         error: `WebSocket 连接不可用或出错:${errorMessage},尝试使用备用方式...`
       });
-      
+
       try {
         const dataStr = JSON.stringify(params);
         if (dataStr.length > URI_FALLBACK_MAX_LENGTH) {
           throw new Error('所选内容过大,备用链接方式可能失败。请在 VSCode 中开启 WebSocket 服务或缩小选取范围。');
         }
         const vscodeUri = `vscode://wedaren.issue-manager/create-from-html?data=${encodeURIComponent(dataStr)}`;
-        
+
         const tab = await chrome.tabs.create({ url: vscodeUri, active: false });
         if (tab?.id) {
           setTimeout(() => {
-            chrome.tabs.remove(tab.id!).catch(() => {});
+            chrome.tabs.remove(tab.id!).catch(() => { });
           }, 100);
         }
-        
+
         notifySidePanel({ type: 'CREATION_SUCCESS' });
       } catch (fallbackError: unknown) {
         console.error('Fallback method also failed:', fallbackError);
         const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        notifySidePanel({ 
-          type: 'CREATION_ERROR', 
-          error: `无法通过备用方式创建笔记:${fallbackErrorMessage}。\n建议:\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用;\n2) 在扩展设置中开启/确认 WebSocket 服务(端口与本扩展一致);\n3) 或在 Side Panel 缩小选取范围后重试。` 
+        notifySidePanel({
+          type: 'CREATION_ERROR',
+          error: `无法通过备用方式创建笔记:${fallbackErrorMessage}。\n建议:\n1) 打开 VSCode 并确保 Issue Manager 扩展已启用;\n2) 在扩展设置中开启/确认 WebSocket 服务(端口与本扩展一致);\n3) 或在 Side Panel 缩小选取范围后重试。`
         });
       }
     }
@@ -748,7 +814,7 @@ export default defineBackground(() => {
     console.log('[getFocusedIssues] Starting...');
     console.log('[getFocusedIssues] WS connected:', wsConnected);
     console.log('[getFocusedIssues] WS state:', ws?.readyState);
-    
+
     if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket not connected to VSCode');
     }
@@ -776,15 +842,15 @@ export default defineBackground(() => {
     }
   }
 
-  async function notifySidePanel(message: SidePanelNotification) {  
-    try {  
-      await chrome.runtime.sendMessage(message);  
-    } catch (error: unknown) {  
-      if (isReceiverNotExistError(error)) {  
-        console.log('Side Panel is not open, skipping notification.');  
-      } else {  
-        console.error('Failed to notify side panel:', error);  
-      }  
-    }  
+  async function notifySidePanel(message: SidePanelNotification) {
+    try {
+      await chrome.runtime.sendMessage(message);
+    } catch (error: unknown) {
+      if (isReceiverNotExistError(error)) {
+        console.log('Side Panel is not open, skipping notification.');
+      } else {
+        console.error('Failed to notify side panel:', error);
+      }
+    }
   }
 });
