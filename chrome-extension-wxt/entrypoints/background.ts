@@ -62,6 +62,10 @@ export default defineBackground(() => {
   let llmSelectionResolver: ((value: any) => void) | null = null;
   let llmSelectionRejector: ((reason?: any) => void) | null = null;
   let messageIdCounter = 0;
+
+  // 用于保存那些从网页触发流式翻译替换 DOM 请求的关联
+  const llmTranslateTabMap = new Map<string, { tabId: number; blockId: string }>();
+
   const pendingMessages = new Map<string, { resolve: (value: WebSocketMessage) => void; reject: (reason?: Error) => void }>();
   // 简单的 markdown 缓存与并发请求去重
   // 使用 Map 的插入顺序实现 LRU：访问时删除后重插入，回收时删除 Map.keys().next().value
@@ -188,13 +192,29 @@ export default defineBackground(() => {
           } else if (message.type === 'llm-push' || message.type === 'llm-stream' || message.type === 'llm-reply') {
             // LLM 推送/流式消息，直接转发给 Side Panel（例如聊天界面）
             // 附带 requestId（= WebSocket 消息的 id），前端用于精确路由到发起该请求的会话
-            chrome.runtime.sendMessage({ type: 'LLM_PUSH', payload: message.data, requestId: message.id }).catch((err) => {
-              if (isReceiverNotExistError(err)) {
-                console.log('[WebSocket] Side Panel 未打开，跳过 LLM 推送');
-              } else {
-                console.error('[WebSocket] 转发 LLM 推送失败:', err);
+            const targetMap = message.id ? llmTranslateTabMap.get(message.id) : undefined;
+            if (targetMap && targetMap.tabId) {
+              // 转发给内容脚本，让页面直接流式替换内容
+              chrome.tabs.sendMessage(targetMap.tabId, {
+                type: 'LLM_PUSH',
+                payload: message.data,
+                requestId: message.id,
+                translateBlockId: targetMap.blockId
+              }).catch(err => {
+                console.error('[WebSocket] 转发给 Content Script 失败', err);
+              });
+              if (message.type === 'llm-reply') {
+                llmTranslateTabMap.delete(message.id!);
               }
-            });
+            } else {
+              chrome.runtime.sendMessage({ type: 'LLM_PUSH', payload: message.data, requestId: message.id }).catch((err) => {
+                if (isReceiverNotExistError(err)) {
+                  console.log('[WebSocket] Side Panel 未打开，跳过 LLM 推送');
+                } else {
+                  console.error('[WebSocket] 转发 LLM 推送失败:', err);
+                }
+              });
+            }
           }
         } catch (e: unknown) {
           console.error('[WebSocket] 消息解析失败:', e);
@@ -429,6 +449,19 @@ export default defineBackground(() => {
         })();
         break;
 
+      case 'START_TRANSLATE_SELECTION':
+        (async () => {
+          try {
+            await handleStartSelection(message.tabId || sender.tab?.id, 'START_TRANSLATE_SELECTION');
+            sendResponse({ success: true });
+          } catch (e: unknown) {
+            console.error('Failed to activate translate selection mode:', e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
       case 'START_LLM_SELECTION':
         (async () => {
           try {
@@ -570,6 +603,8 @@ export default defineBackground(() => {
             const prompt = (message as any).prompt || (message.data && (message.data as any).prompt) || (message.data && (message.data as any).text);
             // 提取历史对话上下文（由 LLMPanel 传入，格式为 {role, content}[]）
             const history = (message as any).history || [];
+            const isTranslate = (message as any).isTranslate || (message.data && (message.data as any).isTranslate);
+            const senderTabId = message.tabId || sender.tab?.id;
 
             if (!prompt) {
               sendResponse({ success: false, error: 'Missing prompt' });
@@ -590,10 +625,14 @@ export default defineBackground(() => {
             // history 字段包含本轮消息之前的所有对话，VS Code 端可用于构建多轮上下文
             try {
               const msgId = generateMessageId();
+              if (isTranslate && senderTabId) {
+                const translateBlockId = (message as any).translateBlockId || (message.data && (message.data as any).translateBlockId);
+                llmTranslateTabMap.set(msgId, { tabId: senderTabId, blockId: translateBlockId });
+              }
               const msg = { type: 'llm-request', id: msgId, data: { model, prompt, history } };
               if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(msg));
-                // 立即返回，后续的流式 chunk 与最终回复会由 ws.onmessage 转发给 SidePanel
+                // 立即返回，后续的流式 chunk 与最终回复会由 ws.onmessage 转发给 SidePanel / Content Script
                 sendResponse({ success: true, data: { requestId: msgId } });
               } else {
                 sendResponse({ success: false, error: 'WebSocket not connected' });
@@ -688,7 +727,7 @@ export default defineBackground(() => {
     return true;
   });
 
-  async function handleStartSelection(tabId?: number, actionType: 'START_SELECTION' | 'START_LLM_SELECTION' = 'START_SELECTION') {
+  async function handleStartSelection(tabId?: number, actionType: 'START_SELECTION' | 'START_LLM_SELECTION' | 'START_TRANSLATE_SELECTION' = 'START_SELECTION') {
     if (!tabId) {
       try {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });

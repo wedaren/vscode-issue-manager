@@ -8,6 +8,7 @@ import { createHighlightBox, removeHighlightBox, updateHighlight } from './ui/hi
 import { showToast, removeToast, debounce } from './ui/toast';
 import { createControlPanel, removeControlPanel, type ControlPanelCallbacks } from './ui/controlPanel';
 import { handleKeyboardNavigation } from './keyboard';
+import { extractAndStoreTextNodes } from './textNodes';
 
 export interface SelectionModeState {
   isActive: boolean;
@@ -21,7 +22,7 @@ export interface SelectionModeState {
   navigationHistory: HTMLElement[];
   lastMouseX: number;
   lastMouseY: number;
-  selectionPurpose: 'issue' | 'llm';
+  selectionPurpose: 'issue' | 'llm' | 'translate';
 }
 
 const debouncedShowToast = debounce(showToast, TIMEOUTS.toastDebounce);
@@ -49,7 +50,7 @@ export function createSelectionState(): SelectionModeState {
 /**
  * 开始选取模式
  */
-export function startSelectionMode(state: SelectionModeState, purpose: 'issue' | 'llm' = 'issue'): void {
+export function startSelectionMode(state: SelectionModeState, purpose: 'issue' | 'llm' | 'translate' = 'issue'): void {
   if (state.isActive) {
     return;
   }
@@ -259,6 +260,27 @@ function confirmSelection(state: SelectionModeState): void {
       data: { html, title, url }
     });
     debouncedShowToast('✓ 区域已选择', 'success');
+  } else if (state.selectionPurpose === 'translate') {
+    const blockId = `trans-${Math.random().toString(36).substring(2, 9)}`;
+    state.currentElement.setAttribute('data-translate-id', blockId);
+
+    // 给选定区域整体添加背景脉冲动画，不再担心被 LLM 原样返回毁坏
+    state.currentElement.classList.add('issue-manager-translating-pulse');
+
+    // 穿透提取整块 DOM 下干净的待翻译所有文本节点集合（带有 <t id> 保护）
+    const promptContent = extractAndStoreTextNodes(state.currentElement, blockId);
+
+    chrome.runtime.sendMessage({
+      type: 'LLM_REQUEST',
+      data: {
+        model: '',
+        prompt: `你是一个网页翻译专家。请将以下XML格式内容中所有的 <t id="X">...</t> 元素的文本翻译成准确流畅的中文。\n规则：\n1. 必须完全保留原始的 <t id="X">...</t> 结构，不得遗漏、合并或随意更改 id 的序号。\n2. 直接输出带有 <t> 标签翻译结果的纯文本，不能输出任何其他内容（哪怕是markdown提示符如 \`\`\`xml 也不要）。\n3. 如果原始文本只有标点或空格，也请原版返回保留。\n\n${promptContent}`,
+        isTranslate: true,
+        translateBlockId: blockId
+      }
+    });
+
+    debouncedShowToast('正在原地逐步翻译，请稍候...', 'info');
   } else {
     chrome.runtime.sendMessage({
       type: 'CONTENT_SELECTED',
@@ -269,7 +291,7 @@ function confirmSelection(state: SelectionModeState): void {
 
   setTimeout(() => {
     cancelSelectionMode(state);
-  }, 1000);
+  }, state.selectionPurpose === 'translate' ? 300 : 1000);
 }
 
 /**
@@ -364,3 +386,5 @@ function isOurUiElement(el: HTMLElement | null, controlPanel: HTMLElement | null
 
   return false;
 }
+
+

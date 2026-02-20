@@ -9,6 +9,7 @@ import { autoLogin } from './features/auth/autoLogin';
 import { type AccountSwitchState } from './features/auth/storage';
 import { createSelectionState, startSelectionMode, cancelSelectionMode } from './features/selection';
 import { TIMEOUTS, STORAGE_KEYS, LOGIN_PATH } from './config/constants';
+import { getTextNodes, removeTextNodes } from './features/selection/textNodes';
 
 interface PageSelectionData {
   text: string;
@@ -122,6 +123,7 @@ export default defineContentScript({
 
     // ===== 选取模式状态管理 =====
     const selectionState = createSelectionState();
+    const translateAccumulator = new Map<string, string>();
 
     // ===== 消息监听 =====
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -137,6 +139,80 @@ export default defineContentScript({
       if (message.type === 'START_LLM_SELECTION') {
         console.log('Starting LLM selection mode');
         startSelectionMode(selectionState, 'llm');
+        sendResponse({ success: true });
+        return true;
+      }
+
+      if (message.type === 'START_TRANSLATE_SELECTION') {
+        console.log('Starting translate selection mode');
+        startSelectionMode(selectionState, 'translate');
+        sendResponse({ success: true });
+        return true;
+      }
+
+      if (message.type === 'LLM_PUSH') {
+        const payload = message.payload;
+        if (!payload) { return false; }
+
+        // 此处的 message 额外包含了从 background 透传的 translateBlockId
+        const translateBlockId = message.translateBlockId;
+        if (!translateBlockId) { return false; }
+
+        const targetEl = document.querySelector(`[data-translate-id="${translateBlockId}"]`) as HTMLElement;
+        if (!targetEl) { return false; }
+
+        const textNodes = getTextNodes(translateBlockId);
+        if (!textNodes) { return false; }
+
+        // 如果是最终回复
+        if (typeof payload.reply === 'string') {
+          translateAccumulator.delete(translateBlockId);
+          removeTextNodes(translateBlockId);
+          if (targetEl) { targetEl.classList.remove('issue-manager-translating-pulse'); }
+
+          let finalHtml = payload.reply.replace(/^```html\n?/i, '').replace(/```$/i, '').replace(/^```xml\n?/i, '');
+          const regex = /<t id="(\d+)">([\s\S]*?)(?:<\/t>|$)/g;
+          let match;
+          while ((match = regex.exec(finalHtml)) !== null) {
+            const id = parseInt(match[1]);
+            const text = match[2];
+            if (textNodes[id]) {
+              const original = textNodes[id].original;
+              const leadSpace = original.match(/^(\s+)/)?.[1] || '';
+              const trailSpace = original.match(/(\s+)$/)?.[1] || '';
+              textNodes[id].node.textContent = leadSpace + text + trailSpace;
+            }
+          }
+        }
+        // 报错处理
+        else if (payload.event === 'error') {
+          translateAccumulator.delete(translateBlockId);
+          removeTextNodes(translateBlockId);
+          if (targetEl) {
+            targetEl.classList.remove('issue-manager-translating-pulse');
+            targetEl.style.outline = '2px solid red';
+          }
+        }
+        // 分块提示，产生打字机特效
+        else if (payload.chunk) {
+          const prev = translateAccumulator.get(translateBlockId) || '';
+          const newHtml = prev + payload.chunk;
+          translateAccumulator.set(translateBlockId, newHtml);
+
+          const regex = /<t id="(\d+)">([\s\S]*?)(?:<\/t>|$)/g;
+          let match;
+          while ((match = regex.exec(newHtml)) !== null) {
+            const id = parseInt(match[1]);
+            const text = match[2];
+            if (textNodes[id]) {
+              const original = textNodes[id].original;
+              const leadSpace = original.match(/^(\s+)/)?.[1] || '';
+              const trailSpace = original.match(/(\s+)$/)?.[1] || '';
+              textNodes[id].node.textContent = leadSpace + text + trailSpace;
+            }
+          }
+        }
+
         sendResponse({ success: true });
         return true;
       }

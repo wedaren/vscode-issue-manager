@@ -61,6 +61,19 @@
             </svg>
           </button>
           <button
+            id="start-translate-btn"
+            class="icon-btn"
+            title="区域翻译"
+            @click="handleStartTranslate"
+          >
+            <!-- 翻译图标 (A/文) -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 5h7M4 8h5M4 11h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <path d="M10 5h6M13 5v10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <path d="M10.5 15h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button
             id="open-llm-btn"
             class="icon-btn"
             title="LLM 对话"
@@ -294,6 +307,34 @@ async function handleStartSelection() {
     console.error('Failed to start selection:', error);
     const errorMessage = error instanceof Error ? error.message : '未知错误';
     showMessage('启动选取模式失败: ' + errorMessage, 'error');
+  }
+}
+
+async function handleStartTranslate() {
+  console.log('Start translate clicked');
+  
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!tab?.id) {
+      showMessage('无法获取当前标签页', 'error');
+      return;
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: 'START_TRANSLATE_SELECTION',
+      tabId: tab.id
+    });
+
+    if (response && response.success) {
+      showMessage('请在页面上选取要翻译的内容', 'success');
+    } else {
+      showMessage('启动翻译模式失败', 'error');
+    }
+  } catch (error: unknown) {
+    console.error('Failed to start translate selection:', error);
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    showMessage('启动翻译模式失败: ' + errorMessage, 'error');
   }
 }
 
