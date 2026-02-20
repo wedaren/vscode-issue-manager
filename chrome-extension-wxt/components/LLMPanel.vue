@@ -5,6 +5,8 @@
     <Transition name="history-slide">
       <div v-if="showHistory" class="history-overlay" @click.self="showHistory = false">
         <div class="history-drawer">
+
+          <!-- 抽屉头部 -->
           <div class="history-drawer-header">
             <span class="history-drawer-title">
               <svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 100 14A7 7 0 0010 3z" stroke="currentColor" stroke-width="1.4"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -14,34 +16,79 @@
               <svg viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </button>
           </div>
+
+          <!-- 搜索框 -->
+          <div class="history-search-bar">
+            <svg viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.3"/><path d="M10 10l3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input
+              v-model="historySearch"
+              placeholder="搜索对话…"
+              class="history-search-input"
+              @keydown.escape="historySearch = ''"
+            />
+            <button v-if="historySearch" class="history-search-clear" @click="historySearch = ''">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+
+          <!-- 对话列表 -->
           <div class="history-list">
-            <template v-if="conversations.length > 0">
+            <!-- 搜索结果：扁平列表 -->
+            <template v-if="historySearch.trim()">
+              <div v-if="filteredConversations.length === 0" class="history-empty">无匹配结果</div>
+              <div
+                v-for="conv in filteredConversations"
+                :key="conv.id"
+                :class="['history-item', { active: conv.id === currentConvId }]"
+                @click="editingConvId !== conv.id && switchConversation(conv.id)"
+              >
+                <span v-if="_loadingMap[conv.id]" class="history-loading-dot"></span>
+                <span class="history-item-title">{{ conv.title }}</span>
+                <!-- 删除按钮 -->
+                <button class="history-item-delete" title="删除" @click.stop="deleteConversation(conv.id)">
+                  <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                </button>
+              </div>
+            </template>
+
+            <!-- 分组列表（带拖拽排序） -->
+            <template v-else-if="conversations.length > 0">
               <template v-for="group in groupedConversations" :key="group.label">
                 <div class="history-group-label">{{ group.label }}</div>
-              <div
+                <div
                   v-for="conv in group.items"
                   :key="conv.id"
-                  :class="['history-item', { active: conv.id === currentConvId }]"
-                  @click="switchConversation(conv.id)"
+                  :class="['history-item', {
+                    active: conv.id === currentConvId,
+                    'drag-over': dragOverId === conv.id,
+                    dragging: draggingId === conv.id,
+                  }]"
+                  draggable="true"
+                  @dragstart="onDragStart(conv.id)"
+                  @dragover.prevent="onDragOver(conv.id)"
+                  @drop.prevent="onDrop(conv.id)"
+                  @dragend="onDragEnd"
+                  @click="editingConvId !== conv.id && draggingId === null && switchConversation(conv.id)"
                 >
-                  <!-- 后台生成中指示圆点 -->
+                  <svg class="drag-handle" viewBox="0 0 16 16" fill="none">
+                    <circle cx="5" cy="5" r="1" fill="currentColor"/><circle cx="5" cy="9" r="1" fill="currentColor"/><circle cx="5" cy="13" r="1" fill="currentColor"/>
+                    <circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="9" cy="13" r="1" fill="currentColor"/>
+                  </svg>
                   <span v-if="_loadingMap[conv.id]" class="history-loading-dot"></span>
                   <span class="history-item-title">{{ conv.title }}</span>
-                  <button
-                    class="history-item-delete"
-                    title="删除"
-                    @click.stop="deleteConversation(conv.id)"
-                  >
+                  <button class="history-item-delete" title="删除" @click.stop="deleteConversation(conv.id)">
                     <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
                   </button>
                 </div>
               </template>
             </template>
+
             <div v-else class="history-empty">暂无历史记录</div>
           </div>
         </div>
       </div>
     </Transition>
+
 
     <!-- 头部 -->
     <div class="llm-header">
@@ -60,7 +107,42 @@
             </defs>
           </svg>
         </div>
-        <h2 class="header-conv-title">{{ currentConv?.title || 'Copilot 对话' }}</h2>
+        
+        <!-- 标题区域：支持双击编辑与 AI 总结 -->
+        <div class="header-title-edit" v-if="currentConv">
+          <!-- 重命名输入框 -->
+          <input
+            v-if="editingConvId === currentConv.id && generatingTitleId !== currentConv.id"
+            ref="headerTitleInput"
+            class="header-rename-input"
+            v-model="editingTitle"
+            @keydown.enter.prevent="commitRename"
+            @keydown.escape="cancelRename"
+            @blur="commitRename"
+          />
+          <!-- 正在生成中：打字动效占位 -->
+          <div v-else-if="generatingTitleId === currentConv.id" class="header-ai-generating">
+            <svg class="spin" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="8 6"/></svg>
+            <span class="generating-text">AI 生成中<span class="dot-1">.</span><span class="dot-2">.</span><span class="dot-3">.</span></span>
+          </div>
+          <!-- 正常标题 -->
+          <h2 v-else class="header-conv-title" @dblclick="startRename(currentConv)" title="双击修改标题">
+            {{ currentConv.title || '新对话' }}
+          </h2>
+          
+          <!-- AI 总结标题按钮 (仅平时悬浮展示) -->
+          <button 
+            v-if="editingConvId !== currentConv.id && generatingTitleId !== currentConv.id && $data_messages && $data_messages.length > 0" 
+            class="header-ai-title-btn" 
+            @click="generateTitle(currentConv)" 
+            title="智能生成标题"
+          >
+            <!-- 闪耀图标 ✨ -->
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M8 1L10 6L15 8L10 10L8 15L6 10L1 8L6 6L8 1Z" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <div class="header-right">
         <!-- 复制全部 -->
@@ -201,6 +283,116 @@ function autoTitle(conv: Conversation): string {
 const conversations = ref<Conversation[]>([]);
 const currentConvId = ref<string>('');
 const showHistory = ref(false);
+
+// ===== 搜索 =====
+const historySearch = ref('');
+const filteredConversations = computed(() => {
+  const q = historySearch.value.trim().toLowerCase();
+  if (!q) return conversations.value;
+  return conversations.value.filter(c => c.title.toLowerCase().includes(q));
+});
+
+// ===== 重命名与 AI 生成标题 =====
+const editingConvId = ref<string | null>(null);
+const editingTitle = ref('');
+const headerTitleInput = ref<HTMLInputElement | null>(null);
+const generatingTitleId = ref<string | null>(null);
+
+// 为了在模板中用 v-if 检查 length 且不覆盖全局 ref，导出 computed 的别名
+const $data_messages = computed(() => messages.value);
+
+function startRename(conv: Conversation) {
+  editingConvId.value = conv.id;
+  editingTitle.value = conv.title;
+  nextTick(() => {
+    headerTitleInput.value?.focus();
+    headerTitleInput.value?.select();
+  });
+}
+
+function commitRename() {
+  const id = editingConvId.value;
+  if (!id) return;
+  const conv = conversations.value.find(c => c.id === id);
+  if (conv) {
+    const trimmed = editingTitle.value.trim();
+    if (trimmed) conv.title = trimmed;
+  }
+  editingConvId.value = null;
+}
+
+function cancelRename() {
+  editingConvId.value = null;
+}
+
+// 记录每个请求追踪的 title 生成 requestId -> convId 映射
+const _titleGenMap: Record<string, string> = {};
+// 累积生成标题的流式内容
+const _titleGenBuffer: Record<string, string> = {};
+
+async function generateTitle(conv: Conversation) {
+  if (generatingTitleId.value === conv.id) return;
+  
+  // 提取历史文本
+  const textContext = conv.messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
+    .join('\n\n')
+    .slice(0, 4000); // 截取前面一部分供总结即可
+    
+  if (!textContext.trim()) return;
+
+  generatingTitleId.value = conv.id;
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'LLM_REQUEST',
+      model: 'copilot',
+      prompt: "Based on the following conversation, generate a short, concise, and descriptive title (maximum 15 characters, no quotes or punctuation at the start/end). Output ONLY the title text.\n\n" + textContext,
+      history: []
+    });
+
+    if (response && response.success && response.data?.requestId) {
+      // 成功发起请求，将其 requestId 注册，让流式拦截器处理后续
+      const reqId = response.data.requestId;
+      _titleGenMap[reqId] = conv.id;
+      _titleGenBuffer[reqId] = '';
+    } else {
+      // 发起失败
+      generatingTitleId.value = null;
+    }
+  } catch (e) {
+    console.error('[LLMPanel] Failed to generate title', e);
+    generatingTitleId.value = null;
+  }
+}
+
+// ===== 拖拽排序 =====
+const draggingId = ref<string | null>(null);
+const dragOverId = ref<string | null>(null);
+
+function onDragStart(convId: string) {
+  draggingId.value = convId;
+}
+
+function onDragOver(convId: string) {
+  if (convId !== draggingId.value) { dragOverId.value = convId; }
+}
+
+function onDrop(targetId: string) {
+  const fromId = draggingId.value;
+  if (!fromId || fromId === targetId) return;
+  const arr = conversations.value;
+  const fromIdx = arr.findIndex(c => c.id === fromId);
+  const toIdx = arr.findIndex(c => c.id === targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+  const [item] = arr.splice(fromIdx, 1);
+  arr.splice(toIdx, 0, item);
+}
+
+function onDragEnd() {
+  draggingId.value = null;
+  dragOverId.value = null;
+}
 
 const currentConv = computed(() =>
   conversations.value.find(c => c.id === currentConvId.value)
@@ -444,8 +636,33 @@ function handleIncomingMessage(msg: any) {
   const payload = msg.payload;
   if (!payload) return;
 
-  // 通过 requestId 精确定位 placeholder 和会话（requestId 由 background 转发时附带）
-  const requestId = msg.requestId;
+  const requestId: string = msg.requestId;
+  
+  // 1. 拦截标题生成任务
+  if (requestId && _titleGenMap[requestId]) {
+    const genConvId = _titleGenMap[requestId];
+    const targetConv = conversations.value.find(c => c.id === genConvId);
+    
+    if (payload.chunk) {
+      _titleGenBuffer[requestId] += String(payload.chunk);
+    } else if (typeof payload.reply === 'string') {
+      const fullText = (payload.reply || _titleGenBuffer[requestId]).trim().replace(/^["']|["']$/g, '');
+      if (fullText && targetConv) targetConv.title = fullText;
+      // 清理状态
+      delete _titleGenMap[requestId];
+      delete _titleGenBuffer[requestId];
+      if (generatingTitleId.value === genConvId) {
+        generatingTitleId.value = null;
+      }
+    } else if (payload.event === 'error') {
+      delete _titleGenMap[requestId];
+      delete _titleGenBuffer[requestId];
+      if (generatingTitleId.value === genConvId) generatingTitleId.value = null;
+    }
+    return;
+  }
+
+  // 2. 正常聊天流任务
   const placeholderId = requestId ? 'p-' + requestId : Object.keys(_placeholderConvMap)[0];
   if (!placeholderId) return;
 
@@ -602,6 +819,55 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
+.history-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.history-search-bar svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.history-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.history-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.history-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.history-search-clear:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+}
+
 .history-item {
   display: flex;
   align-items: center;
@@ -611,6 +877,45 @@ onUnmounted(() => {
   transition: background 0.12s ease;
   border-radius: 0;
   position: relative;
+}
+
+.history-item.drag-over {
+  border-top: 2px solid var(--accent-blue);
+}
+
+.history-item.dragging {
+  opacity: 0.5;
+  background: var(--bg-hover);
+}
+
+.drag-handle {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  cursor: grab;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.history-item:hover .drag-handle {
+  opacity: 0.6;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+.history-rename-input {
+  flex: 1;
+  background: var(--bg-deep);
+  border: 1px solid var(--accent-blue);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  outline: none;
+  min-width: 0;
 }
 
 .history-item:hover { background: var(--bg-hover); }
@@ -733,6 +1038,14 @@ onUnmounted(() => {
 .header-icon { width: 24px; height: 24px; flex-shrink: 0; }
 .header-icon svg { width: 100%; height: 100%; }
 
+.header-title-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
 .header-conv-title {
   margin: 0;
   font-size: 13px;
@@ -741,6 +1054,96 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: text;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.header-conv-title:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.header-rename-input {
+  flex: 1;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--accent-blue);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 4px;
+  outline: none;
+  min-width: 0;
+}
+
+/* AI 生成中占位 */
+.header-ai-generating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fbbf24;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.header-ai-generating svg {
+  width: 14px;
+  height: 14px;
+}
+
+.generating-text .dot-1, .generating-text .dot-2, .generating-text .dot-3 {
+  opacity: 0;
+  animation: dotBlink 1.4s infinite;
+}
+.generating-text .dot-2 { animation-delay: 0.2s; }
+.generating-text .dot-3 { animation-delay: 0.4s; }
+
+@keyframes dotBlink {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 总结按钮 */
+.header-ai-title-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #fbbf24; /* 闪亮的金黄色 */
+  cursor: pointer;
+  padding: 0;
+  opacity: 0; /* 平时隐藏，悬浮出现 */
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.header-title-edit:hover .header-ai-title-btn {
+  opacity: 0.4;
+}
+
+.header-ai-title-btn:hover {
+  opacity: 1 !important;
+  background: rgba(251, 191, 36, 0.15);
+  transform: scale(1.1);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
 }
 
 .header-right {
@@ -836,10 +1239,10 @@ onUnmounted(() => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .llm-messages::-webkit-scrollbar { width: 6px; }
@@ -866,27 +1269,28 @@ onUnmounted(() => {
 /* 消息气泡 */
 .llm-message {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-start;
 }
 
 .llm-message.user { flex-direction: row-reverse; }
 
 .message-avatar {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.message-avatar svg { width: 16px; height: 16px; }
+.message-avatar svg { width: 14px; height: 14px; }
 .message-avatar.user { background: linear-gradient(135deg, #1d4ed8, #2563eb); color: white; }
 .message-avatar.assistant { background: linear-gradient(135deg, rgba(56,139,253,0.15), rgba(167,139,250,0.15)); color: #60a5fa; border: 1px solid rgba(96,165,250,0.2); }
 
-.message-body { max-width: 82%; display: flex; flex-direction: column; gap: 4px; }
+.message-body { max-width: 85%; display: flex; flex-direction: column; gap: 2px; }
 .llm-message.user .message-body { align-items: flex-end; }
 
 .message-role-label {
@@ -900,9 +1304,9 @@ onUnmounted(() => {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 10px 13px;
+  padding: 8px 12px;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
 }
@@ -944,7 +1348,7 @@ onUnmounted(() => {
 
 /* ========== 输入区域 ========== */
 .llm-input-area {
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-base);
   flex-shrink: 0;
@@ -957,8 +1361,8 @@ onUnmounted(() => {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 8px 8px 8px 14px;
-  margin: 8px 10px 0;
+  padding: 6px 6px 6px 12px;
+  margin: 6px 10px 0;
   transition: border-color 0.15s ease;
 }
 
@@ -969,7 +1373,7 @@ onUnmounted(() => {
 
 .input-wrapper textarea {
   flex: 1 1 auto;
-  min-height: 40px;
+  min-height: 28px;
   max-height: 160px;
   resize: none;
   background: transparent;
@@ -977,9 +1381,9 @@ onUnmounted(() => {
   border: none;
   outline: none;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
   font-family: inherit;
-  padding: 2px 0;
+  padding: 4px 0;
 }
 
 .input-wrapper textarea::placeholder { color: var(--text-muted); font-style: italic; }
@@ -988,19 +1392,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: var(--accent-blue);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   color: #fff;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.15s ease;
   padding: 0;
+  margin-bottom: 2px;
 }
 
-.send-btn svg { width: 15px; height: 15px; }
+.send-btn svg { width: 14px; height: 14px; }
 .send-btn:hover { background: #4d9bff; }
 .send-btn:active { transform: scale(0.92); }
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
