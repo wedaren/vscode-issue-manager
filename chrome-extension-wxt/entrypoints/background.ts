@@ -481,6 +481,8 @@ export default defineBackground(() => {
             // 从消息体中提取 model 与 prompt（允许两种字段位置）
             const model = (message as any).model || (message.data && (message.data as any).model);
             const prompt = (message as any).prompt || (message.data && (message.data as any).prompt) || (message.data && (message.data as any).text);
+            // 提取历史对话上下文（由 LLMPanel 传入，格式为 {role, content}[]）
+            const history = (message as any).history || [];
 
             if (!prompt) {
               sendResponse({ success: false, error: 'Missing prompt' });
@@ -498,9 +500,10 @@ export default defineBackground(() => {
             }
 
             // 转发到 VSCode（由 VSCode 插件负责调用 Copilot） - 采用流式：不等待最终回复，直接发送请求并立刻返回成功
+            // history 字段包含本轮消息之前的所有对话，VS Code 端可用于构建多轮上下文
             try {
               const msgId = generateMessageId();
-              const msg = { type: 'llm-request', id: msgId, data: { model, prompt } };
+              const msg = { type: 'llm-request', id: msgId, data: { model, prompt, history } };
               if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(msg));
                 // 立即返回，后续的流式 chunk 与最终回复会由 ws.onmessage 转发给 SidePanel
