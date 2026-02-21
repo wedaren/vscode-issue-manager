@@ -8,17 +8,19 @@ import { v4 as uuidv4 } from 'uuid';
 import { addIssueSearchRecord, IssueSearchRecord, IssueSearchResult, readIssueSearchHistory } from "../data/issueSearchHistory";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "../commands/openIssueNode";
+import { FullTextSearchService } from "../services/FullTextSearchService";
 
 export type IssueSearchViewNode =
     | { type: "record"; record: IssueSearchRecord }
     | { type: "result"; recordId: string; result: IssueSearchResult };
 
 interface SearchQuickPickItem extends vscode.QuickPickItem {
-    action: "ai" | "filter";
+    action: "ai" | "filter" | "fulltext";
     payload?: IssueMarkdown;
 }
 
 const AI_LABEL_SUFFIX = "--AI 搜索";
+const FULLTEXT_LABEL_SUFFIX = "--全文搜索";
 
 function normalizeKeyword(value: string): string {
     return (value || "").trim();
@@ -48,7 +50,7 @@ function getBriefSummary(frontmatter?: FrontmatterData | null): string | undefin
 
 function createSearchRecord(
     keyword: string,
-    type: "ai" | "filter",
+    type: "ai" | "filter" | "fulltext",
     results: IssueSearchResult[]
 ): IssueSearchRecord {
     return {
@@ -104,27 +106,39 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         if (element.type === "record") {
             const record = element.record;
             const isPending = this.pendingAiRecords.has(record.id);
-            const label = `[${formatDate(record.createdAt)}] ${record.keyword} (${record.type === "ai" ? "AI 搜索" : "过滤"})`;
+            const typeLabel = record.type === "ai" ? "AI 搜索" : record.type === "fulltext" ? "全文搜索" : "过滤";
+            const label = `[${formatDate(record.createdAt)}] ${record.keyword} (${typeLabel})`;
             const collapsibleState = record.results.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None;
             const item = new vscode.TreeItem(label, collapsibleState);
             if (isPending) {
-                item.description = "AI 搜索中...";
+                item.description = record.type === "ai" ? "AI 搜索中..." : "全文搜索中...";
                 item.contextValue = "issueSearchRecordLoading";
                 item.iconPath = new vscode.ThemeIcon("sync~spin");
-                item.tooltip = "正在执行 AI 搜索，请稍候...";
+                item.tooltip = record.type === "ai" ? "正在执行 AI 搜索，请稍候..." : "正在执行全文搜索，请稍候...";
             } else {
                 item.description = record.results.length > 0 ? `(${record.results.length})` : "";
                 item.contextValue = "issueSearchRecord";
-                item.iconPath = record.type === "ai" ? new vscode.ThemeIcon("sparkle") : new vscode.ThemeIcon("filter");
+                const iconName = record.type === "ai" ? "sparkle" : record.type === "fulltext" ? "search" : "filter";
+                item.iconPath = new vscode.ThemeIcon(iconName);
             }
             return item;
         }
 
         const result = element.result;
         const item = new vscode.TreeItem(result.title || result.filePath, vscode.TreeItemCollapsibleState.None);
-        item.description = result.briefSummary || result.filePath;
+        
+        // 如果有匹配片段，显示第一个匹配的内容预览
+        if (result.matchedSnippets && result.matchedSnippets.length > 0) {
+            const firstSnippet = result.matchedSnippets[0];
+            const previewText = firstSnippet.text.replace(/\n/g, ' ').substring(0, 100);
+            item.description = `L${firstSnippet.lineNumber}: ${previewText}...`;
+            item.tooltip = new vscode.MarkdownString(`**匹配位置：** 第 ${firstSnippet.lineNumber} 行\n\n\`\`\`\n${firstSnippet.text}\n\`\`\``);
+        } else {
+            item.description = result.briefSummary || result.filePath;
+        }
+        
         item.contextValue = "issueSearchResult";
         const issueDir = getIssueDir();
         if (issueDir) {
@@ -133,7 +147,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         item.command = {
             command: "issueManager.issueSearch.openResult",
             title: "打开搜索结果",
-            arguments: [result.filePath]
+            arguments: [result.filePath, result.matchedSnippets?.[0]?.lineNumber]
         };
         return item;
     }
@@ -171,8 +185,8 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                 await this.runSearchFlow();
             }),
             vscode.commands.registerCommand("issueManager.issueSearch.refresh", () => this.refresh()),
-            vscode.commands.registerCommand("issueManager.issueSearch.openResult", async (filePath: string) => {
-                await this.openResultByFilePath(filePath);
+            vscode.commands.registerCommand("issueManager.issueSearch.openResult", async (filePath: string, lineNumber?: number) => {
+                await this.openResultByFilePath(filePath, lineNumber);
             })
         );
     }
@@ -191,7 +205,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
 
         const quickPick = vscode.window.createQuickPick<SearchQuickPickItem>();
-        quickPick.placeholder = "请输入搜索关键词，选择 AI 搜索或 issueMarkdown 过滤";
+        quickPick.placeholder = "请输入搜索关键词，选择 AI 搜索、全文搜索或 issueMarkdown 过滤";
         quickPick.matchOnDescription = true;
         quickPick.matchOnDetail = false;
 
@@ -202,11 +216,18 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             alwaysShow: true,
             action: "ai"
         });
+        const buildFullTextItem = (value: string): SearchQuickPickItem => ({
+            label: `${value}${FULLTEXT_LABEL_SUFFIX}`,
+            description: "在问题的完整内容中搜索关键词",
+            alwaysShow: true,
+            action: "fulltext"
+        });
 
         const updateItems = (value: string) => {
             const aiItem = buildAiItem(value || "");
-            quickPick.items = [aiItem, ...staticItems];
-            quickPick.activeItems = [aiItem];
+            const fullTextItem = buildFullTextItem(value || "");
+            quickPick.items = [aiItem, fullTextItem, ...staticItems];
+            quickPick.activeItems = [fullTextItem]; // 默认选中全文搜索
         };
 
         updateItems("");
@@ -230,6 +251,11 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
 
                 if (selected.action === "ai") {
                     this.startAiSearch(keyword, issues);
+                    disposeAll();
+                    return;
+                }
+                if (selected.action === "fulltext") {
+                    this.startFullTextSearch(keyword, issues);
                     disposeAll();
                     return;
                 }
@@ -270,6 +296,48 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         });
 
         return items;
+    }
+
+    private startFullTextSearch(keyword: string, issues: IssueMarkdown[]): void {
+        if (!keyword) {
+            vscode.window.showInformationMessage("请输入搜索关键词后再进行全文搜索。");
+            return;
+        }
+
+        const pendingRecord = createPendingRecord(keyword);
+        pendingRecord.type = "fulltext";
+        this.pendingAiRecords.set(pendingRecord.id, pendingRecord);
+        this.refresh();
+
+        void this.handleFullTextSearch(pendingRecord, issues);
+    }
+
+    private async handleFullTextSearch(pendingRecord: IssueSearchRecord, issues: IssueMarkdown[]): Promise<void> {
+        const keyword = pendingRecord.keyword;
+        
+        try {
+            // 执行全文搜索（使用配置中的选项）
+            const results = await FullTextSearchService.searchInContent(keyword, issues);
+
+            this.pendingAiRecords.delete(pendingRecord.id);
+
+            if (results.length === 0) {
+                vscode.window.showInformationMessage(`全文搜索未找到包含 "${keyword}" 的问题。`);
+                this.refresh();
+                return;
+            }
+
+            const record = createSearchRecord(keyword, "fulltext", results);
+            await addIssueSearchRecord(record);
+            this.refresh();
+            
+            vscode.window.showInformationMessage(`全文搜索完成，找到 ${results.length} 个匹配的问题。`);
+        } catch (error) {
+            this.pendingAiRecords.delete(pendingRecord.id);
+            Logger.getInstance().error("全文搜索失败", error);
+            vscode.window.showErrorMessage(`全文搜索失败: ${error}`);
+            this.refresh();
+        }
     }
 
     private startAiSearch(keyword: string, issues: IssueMarkdown[]): void {
@@ -358,7 +426,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         await this.openResultByFilePath(path.relative(issueDir, selected.uri.fsPath));
     }
 
-    private async openResultByFilePath(filePath: string): Promise<void> {
+    private async openResultByFilePath(filePath: string, lineNumber?: number): Promise<void> {
         const issueDir = getIssueDir();
         if (!issueDir) {
             return;
@@ -370,9 +438,35 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             const nodes = await getIssueNodesByUri(uri);
             if (nodes.length > 0) {
                 await openIssueNode(nodes[0]);
+                
+                // 如果有行号，跳转到指定行
+                if (lineNumber !== undefined && lineNumber > 0) {
+                    const editor = vscode.window.activeTextEditor;
+                    if (editor && editor.document.uri.fsPath === absPath) {
+                        const position = new vscode.Position(lineNumber - 1, 0);
+                        editor.selection = new vscode.Selection(position, position);
+                        editor.revealRange(
+                            new vscode.Range(position, position),
+                            vscode.TextEditorRevealType.InCenter
+                        );
+                    }
+                }
                 return;
             }
-            await vscode.window.showTextDocument(uri, { preview: false });
+            
+            // 如果不在树中，直接打开文件
+            const document = await vscode.workspace.openTextDocument(uri);
+            const editor = await vscode.window.showTextDocument(document, { preview: false });
+            
+            // 跳转到指定行
+            if (lineNumber !== undefined && lineNumber > 0) {
+                const position = new vscode.Position(lineNumber - 1, 0);
+                editor.selection = new vscode.Selection(position, position);
+                editor.revealRange(
+                    new vscode.Range(position, position),
+                    vscode.TextEditorRevealType.InCenter
+                );
+            }
         } catch (error) {
             Logger.getInstance().error("打开搜索结果失败", error);
             vscode.window.showErrorMessage("打开搜索结果失败。");

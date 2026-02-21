@@ -3,12 +3,24 @@ import * as path from "path";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 
-export type IssueSearchType = "ai" | "filter";
+export type IssueSearchType = "ai" | "filter" | "fulltext";
 
 export interface IssueSearchResult {
     filePath: string;
     title: string;
     briefSummary?: string;
+    /**
+     * 全文搜索时匹配的内容片段及位置信息
+     */
+    matchedSnippets?: Array<{
+        /** 匹配的文本行内容 */
+        text: string;
+        /** 行号（从1开始） */
+        lineNumber: number;
+        /** 该行在匹配文本中的列位置 */
+        columnStart: number;
+        columnEnd: number;
+    }>;
 }
 
 export interface IssueSearchRecord {
@@ -68,7 +80,7 @@ function isIssueSearchRecord(item: unknown): item is IssueSearchRecord {
     if (
         typeof r.id !== "string" ||
         typeof r.keyword !== "string" ||
-        !(r.type === "ai" || r.type === "filter") ||
+        !(r.type === "ai" || r.type === "filter" || r.type === "fulltext") ||
         typeof r.createdAt !== "number" ||
         !Array.isArray(r.results)
     ) {
