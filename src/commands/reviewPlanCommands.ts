@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { createIssueMarkdown, type FrontmatterData } from '../data/IssueMarkdowns';
 
+let didRegisterReviewPlanCommands = false;
+
 interface CreateIssueFromReviewTaskArgs {
   title: string;
   body?: string;
@@ -39,6 +41,11 @@ function ensureH1(markdown: string, title: string): string {
 }
 
 export function registerReviewPlanCommands(context: vscode.ExtensionContext): void {
+  if (didRegisterReviewPlanCommands) {
+    return;
+  }
+  didRegisterReviewPlanCommands = true;
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'issueManager.createIssueFromReviewTask',

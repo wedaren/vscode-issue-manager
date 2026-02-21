@@ -1028,6 +1028,29 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerDeepResearchIssueLocalCommand(this.context);
         registerDeepResearchIssueLlmOnlyCommand(this.context);
 
+        // 注册智能 Agent 相关命令
+        void Promise.resolve()
+            .then(() => {
+                const { registerSmartResearchCommand } =
+                    require('../commands/smartResearchCommand') as typeof import('../commands/smartResearchCommand');
+                registerSmartResearchCommand(this.context);
+            })
+            .catch((error: unknown) => {
+                this.logger.error('注册智能 Agent 命令失败:', error);
+            });
+
+        void Promise.resolve()
+            .then(() => {
+                const { registerSaveAgentResearchReport } =
+                    require('../commands/saveAgentResearchReport') as typeof import('../commands/saveAgentResearchReport');
+                registerSaveAgentResearchReport(this.context);
+            })
+            .catch((error: unknown) => {
+                this.logger.error('注册保存 Agent 报告命令失败:', error);
+            });
+
+        this.logger.info('✅ LLM 相关命令注册完成');
+
         // note: copilotDiffSaveResult command was removed per user request
     }
 }
