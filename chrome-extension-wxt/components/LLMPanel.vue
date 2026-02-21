@@ -282,6 +282,20 @@ interface Conversation {
   updatedAt: number;
 }
 
+interface LlmPushPayload {
+  chunk?: string;
+  text?: string;
+  reply?: string;
+  event?: string;
+  error?: string;
+}
+
+interface RuntimeLlmPushMessage {
+  type: 'LLM_PUSH';
+  payload?: LlmPushPayload;
+  requestId?: string;
+}
+
 // ===== 常量 =====
 const STORAGE_KEY = 'llm_conversations';
 const MAX_CONVERSATIONS = 50; // 最多保留 50 条历史
@@ -809,6 +823,10 @@ async function doSend(text: string, targetConvId?: string, pageContextData?: { t
         // 注册路由映射：后续 chunk/reply 通过此 ID 找到正确的会话
         _placeholderConvMap[placeholderId] = convId;
         _lastMsgIdMap.value[convId] = placeholderId;
+      } else {
+        conv.messages.push({ id: 'e3-' + id, role: 'assistant', text: '请求失败: LLM 返回结果缺少 reply / requestId' });
+        conv.updatedAt = Date.now();
+        finishLoadingForConv(convId);
       }
     } else {
       conv.messages.push({ id: 'e-' + id, role: 'assistant', text: '请求失败: ' + (response?.error || '未知错误') });
@@ -842,14 +860,19 @@ function finishLoadingForConv(convId: string) {
 }
 
 // ===== 接收流式消息 =====
-function handleIncomingMessage(msg: any) {
-  if (!msg || !msg.type) return;
-  if (msg.type !== 'LLM_PUSH') return;
+function isRuntimeLlmPushMessage(msg: unknown): msg is RuntimeLlmPushMessage {
+  if (!msg || typeof msg !== 'object') return false;
+  const raw = msg as Record<string, unknown>;
+  return raw.type === 'LLM_PUSH';
+}
+
+function handleIncomingMessage(msg: unknown) {
+  if (!isRuntimeLlmPushMessage(msg)) return;
 
   const payload = msg.payload;
   if (!payload) return;
 
-  const requestId: string = msg.requestId;
+  const requestId = msg.requestId;
   
   // 1. 拦截标题生成任务
   if (requestId && _titleGenMap[requestId]) {
@@ -902,6 +925,20 @@ function handleIncomingMessage(msg: any) {
     return;
   }
 
+  if (payload.event === 'error') {
+    const idx = conv.messages.findIndex(m => m.id === placeholderId);
+    const errText = payload.error || '对话生成失败';
+    if (idx !== -1) {
+      conv.messages[idx].text = `请求失败: ${errText}`;
+    } else {
+      conv.messages.push({ id: 'e4-' + genId(), role: 'assistant', text: `请求失败: ${errText}` });
+    }
+    conv.updatedAt = Date.now();
+    finishLoadingForConv(convId);
+    if (convId === currentConvId.value) scrollToBottom();
+    return;
+  }
+
   if (typeof reply === 'string') {
     const idx = conv.messages.findIndex(m => m.id === placeholderId);
     if (idx !== -1) {
@@ -916,9 +953,12 @@ function handleIncomingMessage(msg: any) {
 }
 
 // ===== 生命周期 =====
-onMounted(async () => {
-  await loadConversations();
+onMounted(() => {
+  // 先注册监听，避免重新进入后在加载历史期间错过流式消息
+  chrome.runtime.onMessage.removeListener(handleIncomingMessage);
   chrome.runtime.onMessage.addListener(handleIncomingMessage);
+
+  void loadConversations();
 });
 
 onUnmounted(() => {
