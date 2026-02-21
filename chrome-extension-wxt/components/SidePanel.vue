@@ -50,7 +50,7 @@
             id="start-selection-btn"
             class="icon-btn icon-btn--primary"
             title="新建笔记"
-            @click="handleStartSelection"
+            @click.stop="handleStartSelection"
           >
             <!-- 加号/新建图标 -->
             <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -64,7 +64,7 @@
             id="start-translate-btn"
             class="icon-btn"
             title="区域翻译"
-            @click="handleStartTranslate"
+            @click.stop="handleStartTranslate"
           >
             <!-- 翻译图标 (A/文) -->
             <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -283,58 +283,41 @@ async function loadFocusedIssues() {
 }
 
 async function handleStartSelection() {
-  console.log('Start selection clicked');
-  
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    if (!tab?.id) {
-      showMessage('无法获取当前标签页', 'error');
-      return;
-    }
-
-    const response = await chrome.runtime.sendMessage({
-      type: 'START_SELECTION',
-      tabId: tab.id
-    });
-
-    if (response.success) {
-      showMessage('请在页面上选取内容', 'success');
-    } else {
-      showMessage('启动选取模式失败', 'error');
-    }
-  } catch (error: unknown) {
-    console.error('Failed to start selection:', error);
-    const errorMessage = error instanceof Error ? error.message : '未知错误';
-    showMessage('启动选取模式失败: ' + errorMessage, 'error');
-  }
+  await startPageSelectionAction('START_SELECTION');
 }
 
 async function handleStartTranslate() {
-  console.log('Start translate clicked');
-  
+  await startPageSelectionAction('START_TRANSLATE_SELECTION');
+}
+
+async function startPageSelectionAction(actionType: 'START_SELECTION' | 'START_TRANSLATE_SELECTION') {
+  const isTranslateAction = actionType === 'START_TRANSLATE_SELECTION';
+  console.log(isTranslateAction ? 'Start translate clicked' : 'Start selection clicked');
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
+
     if (!tab?.id) {
       showMessage('无法获取当前标签页', 'error');
       return;
     }
 
     const response = await chrome.runtime.sendMessage({
-      type: 'START_TRANSLATE_SELECTION',
+      type: actionType,
       tabId: tab.id
     });
 
-    if (response && response.success) {
-      showMessage('请在页面上选取要翻译的内容', 'success');
-    } else {
-      showMessage('启动翻译模式失败', 'error');
+    if (response?.success) {
+      showMessage(isTranslateAction ? '请在页面上选取要翻译的内容' : '请在页面上选取内容', 'success');
+      return;
     }
+
+    const errorSuffix = response?.error ? `: ${response.error}` : '';
+    showMessage((isTranslateAction ? '启动翻译模式失败' : '启动选取模式失败') + errorSuffix, 'error');
   } catch (error: unknown) {
-    console.error('Failed to start translate selection:', error);
     const errorMessage = error instanceof Error ? error.message : '未知错误';
-    showMessage('启动翻译模式失败: ' + errorMessage, 'error');
+    console.error(isTranslateAction ? 'Failed to start translate selection:' : 'Failed to start selection:', error);
+    showMessage((isTranslateAction ? '启动翻译模式失败' : '启动选取模式失败') + ': ' + errorMessage, 'error');
   }
 }
 
