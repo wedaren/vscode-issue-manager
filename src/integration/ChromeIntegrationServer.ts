@@ -462,6 +462,21 @@ export class ChromeIntegrationServer {
               const errorMessage = e instanceof Error ? e.message : String(e);
               ws.send(JSON.stringify({ type: 'error', error: errorMessage, id: message.id }));
             }
+          } else if (message.type === 'get-llm-models') {
+            // 查询当前可用的 Copilot 模型列表（供 Chrome 扩展动态展示）
+            try {
+              const allModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+              const modelList = allModels.map(m => ({
+                id: (m as any).id || m.family,
+                family: m.family,
+                vendor: m.vendor,
+                maxInputTokens: m.maxInputTokens,
+              }));
+              ws.send(JSON.stringify({ type: 'llm-models', data: modelList, id: message.id }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
           } else if (message.type === 'ping') {
             // 心跳响应
             ws.send(JSON.stringify({ type: 'pong', id: message.id }));
@@ -494,17 +509,24 @@ export class ChromeIntegrationServer {
               ];
 
               const msgId = message?.id;
+              // 提取客户端指定的模型 family（Chrome 扩展下拉选择的模型）
+              const requestedModelFamily: string | undefined = payload.model
+                ? String(payload.model)
+                : undefined;
+
+              this.logger.info(`[ChromeIntegration] LLM 请求模型: ${requestedModelFamily ?? '(VS Code 配置默认)'}`);
+
               // 先发送一个 started 推送（可选）
               ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'started' }, id: msgId }));
 
-              // 流式调用：携带完整历史上下文，对每个 chunk 发送 llm-push
+              // 流式调用：携带完整历史上下文，传入指定模型 family
               const result = await LLMServiceClass.stream(chatMessages, (chunk: string) => {
                 try {
                   ws.send(JSON.stringify({ type: 'llm-push', data: { chunk }, id: msgId }));
                 } catch (e) {
                   this.logger.warn('[ChromeIntegration] 发送 llm-push chunk 失败', e as Error ?? e);
                 }
-              }, { /* no signal by default */ });
+              }, { modelFamily: requestedModelFamily });
 
               if (!result) {
                 ws.send(JSON.stringify({ type: 'error', error: 'No available LLM model', id: msgId }));
