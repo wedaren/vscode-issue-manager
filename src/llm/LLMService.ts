@@ -54,24 +54,38 @@ export class LLMService {
      */
     public static async _request(
         messages: vscode.LanguageModelChatMessage[],
-        options?: { signal?: AbortSignal }
+        options?: { signal?: AbortSignal; modelFamily?: string }
     ): Promise<{ text: string; modelFamily?: string } | null> {
+        const logger = Logger.getInstance();
+        const startMs = Date.now();
+        const promptChars = messages.reduce((s, m) => s + String((m as any).content ?? '').length, 0);
+        logger.info(`[LLM._request] 开始 | 指定模型=${options?.modelFamily ?? '(VS Code配置)'} | 消息数=${messages.length} | prompt大小=${promptChars}字`);
+
         if (options?.signal?.aborted) {
+            logger.warn('[LLM._request] 已取消');
             throw new Error("请求已取消");
         }
 
         const model = await LLMService.selectModel(options);
         if (!model) {
+            logger.error('[LLM._request] 未找到可用模型');
             vscode.window.showErrorMessage(
                 "未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。"
             );
             return null;
         }
 
-        const text = await LLMService._sendRequestAndAggregate(model, messages, options);
-        // 尝试从 model 上提取 family 信息，类型系统可能无法保证该字段存在
         const modelFamily = (model as any)?.family || (model as any)?.model?.family;
-        return { text, modelFamily };
+        logger.info(`[LLM._request] 选中模型=${modelFamily}`);
+
+        try {
+            const text = await LLMService._sendRequestAndAggregate(model, messages, options);
+            logger.info(`[LLM._request] 完成 | 模型=${modelFamily} | 响应长度=${text.length}字 | 耗时=${Date.now() - startMs}ms`);
+            return { text, modelFamily };
+        } catch (e) {
+            logger.error(`[LLM._request] 失败 | 模型=${modelFamily} | 耗时=${Date.now() - startMs}ms`, e as Error);
+            throw e;
+        }
     }
 
     /**
@@ -79,28 +93,39 @@ export class LLMService {
      */
     public static async chat(
         messages: vscode.LanguageModelChatMessage[],
-        options?: { signal?: AbortSignal }
+        options?: { signal?: AbortSignal; modelFamily?: string }
     ): Promise<{ text: string; modelFamily?: string } | null> {
         return LLMService._request(messages, options);
     }
 
     /**
      * 流式调用：对每个接收到的 chunk 调用 onChunk，并返回最终聚合文本与模型信息。
+     * 支持通过 options.modelFamily 指定模型，优先级高于 VS Code 配置。
      */
     public static async stream(
         messages: vscode.LanguageModelChatMessage[],
         onChunk: (chunk: string) => void,
-        options?: { signal?: AbortSignal }
+        options?: { signal?: AbortSignal; modelFamily?: string }
     ): Promise<{ text: string; modelFamily?: string } | null> {
+        const logger = Logger.getInstance();
+        const startMs = Date.now();
+        const promptChars = messages.reduce((s, m) => s + String((m as any).content ?? '').length, 0);
+        logger.info(`[LLM.stream] 开始 | 指定模型=${options?.modelFamily ?? '(VS Code配置)'} | 消息数=${messages.length} | prompt大小=${promptChars}字`);
+
         if (options?.signal?.aborted) {
+            logger.warn('[LLM.stream] 已取消');
             throw new Error('请求已取消');
         }
 
         const model = await LLMService.selectModel(options);
         if (!model) {
+            logger.error('[LLM.stream] 未找到可用模型');
             vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
             return null;
         }
+
+        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        logger.info(`[LLM.stream] 选中模型=${modelFamily}`);
 
         const cts = new vscode.CancellationTokenSource();
         let onAbort: (() => void) | undefined;
@@ -115,65 +140,91 @@ export class LLMService {
 
         const resp = await model.sendRequest(messages, undefined, cts.token);
         let full = '';
+        let chunkCount = 0;
         try {
             for await (const chunk of resp.text) {
                 const s = String(chunk);
                 full += s;
+                chunkCount++;
                 try {
                     onChunk(s);
                 } catch (e) {
                     // 忽略回调错误，继续流
-                    Logger.getInstance().warn('onChunk callback failed', e as Error ?? e);
+                    logger.warn('onChunk callback failed', e as Error ?? e);
                 }
 
                 if (cts.token.isCancellationRequested) {
+                    logger.warn(`[LLM.stream] 取消 | 模型=${modelFamily} | 已收刽${chunkCount}个chunk`);
                     throw new Error('请求已取消');
                 }
             }
+        } catch (e) {
+            if (!cts.token.isCancellationRequested) {
+                logger.error(`[LLM.stream] 流式错误 | 模型=${modelFamily} | 耗时=${Date.now() - startMs}ms`, e as Error);
+            }
+            throw e;
         } finally {
             try {
                 if (options?.signal && onAbort) {
                     options.signal.removeEventListener('abort', onAbort);
                 }
-            } catch {}
+            } catch { }
             cts.dispose();
         }
 
-        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        logger.info(`[LLM.stream] 完成 | 模型=${modelFamily} | chunks=${chunkCount} | 响应长度=${full.length}字 | 耗时=${Date.now() - startMs}ms`);
         return { text: full, modelFamily };
     }
 
     private static async selectModel(options?: {
         signal?: AbortSignal;
+        modelFamily?: string; // 外部传入的指定模型 family，优先级高于 VS Code 配置
     }): Promise<vscode.LanguageModelChat | undefined> {
+        const logger = Logger.getInstance();
         const config = vscode.workspace.getConfiguration("issueManager");
-        const preferredFamily = config.get<string>("llm.modelFamily") || "gpt-4.1";
+        const configFamily = config.get<string>("llm.modelFamily") || "gpt-4.1";
+        // 如果调用方指定了 modelFamily，优先使用；否则回落到 VS Code 配置
+        const preferredFamily = options?.modelFamily || configFamily;
 
-        // 1. 尝试使用配置的模型
+        logger.info(`[LLM.selectModel] 查找模型 | 外部指定=${options?.modelFamily ?? '无'} | VSCode配置=${configFamily} | 实际使用=${preferredFamily}`);
+
+        // 1. 尝试使用指定的模型
         let models = await vscode.lm.selectChatModels({
             vendor: "copilot",
             family: preferredFamily,
         });
 
-        // 2. 如果没找到，尝试使用 gpt-4o (通常更强)
+        // 2. 如果没找到，且是外部指定的模型，记录警告
+        if (models.length === 0 && options?.modelFamily) {
+            logger.warn(`[LLM.selectModel] 未找到指定模型 family="${options.modelFamily}"，尝试回落`);
+        }
+
+        // 3. 回落到 gpt-4o
         if (models.length === 0 && preferredFamily !== "gpt-4o") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4o" });
+            if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4o'); }
         }
 
-        // 3. 如果还没找到，尝试使用 gpt-4.1
+        // 4. 回落到 gpt-4.1
         if (models.length === 0 && preferredFamily !== "gpt-4.1") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4.1" });
+            if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4.1'); }
         }
 
-        // 4. 如果还没找到，尝试任意 Copilot 模型
+        // 5. 回落到任意 Copilot 模型
         if (models.length === 0) {
             models = await vscode.lm.selectChatModels({ vendor: "copilot" });
+            if (models.length > 0) { logger.info(`[LLM.selectModel] 回落到任意可用模型: ${(models[0] as any)?.family}`); }
         }
 
         if (models.length > 0) {
-            return models[0];
+            const chosen = models[0];
+            const chosenFamily = (chosen as any)?.family ?? '未知';
+            logger.info(`[LLM.selectModel] 最终选中: ${chosenFamily}`);
+            return chosen;
         }
 
+        logger.error('[LLM.selectModel] 未找到任何可用的 Copilot 模型');
         return undefined;
     }
 
@@ -210,10 +261,10 @@ export class LLMService {
 
 现有笔记列表（标题和文件路径）：
 ${JSON.stringify(
-    allIssues.map(i => ({ title: i.title, filePath: i.uri.fsPath })),
-    null,
-    2
-)}
+            allIssues.map(i => ({ title: i.title, filePath: i.uri.fsPath })),
+            null,
+            2
+        )}
 `;
 
         try {
@@ -287,10 +338,10 @@ ${JSON.stringify(
 
 笔记列表（标题与路径）：
 ${JSON.stringify(
-    allIssues.map(i => ({ title: i.title, filePath: i.uri.fsPath })),
-    null,
-    2
-)}
+            allIssues.map(i => ({ title: i.title, filePath: i.uri.fsPath })),
+            null,
+            2
+        )}
 `;
 
         try {
