@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { LLMService } from '../llm/LLMService';
+import { ContentService } from '../llm/ContentService';
 import { GitSyncService } from '../services/git-sync';
 import { createIssueMarkdown } from '../data/IssueMarkdowns';
 
@@ -17,7 +17,7 @@ export function hasH1(text: string): boolean {
  * 从剪贴板创建问题：
  * - 读取剪贴板内容
  * - 如果已有 H1 标题则直接使用原始内容
- * - 否则调用 LLMService 生成一个 H1 标题并将其插入到内容前面
+ * - 否则调用 ContentService 生成一个 H1 标题并将其插入到内容前面
  * - 在任何失败场景下降级到占位标题
  */
 export async function createIssueFromClipboard(): Promise<void> {
@@ -49,7 +49,7 @@ export async function createIssueFromClipboard(): Promise<void> {
                     token.onCancellationRequested(() => controller.abort());
                     progress.report({ message: finalContent.slice(0, 30) + (finalContent.length > 30 ? '...' : '') });
                     try {
-                        const t = await LLMService.generateTitle(clipboard, { signal: controller.signal });
+                        const t = await ContentService.generateTitleOptimized(clipboard, { signal: controller.signal });
                         return t || '';
                     } catch (err) {
                         return '';

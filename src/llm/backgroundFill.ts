@@ -6,7 +6,7 @@ import {
 } from './backgroundFill.utils';
 import { updateIssueMarkdownBody } from '../data/IssueMarkdowns';
 import { openIssueNode } from '../commands/openIssueNode';
-import { LLMService } from './LLMService';
+import { ContentService } from './ContentService';
 
 /**
  * 在后台为指定 issue 文件使用 LLM 生成并填充完整内容。
@@ -35,7 +35,7 @@ export async function backgroundFillIssue(
                 const statBefore = await readFileStatSafe(uri);
 
                 // 调用 LLM 生成文档（标题+内容）
-                const doc = await LLMService.generateDocument(prompt, { signal: controller.signal });
+                const doc = await ContentService.generateDocument(prompt, { signal: controller.signal });
 
                 if (!doc || (!doc.content && !doc.title)) {
                     return { success: false, message: 'LLM 未生成有效内容' };
@@ -83,11 +83,11 @@ export async function applyGeneratedIssueContent(
                         '打开临时文件'
                     )
                     .then((choice) => {
-                            if (choice === '打开临时文件' && pendingUri) {
+                        if (choice === '打开临时文件' && pendingUri) {
                             // Thenable does not have .catch in typings; use then(onFulfilled, onRejected)
                             vscode.window.showTextDocument(pendingUri).then(
-                                () => {},
-                                () => {}
+                                () => { },
+                                () => { }
                             );
                         }
                     });
@@ -103,11 +103,11 @@ export async function applyGeneratedIssueContent(
         vscode.window.showInformationMessage('已完成。', '打开文件', '对半打开').then((choice) => {
             if (!choice) return;
             if (choice === '打开文件') {
-                issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri).then(() => {}, () => {});
+                issueId ? openIssueNode(issueId) : vscode.window.showTextDocument(uri).then(() => { }, () => { });
             } else if (choice === '对半打开') {
                 issueId
                     ? openIssueNode(issueId, { viewColumn: vscode.ViewColumn.Beside })
-                    : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside }).then(() => {}, () => {});
+                    : vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside }).then(() => { }, () => { });
             }
         });
 

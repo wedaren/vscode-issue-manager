@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { createIssueMarkdown, getAllIssueMarkdowns, getIssueMarkdownContent, updateIssueMarkdownFrontmatter, type IssueMarkdown } from '../data/IssueMarkdowns';
 import { getRelativeToNoteRoot } from '../utils/pathUtils';
-import { LLMService } from '../llm/LLMService';
+import { ContentService } from '../llm/ContentService';
 
 export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -26,14 +26,14 @@ export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext
           const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
           const dayNum = tmp.getUTCDay() || 7;
           tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
-          const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
-          const weekNum = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1)/7);
-          return `${tmp.getUTCFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+          const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+          const weekNum = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+          return `${tmp.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
         }
 
         function monthKey(ts: number) {
           const d = new Date(ts);
-          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         }
 
         const days = new Map<string, IssueMarkdown[]>();
@@ -53,21 +53,21 @@ export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext
         }
 
         const todayKey = toDateKey(Date.now());
-        const yesterdayKey = toDateKey(Date.now() - 24*3600*1000);
+        const yesterdayKey = toDateKey(Date.now() - 24 * 3600 * 1000);
         const thisWeekKey = isoWeekKey(Date.now());
-        const lastWeekKey = isoWeekKey(Date.now() - 7*24*3600*1000);
+        const lastWeekKey = isoWeekKey(Date.now() - 7 * 24 * 3600 * 1000);
         const thisMonthKey = monthKey(Date.now());
 
-        type PeriodQuickPickItem = vscode.QuickPickItem & { period?: { type: 'day'|'week'|'month', key: string } };
+        type PeriodQuickPickItem = vscode.QuickPickItem & { period?: { type: 'day' | 'week' | 'month', key: string } };
         const items: PeriodQuickPickItem[] = [];
 
         // Today（仅在有数据时）
         if (days.has(todayKey)) {
-          items.push({ label: '回顾今天', description: `(${todayKey})`, period: { type: 'day', key: `day_${todayKey.replace(/-/g,'_')}` } });
+          items.push({ label: '回顾今天', description: `(${todayKey})`, period: { type: 'day', key: `day_${todayKey.replace(/-/g, '_')}` } });
         }
 
         // 始终显示“回顾昨天”选项（若无数据，选择后会提示范围内无问题）
-        items.push({ label: '回顾昨天', description: `(${yesterdayKey})`, period: { type: 'day', key: `day_${yesterdayKey.replace(/-/g,'_')}` } });
+        items.push({ label: '回顾昨天', description: `(${yesterdayKey})`, period: { type: 'day', key: `day_${yesterdayKey.replace(/-/g, '_')}` } });
 
         // 本周其他天（排除今天/昨天）
         const weekDaysSet = new Set<string>();
@@ -78,7 +78,7 @@ export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext
         const weekDays = Array.from(weekDaysSet).sort().reverse();
         for (const d of weekDays) {
           if (d === todayKey || d === yesterdayKey) continue;
-          items.push({ label: `回顾本周 ${d}`, description: '', period: { type: 'day', key: `day_${d.replace(/-/g,'_')}` } });
+          items.push({ label: `回顾本周 ${d}`, description: '', period: { type: 'day', key: `day_${d.replace(/-/g, '_')}` } });
         }
 
         if (weeks.has(thisWeekKey)) items.push({ label: '回顾本周', description: `(${thisWeekKey})`, period: { type: 'week', key: `week_${thisWeekKey}` } });
@@ -91,7 +91,7 @@ export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext
         // determine selected files
         let selected: IssueMarkdown[] = [];
         if (pick.period.type === 'day') {
-          const k = pick.period.key.replace(/^day_/, '').replace(/_/g,'-');
+          const k = pick.period.key.replace(/^day_/, '').replace(/_/g, '-');
           selected = days.get(k) ?? [];
         } else if (pick.period.type === 'week') {
           const k = pick.period.key.replace(/^week_/, '');
@@ -148,13 +148,13 @@ export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext
             try {
               const content = await getIssueMarkdownContent(md.uri);
               if (needTitle) {
-                const generatedTitle = await LLMService.generateTitleOptimized(content);
+                const generatedTitle = await ContentService.generateTitleOptimized(content);
                 if (generatedTitle && generatedTitle.trim()) {
                   await updateIssueMarkdownFrontmatter(md.uri, { issue_title: generatedTitle });
                 }
               }
               if (needSummary) {
-                const generated = await LLMService.generateBriefSummary(content);
+                const generated = await ContentService.generateBriefSummary(content);
                 if (generated && generated.trim()) {
                   await updateIssueMarkdownFrontmatter(md.uri, { issue_brief_summary: generated });
                 }
@@ -177,17 +177,17 @@ export function registerOpenReviewPlanQuickPick(context: vscode.ExtensionContext
                     const summ = fm2.issue_brief_summary;
                     let rep = '(无摘要)';
                     if (typeof summ === 'string') rep = summ;
-                    else if (Array.isArray(summ) && summ.length>0) rep = summ[0];
+                    else if (Array.isArray(summ) && summ.length > 0) rep = summ[0];
                     parts[i] = rep;
                   }
                   const newReport = parts.join('\n') + after;
                   await vscode.workspace.fs.writeFile(uri, Buffer.from(newReport, 'utf8'));
                 }
               } catch (e) {
-                try { console.error('更新回顾报告失败', e); } catch {}
+                try { console.error('更新回顾报告失败', e); } catch { }
               }
             } catch (err) {
-              try { console.error('异步生成摘要/标题失败', err); } catch {}
+              try { console.error('异步生成摘要/标题失败', err); } catch { }
             }
           }
           void vscode.commands.executeCommand('issueManager.refreshAllViews');

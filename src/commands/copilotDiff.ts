@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { LLMService } from "../llm/LLMService";
+import { ContentService } from "../llm/ContentService";
 import { getAllPrompts } from "../data/IssueMarkdowns";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { copilotDocumentProvider } from "../virtual/CopilotDocumentProvider";
@@ -121,7 +121,7 @@ export async function copilotDiffSend(): Promise<void> {
                 }
                 try {
                     const nodes = await getIssueNodesByUri(fileUri);
-                    if(nodes?.[0]){
+                    if (nodes?.[0]) {
                         await vscode.commands.executeCommand("issueManager.openAndRevealIssue", nodes[0], 'overview');
                     } else {
                         throw new Error("未找到对应的问题节点");
@@ -180,7 +180,7 @@ export async function copilotDiffSend(): Promise<void> {
             },
             async (progress, token) => {
                 token.onCancellationRequested(() => controller.abort());
-                const optimized = await LLMService.rewriteContent(prompt, {
+                const optimized = await ContentService.rewriteContent(prompt, {
                     signal: controller.signal,
                 });
 

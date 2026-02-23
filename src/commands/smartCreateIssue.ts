@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getIssueDir } from '../config';
-import { LLMService } from '../llm/LLMService';
+import { SearchService } from '../llm/SearchService';
 import { readQuickPickData, writeQuickPickData, QuickPickPersistedData, IssueNode, createIssueNodes } from '../data/issueTreeManager';
 import { debounce } from '../utils/debounce';
 import { GitSyncService } from '../services/git-sync';
@@ -90,13 +90,13 @@ async function processUris(
             if (addedNodes && addedNodes.length > 0) {
                 lastAdded = addedNodes[addedNodes.length - 1];
 
-                if (openFlag) {  
-                    for (let i = 0; i < uris.length; i++) {  
-                        const uri = uris[i];  
-                        const nodeId = (addedNodes && i < addedNodes.length) ? addedNodes[i].id : undefined;  
-                        await openUriIfNeeded(uri, true, nodeId);  
-                    }  
-                }  
+                if (openFlag) {
+                    for (let i = 0; i < uris.length; i++) {
+                        const uri = uris[i];
+                        const nodeId = (addedNodes && i < addedNodes.length) ? addedNodes[i].id : undefined;
+                        await openUriIfNeeded(uri, true, nodeId);
+                    }
+                }
             }
 
 
@@ -202,7 +202,7 @@ export async function smartCreateIssue(
             currentAbortController?.abort();
             currentAbortController = new AbortController();
             try {
-                const suggestions = await LLMService.getSuggestions(value, { signal: currentAbortController.signal });
+                const suggestions = await SearchService.getSuggestions(value, { signal: currentAbortController.signal });
                 if (quickPick.value !== requestValue) {
                     return;
                 }
@@ -386,7 +386,7 @@ async function handleDefaultCreation(
 ): Promise<vscode.Uri | null> {
     if (title) {
         const uri = await createIssueMarkdown({ markdownBody: `# ${title}\n\n` });
-        
+
         if (uri) {
             const uris = [uri];
             await processUris(uris, parentId, isAddToTree, isReveal, isOpen, true);

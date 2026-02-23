@@ -8,7 +8,7 @@ import {
 } from "../data/IssueMarkdowns";
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
 import { applyGeneratedIssueContent } from "../llm/backgroundFill";
-import { LLMService } from "../llm/LLMService";
+import { ContentService } from "../llm/ContentService";
 import { openIssueNodeBeside } from "./openIssueNode";
 import { createIssueNodes } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
@@ -36,7 +36,7 @@ async function processLlmCreation(
                 const controller = new AbortController();
                 token.onCancellationRequested(() => controller.abort());
 
-                const text = await LLMService.rewriteContent(prompt, { signal: controller.signal });
+                const text = await ContentService.rewriteContent(prompt, { signal: controller.signal });
                 if (!text || !text.trim()) {
                     console.error(`${errorContext}: rewrite returned empty content`);
                     return;
@@ -70,7 +70,7 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
     const currentEditorIssueId = await getCurrentEditorIssueId();
     const currentIssueTitle = (await getIssueMarkdown(currentEditorIssueId || ""))?.title || "问题";
     const titleItem: QuickPickItemWithId = {
-        label: [issue, 'LLM 新建问题'].filter(Boolean).join(' '),  
+        label: [issue, 'LLM 新建问题'].filter(Boolean).join(' '),
         description: currentEditorIssueId
             ? `基于当前 ${currentIssueTitle} 下创建子问题`
             : "基于当前编辑器内容创建新问题",
@@ -116,20 +116,20 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
                     return;
                 }
                 const nodes = await createIssueNodes([uri], currentEditorIssueId);
-                    try {
-                        await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
-                        processLlmCreation(
-                            uri,
-                            buildPromptWithContent(currentEditorContent, p.template),
-                            title,
-                            nodes && nodes[0] ? nodes[0].id : undefined,
-                            'create-mode prompt'
-                        ).catch((e) => {
-                            console.error('create-mode prompt background fill failed', e);
-                        });
-                    } catch (e) {
-                        console.error("create-mode prompt update frontmatter failed", e);
-                    }
+                try {
+                    await updateIssueMarkdownFrontmatter(uri, { issue_title: title });
+                    processLlmCreation(
+                        uri,
+                        buildPromptWithContent(currentEditorContent, p.template),
+                        title,
+                        nodes && nodes[0] ? nodes[0].id : undefined,
+                        'create-mode prompt'
+                    ).catch((e) => {
+                        console.error('create-mode prompt background fill failed', e);
+                    });
+                } catch (e) {
+                    console.error("create-mode prompt update frontmatter failed", e);
+                }
             },
         }));
 
@@ -155,7 +155,7 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
                 const nodes = await createIssueNodes([uri], undefined);
                 vscode.commands.executeCommand("issueManager.refreshAllViews");
                 if (nodes && nodes[0] && nodes[0].id) {
-                    openIssueNodeBeside(nodes[0].id).catch(() => {});
+                    openIssueNodeBeside(nodes[0].id).catch(() => { });
                 }
             }
         },
