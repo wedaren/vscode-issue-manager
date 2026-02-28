@@ -48,19 +48,24 @@ export function extractFilterKeyword(
         };
     }
 
-    // 检查是否有触发前缀
+    // 检查是否有触发前缀：选择光标之前最后出现的触发字符串（最近的一次触发）
+    let bestIndex = -1;
+    let bestTrigger: string | undefined = undefined;
     for (const trigger of triggers) {
         const triggerIndex = prefix.lastIndexOf(trigger);
-        if (triggerIndex !== -1) {
-            // 找到触发前缀，提取其后的文本
-            let keyword = prefix.slice(triggerIndex + trigger.length);
-            keyword = cleanKeyword(keyword, maxLength);
-            return {
-                keyword,
-                hasTrigger: true,
-                triggerName: trigger
-            };
+        if (triggerIndex > bestIndex) {
+            bestIndex = triggerIndex;
+            bestTrigger = trigger;
         }
+    }
+    if (bestIndex !== -1 && bestTrigger !== undefined) {
+        let keyword = prefix.slice(bestIndex + bestTrigger.length);
+        keyword = cleanKeyword(keyword, maxLength);
+        return {
+            keyword,
+            hasTrigger: true,
+            triggerName: bestTrigger
+        };
     }
 
     // 没有触发前缀：不再从最后空白处提取，直接返回空关键字
