@@ -4,36 +4,9 @@ import { getIssueIdFromUri } from "../utils/uriUtils";
 import { getIssueNodeById } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
+import { forceRefreshCurrentEditor } from "./forceRefreshCurrentEditor";
 
-/**
- * 强制刷新当前编辑器：通过关闭并重新打开文档，解决接口改写后编辑器视图未及时更新的问题。
- */
-async function forceRefreshCurrentEditor(): Promise<void> {
-    const activeEditor = vscode.window.activeTextEditor;
-    if (!activeEditor) {
-        return;
-    }
-
-    const { document, viewColumn, selections } = activeEditor;
-    if (document.isDirty) {
-        await vscode.window.showWarningMessage("当前编辑器存在未保存修改，已取消强制刷新。请先保存后重试。");
-        return;
-    }
-
-    const uri = document.uri;
-    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
-    const reopenedDocument = await vscode.workspace.openTextDocument(uri);
-    const reopenedEditor = await vscode.window.showTextDocument(reopenedDocument, {
-        viewColumn,
-        preview: false,
-        preserveFocus: false,
-    });
-
-    if (selections.length > 0) {
-        reopenedEditor.selections = selections;
-        reopenedEditor.revealRange(selections[0]);
-    }
-}
+// 使用独立模块中的 `forceRefreshCurrentEditor`
 
 /**
  * 命令模式的所有命令项定义
