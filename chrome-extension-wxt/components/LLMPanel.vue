@@ -145,6 +145,55 @@
         </div>
       </div>
       <div class="header-right">
+        <!-- 模型选择下拉 -->
+        <div class="model-select-wrapper" :class="{ open: showModelMenu }">
+          <button
+            class="model-select-btn"
+            @click="!modelsLoading && (showModelMenu = !showModelMenu)"
+            :title="selectedModel ? selectedModel.family : '加载模型中…'"
+            :disabled="modelsLoading"
+          >
+            <!-- 加载中：旋转图标 -->
+            <svg v-if="modelsLoading" class="model-spin" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6" stroke-dasharray="10 6" opacity="0.7"/>
+            </svg>
+            <!-- 已加载：AI 芯片图标 -->
+            <svg v-else viewBox="0 0 20 20" fill="none">
+              <rect x="2" y="5" width="16" height="11" rx="2.5" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M6 10h3l1.5 2L13 8l1.5 2H16" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="model-select-label">
+              {{ modelsLoading ? '加载中' : (selectedModel ? selectedModel.family : '选择模型') }}
+            </span>
+            <svg class="model-arrow" viewBox="0 0 12 12" fill="none">
+              <path d="M2 4.5l4 3 4-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <Transition name="model-menu">
+            <div v-if="showModelMenu" class="model-menu" @click.stop>
+              <!-- 错误状态 -->
+              <div v-if="modelsError" class="model-menu-error">
+                <span>{{ modelsError }}</span>
+                <button class="model-retry-btn" @click="loadModels">重试</button>
+              </div>
+              <!-- 模型列表 -->
+              <template v-else>
+                <div
+                  v-for="m in availableModels"
+                  :key="m.id"
+                  :class="['model-menu-item', { active: selectedModel && m.family === selectedModel.family }]"
+                  @click="selectModel(m)"
+                >
+                  <span class="model-menu-name">{{ m.family }}</span>
+                  <span class="model-menu-ctx">{{ formatTokenCount(m.maxInputTokens) }}</span>
+                  <svg v-if="selectedModel && m.family === selectedModel.family" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 8l4 4 6-7" stroke="#60a5fa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+              </template>
+            </div>
+          </Transition>
+        </div>
         <!-- 复制全部 -->
         <button v-if="messages.length > 0" class="icon-btn copy-all-btn" @click="copyAllMessages" :title="copied ? '已复制！' : '复制全部对话'">
           <svg v-if="!copied" viewBox="0 0 20 20" fill="none"><rect x="7" y="4" width="9" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 7H4a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -153,6 +202,14 @@
         <!-- 历史记录 -->
         <button class="icon-btn" :class="{ active: showHistory }" @click="showHistory = !showHistory" title="历史记录">
           <svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 100 14A7 7 0 0010 3z" stroke="currentColor" stroke-width="1.4"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+        <!-- 日志面板开关 -->
+        <button class="icon-btn" :class="{ active: showLogPanel }" @click="showLogPanel = !showLogPanel" title="调用日志">
+          <svg viewBox="0 0 20 20" fill="none">
+            <rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M5 7h3M5 10h6M5 13h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <circle v-if="llmLogs.length > 0" cx="15" cy="5" r="3" fill="#f59e0b"/>
+          </svg>
         </button>
         <!-- 新建对话 -->
         <button class="new-chat-btn" @click="newConversation" title="新建对话">
@@ -178,7 +235,7 @@
             </defs>
           </svg>
         </div>
-        <p class="chat-empty-text">和 Copilot 开始对话</p>
+        <p class="chat-empty-text">和 {{ selectedModel ? selectedModel.family : 'AI' }} 开始对话</p>
         <p class="chat-empty-hint">输入消息后按回车发送</p>
       </div>
 
@@ -195,7 +252,7 @@
           </svg>
         </div>
         <div class="message-body">
-          <div class="message-role-label">{{ msg.role === 'user' ? '我' : msg.role === 'assistant' ? 'Copilot' : '系统' }}</div>
+          <div class="message-role-label">{{ msg.role === 'user' ? '我' : msg.role === 'assistant' ? (selectedModel ? selectedModel.family : 'AI') : '系统' }}</div>
           <!-- 打字气泡占位 -->
           <div v-if="msg.id === lastAssistantMessageId && msg.text === ''" class="message-text typing-bubble">
             <span class="typing-dot"></span>
@@ -209,6 +266,35 @@
         </div>
       </div>
     </div>
+
+    <!-- 日志面板 -->
+    <Transition name="log-panel">
+      <div v-if="showLogPanel" class="llm-log-panel">
+        <div class="log-panel-header">
+          <span class="log-panel-title">
+            <svg viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M3 5.5h4M3 8h6M3 10.5h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
+            调用日志
+            <span class="log-count">{{ llmLogs.length }}</span>
+          </span>
+          <button class="log-clear-btn" @click="llmLogs = []" title="清空日志">清空</button>
+        </div>
+        <div class="log-entries" ref="logEntriesEl">
+          <div v-if="llmLogs.length === 0" class="log-empty">暂无日志</div>
+          <div
+            v-for="entry in llmLogs"
+            :key="entry.id"
+            :class="['log-entry', entry.level]"
+          >
+            <span class="log-ts">{{ entry.tsStr }}</span>
+            <span class="log-badge" :class="entry.level">{{ entry.level === 'info' ? 'I' : entry.level === 'warn' ? 'W' : 'E' }}</span>
+            <span class="log-msg">{{ entry.message }}</span>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 输入区域 -->
     <div class="llm-input-area">
@@ -266,6 +352,71 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 
+// ===== 模型选项 =====
+/** Copilot 模型元数据，与 VS Code lm API 返回字段对应 */
+interface CopilotModel {
+  id: string;
+  family: string;         // 操作模型时传开 model 字段的值
+  vendor: string;
+  maxInputTokens: number; // 上下文窗口 token 数
+}
+
+const MODEL_STORAGE_KEY = 'llm_selected_model';
+
+/** 将 token 数格式化为上下文窗口描述，如 128000 → "128K" */
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${Math.round(n / 100_000) / 10}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return String(n);
+}
+
+const availableModels = ref<CopilotModel[]>([]);
+const modelsLoading = ref(false);
+const modelsError = ref<string | null>(null);
+
+// 当前选中的模型（存 family 字符串）
+const _savedModelFamily = localStorage.getItem(MODEL_STORAGE_KEY) || '';
+const selectedModel = ref<CopilotModel | null>(null);
+
+/** 加载可用模型列表：向 background 请求，由 VS Code 插件返回 */
+async function loadModels() {
+  modelsLoading.value = true;
+  modelsError.value = null;
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: 'GET_LLM_MODELS' }) as
+      { success: boolean; data?: CopilotModel[]; error?: string };
+    if (resp && resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
+      availableModels.value = resp.data;
+      // 尝试恢复上次选择
+      const saved = resp.data.find(m => m.family === _savedModelFamily);
+      selectedModel.value = saved ?? resp.data[0];
+    } else {
+      modelsError.value = resp?.error || '未找到可用模型';
+    }
+  } catch (e) {
+    modelsError.value = e instanceof Error ? e.message : String(e);
+    console.error('[LLMPanel] 加载模型列表失败', e);
+  } finally {
+    modelsLoading.value = false;
+  }
+}
+
+const showModelMenu = ref(false);
+
+function selectModel(m: CopilotModel) {
+  selectedModel.value = m;
+  showModelMenu.value = false;
+  localStorage.setItem(MODEL_STORAGE_KEY, m.family);
+}
+
+// 点击面板外部时关闭模型菜单
+function handleOutsideClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (!target.closest('.model-select-wrapper')) {
+    showModelMenu.value = false;
+  }
+}
+
 // ===== 类型定义 =====
 interface ChatMessage {
   id: string;
@@ -280,6 +431,20 @@ interface Conversation {
   messages: ChatMessage[];
   createdAt: number;
   updatedAt: number;
+}
+
+interface LlmPushPayload {
+  chunk?: string;
+  text?: string;
+  reply?: string;
+  event?: string;
+  error?: string;
+}
+
+interface RuntimeLlmPushMessage {
+  type: 'LLM_PUSH';
+  payload?: LlmPushPayload;
+  requestId?: string;
 }
 
 // ===== 常量 =====
@@ -306,6 +471,37 @@ function autoTitle(conv: Conversation): string {
 const conversations = ref<Conversation[]>([]);
 const currentConvId = ref<string>('');
 const showHistory = ref(false);
+
+// ===== 日志面板 =====
+interface LlmLogEntry {
+  id: string;
+  ts: number;
+  tsStr: string; // 格式化时间，避免模板里重复计算
+  level: 'info' | 'warn' | 'error';
+  message: string;
+}
+
+const llmLogs = ref<LlmLogEntry[]>([]);
+const showLogPanel = ref(false);
+const logEntriesEl = ref<HTMLElement | null>(null);
+const MAX_LOGS = 200;
+
+function addLog(level: LlmLogEntry['level'], message: string) {
+  const now = new Date();
+  const tsStr = now.toTimeString().slice(0, 8); // HH:MM:SS
+  llmLogs.value.push({ id: `log-${Date.now()}-${Math.random()}`, ts: now.getTime(), tsStr, level, message });
+  if (llmLogs.value.length > MAX_LOGS) {
+    llmLogs.value.splice(0, llmLogs.value.length - MAX_LOGS);
+  }
+  // 日志面板打开时自动滚到底部
+  if (showLogPanel.value) {
+    nextTick(() => {
+      if (logEntriesEl.value) {
+        logEntriesEl.value.scrollTop = logEntriesEl.value.scrollHeight;
+      }
+    });
+  }
+}
 
 // ===== 搜索 =====
 const historySearch = ref('');
@@ -369,7 +565,7 @@ async function generateTitle(conv: Conversation) {
   try {
     const response = await chrome.runtime.sendMessage({
       type: 'LLM_REQUEST',
-      model: 'copilot',
+      model: selectedModel.value?.family ?? 'copilot',
       prompt: "Based on the following conversation, generate a short, concise, and descriptive title (maximum 15 characters, no quotes or punctuation at the start/end). Output ONLY the title text.\n\n" + textContext,
       history: []
     });
@@ -789,9 +985,12 @@ async function doSend(text: string, targetConvId?: string, pageContextData?: { t
       realPrompt = `${realPrompt}\n\n\`\`\`page-context\n【当前网页: ${pageContextData.title}】\n${pageContextData.text}\n\`\`\`\n`;
     }
 
+    const _sendModel = selectedModel.value?.family ?? 'copilot';
+    addLog('info', `发送 → 模型: ${_sendModel} | 历史: ${history.length}条 | prompt: ${realPrompt.length}字`);
+
     const response = await chrome.runtime.sendMessage({
       type: 'LLM_REQUEST',
-      model: 'copilot',
+      model: _sendModel,
       prompt: realPrompt,
       history,
     });
@@ -800,15 +999,21 @@ async function doSend(text: string, targetConvId?: string, pageContextData?: { t
       const reply = response.data && response.data.reply;
       const requestId = response.data && response.data.requestId;
       if (typeof reply === 'string' && reply.length > 0) {
+        addLog('info', `完成 ← 模型: ${_sendModel} | 响应: ${reply.length}字`);
         conv.messages.push({ id: 'r-' + id, role: 'assistant', text: reply });
         conv.updatedAt = Date.now();
         finishLoadingForConv(convId);
       } else if (requestId) {
+        addLog('info', `排队 ⟳ 模型: ${_sendModel} | requestId: ${requestId}`);
         const placeholderId = 'p-' + requestId;
         conv.messages.push({ id: placeholderId, role: 'assistant', text: '' });
         // 注册路由映射：后续 chunk/reply 通过此 ID 找到正确的会话
         _placeholderConvMap[placeholderId] = convId;
         _lastMsgIdMap.value[convId] = placeholderId;
+      } else {
+        conv.messages.push({ id: 'e3-' + id, role: 'assistant', text: '请求失败: LLM 返回结果缺少 reply / requestId' });
+        conv.updatedAt = Date.now();
+        finishLoadingForConv(convId);
       }
     } else {
       conv.messages.push({ id: 'e-' + id, role: 'assistant', text: '请求失败: ' + (response?.error || '未知错误') });
@@ -817,6 +1022,7 @@ async function doSend(text: string, targetConvId?: string, pageContextData?: { t
     }
   } catch (err: unknown) {
     const em = err instanceof Error ? err.message : String(err);
+    addLog('error', `发送异常: ${em}`);
     conv.messages.push({ id: 'e2-' + id, role: 'assistant', text: '发送异常: ' + em });
     conv.updatedAt = Date.now();
     finishLoadingForConv(convId);
@@ -842,14 +1048,19 @@ function finishLoadingForConv(convId: string) {
 }
 
 // ===== 接收流式消息 =====
-function handleIncomingMessage(msg: any) {
-  if (!msg || !msg.type) return;
-  if (msg.type !== 'LLM_PUSH') return;
+function isRuntimeLlmPushMessage(msg: unknown): msg is RuntimeLlmPushMessage {
+  if (!msg || typeof msg !== 'object') return false;
+  const raw = msg as Record<string, unknown>;
+  return raw.type === 'LLM_PUSH';
+}
+
+function handleIncomingMessage(msg: unknown) {
+  if (!isRuntimeLlmPushMessage(msg)) return;
 
   const payload = msg.payload;
   if (!payload) return;
 
-  const requestId: string = msg.requestId;
+  const requestId = msg.requestId;
   
   // 1. 拦截标题生成任务
   if (requestId && _titleGenMap[requestId]) {
@@ -902,8 +1113,26 @@ function handleIncomingMessage(msg: any) {
     return;
   }
 
-  if (typeof reply === 'string') {
+  if (payload.event === 'error') {
     const idx = conv.messages.findIndex(m => m.id === placeholderId);
+    const errText = payload.error || '对话生成失败';
+    addLog('error', `错误: ${errText}`);
+    if (idx !== -1) {
+      conv.messages[idx].text = `请求失败: ${errText}`;
+    } else {
+      conv.messages.push({ id: 'e4-' + genId(), role: 'assistant', text: `请求失败: ${errText}` });
+    }
+    conv.updatedAt = Date.now();
+    finishLoadingForConv(convId);
+    if (convId === currentConvId.value) scrollToBottom();
+    return;
+  }
+
+  if (typeof reply === 'string') {
+    const replyModelFamily = (payload as any).modelFamily as string | undefined;
+    const idx = conv.messages.findIndex(m => m.id === placeholderId);
+    const fullText = reply || conv.messages[idx]?.text || '';
+    addLog('info', `完成 ← 模型: ${replyModelFamily ?? '?'} | 响应: ${fullText.length}字`);
     if (idx !== -1) {
       conv.messages[idx].text = String(reply);
     } else {
@@ -916,13 +1145,23 @@ function handleIncomingMessage(msg: any) {
 }
 
 // ===== 生命周期 =====
-onMounted(async () => {
-  await loadConversations();
+onMounted(() => {
+  // 先注册监听，避免重新进入后在加载历史期间错过流式消息
+  chrome.runtime.onMessage.removeListener(handleIncomingMessage);
   chrome.runtime.onMessage.addListener(handleIncomingMessage);
+
+  // 注册点击外部关闭模型菜单
+  document.addEventListener('click', handleOutsideClick);
+
+  // 动态加载模型列表
+  void loadModels();
+
+  void loadConversations();
 });
 
 onUnmounted(() => {
   chrome.runtime.onMessage.removeListener(handleIncomingMessage);
+  document.removeEventListener('click', handleOutsideClick);
 });
 </script>
 
@@ -1406,6 +1645,207 @@ onUnmounted(() => {
 .new-chat-btn svg { width: 12px; height: 12px; }
 .new-chat-btn:hover { background: rgba(56,139,253,0.2); border-color: rgba(56,139,253,0.55); color: #93c5fd; }
 .new-chat-btn:active { transform: scale(0.96); }
+
+/* ========== 模型选择器 ========== */
+.model-select-wrapper {
+  position: relative;
+}
+
+.model-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(167, 139, 250, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: var(--radius-sm);
+  color: #c4b5fd;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.model-select-btn svg:first-child { width: 14px; height: 14px; flex-shrink: 0; }
+.model-select-label { max-width: 52px; overflow: hidden; text-overflow: ellipsis; }
+.model-arrow { width: 10px; height: 10px; flex-shrink: 0; transition: transform 0.2s ease; }
+
+.model-select-wrapper.open .model-arrow { transform: rotate(180deg); }
+.model-select-btn:hover { background: rgba(167,139,250,0.16); border-color: rgba(167,139,250,0.5); color: #ddd6fe; }
+.model-select-btn:active { transform: scale(0.96); }
+
+.model-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  max-height: 260px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  padding: 4px;
+}
+
+.model-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.model-menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.model-menu-item.active { color: #93c5fd; }
+.model-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+.model-menu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-menu-ctx { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
+
+/* 加载中旋转动画 */
+.model-spin { animation: modelSpin 1s linear infinite; }
+@keyframes modelSpin { to { transform: rotate(360deg); } }
+
+/* 菜单错误状态 */
+.model-menu-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #f87171;
+}
+
+.model-retry-btn {
+  padding: 2px 8px;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: var(--radius-sm);
+  color: #f87171;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.model-retry-btn:hover { background: rgba(248, 113, 113, 0.25); }
+
+/* 下拉菜单过渡 */
+.model-menu-enter-active, .model-menu-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.model-menu-enter-from, .model-menu-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* ========== 日志面板 ========== */
+.llm-log-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 180px;
+  background: rgba(10, 10, 16, 0.85);
+  border-top: 1px solid var(--border-subtle);
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 10.5px;
+}
+
+.log-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.log-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-ui);
+}
+.log-panel-title svg { width: 12px; height: 12px; opacity: 0.7; }
+
+.log-count {
+  padding: 0 5px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.log-clear-btn {
+  padding: 1px 8px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.log-clear-btn:hover { color: #f87171; border-color: #f87171; }
+
+.log-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.log-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1.5px 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.log-entry:hover { background: rgba(255,255,255,0.03); }
+
+.log-ts { color: #4b5563; flex-shrink: 0; }
+
+.log-badge {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.log-badge.info { background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
+.log-badge.warn { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.log-badge.error { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+
+.log-msg { color: var(--text-secondary); }
+.log-entry.info .log-msg { color: #9ca3af; }
+.log-entry.warn .log-msg { color: #fbbf24; }
+.log-entry.error .log-msg { color: #f87171; }
+
+/* 日志面板展开/收起过渡 */
+.log-panel-enter-active, .log-panel-leave-active { transition: max-height 0.2s ease, opacity 0.15s ease; overflow: hidden; }
+.log-panel-enter-from, .log-panel-leave-to { max-height: 0; opacity: 0; }
+.log-panel-enter-to, .log-panel-leave-from { max-height: 180px; opacity: 1; }
 
 /* ========== 策略一：流式光标 ========== */
 .stream-cursor {

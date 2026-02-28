@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { LLMService } from '../llm/LLMService';
+import { ContentService } from '../llm/ContentService';
 import { updateIssueMarkdownFrontmatter, isIssueMarkdown, getIssueMarkdown, getIssueMarkdownContent, IssueMarkdown } from '../data/IssueMarkdowns';
 import { Logger } from '../core/utils/Logger';
 import { getIssueNodeById, isIssueNode } from '../data/issueTreeManager';
@@ -33,7 +33,7 @@ function mergeSummary(
 ): string | string[] | undefined {
     const s = normalizeSummary(summary);
     const briefSummary = existing?.issue_brief_summary;
-    
+
     if (!existing || briefSummary === undefined || briefSummary === null) {
         return s;
     } else if (typeof briefSummary === 'string') {
@@ -63,9 +63,9 @@ export function registerGenerateBriefSummaryCommand(context: vscode.ExtensionCon
 
                 if (args && args.length > 0) {
                     const firstArg = args[0];
-                    if(isIssueNode(firstArg)){
+                    if (isIssueNode(firstArg)) {
                         const issueNode = await getIssueNodeById(firstArg.id);
-                        if(issueNode){
+                        if (issueNode) {
                             issueMarkdown = await getIssueMarkdown(issueNode.filePath);
                         }
                     }
@@ -93,7 +93,7 @@ export function registerGenerateBriefSummaryCommand(context: vscode.ExtensionCon
                     async (progress, token) => {
                         try {
                             const content = await getIssueMarkdownContent(targetUri);
-                            const generated = await LLMService.generateBriefSummary(content, { signal: toAbortSignal(token) });
+                            const generated = await ContentService.generateBriefSummary(content, { signal: toAbortSignal(token) });
                             return generated;
                         } catch (err) {
                             // 如果是用户取消操作，则静默处理
@@ -116,10 +116,10 @@ export function registerGenerateBriefSummaryCommand(context: vscode.ExtensionCon
 
                 const newSummary = normalizeSummary(summary);
                 const merged = mergeSummary(existing, newSummary);
-                if (merged === undefined) {  
-                    vscode.window.showInformationMessage('生成摘要与现有 issue_brief_summary 相同或已存在，未做修改。');  
-                    return;  
-                }  
+                if (merged === undefined) {
+                    vscode.window.showInformationMessage('生成摘要与现有 issue_brief_summary 相同或已存在，未做修改。');
+                    return;
+                }
                 const ok = await updateIssueMarkdownFrontmatter(targetUri, { issue_brief_summary: merged });
                 if (ok) {
                     vscode.window.showInformationMessage('已将生成摘要写入 frontmatter.issue_brief_summary');

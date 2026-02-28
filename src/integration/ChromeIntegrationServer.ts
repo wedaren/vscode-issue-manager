@@ -462,11 +462,26 @@ export class ChromeIntegrationServer {
               const errorMessage = e instanceof Error ? e.message : String(e);
               ws.send(JSON.stringify({ type: 'error', error: errorMessage, id: message.id }));
             }
+          } else if (message.type === 'get-llm-models') {
+            // 查询当前可用的 Copilot 模型列表（供 Chrome 扩展动态展示）
+            try {
+              const allModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+              const modelList = allModels.map(m => ({
+                id: (m as any).id || m.family,
+                family: m.family,
+                vendor: m.vendor,
+                maxInputTokens: m.maxInputTokens,
+              }));
+              ws.send(JSON.stringify({ type: 'llm-models', data: modelList, id: message.id }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
           } else if (message.type === 'ping') {
             // 心跳响应
             ws.send(JSON.stringify({ type: 'pong', id: message.id }));
           } else if (message.type === 'llm-request') {
-            // 来自 Chrome 扩展的 LLM 请求（转发到 Copilot/LLMService），支持流式推送
+            // 来自 Chrome 扩展的 LLM 请求（转发到 Copilot/LLMClient），支持流式推送
             try {
               const payload = message.data as any || {};
               const prompt = payload.prompt || payload.text || '';
@@ -476,9 +491,9 @@ export class ChromeIntegrationServer {
                 return;
               }
 
-              // 动态导入以避免循环依赖问题
-              const mod = await import('../llm/LLMService');
-              const LLMServiceClass = (mod as any).LLMService;
+              // @ts-ignore: webpack requires no extension, but tsc nodenext requires it
+              const mod = await import('../llm/LLMClient');
+              const LLMClientClass = (mod as any).LLMClient;
 
               // 将历史对话 history: {role: 'user'|'assistant', content: string}[]
               // 转换为 VS Code LanguageModelChatMessage 数组，实现多轮上下文
@@ -494,17 +509,24 @@ export class ChromeIntegrationServer {
               ];
 
               const msgId = message?.id;
+              // 提取客户端指定的模型 family（Chrome 扩展下拉选择的模型）
+              const requestedModelFamily: string | undefined = payload.model
+                ? String(payload.model)
+                : undefined;
+
+              this.logger.info(`[ChromeIntegration] LLM 请求模型: ${requestedModelFamily ?? '(VS Code 配置默认)'}`);
+
               // 先发送一个 started 推送（可选）
               ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'started' }, id: msgId }));
 
-              // 流式调用：携带完整历史上下文，对每个 chunk 发送 llm-push
-              const result = await LLMServiceClass.stream(chatMessages, (chunk: string) => {
+              // 流式调用：携带完整历史上下文，传入指定模型 family
+              const result = await LLMClientClass.stream(chatMessages, (chunk: string) => {
                 try {
                   ws.send(JSON.stringify({ type: 'llm-push', data: { chunk }, id: msgId }));
                 } catch (e) {
                   this.logger.warn('[ChromeIntegration] 发送 llm-push chunk 失败', e as Error ?? e);
                 }
-              }, { /* no signal by default */ });
+              }, { modelFamily: requestedModelFamily });
 
               if (!result) {
                 ws.send(JSON.stringify({ type: 'error', error: 'No available LLM model', id: msgId }));

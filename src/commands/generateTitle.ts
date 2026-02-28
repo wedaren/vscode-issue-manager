@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { LLMService } from '../llm/LLMService';
+import { ContentService } from '../llm/ContentService';
 import { updateIssueMarkdownFrontmatter, onTitleUpdate, isIssueMarkdown, getIssueMarkdown, getIssueMarkdownContent, IssueMarkdown } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
@@ -63,9 +63,9 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
 
                 if (args && args.length > 0) {
                     const firstArg = args[0];
-                    if(isIssueNode(firstArg)){
+                    if (isIssueNode(firstArg)) {
                         const issueNode = await getIssueNodeById(firstArg.id);
-                        if(issueNode){
+                        if (issueNode) {
                             issueMarkdown = await getIssueMarkdown(issueNode.filePath);
                         }
                     }
@@ -93,7 +93,7 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                     async (progress, token) => {
                         try {
                             const content = await getIssueMarkdownContent(targetUri);
-                            const generated = await LLMService.generateTitleOptimized(content, { signal: toAbortSignal(token) });
+                            const generated = await ContentService.generateTitleOptimized(content, { signal: toAbortSignal(token) });
                             return generated;
                         } catch (err) {
                             // 如果是用户取消操作，则静默处理

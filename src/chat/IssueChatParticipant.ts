@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { getIssueDir } from "../config";
-import { LLMService } from "../llm/LLMService";
+import { ContentService } from "../llm/ContentService";
 import { getFlatTree } from "../data/issueTreeManager";
 import * as path from "path";
 import { Logger } from "../core/utils/Logger";
@@ -372,10 +372,10 @@ export class IssueChatParticipant {
         plan.tasks.slice(0, 12).forEach((task, index) => {
             stream.markdown(
                 `${index + 1}. **${task.title}**（${task.priority} / ${task.estimate}）\n` +
-                    `   - 理由：${task.rationale}\n` +
-                    `   - 步骤：\n${task.steps.map(s => `     - ${s}`).join("\n")}\n` +
-                    (task.deliverable ? `   - 产出物：${task.deliverable}\n` : "") +
-                    "\n"
+                `   - 理由：${task.rationale}\n` +
+                `   - 步骤：\n${task.steps.map(s => `     - ${s}`).join("\n")}\n` +
+                (task.deliverable ? `   - 产出物：${task.deliverable}\n` : "") +
+                "\n"
             );
 
             const body =
@@ -444,7 +444,7 @@ export class IssueChatParticipant {
         try {
             // 注意: VS Code 的 CancellationToken 与 AbortSignal 不完全兼容
             // 这里暂不传递 token,让 LLM 服务使用默认超时
-            const generated = await LLMService.generateTitle(prompt);
+            const generated = await ContentService.generateTitleOptimized(prompt);
             if (generated && !token.isCancellationRequested) {
                 optimizedTitle = generated;
                 stream.markdown(`💡 AI 优化标题: **${optimizedTitle}**\n\n`);
@@ -458,7 +458,7 @@ export class IssueChatParticipant {
         }
 
         // 创建问题文件
-        const uri = await createIssueMarkdown({ markdownBody: `# ${optimizedTitle}\n\n` })
+        const uri = await createIssueMarkdown({ markdownBody: `# ${optimizedTitle}\n\n` });
 
         if (uri) {
             const filename = path.basename(uri.fsPath);
@@ -581,7 +581,7 @@ export class IssueChatParticipant {
 
         try {
             // 调用 LLM 生成文档内容
-            const { title, content, modelFamily } = await LLMService.generateDocument(prompt, {
+            const { title, content, modelFamily } = await ContentService.generateDocument(prompt, {
                 signal: controller.signal,
             });
 

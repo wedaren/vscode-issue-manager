@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { LLMService } from "../llm/LLMService";
+import { LLMClient } from "../llm/LLMClient";
+import { SearchService } from "../llm/SearchService";
 import {
     createIssueMarkdown,
     updateIssueMarkdownBody,
@@ -227,7 +228,7 @@ ${kindQualityGate}
 输出类型：${kind}
 `.trim();
 
-    const resp = await LLMService._request([vscode.LanguageModelChatMessage.User(prompt)], {
+    const resp = await LLMClient.request([vscode.LanguageModelChatMessage.User(prompt)], {
         signal,
     });
     if (!resp) {
@@ -328,7 +329,7 @@ async function collectLocalSources(
             throw new Error("请求已取消");
         }
 
-        const matches = await LLMService.searchIssueMarkdowns(q, { signal });
+        const matches = await SearchService.searchIssueMarkdowns(q, { signal });
         for (const m of matches) {
             const key = m.filePath;
             if (seen.has(key)) {
@@ -397,19 +398,17 @@ async function generateDocument(
         sources.length === 0
             ? "（未检索到可用的本地笔记来源）"
             : sources
-                  .map((s, idx) => {
-                      const display = s.title?.trim() ? s.title : path.basename(s.filePath);
-                      const trunc = s.truncated ? "（节选已截断）" : "";
-                      return `【来源 ${idx + 1}】${display}\n路径：${s.filePath}\n摘录${trunc}：\n${
-                          s.excerpt
-                      }`;
-                  })
-                  .join("\n\n---\n\n");
+                .map((s, idx) => {
+                    const display = s.title?.trim() ? s.title : path.basename(s.filePath);
+                    const trunc = s.truncated ? "（节选已截断）" : "";
+                    return `【来源 ${idx + 1}】${display}\n路径：${s.filePath}\n摘录${trunc}：\n${s.excerpt
+                        }`;
+                })
+                .join("\n\n---\n\n");
 
     const editorBlock = editorCtx
-        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${
-              editorCtx.truncated ? "（已截断）" : ""
-          }：\n${editorCtx.excerpt}`
+        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${editorCtx.truncated ? "（已截断）" : ""
+        }：\n${editorCtx.excerpt}`
         : "（未包含当前编辑器上下文）";
 
     const prompt = `
@@ -449,7 +448,7 @@ ${editorBlock}
 - “参考资料（本地）”：列出来源路径，并说明其用于支持哪些结论
 `.trim();
 
-    const resp = await LLMService._request([vscode.LanguageModelChatMessage.User(prompt)], {
+    const resp = await LLMClient.request([vscode.LanguageModelChatMessage.User(prompt)], {
         signal,
     });
     if (!resp) {
@@ -467,9 +466,8 @@ async function generateDocumentLlmOnly(
     signal: AbortSignal
 ): Promise<{ draft: string; review: DeepResearchReviewResult }> {
     const editorBlock = editorCtx
-        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${
-              editorCtx.truncated ? "（已截断）" : ""
-          }：\n${editorCtx.excerpt}`
+        ? `文件：${editorCtx.filePath}\n语言：${editorCtx.languageId}\n内容节选${editorCtx.truncated ? "（已截断）" : ""
+        }：\n${editorCtx.excerpt}`
         : "（未包含当前编辑器上下文）";
 
     const kindWritingTemplate =
@@ -481,19 +479,19 @@ async function generateDocumentLlmOnly(
 - 不要硬塞“验收标准/回归方案/数据规模假设/量化 KPI”。如果涉及数字，只能写“待定/待验证/假设”，并解释如何验证。
 `.trim()
             : kind === "对比分析"
-            ? `
+                ? `
 输出要求（对比分析专用）：
 - 以对比为中心：至少提供 1 张多维对比表（维度建议：目标、输入/依赖、实现复杂度、风险、可观测性、适用边界、迁移成本）。
 - 给出明确结论：推荐方案 + 不推荐的原因 + 触发条件（何时需要切换方案）。
 - 行动清单必须可执行：每条包含产出物或验证方法。
 `.trim()
-            : kind === "技术方案"
-            ? `
+                : kind === "技术方案"
+                    ? `
 输出要求（技术方案专用）：
 - 结构要能指导落地：目标/非目标/约束/总体设计（架构、关键模块职责）/关键数据结构与接口/并发与取消/失败恢复与回滚/可观测性（日志、指标、追踪）/验收与回归（允许定性或步骤化验收，禁止无依据数字）/风险与权衡/里程碑。
 - 至少 1 张对比表（候选方案 vs 取舍）。
 `.trim()
-            : `
+                    : `
 输出要求（调研报告专用）：
 - 结论先行：开头给出可直接转述的结论/建议（1-2 段）。
 - 覆盖背景、现状、关键问题、候选路径、对比与建议、风险与待验证清单。
@@ -550,7 +548,7 @@ ${editorBlock}
 请输出一篇最终可交付的文档，并在文末包含一个“待验证清单”（列出所有依赖外部事实/数据的点，以及验证路径）。
 `.trim();
 
-    const draftResp = await LLMService._request(
+    const draftResp = await LLMClient.request(
         [vscode.LanguageModelChatMessage.User(draftPrompt)],
         {
             signal,
@@ -586,7 +584,7 @@ ${editorBlock}
 ${draft}
 `.trim();
 
-    const finalResp = await LLMService._request(
+    const finalResp = await LLMClient.request(
         [vscode.LanguageModelChatMessage.User(reviewPrompt)],
         {
             signal,
@@ -762,43 +760,33 @@ export async function runDeepResearchFlow(params: {
             2
         )}\n\`\`\`\n\n## 关键问题\n${plan.keyQuestions
             .map(q => `- ${q}`)
-            .join("\n")}\n\n## 大纲\n${plan.outline.map(h => `- ${h}`).join("\n")}\n\n## 目标\n${
-            plan.goals && plan.goals.length ? plan.goals.map(g => `- ${g}`).join("\n") : "（无）"
-        }\n\n## 非目标\n${
-            plan.nonGoals && plan.nonGoals.length
+            .join("\n")}\n\n## 大纲\n${plan.outline.map(h => `- ${h}`).join("\n")}\n\n## 目标\n${plan.goals && plan.goals.length ? plan.goals.map(g => `- ${g}`).join("\n") : "（无）"
+            }\n\n## 非目标\n${plan.nonGoals && plan.nonGoals.length
                 ? plan.nonGoals.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 约束\n${
-            plan.constraints && plan.constraints.length
+            }\n\n## 约束\n${plan.constraints && plan.constraints.length
                 ? plan.constraints.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 数据规模假设\n${
-            plan.dataScaleAssumptions && plan.dataScaleAssumptions.length
+            }\n\n## 数据规模假设\n${plan.dataScaleAssumptions && plan.dataScaleAssumptions.length
                 ? plan.dataScaleAssumptions.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 验收标准\n${
-            plan.acceptanceCriteria && plan.acceptanceCriteria.length
+            }\n\n## 验收标准\n${plan.acceptanceCriteria && plan.acceptanceCriteria.length
                 ? plan.acceptanceCriteria.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 度量与观测方案\n${
-            plan.measurementPlan && plan.measurementPlan.length
+            }\n\n## 度量与观测方案\n${plan.measurementPlan && plan.measurementPlan.length
                 ? plan.measurementPlan.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 交付物\n${
-            plan.deliverables && plan.deliverables.length
+            }\n\n## 交付物\n${plan.deliverables && plan.deliverables.length
                 ? plan.deliverables.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 术语表\n${
-            plan.glossary && plan.glossary.length
+            }\n\n## 术语表\n${plan.glossary && plan.glossary.length
                 ? plan.glossary.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 待验证问题\n${
-            plan.openQuestions && plan.openQuestions.length
+            }\n\n## 待验证问题\n${plan.openQuestions && plan.openQuestions.length
                 ? plan.openQuestions.map(g => `- ${g}`).join("\n")
                 : "（无）"
-        }\n\n## 假设/缺口\n${
-            plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join("\n") : "（无）"
-        }\n\n## 风险\n${plan.risks.length ? plan.risks.map(r => `- ${r}`).join("\n") : "（无）"}\n`;
+            }\n\n## 假设/缺口\n${plan.assumptions.length ? plan.assumptions.map(a => `- ${a}`).join("\n") : "（无）"
+            }\n\n## 风险\n${plan.risks.length ? plan.risks.map(r => `- ${r}`).join("\n") : "（无）"}\n`;
         const planUri = await createIssueMarkdown({
             markdownBody: planBody,
             frontmatter: {
@@ -898,9 +886,8 @@ export async function runDeepResearchFlow(params: {
             .map(u => buildFileWikiLink(u.fsPath, path.basename(u.fsPath)))
             .map(s => `- ${s}`)
             .join("\n");
-        const enrichedFinalBody = `${finalMarkdownBody}\n\n---\n\n## 过程文档（可审计）\n\n${
-            linksBlock || "（无）"
-        }\n`;
+        const enrichedFinalBody = `${finalMarkdownBody}\n\n---\n\n## 过程文档（可审计）\n\n${linksBlock || "（无）"
+            }\n`;
 
         progress.report({ message: "写回：终稿内容 + 层级关系..." });
         await safeFinalizeRoot(
@@ -922,10 +909,9 @@ export async function runDeepResearchFlow(params: {
                 issue_research_status: isCancelled ? "cancelled" : "failed",
                 issue_children_files: createdChildFiles,
             },
-            `# ${title}\n\n（生成${isCancelled ? "已取消" : "失败"}）\n\n## 已落盘的过程文档\n\n${
-                createdChildUris
-                    .map(u => `- ${buildFileWikiLink(u.fsPath, path.basename(u.fsPath))}`)
-                    .join("\n") || "（无）"
+            `# ${title}\n\n（生成${isCancelled ? "已取消" : "失败"}）\n\n## 已落盘的过程文档\n\n${createdChildUris
+                .map(u => `- ${buildFileWikiLink(u.fsPath, path.basename(u.fsPath))}`)
+                .join("\n") || "（无）"
             }\n`
         );
         throw e;
@@ -961,8 +947,8 @@ async function runDeepResearchCommand(sourceMode?: ResearchSourceMode): Promise<
         resolvedSourceMode === "local"
             ? "Issue Manager：深度调研（本地笔记）"
             : resolvedSourceMode === "llmOnly"
-            ? "Issue Manager：深度调研（纯 LLM）"
-            : "Issue Manager：深度调研中";
+                ? "Issue Manager：深度调研（纯 LLM）"
+                : "Issue Manager：深度调研中";
 
     await vscode.window.withProgress(
         {

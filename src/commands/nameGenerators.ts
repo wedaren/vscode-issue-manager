@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { LLMService } from '../llm/LLMService';
+import { NameGenService } from '../llm/NameGenService';
 
 type LLMMethod = (content: string, options: { signal?: AbortSignal }) => Promise<Array<{ name: string; description?: string }>>;
 
@@ -56,7 +56,7 @@ export function registerGenerateProjectNameCommand(context: vscode.ExtensionCont
             await generateAndShow(
                 content,
                 '正在生成项目名...',
-                LLMService.generateProjectNames,
+                NameGenService.generateProjectNames,
                 '选择一个项目名，将会复制到剪贴板',
                 '已将项目名复制到剪贴板',
                 '未生成项目名建议。'
@@ -79,7 +79,7 @@ export function registerGenerateGitBranchCommand(context: vscode.ExtensionContex
             await generateAndShow(
                 content,
                 '正在生成 Git 分支名...',
-                LLMService.generateGitBranchNames,
+                NameGenService.generateGitBranchNames,
                 '选择一个分支名，将会复制到剪贴板',
                 '已将分支名复制到剪贴板',
                 '未生成 Git 分支名建议。'

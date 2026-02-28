@@ -595,6 +595,23 @@ export default defineBackground(() => {
         })();
         break;
 
+      case 'GET_LLM_MODELS':
+        (async () => {
+          try {
+            const response = await sendWebSocketMessage({ type: 'get-llm-models' }, 8000);
+            if (response && (response as any).type === 'llm-models') {
+              sendResponse({ success: true, data: (response as any).data || [] });
+            } else {
+              sendResponse({ success: false, error: (response as any)?.error || 'Unexpected response' });
+            }
+          } catch (e: unknown) {
+            console.error('[Background] GET_LLM_MODELS failed:', e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
       case 'LLM_REQUEST':
         (async () => {
           try {

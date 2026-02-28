@@ -4,7 +4,7 @@ import * as jsYaml from 'js-yaml';
 import { getIssueMarkdown, getIssueMarkdownContent, createIssueMarkdown } from '../data/IssueMarkdowns';
 import { createIssueNodes } from '../data/issueTreeManager';
 import { GitSyncService } from '../services/git-sync';
-import { LLMService } from '../llm/LLMService';
+import { ContentService } from '../llm/ContentService';
 import { translateWithAgent } from '../llm/translationAgent';
 import { getRelativeToNoteRoot } from '../utils/pathUtils';
 import { Logger } from '../core/utils/Logger';
@@ -122,22 +122,22 @@ export function registerCreateTranslationFromEditorCommand(context: vscode.Exten
                                 },
                                 async (progress, token) => {
                                     try {
-                                            // 提供 Agent 模式选项：若文件较大，优先建议使用 Agent 分段翻译
-                                            const useAgent = await vscode.window.showQuickPick([
-                                                'Agent 模式（分段翻译，推荐大文件）',
-                                                '普通模式（一次性翻译全文）',
-                                                '取消'
-                                            ], { placeHolder: '选择翻译模式（Agent 或 普通）' });
+                                        // 提供 Agent 模式选项：若文件较大，优先建议使用 Agent 分段翻译
+                                        const useAgent = await vscode.window.showQuickPick([
+                                            'Agent 模式（分段翻译，推荐大文件）',
+                                            '普通模式（一次性翻译全文）',
+                                            '取消'
+                                        ], { placeHolder: '选择翻译模式（Agent 或 普通）' });
 
-                                            if (!useAgent || useAgent === '取消') return '';
+                                        if (!useAgent || useAgent === '取消') return '';
 
-                                            if (useAgent.startsWith('Agent')) {
-                                                const agentResult = await translateWithAgent(body, lang, { signal: toAbortSignal(token) });
-                                                return agentResult;
-                                            } else {
-                                                const result = await LLMService.translate(body, lang, { signal: toAbortSignal(token) });
-                                                return result;
-                                            }
+                                        if (useAgent.startsWith('Agent')) {
+                                            const agentResult = await translateWithAgent(body, lang, { signal: toAbortSignal(token) });
+                                            return agentResult;
+                                        } else {
+                                            const result = await ContentService.translate(body, lang, { signal: toAbortSignal(token) });
+                                            return result;
+                                        }
                                     } catch (err) {
                                         if (token.isCancellationRequested) {
                                             return '';
@@ -178,7 +178,7 @@ export function registerCreateTranslationFromEditorCommand(context: vscode.Exten
                 await vscode.window.showTextDocument(doc, { preview: false });
                 try {
                     GitSyncService.getInstance().triggerSync();
-                } catch {}
+                } catch { }
             } catch (error) {
                 Logger.getInstance().error('创建译文失败:', error);
                 vscode.window.showErrorMessage('创建译文失败');

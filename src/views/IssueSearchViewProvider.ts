@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { getIssueDir } from "../config";
 import { getAllIssueMarkdowns, IssueMarkdown, FrontmatterData } from "../data/IssueMarkdowns";
-import { LLMService } from "../llm/LLMService";
+import { SearchService } from "../llm/SearchService";
 import { Logger } from "../core/utils/Logger";
 import { v4 as uuidv4 } from 'uuid';
 import { addIssueSearchRecord, IssueSearchRecord, IssueSearchResult, readIssueSearchHistory } from "../data/issueSearchHistory";
@@ -287,7 +287,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
 
     private async handleAiSearch(pendingRecord: IssueSearchRecord, issues: IssueMarkdown[]): Promise<void> {
         const keyword = pendingRecord.keyword;
-        const matches = await LLMService.searchIssueMarkdowns(keyword);
+        const matches = await SearchService.searchIssueMarkdowns(keyword);
         const issueDir = getIssueDir() || "";
         const issueMap = new Map<string, IssueMarkdown>();
         issues.forEach(issue => {

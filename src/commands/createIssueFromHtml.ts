@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { HtmlToMarkdownService } from '../services/converters/HtmlToMarkdownService';
-import { LLMService } from '../llm/LLMService';
+import { ContentService } from '../llm/ContentService';
 import { Logger } from '../core/utils/Logger';
 import { GitSyncService } from '../services/git-sync';
 import { createIssueNodes } from '../data/issueTreeManager';
@@ -15,27 +15,27 @@ export interface CreateIssueFromHtmlParams {
      * HTML 内容
      */
     html: string;
-    
+
     /**
      * 可选的标题
      */
     title?: string;
-    
+
     /**
      * 可选的来源 URL
      */
     url?: string;
-    
+
     /**
      * 是否保留图片（默认 true）
      */
     preserveImages?: boolean;
-    
+
     /**
      * 是否保留链接（默认 true）
      */
     preserveLinks?: boolean;
-    
+
     /**
      * 图片处理选项
      */
@@ -69,19 +69,19 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
                 placeHolder: '<div>HTML 内容...</div>',
                 ignoreFocusOut: true
             });
-            
+
             if (!html) {
                 vscode.window.showInformationMessage('已取消创建问题。');
                 return null;
             }
-            
+
             params = { html };
         }
 
         // 步骤 1: 先创建一个带标题的空文件以获取文件路径
         const initialTitle = params.title || 'Untitled Note';
-        const uri = await createIssueMarkdown({ 
-            markdownBody: `# ${initialTitle}\n\n` 
+        const uri = await createIssueMarkdown({
+            markdownBody: `# ${initialTitle}\n\n`
         });
 
         if (!uri) {
@@ -124,7 +124,7 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
                 } else {
                     // 没有标题，尝试使用 LLM 生成
                     const suggestedTitle = await generateTitleWithProgress(markdown);
-                    
+
                     if (suggestedTitle && suggestedTitle.trim().length > 0) {
                         filenameTitle = suggestedTitle.trim();
                         finalContent = `# ${filenameTitle}\n\n${markdown}`;
@@ -151,16 +151,16 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
             // 将新创建的问题添加到树和关注列表
             try {
                 await createIssueNodes([uri]);
-                vscode.commands.executeCommand('issueManager.refreshAllViews');  
+                vscode.commands.executeCommand('issueManager.refreshAllViews');
             } catch (e) {
                 Logger.getInstance().error('添加问题到关注列表失败:', e);
             }
-            
+
             vscode.window.showInformationMessage(`已从 HTML 创建问题: ${filenameTitle}`);
-            
+
             // 触发同步
             GitSyncService.getInstance().triggerSync();
-            
+
             return uri;
         } catch (conversionError) {
             Logger.getInstance().error('HTML 转换过程出错:', conversionError);
@@ -180,7 +180,7 @@ export async function createIssueFromHtml(params?: CreateIssueFromHtmlParams): P
  */
 async function generateTitleWithProgress(content: string): Promise<string> {
     const controller = new AbortController();
-    
+
     const suggestedTitle = await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
@@ -189,12 +189,12 @@ async function generateTitleWithProgress(content: string): Promise<string> {
         },
         async (progress, token) => {
             token.onCancellationRequested(() => controller.abort());
-            progress.report({ 
-                message: content.slice(0, 50) + (content.length > 50 ? '...' : '') 
+            progress.report({
+                message: content.slice(0, 50) + (content.length > 50 ? '...' : '')
             });
-            
+
             try {
-                const title = await LLMService.generateTitle(content, { signal: controller.signal });
+                const title = await ContentService.generateTitleOptimized(content, { signal: controller.signal });
                 return title || '';
             } catch (err) {
                 console.error('生成标题失败:', err);
@@ -213,14 +213,14 @@ async function generateTitleWithProgress(content: string): Promise<string> {
         const EDIT_TITLE_ACTION = '编辑标题';
         const CANCEL_ACTION = '取消';
 
-        
+
         const choice = await vscode.window.showInformationMessage(
             `建议标题：${suggestedTitle}`,
             USE_SUGGESTED_ACTION,
             EDIT_TITLE_ACTION,
             CANCEL_ACTION
         );
-        
+
         if (choice === USE_SUGGESTED_ACTION) {
             return suggestedTitle.trim();
         } else if (choice === EDIT_TITLE_ACTION) {
@@ -231,6 +231,6 @@ async function generateTitleWithProgress(content: string): Promise<string> {
             return edited?.trim() || '';
         }
     }
-    
+
     return '';
 }

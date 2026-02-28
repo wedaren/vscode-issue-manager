@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { LLMService } from "./LLMService";
+import { ContentService } from "./ContentService";
 import { copilotDocumentProvider } from "../virtual/CopilotDocumentProvider";
 
 const TIMEOUT_SEC = 60;
@@ -26,7 +26,7 @@ export async function runTemplateAndShowDiff(
             },
             async (progress, token) => {
                 token.onCancellationRequested(() => controller.abort());
-                const optimized = await LLMService.rewriteContent(prompt, {
+                const optimized = await ContentService.rewriteContent(prompt, {
                     signal: controller.signal,
                 });
 
