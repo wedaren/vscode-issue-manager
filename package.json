@@ -645,13 +645,13 @@
       },
       {
         "command": "issueManager.linkCurrentFileToIssue",
-        "title": "将当前编辑器文件关联到 IssueNode",
+        "title": "将当前编辑器文件关联到 IssueMarkdown",
         "category": "Issue Manager",
         "icon": "$(link)"
       },
       {
         "command": "issueManager.linkWorkspaceToIssue",
-        "title": "将工作区/文件夹关联到 IssueNode",
+        "title": "将工作区/文件夹关联到 IssueMarkdown",
         "category": "Issue Manager",
         "icon": "$(link)"
       }

@@ -48,7 +48,8 @@ import { ParaViewProvider } from '../views/ParaViewProvider';
 import { MarkerManager } from '../marker/MarkerManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
 import { getIssueMarkdown } from '../data/IssueMarkdowns';
-import { getRelativeToNoteRoot } from '../utils/pathUtils';
+import { getIssueDir } from '../config';
+import { formatIssueDirMarkdownLink } from '../utils/fileLinkFormatter';
 import { selectLLMModel } from '../commands/llmCommands';
 // note mapping commands removed
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
@@ -737,12 +738,15 @@ export class CommandRegistry extends BaseCommandRegistry {
                     return;
                 }
 
-                const rawRel = getRelativeToNoteRoot(md.uri.fsPath) ?? vscode.workspace.asRelativePath(md.uri, false);
-                const safeRel = (rawRel || path.basename(md.uri.fsPath)).replace(/\\/g, '/');
-                const link = `[${md.title}](IssueDir/${safeRel})`;
+                const issueDirPath = getIssueDir();
+                const link = issueDirPath
+                    ? formatIssueDirMarkdownLink(issueDirPath, md.uri.fsPath, md.title)
+                    : null;
+                const finalLink = link
+                    ?? `[${md.title}](${vscode.workspace.asRelativePath(md.uri, false).replace(/\\/g, '/')})`;
 
                 try {
-                    await vscode.env.clipboard.writeText(link);
+                    await vscode.env.clipboard.writeText(finalLink);
                     vscode.window.showInformationMessage('已复制 IssueMarkdown 链接');
                 } catch (e) {
                     this.logger.error('复制 IssueMarkdown 链接失败', e);

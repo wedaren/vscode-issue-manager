@@ -7,6 +7,7 @@ import {
     updateIssueMarkdownFrontmatter,
     extractIssueTitleFromFrontmatter,
 } from "../data/IssueMarkdowns";
+import { formatIssueDirMarkdownLink } from "../utils/fileLinkFormatter";
 import { Logger } from "../core/utils/Logger";
 
 /**
@@ -54,11 +55,19 @@ export function registerInsertTermsReferenceCommand(context: vscode.ExtensionCon
                     }
 
                     const candidates = all.filter(i => {
-                        if (!Array.isArray(i.frontmatter?.terms) || (i.frontmatter?.terms?.length ?? 0) === 0) return false;
-                        if (i.uri.fsPath === uri.fsPath) return false;
+                        if (!Array.isArray(i.frontmatter?.terms) || (i.frontmatter?.terms?.length ?? 0) === 0) {
+                            return false;
+                        }
+                        if (i.uri.fsPath === uri.fsPath) {
+                            return false;
+                        }
                         const rel = path.relative(issueDir, i.uri.fsPath).replace(/\\/g, '/');
-                        if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
-                        if (existingFsPaths.has(path.normalize(i.uri.fsPath))) return false;
+                        if (rel.startsWith('..') || path.isAbsolute(rel)) {
+                            return false;
+                        }
+                        if (existingFsPaths.has(path.normalize(i.uri.fsPath))) {
+                            return false;
+                        }
                         return true;
                     });
 
@@ -78,18 +87,22 @@ export function registerInsertTermsReferenceCommand(context: vscode.ExtensionCon
                         placeHolder: "选择要作为 terms_references 的文件（可多选）",
                     });
 
-                    if (!picks || picks.length === 0) return;
+                    if (!picks || picks.length === 0) {
+                        return;
+                    }
 
                     // 将所选项转换为 Markdown 链接形式：`[label](IssueDir/relative/path.md)`（已保证候选项在 issueDir 内）
                     const selectedFs = new Set<string>();
                     for (const p of picks) {
-                        if (!p.detail) continue;
+                        if (!p.detail) {
+                            continue;
+                        }
                         const fullPath = p.detail;
-                        const rel = path.relative(issueDir, fullPath).replace(/\\/g, '/');
-                        if (rel.startsWith('..') || path.isAbsolute(rel)) continue; // 额外保险
-                        const linkPath = `IssueDir/${rel}`;
                         const title = p.label ?? path.basename(fullPath, '.md');
-                        const v = `[${title}](${linkPath})`;
+                        const v = formatIssueDirMarkdownLink(issueDir, fullPath, title);
+                        if (!v) {
+                            continue; // 额外保险
+                        }
                         selectedFs.add(v);
                     }
 
