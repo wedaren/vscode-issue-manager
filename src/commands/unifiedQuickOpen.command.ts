@@ -6,7 +6,6 @@ import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
 import { forceRefreshCurrentEditor } from "./forceRefreshCurrentEditor";
 
-// 使用独立模块中的 `forceRefreshCurrentEditor`
 
 /**
  * 命令模式的所有命令项定义
