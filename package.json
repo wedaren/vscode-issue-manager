@@ -54,6 +54,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.issueSearch.deleteTask",
+        "title": "删除搜索任务",
+        "icon": "$(trash)"
+      },
+      {
         "command": "issueManager.createIssueFromOverview",
         "title": "新建问题",
         "icon": "$(add)"
@@ -948,6 +953,16 @@
         {
           "command": "issueManager.deepResearch.deleteDoc",
           "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchDoc'",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.issueSearch.deleteTask",
+          "when": "view == 'issueManager.views.search' && (viewItem == 'issueSearchRecord' || viewItem == 'issueSearchRecordLoading')",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.issueSearch.deleteTask",
+          "when": "view == 'issueManager.views.search' && (viewItem == 'issueSearchRecord' || viewItem == 'issueSearchRecordLoading')",
           "group": "inline"
         },
         {

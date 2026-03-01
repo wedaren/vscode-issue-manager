@@ -11,12 +11,23 @@ export interface IssueSearchResult {
     briefSummary?: string;
 }
 
+export type IssueSearchSubtaskType = IssueSearchType;
+export type IssueSearchSubtaskStatus = "pending" | "running" | "done" | "failed";
+
+export interface IssueSearchSubtask {
+    id: string;
+    type: IssueSearchSubtaskType;
+    status: IssueSearchSubtaskStatus;
+    results: IssueSearchResult[];
+    lastRunAt?: number;
+    error?: string;
+}
+
 export interface IssueSearchRecord {
     id: string;
     keyword: string;
-    type: IssueSearchType;
     createdAt: number;
-    results: IssueSearchResult[];
+    subtasks: IssueSearchSubtask[];
 }
 
 export interface IssueSearchHistoryData {
@@ -60,21 +71,46 @@ function isIssueSearchResult(item: unknown): item is IssueSearchResult {
     );
 }
 
+function isIssueSearchSubtask(item: unknown): item is IssueSearchSubtask {
+    if (!item || typeof item !== "object") {
+        return false;
+    }
+    const s = item as Record<string, unknown>;
+    if (
+        typeof s.id !== "string" ||
+        !(s.type === "ai" || s.type === "filter") ||
+        !(s.status === "pending" || s.status === "running" || s.status === "done" || s.status === "failed") ||
+        !Array.isArray(s.results)
+    ) {
+        return false;
+    }
+    return (s.results as unknown[]).every(isIssueSearchResult);
+}
+
 function isIssueSearchRecord(item: unknown): item is IssueSearchRecord {
     if (!item || typeof item !== "object") {
         return false;
     }
     const r = item as Record<string, unknown>;
-    if (
-        typeof r.id !== "string" ||
-        typeof r.keyword !== "string" ||
-        !(r.type === "ai" || r.type === "filter") ||
-        typeof r.createdAt !== "number" ||
-        !Array.isArray(r.results)
-    ) {
+    if (typeof r.id !== "string" || typeof r.keyword !== "string" || typeof r.createdAt !== "number" || !Array.isArray(r.subtasks)) {
         return false;
     }
-    return (r.results as unknown[]).every(isIssueSearchResult);
+    return (r.subtasks as unknown[]).every(isIssueSearchSubtask);
+}
+
+function isOldStyleRecord(item: unknown): boolean {
+    if (!item || typeof item !== "object") {
+        return false;
+    }
+    const r = item as Record<string, unknown>;
+    return (
+        typeof r.id === "string" &&
+        typeof r.keyword === "string" &&
+        (r.type === "ai" || r.type === "filter") &&
+        typeof r.createdAt === "number" &&
+        Array.isArray(r.results) &&
+        (r.results as unknown[]).every(isIssueSearchResult)
+    );
 }
 
 export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> {
@@ -89,7 +125,33 @@ export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> 
         if (!Array.isArray(data.records)) {
             return { ...DEFAULT_HISTORY_DATA };
         }
-        const records = data.records.filter(isIssueSearchRecord);
+        const raw = data.records as unknown[];
+        const records: IssueSearchRecord[] = [];
+        raw.forEach(item => {
+            if (isIssueSearchRecord(item)) {
+                records.push(item);
+                return;
+            }
+            if (isOldStyleRecord(item)) {
+                const r = item as any;
+                // 将旧格式转换为新格式，保留原有 type/results 信息为单个子任务
+                const subtask = {
+                    id: `${r.type}-${r.id}`,
+                    type: r.type as IssueSearchType,
+                    status: "done" as const,
+                    results: r.results as IssueSearchResult[],
+                    lastRunAt: r.createdAt as number
+                };
+                records.push({
+                    id: r.id,
+                    keyword: r.keyword,
+                    createdAt: r.createdAt,
+                    subtasks: [subtask]
+                });
+                return;
+            }
+            // 忽略无法识别的记录
+        });
 
         return {
             version: typeof data.version === "string" ? data.version : DEFAULT_HISTORY_DATA.version,
@@ -125,4 +187,19 @@ export async function addIssueSearchRecord(record: IssueSearchRecord, limit = 50
         records.splice(limit);
     }
     await writeIssueSearchHistory({ ...data, records });
+}
+
+/**
+ * 删除指定搜索记录。
+ * @param recordId - 要删除的搜索记录 ID
+ * @returns 返回是否实际删除了记录
+ */
+export async function removeIssueSearchRecord(recordId: string): Promise<boolean> {
+    const data = await readIssueSearchHistory();
+    const records = data.records.filter(item => item.id !== recordId);
+    if (records.length === data.records.length) {
+        return false;
+    }
+    await writeIssueSearchHistory({ ...data, records });
+    return true;
 }

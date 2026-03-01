@@ -5,12 +5,13 @@ import { getAllIssueMarkdowns, IssueMarkdown, FrontmatterData } from "../data/Is
 import { LLMService } from "../llm/LLMService";
 import { Logger } from "../core/utils/Logger";
 import { v4 as uuidv4 } from 'uuid';
-import { addIssueSearchRecord, IssueSearchRecord, IssueSearchResult, readIssueSearchHistory } from "../data/issueSearchHistory";
+import { addIssueSearchRecord, IssueSearchRecord, IssueSearchResult, readIssueSearchHistory, removeIssueSearchRecord } from "../data/issueSearchHistory";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "../commands/openIssueNode";
 
 export type IssueSearchViewNode =
     | { type: "record"; record: IssueSearchRecord }
+    | { type: "subtask"; recordId: string; subtask: import("../data/issueSearchHistory").IssueSearchSubtask }
     | { type: "result"; recordId: string; result: IssueSearchResult };
 
 interface SearchQuickPickItem extends vscode.QuickPickItem {
@@ -46,28 +47,39 @@ function getBriefSummary(frontmatter?: FrontmatterData | null): string | undefin
     return undefined;
 }
 
-function createSearchRecord(
-    keyword: string,
-    type: "ai" | "filter",
-    results: IssueSearchResult[]
-): IssueSearchRecord {
+function createSearchRecord(keyword: string, type: "ai" | "filter", results: IssueSearchResult[]): IssueSearchRecord {
+    const subtaskId = `${type}-${uuidv4()}`;
     return {
         id: `${type}-${uuidv4()}`,
         keyword,
-        type,
         createdAt: Date.now(),
-        results
-    };
+        subtasks: [
+            {
+                id: subtaskId,
+                type,
+                status: "done",
+                results,
+                lastRunAt: Date.now()
+            }
+        ]
+    } as unknown as IssueSearchRecord;
 }
 
 function createPendingRecord(keyword: string): IssueSearchRecord {
+    const aiId = `ai-${uuidv4()}`;
     return {
-        id: `pending-ai-${uuidv4()}`,
+        id: `pending-${uuidv4()}`,
         keyword,
-        type: "ai",
         createdAt: Date.now(),
-        results: []
-    };
+        subtasks: [
+            {
+                id: aiId,
+                type: "ai",
+                status: "pending",
+                results: []
+            }
+        ]
+    } as unknown as IssueSearchRecord;
 }
 
 function filterIssuesByKeyword(issues: IssueMarkdown[], keyword: string): IssueMarkdown[] {
@@ -103,21 +115,40 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
     async getTreeItem(element: IssueSearchViewNode): Promise<vscode.TreeItem> {
         if (element.type === "record") {
             const record = element.record;
-            const isPending = this.pendingAiRecords.has(record.id);
-            const label = `[${formatDate(record.createdAt)}] ${record.keyword} (${record.type === "ai" ? "AI 搜索" : "过滤"})`;
-            const collapsibleState = record.results.length > 0
+            const isPending = this.pendingAiRecords.has(record.id) || record.subtasks.some(s => s.status === "pending" || s.status === "running");
+            const total = record.subtasks.reduce((n, s) => n + (s.results?.length || 0), 0);
+            const label = `[${formatDate(record.createdAt)}] ${record.keyword}`;
+            const collapsibleState = record.subtasks.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None;
             const item = new vscode.TreeItem(label, collapsibleState);
+            item.description = total > 0 ? `(${total})` : "";
+            item.contextValue = "issueSearchRecord";
             if (isPending) {
-                item.description = "AI 搜索中...";
-                item.contextValue = "issueSearchRecordLoading";
                 item.iconPath = new vscode.ThemeIcon("sync~spin");
-                item.tooltip = "正在执行 AI 搜索，请稍候...";
+                item.tooltip = "子任务正在执行中，点击可重试。";
             } else {
-                item.description = record.results.length > 0 ? `(${record.results.length})` : "";
-                item.contextValue = "issueSearchRecord";
-                item.iconPath = record.type === "ai" ? new vscode.ThemeIcon("sparkle") : new vscode.ThemeIcon("filter");
+                item.iconPath = new vscode.ThemeIcon("search");
+            }
+            return item;
+        }
+
+        if (element.type === "subtask") {
+            const s = element.subtask;
+            const label = `${s.type === "ai" ? "AI" : "过滤"} (${s.status})`;
+            const collapsible = s.results && s.results.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
+            const item = new vscode.TreeItem(label, collapsible);
+            item.description = s.results && s.results.length > 0 ? `(${s.results.length})` : "";
+            item.contextValue = "issueSearchSubtask";
+            if (s.status === "pending" || s.status === "running") {
+                item.iconPath = new vscode.ThemeIcon("sync~spin");
+            } else if (s.status === "done") {
+                item.iconPath = new vscode.ThemeIcon("pass") as any;
+            } else {
+                item.iconPath = new vscode.ThemeIcon("error") as any;
+                if (s.error) {
+                    item.tooltip = s.error;
+                }
             }
             return item;
         }
@@ -145,11 +176,11 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
 
         if (element.type === "record") {
-            return element.record.results.map(result => ({
-                type: "result",
-                recordId: element.record.id,
-                result
-            }));
+            return element.record.subtasks.map(subtask => ({ type: "subtask", recordId: element.record.id, subtask }));
+        }
+
+        if (element.type === "subtask") {
+            return element.subtask.results.map(result => ({ type: "result", recordId: element.recordId, result }));
         }
 
         return [];
@@ -161,7 +192,11 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
         const data = await readIssueSearchHistory();
         const pending = Array.from(this.pendingAiRecords.values());
-        this.recordCache = [...pending, ...(data.records || [])];
+        // 合并 pending（位于最前）与持久化记录，避免重复
+        const persisted = data.records || [];
+        const ids = new Set<string>(pending.map(r => r.id));
+        const merged = [...pending, ...persisted.filter(r => !ids.has(r.id))];
+        this.recordCache = merged;
         return this.recordCache;
     }
 
@@ -171,10 +206,115 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                 await this.runSearchFlow();
             }),
             vscode.commands.registerCommand("issueManager.issueSearch.refresh", () => this.refresh()),
+            vscode.commands.registerCommand("issueManager.issueSearch.retryTask", async (node?: IssueSearchViewNode) => {
+                if (!node || node.type !== "record") {
+                    vscode.window.showWarningMessage("请在任务节点上执行重试。");
+                    return;
+                }
+                const issues = await getAllIssueMarkdowns({ sortBy: "vtime" });
+                // 顺序重试：先 filter 再 ai
+                for (const sub of node.record.subtasks) {
+                    await this.runSubtask(node.record.id, sub.id, issues);
+                }
+            }),
+            vscode.commands.registerCommand("issueManager.issueSearch.retrySubtask", async (node?: IssueSearchViewNode) => {
+                if (!node || node.type !== "subtask") {
+                    vscode.window.showWarningMessage("请在子任务节点上执行重试。");
+                    return;
+                }
+                const issues = await getAllIssueMarkdowns({ sortBy: "vtime" });
+                await this.runSubtask(node.recordId, node.subtask.id, issues);
+            }),
+            vscode.commands.registerCommand("issueManager.issueSearch.deleteTask", async (node?: IssueSearchViewNode) => {
+                await this.deleteSearchTask(node);
+            }),
             vscode.commands.registerCommand("issueManager.issueSearch.openResult", async (filePath: string) => {
                 await this.openResultByFilePath(filePath);
             })
         );
+    }
+
+    private async deleteSearchTask(node?: IssueSearchViewNode): Promise<void> {
+        if (!node) {
+            vscode.window.showWarningMessage("未找到要删除的项目。请在记录或子任务节点上执行删除。");
+            return;
+        }
+
+        if (node.type === "record") {
+            const { record } = node;
+            const isPendingTask = this.pendingAiRecords.has(record.id);
+            const confirmed = await vscode.window.showWarningMessage(
+                `确认删除搜索任务“${record.keyword}”吗？`,
+                { modal: true },
+                "删除"
+            );
+            if (confirmed !== "删除") {
+                return;
+            }
+
+            if (isPendingTask) {
+                this.pendingAiRecords.delete(record.id);
+                this.refresh();
+                vscode.window.showInformationMessage("已删除搜索任务。该 AI 搜索结果将不再写入历史。");
+                return;
+            }
+
+            const removed = await removeIssueSearchRecord(record.id);
+            this.refresh();
+            if (removed) {
+                vscode.window.showInformationMessage("已删除搜索任务。");
+                return;
+            }
+            vscode.window.showWarningMessage("搜索任务不存在或已被删除。");
+            return;
+        }
+
+        if (node.type === "subtask") {
+            const { recordId, subtask } = node;
+            const confirmed = await vscode.window.showWarningMessage(
+                `确认删除子任务“${subtask.type}”吗？`,
+                { modal: true },
+                "删除"
+            );
+            if (confirmed !== "删除") {
+                return;
+            }
+
+            // 如果记录在 pending map 中，直接更新
+            if (this.pendingAiRecords.has(recordId)) {
+                const r = this.pendingAiRecords.get(recordId)!;
+                r.subtasks = r.subtasks.filter(s => s.id !== subtask.id);
+                if (r.subtasks.length === 0) {
+                    this.pendingAiRecords.delete(recordId);
+                }
+                this.refresh();
+                vscode.window.showInformationMessage("已删除子任务（未持久化）。");
+                return;
+            }
+
+            const data = await readIssueSearchHistory();
+            const records = data.records || [];
+            const idx = records.findIndex(r => r.id === recordId);
+            if (idx === -1) {
+                vscode.window.showWarningMessage("未找到对应的记录。");
+                return;
+            }
+            const record = records[idx];
+            record.subtasks = record.subtasks.filter(s => s.id !== subtask.id);
+            if (record.subtasks.length === 0) {
+                // 删除整条记录
+                await removeIssueSearchRecord(recordId);
+                this.refresh();
+                vscode.window.showInformationMessage("已删除子任务并移除整条记录。");
+                return;
+            }
+            await addIssueSearchRecord(record);
+            this.refresh();
+            vscode.window.showInformationMessage("已删除子任务。");
+            return;
+        }
+
+        vscode.window.showWarningMessage("仅支持删除记录或子任务。请在相应节点上操作。");
     }
 
     private async runSearchFlow(): Promise<void> {
@@ -191,20 +331,20 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
 
         const quickPick = vscode.window.createQuickPick<SearchQuickPickItem>();
-        quickPick.placeholder = "请输入搜索关键词，选择 AI 搜索或 issueMarkdown 过滤";
+        quickPick.placeholder = "请输入搜索关键词并回车 — 将创建一个包含过滤与 AI 子任务的搜索会话";
         quickPick.matchOnDescription = true;
         quickPick.matchOnDetail = false;
 
         const staticItems = this.buildFilterItems(issues);
-        const buildAiItem = (value: string): SearchQuickPickItem => ({
-            label: `${value}${AI_LABEL_SUFFIX}`,
-            description: "使用 AI 进行语义搜索",
-            alwaysShow: true,
-            action: "ai"
-        });
 
         const updateItems = (value: string) => {
-            const aiItem = buildAiItem(value || "");
+            // 显示 AI 建议在顶部，同时保留 issue 列表作为过滤选择
+            const aiItem: SearchQuickPickItem = {
+                label: `${value}${AI_LABEL_SUFFIX}`,
+                description: "创建包含 AI 子任务的搜索会话",
+                alwaysShow: true,
+                action: "ai"
+            };
             quickPick.items = [aiItem, ...staticItems];
             quickPick.activeItems = [aiItem];
         };
@@ -221,22 +361,46 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             quickPick.onDidChangeValue(value => updateItems(value)),
             quickPick.onDidAccept(async () => {
                 const selected = quickPick.selectedItems[0];
-                if (!selected) {
+                const keyword = normalizeKeyword(quickPick.value) || (selected && selected.payload ? selected.payload.title : "");
+                // 统一创建一个总任务（含 filter 与 ai 两个子任务），并立即执行 filter 子任务与异步触发 ai 子任务
+                const issueDir = getIssueDir();
+                if (!issueDir) {
                     disposeAll();
                     return;
                 }
 
-                const keyword = normalizeKeyword(quickPick.value);
-
-                if (selected.action === "ai") {
-                    this.startAiSearch(keyword, issues);
-                    disposeAll();
-                    return;
+                // 计算 filter 子任务的初始结果
+                let filterResults: IssueSearchResult[] = [];
+                if (selected && selected.action === "filter" && selected.payload) {
+                    const rel = path.relative(issueDir, selected.payload.uri.fsPath);
+                    filterResults = [
+                        { filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }
+                    ];
+                } else if (keyword) {
+                    const matched = filterIssuesByKeyword(issues, keyword);
+                    filterResults = matched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
                 }
-                if (selected.action === "filter" && selected.payload) {
-                    await this.handleFilterSearch(keyword, selected.payload, issues);
-                }
 
+                const filterSubtaskId = `filter-${uuidv4()}`;
+                const aiSubtaskId = `ai-${uuidv4()}`;
+                const record: IssueSearchRecord = {
+                    id: `search-${uuidv4()}`,
+                    keyword,
+                    createdAt: Date.now(),
+                    subtasks: [
+                        { id: filterSubtaskId, type: "filter", status: "done", results: filterResults, lastRunAt: Date.now() },
+                        { id: aiSubtaskId, type: "ai", status: "pending", results: [] }
+                    ]
+                } as unknown as IssueSearchRecord;
+
+                // 持久化当前记录（filter 已有结果，ai 为 pending）
+                await addIssueSearchRecord(record);
+                // 在 pending map 中注册该记录以便显示 loading
+                this.pendingAiRecords.set(record.id, record);
+                this.refresh();
+
+                // 异步触发 AI 子任务
+                void this.runSubtask(record.id, aiSubtaskId, issues);
                 disposeAll();
             }),
             quickPick.onDidHide(() => disposeAll())
@@ -280,14 +444,21 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
 
         const pendingRecord = createPendingRecord(keyword);
         this.pendingAiRecords.set(pendingRecord.id, pendingRecord);
+        // 持久化初始记录（AI 子任务为 pending）
+        void addIssueSearchRecord(pendingRecord);
         this.refresh();
-
-        void this.handleAiSearch(pendingRecord, issues);
+        const subtaskId = pendingRecord.subtasks && pendingRecord.subtasks[0] ? pendingRecord.subtasks[0].id : "";
+        void this.runSubtask(pendingRecord.id, subtaskId, issues);
     }
 
     private async handleAiSearch(pendingRecord: IssueSearchRecord, issues: IssueMarkdown[]): Promise<void> {
         const keyword = pendingRecord.keyword;
         const matches = await LLMService.searchIssueMarkdowns(keyword);
+
+        if (!this.pendingAiRecords.has(pendingRecord.id)) {
+            return;
+        }
+
         const issueDir = getIssueDir() || "";
         const issueMap = new Map<string, IssueMarkdown>();
         issues.forEach(issue => {
@@ -356,6 +527,96 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         this.refresh();
 
         await this.openResultByFilePath(path.relative(issueDir, selected.uri.fsPath));
+    }
+
+    private async getRecordById(recordId: string): Promise<IssueSearchRecord | undefined> {
+        if (this.pendingAiRecords.has(recordId)) {
+            return this.pendingAiRecords.get(recordId);
+        }
+        const data = await readIssueSearchHistory();
+        return (data.records || []).find(r => r.id === recordId);
+    }
+
+    private async runSubtask(recordId: string, subtaskId: string, issues: IssueMarkdown[]): Promise<void> {
+        const record = await this.getRecordById(recordId);
+        if (!record) {
+            return;
+        }
+        const sub = record.subtasks.find(s => s.id === subtaskId);
+        if (!sub) {
+            return;
+        }
+        if (sub.status === "running") {
+            return;
+        }
+
+        sub.status = "running";
+        sub.lastRunAt = Date.now();
+        this.pendingAiRecords.set(record.id, record);
+        this.refresh();
+
+        try {
+            if (sub.type === "filter") {
+                const issueDir = getIssueDir();
+                if (!issueDir) {
+                    sub.status = "failed";
+                    sub.error = "未配置 issueDir";
+                    await addIssueSearchRecord(record);
+                    this.refresh();
+                    return;
+                }
+                const matched = record.keyword ? filterIssuesByKeyword(issues, record.keyword) : [];
+                sub.results = matched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
+                sub.status = "done";
+                sub.lastRunAt = Date.now();
+                await addIssueSearchRecord(record);
+                this.pendingAiRecords.delete(record.id);
+                this.refresh();
+                return;
+            }
+
+            if (sub.type === "ai") {
+                const matches = await LLMService.searchIssueMarkdowns(record.keyword);
+                const issueDir = getIssueDir() || "";
+                const issueMap = new Map<string, IssueMarkdown>();
+                issues.forEach(issue => issueMap.set(issue.uri.fsPath, issue));
+
+                const results: IssueSearchResult[] = [];
+                matches.forEach(match => {
+                    const absPath = path.resolve(issueDir, match.filePath);
+                    const relativeToIssueDir = path.relative(issueDir, absPath);
+                    if (relativeToIssueDir.startsWith("..") || path.isAbsolute(relativeToIssueDir)) {
+                        Logger.getInstance().warn(`AI 返回的路径可能存在遍历风险，已跳过: ${match.filePath}`);
+                        return;
+                    }
+                    const issue = issueMap.get(absPath);
+                    if (!issue) {
+                        return;
+                    }
+                    const relPath = path.relative(issueDir, issue.uri.fsPath);
+                    results.push({ filePath: relPath, title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) });
+                });
+
+                sub.results = results;
+                sub.status = results.length > 0 ? "done" : "failed";
+                sub.lastRunAt = Date.now();
+                if (sub.status === "failed") {
+                    sub.error = "AI 未找到匹配项";
+                }
+                // 持久化并清理 pending map
+                await addIssueSearchRecord(record);
+                this.pendingAiRecords.delete(record.id);
+                this.refresh();
+                return;
+            }
+        } catch (error: any) {
+            sub.status = "failed";
+            sub.error = error?.message || String(error);
+            await addIssueSearchRecord(record);
+            this.pendingAiRecords.delete(record.id);
+            this.refresh();
+            return;
+        }
     }
 
     private async openResultByFilePath(filePath: string): Promise<void> {
