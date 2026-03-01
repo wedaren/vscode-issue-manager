@@ -3,7 +3,7 @@ import * as path from "path";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 
-export type IssueSearchType = "ai" | "filter";
+export type IssueSearchType = "ai" | "filter" | "title" | "summary";
 
 export interface IssueSearchResult {
     filePath: string;
@@ -78,7 +78,7 @@ function isIssueSearchSubtask(item: unknown): item is IssueSearchSubtask {
     const s = item as Record<string, unknown>;
     if (
         typeof s.id !== "string" ||
-        !(s.type === "ai" || s.type === "filter") ||
+        !(s.type === "ai" || s.type === "filter" || s.type === "title" || s.type === "summary") ||
         !(s.status === "pending" || s.status === "running" || s.status === "done" || s.status === "failed") ||
         !Array.isArray(s.results)
     ) {

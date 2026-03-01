@@ -96,6 +96,21 @@ function filterIssuesByKeyword(issues: IssueMarkdown[], keyword: string): IssueM
     });
 }
 
+function filterIssuesByTitle(issues: IssueMarkdown[], keyword: string): IssueMarkdown[] {
+    const normalized = normalizeKeyword(keyword).toLowerCase();
+    if (!normalized) return [];
+    return issues.filter(issue => issue.title.toLowerCase().includes(normalized));
+}
+
+function filterIssuesBySummary(issues: IssueMarkdown[], keyword: string): IssueMarkdown[] {
+    const normalized = normalizeKeyword(keyword).toLowerCase();
+    if (!normalized) return [];
+    return issues.filter(issue => {
+        const summary = getBriefSummary(issue.frontmatter)?.toLowerCase() || "";
+        return summary.includes(normalized);
+    });
+}
+
 export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSearchViewNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<IssueSearchViewNode | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -135,7 +150,8 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
 
         if (element.type === "subtask") {
             const s = element.subtask;
-            const label = `${s.type === "ai" ? "AI" : "过滤"} (${s.status})`;
+            const typeLabel = s.type === "ai" ? "AI 搜索" : s.type === "title" ? "标题过滤" : s.type === "summary" ? "摘要过滤" : "过滤";
+            const label = `${typeLabel} (${s.status})`;
             const collapsible = s.results && s.results.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
             const item = new vscode.TreeItem(label, collapsible);
             item.description = s.results && s.results.length > 0 ? `(${s.results.length})` : "";
@@ -338,15 +354,8 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         const staticItems = this.buildFilterItems(issues);
 
         const updateItems = (value: string) => {
-            // 显示 AI 建议在顶部，同时保留 issue 列表作为过滤选择
-            const aiItem: SearchQuickPickItem = {
-                label: `${value}${AI_LABEL_SUFFIX}`,
-                description: "创建包含 AI 子任务的搜索会话",
-                alwaysShow: true,
-                action: "ai"
-            };
-            quickPick.items = [aiItem, ...staticItems];
-            quickPick.activeItems = [aiItem];
+            // 仅显示 issue 列表用于选择或允许用户输入关键词回车创建会话
+            quickPick.items = [...staticItems];
         };
 
         updateItems("");
@@ -369,26 +378,30 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                     return;
                 }
 
-                // 计算 filter 子任务的初始结果
-                let filterResults: IssueSearchResult[] = [];
+                // 计算标题过滤与摘要过滤的初始结果，并创建含三个子任务（title, summary, ai）的会话
+                let titleResults: IssueSearchResult[] = [];
+                let summaryResults: IssueSearchResult[] = [];
                 if (selected && selected.action === "filter" && selected.payload) {
                     const rel = path.relative(issueDir, selected.payload.uri.fsPath);
-                    filterResults = [
-                        { filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }
-                    ];
+                    titleResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
+                    summaryResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
                 } else if (keyword) {
-                    const matched = filterIssuesByKeyword(issues, keyword);
-                    filterResults = matched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
+                    const titleMatched = filterIssuesByTitle(issues, keyword);
+                    const summaryMatched = filterIssuesBySummary(issues, keyword);
+                    titleResults = titleMatched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
+                    summaryResults = summaryMatched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
                 }
 
-                const filterSubtaskId = `filter-${uuidv4()}`;
+                const titleSubtaskId = `title-${uuidv4()}`;
+                const summarySubtaskId = `summary-${uuidv4()}`;
                 const aiSubtaskId = `ai-${uuidv4()}`;
                 const record: IssueSearchRecord = {
                     id: `search-${uuidv4()}`,
                     keyword,
                     createdAt: Date.now(),
                     subtasks: [
-                        { id: filterSubtaskId, type: "filter", status: "done", results: filterResults, lastRunAt: Date.now() },
+                        { id: titleSubtaskId, type: "title", status: "done", results: titleResults, lastRunAt: Date.now() },
+                        { id: summarySubtaskId, type: "summary", status: "done", results: summaryResults, lastRunAt: Date.now() },
                         { id: aiSubtaskId, type: "ai", status: "pending", results: [] }
                     ]
                 } as unknown as IssueSearchRecord;
@@ -556,7 +569,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         this.refresh();
 
         try {
-            if (sub.type === "filter") {
+            if (sub.type === "filter" || sub.type === "title" || sub.type === "summary") {
                 const issueDir = getIssueDir();
                 if (!issueDir) {
                     sub.status = "failed";
@@ -565,12 +578,25 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                     this.refresh();
                     return;
                 }
-                const matched = record.keyword ? filterIssuesByKeyword(issues, record.keyword) : [];
+
+                let matched: IssueMarkdown[] = [];
+                if (sub.type === "filter") {
+                    matched = record.keyword ? filterIssuesByKeyword(issues, record.keyword) : [];
+                } else if (sub.type === "title") {
+                    matched = record.keyword ? filterIssuesByTitle(issues, record.keyword) : [];
+                } else if (sub.type === "summary") {
+                    matched = record.keyword ? filterIssuesBySummary(issues, record.keyword) : [];
+                }
+
                 sub.results = matched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
                 sub.status = "done";
                 sub.lastRunAt = Date.now();
                 await addIssueSearchRecord(record);
-                this.pendingAiRecords.delete(record.id);
+                // 如果所有子任务都非 running/pending，则从 pending map 移除
+                const hasRunningOrPending = record.subtasks.some(s => s.status === "pending" || s.status === "running");
+                if (!hasRunningOrPending) {
+                    this.pendingAiRecords.delete(record.id);
+                }
                 this.refresh();
                 return;
             }
