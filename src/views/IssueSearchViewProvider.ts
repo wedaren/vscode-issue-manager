@@ -4,15 +4,25 @@ import { getIssueDir } from "../config";
 import { getAllIssueMarkdowns, IssueMarkdown, FrontmatterData } from "../data/IssueMarkdowns";
 import { LLMService } from "../llm/LLMService";
 import { Logger } from "../core/utils/Logger";
-import { v4 as uuidv4 } from 'uuid';
-import { addIssueSearchRecord, IssueSearchRecord, IssueSearchResult, readIssueSearchHistory, removeIssueSearchRecord } from "../data/issueSearchHistory";
+import { v4 as uuidv4 } from "uuid";
+import {
+    addIssueSearchRecord,
+    IssueSearchRecord,
+    IssueSearchResult,
+    readIssueSearchHistory,
+    removeIssueSearchRecord,
+} from "../data/issueSearchHistory";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "../commands/openIssueNode";
 import { getIssueMarkdownContextValues } from "../data/IssueMarkdowns";
 
 export type IssueSearchViewNode =
     | { type: "record"; record: IssueSearchRecord }
-    | { type: "subtask"; recordId: string; subtask: import("../data/issueSearchHistory").IssueSearchSubtask }
+    | {
+          type: "subtask";
+          recordId: string;
+          subtask: import("../data/issueSearchHistory").IssueSearchSubtask;
+      }
     | { type: "result"; recordId: string; result: IssueSearchResult; resourceUri?: vscode.Uri };
 
 interface SearchQuickPickItem extends vscode.QuickPickItem {
@@ -48,7 +58,11 @@ function getBriefSummary(frontmatter?: FrontmatterData | null): string | undefin
     return undefined;
 }
 
-function createSearchRecord(keyword: string, type: "ai" | "filter", results: IssueSearchResult[]): IssueSearchRecord {
+function createSearchRecord(
+    keyword: string,
+    type: "ai" | "filter",
+    results: IssueSearchResult[]
+): IssueSearchRecord {
     const subtaskId = `${type}-${uuidv4()}`;
     return {
         id: `${type}-${uuidv4()}`,
@@ -60,9 +74,9 @@ function createSearchRecord(keyword: string, type: "ai" | "filter", results: Iss
                 type,
                 status: "done",
                 results,
-                lastRunAt: Date.now()
-            }
-        ]
+                lastRunAt: Date.now(),
+            },
+        ],
     };
 }
 
@@ -77,9 +91,9 @@ function createPendingRecord(keyword: string): IssueSearchRecord {
                 id: aiId,
                 type: "ai",
                 status: "pending",
-                results: []
-            }
-        ]
+                results: [],
+            },
+        ],
     };
 }
 
@@ -93,7 +107,11 @@ function filterIssuesByKeyword(issues: IssueMarkdown[], keyword: string): IssueM
         const title = issue.title.toLowerCase();
         const summary = getBriefSummary(issue.frontmatter)?.toLowerCase() || "";
         const filePath = issue.uri.fsPath.toLowerCase();
-        return title.includes(normalized) || summary.includes(normalized) || filePath.includes(normalized);
+        return (
+            title.includes(normalized) ||
+            summary.includes(normalized) ||
+            filePath.includes(normalized)
+        );
     });
 }
 
@@ -113,7 +131,9 @@ function filterIssuesBySummary(issues: IssueMarkdown[], keyword: string): IssueM
 }
 
 export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSearchViewNode> {
-    private _onDidChangeTreeData = new vscode.EventEmitter<IssueSearchViewNode | undefined | null | void>();
+    private _onDidChangeTreeData = new vscode.EventEmitter<
+        IssueSearchViewNode | undefined | null | void
+    >();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private recordCache: IssueSearchRecord[] | null = null;
@@ -131,12 +151,15 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
     async getTreeItem(element: IssueSearchViewNode): Promise<vscode.TreeItem> {
         if (element.type === "record") {
             const record = element.record;
-            const isPending = this.pendingAiRecords.has(record.id) || record.subtasks.some(s => s.status === "pending" || s.status === "running");
+            const isPending =
+                this.pendingAiRecords.has(record.id) ||
+                record.subtasks.some(s => s.status === "pending" || s.status === "running");
             const total = record.subtasks.reduce((n, s) => n + (s.results?.length || 0), 0);
             const label = `[${formatDate(record.createdAt)}] ${record.keyword}`;
-            const collapsibleState = record.subtasks.length > 0
-                ? vscode.TreeItemCollapsibleState.Collapsed
-                : vscode.TreeItemCollapsibleState.None;
+            const collapsibleState =
+                record.subtasks.length > 0
+                    ? vscode.TreeItemCollapsibleState.Collapsed
+                    : vscode.TreeItemCollapsibleState.None;
             const item = new vscode.TreeItem(label, collapsibleState);
             item.description = total > 0 ? `(${total})` : "";
             item.contextValue = "issueSearchRecord";
@@ -151,9 +174,19 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
 
         if (element.type === "subtask") {
             const s = element.subtask;
-            const typeLabel = s.type === "ai" ? "AI 搜索" : s.type === "title" ? "标题过滤" : s.type === "summary" ? "摘要过滤" : "过滤";
+            const typeLabel =
+                s.type === "ai"
+                    ? "AI 搜索"
+                    : s.type === "title"
+                    ? "标题过滤"
+                    : s.type === "summary"
+                    ? "摘要过滤"
+                    : "过滤";
             const label = `${typeLabel} (${s.status})`;
-            const collapsible = s.results && s.results.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
+            const collapsible =
+                s.results && s.results.length > 0
+                    ? vscode.TreeItemCollapsibleState.Collapsed
+                    : vscode.TreeItemCollapsibleState.None;
             const item = new vscode.TreeItem(label, collapsible);
             item.description = s.results && s.results.length > 0 ? `(${s.results.length})` : "";
             item.contextValue = "issueSearchSubtask";
@@ -198,9 +231,9 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
 
         item.command = {
-            command: 'issueManager.openAndViewRelatedIssues',
-            title: '打开并查看相关联问题',
-            arguments: [item.resourceUri || vscode.Uri.file(result.filePath)]
+            command: "issueManager.openAndViewRelatedIssues",
+            title: "打开并查看相关联问题",
+            arguments: [item.resourceUri || vscode.Uri.file(result.filePath)],
         };
 
         return item;
@@ -213,22 +246,26 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
 
         if (element.type === "record") {
-            return element.record.subtasks.map(subtask => ({ type: "subtask", recordId: element.record.id, subtask }));
+            return element.record.subtasks.map(subtask => ({
+                type: "subtask",
+                recordId: element.record.id,
+                subtask,
+            }));
         }
 
         if (element.type === "subtask") {
-                const issueDir = getIssueDir();
-                return element.subtask.results.map(result => {
-                    let uri: vscode.Uri | undefined;
-                    try {
-                        if (issueDir) {
-                            uri = vscode.Uri.file(path.join(issueDir, result.filePath));
-                        }
-                    } catch (e) {
-                        uri = undefined;
+            const issueDir = getIssueDir();
+            return element.subtask.results.map(result => {
+                let uri: vscode.Uri | undefined;
+                try {
+                    if (issueDir) {
+                        uri = vscode.Uri.file(path.join(issueDir, result.filePath));
                     }
-                    return { type: "result", recordId: element.recordId, result, resourceUri: uri };
-                });
+                } catch (e) {
+                    uri = undefined;
+                }
+                return { type: "result", recordId: element.recordId, result, resourceUri: uri };
+            });
         }
 
         return [];
@@ -253,38 +290,54 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             vscode.commands.registerCommand("issueManager.issueSearch.addTask", async () => {
                 await this.runSearchFlow();
             }),
-            vscode.commands.registerCommand("issueManager.issueSearch.refresh", () => this.refresh()),
-            vscode.commands.registerCommand("issueManager.issueSearch.retryTask", async (node?: IssueSearchViewNode) => {
-                if (!node || node.type !== "record") {
-                    vscode.window.showWarningMessage("请在任务节点上执行重试。");
-                    return;
+            vscode.commands.registerCommand("issueManager.issueSearch.refresh", () =>
+                this.refresh()
+            ),
+            vscode.commands.registerCommand(
+                "issueManager.issueSearch.retryTask",
+                async (node?: IssueSearchViewNode) => {
+                    if (!node || node.type !== "record") {
+                        vscode.window.showWarningMessage("请在任务节点上执行重试。");
+                        return;
+                    }
+                    const issues = await getAllIssueMarkdowns({ sortBy: "vtime" });
+                    // 顺序重试：先 filter 再 ai
+                    for (const sub of node.record.subtasks) {
+                        await this.runSubtask(node.record.id, sub.id, issues);
+                    }
                 }
-                const issues = await getAllIssueMarkdowns({ sortBy: "vtime" });
-                // 顺序重试：先 filter 再 ai
-                for (const sub of node.record.subtasks) {
-                    await this.runSubtask(node.record.id, sub.id, issues);
+            ),
+            vscode.commands.registerCommand(
+                "issueManager.issueSearch.retrySubtask",
+                async (node?: IssueSearchViewNode) => {
+                    if (!node || node.type !== "subtask") {
+                        vscode.window.showWarningMessage("请在子任务节点上执行重试。");
+                        return;
+                    }
+                    const issues = await getAllIssueMarkdowns({ sortBy: "vtime" });
+                    await this.runSubtask(node.recordId, node.subtask.id, issues);
                 }
-            }),
-            vscode.commands.registerCommand("issueManager.issueSearch.retrySubtask", async (node?: IssueSearchViewNode) => {
-                if (!node || node.type !== "subtask") {
-                    vscode.window.showWarningMessage("请在子任务节点上执行重试。");
-                    return;
+            ),
+            vscode.commands.registerCommand(
+                "issueManager.issueSearch.deleteTask",
+                async (node?: IssueSearchViewNode) => {
+                    await this.deleteSearchTask(node);
                 }
-                const issues = await getAllIssueMarkdowns({ sortBy: "vtime" });
-                await this.runSubtask(node.recordId, node.subtask.id, issues);
-            }),
-            vscode.commands.registerCommand("issueManager.issueSearch.deleteTask", async (node?: IssueSearchViewNode) => {
-                await this.deleteSearchTask(node);
-            }),
-            vscode.commands.registerCommand("issueManager.issueSearch.openResult", async (filePath: string) => {
-                await this.openResultByFilePath(filePath);
-            })
+            ),
+            vscode.commands.registerCommand(
+                "issueManager.issueSearch.openResult",
+                async (filePath: string) => {
+                    await this.openResultByFilePath(filePath);
+                }
+            )
         );
     }
 
     private async deleteSearchTask(node?: IssueSearchViewNode): Promise<void> {
         if (!node) {
-            vscode.window.showWarningMessage("未找到要删除的项目。请在记录或子任务节点上执行删除。");
+            vscode.window.showWarningMessage(
+                "未找到要删除的项目。请在记录或子任务节点上执行删除。"
+            );
             return;
         }
 
@@ -303,7 +356,9 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             if (isPendingTask) {
                 this.pendingAiRecords.delete(record.id);
                 this.refresh();
-                vscode.window.showInformationMessage("已删除搜索任务。该 AI 搜索结果将不再写入历史。");
+                vscode.window.showInformationMessage(
+                    "已删除搜索任务。该 AI 搜索结果将不再写入历史。"
+                );
                 return;
             }
 
@@ -369,7 +424,10 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         const issueDir = getIssueDir();
         if (!issueDir) {
             vscode.window.showErrorMessage('请先配置 "issueManager.issueDir"');
-            vscode.commands.executeCommand('workbench.action.openSettings', 'issueManager.issueDir');
+            vscode.commands.executeCommand(
+                "workbench.action.openSettings",
+                "issueManager.issueDir"
+            );
             return;
         }
 
@@ -403,7 +461,8 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             quickPick.onDidAccept(async () => {
                 const selected = quickPick.selectedItems[0];
                 const typed = normalizeKeyword(quickPick.value);
-                const keyword = typed || (selected && selected.payload ? selected.payload.title : "");
+                const keyword =
+                    typed || (selected && selected.payload ? selected.payload.title : "");
                 // 统一创建一个总任务（含 filter 与 ai 两个子任务），并立即执行 filter 子任务与异步触发 ai 子任务
                 const issueDir = getIssueDir();
                 if (!issueDir) {
@@ -418,12 +477,32 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                 if (typed) {
                     const titleMatched = filterIssuesByTitle(issues, keyword);
                     const summaryMatched = filterIssuesBySummary(issues, keyword);
-                    titleResults = titleMatched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
-                    summaryResults = summaryMatched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
+                    titleResults = titleMatched.map(issue => ({
+                        filePath: path.relative(issueDir, issue.uri.fsPath),
+                        title: issue.title,
+                        briefSummary: getBriefSummary(issue.frontmatter),
+                    }));
+                    summaryResults = summaryMatched.map(issue => ({
+                        filePath: path.relative(issueDir, issue.uri.fsPath),
+                        title: issue.title,
+                        briefSummary: getBriefSummary(issue.frontmatter),
+                    }));
                 } else if (selected && selected.action === "filter" && selected.payload) {
                     const rel = path.relative(issueDir, selected.payload.uri.fsPath);
-                    titleResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
-                    summaryResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
+                    titleResults = [
+                        {
+                            filePath: rel,
+                            title: selected.payload.title,
+                            briefSummary: getBriefSummary(selected.payload.frontmatter),
+                        },
+                    ];
+                    summaryResults = [
+                        {
+                            filePath: rel,
+                            title: selected.payload.title,
+                            briefSummary: getBriefSummary(selected.payload.frontmatter),
+                        },
+                    ];
                 }
 
                 const titleSubtaskId = `title-${uuidv4()}`;
@@ -434,10 +513,22 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                     keyword,
                     createdAt: Date.now(),
                     subtasks: [
-                        { id: titleSubtaskId, type: "title", status: "done", results: titleResults, lastRunAt: Date.now() },
-                        { id: summarySubtaskId, type: "summary", status: "done", results: summaryResults, lastRunAt: Date.now() },
-                        { id: aiSubtaskId, type: "ai", status: "pending", results: [] }
-                    ]
+                        {
+                            id: titleSubtaskId,
+                            type: "title",
+                            status: "done",
+                            results: titleResults,
+                            lastRunAt: Date.now(),
+                        },
+                        {
+                            id: summarySubtaskId,
+                            type: "summary",
+                            status: "done",
+                            results: summaryResults,
+                            lastRunAt: Date.now(),
+                        },
+                        { id: aiSubtaskId, type: "ai", status: "pending", results: [] },
+                    ],
                 };
 
                 // 持久化当前记录（filter 已有结果，ai 为 pending）
@@ -467,7 +558,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                 items.push({
                     label: groupLabel,
                     kind: vscode.QuickPickItemKind.Separator,
-                    action: "filter"
+                    action: "filter",
                 });
                 lastGroup = groupLabel;
             }
@@ -476,7 +567,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                 label: issue.title,
                 description: getBriefSummary(issue.frontmatter) || "",
                 action: "filter",
-                payload: issue
+                payload: issue,
             });
         });
 
@@ -494,11 +585,15 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         // 持久化初始记录（AI 子任务为 pending）
         void addIssueSearchRecord(pendingRecord);
         this.refresh();
-        const subtaskId = pendingRecord.subtasks && pendingRecord.subtasks[0] ? pendingRecord.subtasks[0].id : "";
+        const subtaskId =
+            pendingRecord.subtasks && pendingRecord.subtasks[0] ? pendingRecord.subtasks[0].id : "";
         void this.runSubtask(pendingRecord.id, subtaskId, issues);
     }
 
-    private async handleAiSearch(pendingRecord: IssueSearchRecord, issues: IssueMarkdown[]): Promise<void> {
+    private async handleAiSearch(
+        pendingRecord: IssueSearchRecord,
+        issues: IssueMarkdown[]
+    ): Promise<void> {
         const keyword = pendingRecord.keyword;
         const matches = await LLMService.searchIssueMarkdowns(keyword);
 
@@ -519,7 +614,9 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             // 安全性校验：确保解析后的路径仍在 issueDir 目录内，防止路径遍历
             const relativeToIssueDir = path.relative(issueDir, absPath);
             if (relativeToIssueDir.startsWith("..") || path.isAbsolute(relativeToIssueDir)) {
-                Logger.getInstance().warn(`AI 返回的路径可能存在遍历风险，已跳过: ${match.filePath}`);
+                Logger.getInstance().warn(
+                    `AI 返回的路径可能存在遍历风险，已跳过: ${match.filePath}`
+                );
                 return;
             }
 
@@ -531,7 +628,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             results.push({
                 filePath: relPath,
                 title: issue.title,
-                briefSummary: getBriefSummary(issue.frontmatter)
+                briefSummary: getBriefSummary(issue.frontmatter),
             });
         });
 
@@ -548,15 +645,17 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         this.refresh();
     }
 
-    private async handleFilterSearch(keyword: string, selected: IssueMarkdown, issues: IssueMarkdown[]): Promise<void> {
+    private async handleFilterSearch(
+        keyword: string,
+        selected: IssueMarkdown,
+        issues: IssueMarkdown[]
+    ): Promise<void> {
         const issueDir = getIssueDir();
         if (!issueDir) {
             return;
         }
 
-        const targetIssues = keyword
-            ? filterIssuesByKeyword(issues, keyword)
-            : [selected];
+        const targetIssues = keyword ? filterIssuesByKeyword(issues, keyword) : [selected];
 
         if (keyword && targetIssues.length === 0) {
             vscode.window.showInformationMessage("未找到匹配的 issueMarkdown 记录。");
@@ -566,7 +665,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         const results: IssueSearchResult[] = targetIssues.map(issue => ({
             filePath: path.relative(issueDir, issue.uri.fsPath),
             title: issue.title,
-            briefSummary: getBriefSummary(issue.frontmatter)
+            briefSummary: getBriefSummary(issue.frontmatter),
         }));
 
         const record = createSearchRecord(keyword || selected.title, "filter", results);
@@ -584,7 +683,11 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         return (data.records || []).find(r => r.id === recordId);
     }
 
-    private async runSubtask(recordId: string, subtaskId: string, issues: IssueMarkdown[]): Promise<void> {
+    private async runSubtask(
+        recordId: string,
+        subtaskId: string,
+        issues: IssueMarkdown[]
+    ): Promise<void> {
         const record = await this.getRecordById(recordId);
         if (!record) {
             return;
@@ -622,12 +725,18 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                     matched = record.keyword ? filterIssuesBySummary(issues, record.keyword) : [];
                 }
 
-                sub.results = matched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
+                sub.results = matched.map(issue => ({
+                    filePath: path.relative(issueDir, issue.uri.fsPath),
+                    title: issue.title,
+                    briefSummary: getBriefSummary(issue.frontmatter),
+                }));
                 sub.status = "done";
                 sub.lastRunAt = Date.now();
                 await addIssueSearchRecord(record);
                 // 如果所有子任务都非 running/pending，则从 pending map 移除
-                const hasRunningOrPending = record.subtasks.some(s => s.status === "pending" || s.status === "running");
+                const hasRunningOrPending = record.subtasks.some(
+                    s => s.status === "pending" || s.status === "running"
+                );
                 if (!hasRunningOrPending) {
                     this.pendingAiRecords.delete(record.id);
                 }
@@ -645,8 +754,13 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                 matches.forEach(match => {
                     const absPath = path.resolve(issueDir, match.filePath);
                     const relativeToIssueDir = path.relative(issueDir, absPath);
-                    if (relativeToIssueDir.startsWith("..") || path.isAbsolute(relativeToIssueDir)) {
-                        Logger.getInstance().warn(`AI 返回的路径可能存在遍历风险，已跳过: ${match.filePath}`);
+                    if (
+                        relativeToIssueDir.startsWith("..") ||
+                        path.isAbsolute(relativeToIssueDir)
+                    ) {
+                        Logger.getInstance().warn(
+                            `AI 返回的路径可能存在遍历风险，已跳过: ${match.filePath}`
+                        );
                         return;
                     }
                     const issue = issueMap.get(absPath);
@@ -654,7 +768,11 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                         return;
                     }
                     const relPath = path.relative(issueDir, issue.uri.fsPath);
-                    results.push({ filePath: relPath, title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) });
+                    results.push({
+                        filePath: relPath,
+                        title: issue.title,
+                        briefSummary: getBriefSummary(issue.frontmatter),
+                    });
                 });
 
                 sub.results = results;
