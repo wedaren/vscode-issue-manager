@@ -54,6 +54,16 @@
         "icon": "$(add)"
       },
       {
+        "command": "issueManager.issueSearch.retryTask",
+        "title": "重试搜索任务",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.issueSearch.retrySubtask",
+        "title": "重试子任务",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "issueManager.issueSearch.deleteTask",
         "title": "删除搜索任务",
         "icon": "$(trash)"
