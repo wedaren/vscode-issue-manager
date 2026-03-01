@@ -162,7 +162,7 @@ export function parseFileLink(link: string, baseIssueDir?: string): FileLocation
         if (parsedTitle !== "") {
             // 先创建 location，然后在后面赋值 title
             content = mdInlineMatch[2].trim();
-            location.title = parsedTitle; 
+            location.title = parsedTitle;
         } else {
             content = mdInlineMatch[2].trim();
         }
