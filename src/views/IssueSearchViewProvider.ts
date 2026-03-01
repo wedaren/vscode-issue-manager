@@ -370,7 +370,8 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             quickPick.onDidChangeValue(value => updateItems(value)),
             quickPick.onDidAccept(async () => {
                 const selected = quickPick.selectedItems[0];
-                const keyword = normalizeKeyword(quickPick.value) || (selected && selected.payload ? selected.payload.title : "");
+                const typed = normalizeKeyword(quickPick.value);
+                const keyword = typed || (selected && selected.payload ? selected.payload.title : "");
                 // 统一创建一个总任务（含 filter 与 ai 两个子任务），并立即执行 filter 子任务与异步触发 ai 子任务
                 const issueDir = getIssueDir();
                 if (!issueDir) {
@@ -378,18 +379,19 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                     return;
                 }
 
-                // 计算标题过滤与摘要过滤的初始结果，并创建含三个子任务（title, summary, ai）的会话
+                // 计算标题过滤与摘要过滤的初始结果：优先使用用户输入的 keyword 进行全库过滤；
+                // 如果用户未输入 keyword（即 typed 为空），再使用下拉项的选中 payload 作为单条结果
                 let titleResults: IssueSearchResult[] = [];
                 let summaryResults: IssueSearchResult[] = [];
-                if (selected && selected.action === "filter" && selected.payload) {
-                    const rel = path.relative(issueDir, selected.payload.uri.fsPath);
-                    titleResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
-                    summaryResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
-                } else if (keyword) {
+                if (typed) {
                     const titleMatched = filterIssuesByTitle(issues, keyword);
                     const summaryMatched = filterIssuesBySummary(issues, keyword);
                     titleResults = titleMatched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
                     summaryResults = summaryMatched.map(issue => ({ filePath: path.relative(issueDir, issue.uri.fsPath), title: issue.title, briefSummary: getBriefSummary(issue.frontmatter) }));
+                } else if (selected && selected.action === "filter" && selected.payload) {
+                    const rel = path.relative(issueDir, selected.payload.uri.fsPath);
+                    titleResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
+                    summaryResults = [{ filePath: rel, title: selected.payload.title, briefSummary: getBriefSummary(selected.payload.frontmatter) }];
                 }
 
                 const titleSubtaskId = `title-${uuidv4()}`;
