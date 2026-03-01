@@ -793,6 +793,8 @@ export type LinkedFileParseResult = {
     fsPath?: string; // resolved absolute fsPath if possible
     lineStart?: number;
     lineEnd?: number;
+    colStart?: number; // optional column (character) start
+    colEnd?: number; // optional column (character) end
 };
 
 function normalizeFsPath(p: string): string {
@@ -815,6 +817,13 @@ export function parseLinkedFileString(raw: string): LinkedFileParseResult {
         if (pipeIdx !== -1) {
             s = s.slice(0, pipeIdx).trim();
         }
+    }
+
+    // 如果是 Markdown 链接形式 [label](file:...)
+    const mdLinkMatch = s.match(/^\[([^\]]+)\]\(\s*(file:[^)]+)\s*\)$/i);
+    if (mdLinkMatch) {
+        // 使用括号内的 file: URI 部分代替原始字符串进行后续解析
+        s = mdLinkMatch[2];
     }
 
     // 如果以 file: 开头，尝试解析为 file URI
@@ -844,13 +853,20 @@ export function parseLinkedFileString(raw: string): LinkedFileParseResult {
 
     res.linkPath = pathPart;
 
-    // 解析 fragment 中的行范围，支持 L10, L10-L12, 10-12 等形式
+    // 解析 fragment 中的行/列范围，支持多种形式：
+    // L10, L10-L12, 10-12, L8:1-L9:20, 8:1-9:20 等
     if (frag) {
-        const m = frag.match(/(?:L)?(\d+)(?:-(?:L)?(\d+))?/i);
+        const m = frag.match(/(?:L)?(\d+)(?::(\d+))?(?:-(?:L)?(\d+)(?::(\d+))?)?/i);
         if (m) {
             res.lineStart = parseInt(m[1], 10);
             if (m[2]) {
-                res.lineEnd = parseInt(m[2], 10);
+                res.colStart = parseInt(m[2], 10);
+            }
+            if (m[3]) {
+                res.lineEnd = parseInt(m[3], 10);
+            }
+            if (m[4]) {
+                res.colEnd = parseInt(m[4], 10);
             }
         }
     }
