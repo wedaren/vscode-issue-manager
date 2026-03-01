@@ -98,7 +98,7 @@ function isIssueSearchRecord(item: unknown): item is IssueSearchRecord {
     return (r.subtasks as unknown[]).every(isIssueSearchSubtask);
 }
 
-function isOldStyleRecord(item: unknown): boolean {
+function isOldStyleRecord(item: unknown): item is { id: string; keyword: string; type: "ai" | "filter"; createdAt: number; results: IssueSearchResult[] } {
     if (!item || typeof item !== "object") {
         return false;
     }
@@ -133,14 +133,14 @@ export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> 
                 return;
             }
             if (isOldStyleRecord(item)) {
-                const r = item as any;
+                const r = item;
                 // 将旧格式转换为新格式，保留原有 type/results 信息为单个子任务
-                const subtask = {
+                const subtask: IssueSearchSubtask = {
                     id: `${r.type}-${r.id}`,
-                    type: r.type as IssueSearchType,
-                    status: "done" as const,
-                    results: r.results as IssueSearchResult[],
-                    lastRunAt: r.createdAt as number
+                    type: r.type,
+                    status: "done",
+                    results: r.results,
+                    lastRunAt: r.createdAt
                 };
                 records.push({
                     id: r.id,
