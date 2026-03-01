@@ -1,12 +1,19 @@
+/**
+ * 简要说明：将当前打开的编辑器文件以统一文件链接格式关联到指定问题文件的 frontmatter 中。
+ * 原理：计算相对于笔记根或 issues 目录的路径，使用文件链接格式化工具生成链接并写入目标 issue 的 frontmatter。
+ */
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { selectOrCreateIssue } from './selectOrCreateIssue';
 import { getIssueDir } from '../config';
 import { getRelativeToNoteRoot } from '../utils/pathUtils';
 import { getIssueMarkdown, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 import { getIssueNodeById } from '../data/issueTreeManager';
-import { createLocationFromEditor, formatFileLink } from '../utils/fileLinkFormatter';
+import { createLocationFromEditor, formatLink } from '../utils/fileLinkFormatter';
 
+/**
+ * 将当前编辑器打开的文件关联到某个问题文件的 frontmatter 中（`issue_linked_files` 字段）。
+ * @returns Promise<void> — 完成时解析；在发生错误时会通过 VS Code 消息或控制台报告。
+ */
 export async function linkCurrentFileToIssue(): Promise<void> {
   try {
     const issueDir = getIssueDir();
@@ -30,11 +37,28 @@ export async function linkCurrentFileToIssue(): Promise<void> {
     const location = createLocationFromEditor(editor);
     // 将路径替换为优先路径（相对或绝对）
     location.filePath = storedPath;
-    const linkValue = formatFileLink(location);
+    // 弹窗让用户输入可选的链接标题（可为空）——如果用户取消则视作空字符串
+    const inputTitle = (await vscode.window.showInputBox({
+      prompt: '为关联的链接输入标题（可留空）',
+      placeHolder: '可留空以使用无标题的内联链接',
+      value: ''
+    })) ?? '';
+
+    // 将 title 附加到 location，让 formatFileLink 直接生成带标题或无标题的 Markdown 链接
+    if (inputTitle !== '') {
+      location.title = inputTitle;
+    }
+    const linkValue = formatLink({
+      location,
+      issueDir,
+      fullPath: currentFilePath,
+    });
 
     // 使用 selectOrCreateIssue 选择或创建 issue（作为默认交互）
     const issueId = await selectOrCreateIssue();
-    if (!issueId) return;
+    if (!issueId) {
+      return;
+    }
 
     // 仅使用 tree 中的节点以获取问题文件的 resourceUri
     const issueNode = await getIssueNodeById(issueId).catch(() => undefined);
@@ -106,6 +130,10 @@ export async function linkCurrentFileToIssue(): Promise<void> {
   }
 }
 
+/**
+ * 在扩展激活时注册命令 `issueManager.linkCurrentFileToIssue`。
+ * @param context - 扩展的 activation context，用于注册并在停用时清理订阅项。
+ */
 export function registerLinkCurrentFileToIssue(context: vscode.ExtensionContext) {
   const disposable = vscode.commands.registerCommand('issueManager.linkCurrentFileToIssue', linkCurrentFileToIssue);
   context.subscriptions.push(disposable);
