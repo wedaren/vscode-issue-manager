@@ -63,7 +63,7 @@ function createSearchRecord(keyword: string, type: "ai" | "filter", results: Iss
                 lastRunAt: Date.now()
             }
         ]
-    } as unknown as IssueSearchRecord;
+    };
 }
 
 function createPendingRecord(keyword: string): IssueSearchRecord {
@@ -80,7 +80,7 @@ function createPendingRecord(keyword: string): IssueSearchRecord {
                 results: []
             }
         ]
-    } as unknown as IssueSearchRecord;
+    };
 }
 
 function filterIssuesByKeyword(issues: IssueMarkdown[], keyword: string): IssueMarkdown[] {
@@ -160,9 +160,9 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             if (s.status === "pending" || s.status === "running") {
                 item.iconPath = new vscode.ThemeIcon("sync~spin");
             } else if (s.status === "done") {
-                item.iconPath = new vscode.ThemeIcon("pass") as any;
+                item.iconPath = new vscode.ThemeIcon("pass");
             } else {
-                item.iconPath = new vscode.ThemeIcon("error") as any;
+                item.iconPath = new vscode.ThemeIcon("error");
                 if (s.error) {
                     item.tooltip = s.error;
                 }
@@ -438,7 +438,7 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                         { id: summarySubtaskId, type: "summary", status: "done", results: summaryResults, lastRunAt: Date.now() },
                         { id: aiSubtaskId, type: "ai", status: "pending", results: [] }
                     ]
-                } as unknown as IssueSearchRecord;
+                };
 
                 // 持久化当前记录（filter 已有结果，ai 为 pending）
                 await addIssueSearchRecord(record);
