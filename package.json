@@ -988,6 +988,16 @@
           "icon": "$(refresh)"
         },
         {
+          "command": "issueManager.deleteIssue",
+          "when": "view == 'issueManager.views.search' && viewItem =~ /isolatedIssue/",
+          "group": "inline"
+        },
+        {
+          "command": "issueManager.deleteIssue",
+          "when": "view == 'issueManager.views.search' && viewItem == 'IssueMarkdown'",
+          "group": "inline"
+        },
+        {
           "command": "issueManager.deepResearch.cancelTask",
           "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchTaskLoading'",
           "group": "navigation@4"

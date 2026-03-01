@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { addIssueSearchRecord, IssueSearchRecord, IssueSearchResult, readIssueSearchHistory, removeIssueSearchRecord } from "../data/issueSearchHistory";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 import { openIssueNode } from "../commands/openIssueNode";
+import { getIssueMarkdownContextValues } from "../data/IssueMarkdowns";
 
 export type IssueSearchViewNode =
     | { type: "record"; record: IssueSearchRecord }
@@ -170,18 +171,38 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
 
         const result = element.result;
-        const item = new vscode.TreeItem(result.title || result.filePath, vscode.TreeItemCollapsibleState.None);
-        item.description = result.briefSummary || result.filePath;
-        item.contextValue = "issueSearchResult";
         const issueDir = getIssueDir();
+        const label = result.title || result.filePath;
+        const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+        item.description = result.briefSummary || result.filePath;
+
         if (issueDir) {
-            item.resourceUri = vscode.Uri.file(path.join(issueDir, result.filePath));
+            const uri = vscode.Uri.file(path.join(issueDir, result.filePath));
+            item.resourceUri = uri;
+            // 尝试查找对应的 IssueNode
+            try {
+                const nodes = await getIssueNodesByUri(uri);
+                // 若存在 IssueNode，则使用与 RecentIssuesProvider 相同的 contextValue，使其显示相同的 inline 菜单（包括删除）
+                if (!nodes || nodes.length === 0) {
+                    item.contextValue = "isolatedIssue";
+                    item.iconPath = new vscode.ThemeIcon("debug-disconnect");
+                } else {
+                    item.contextValue = getIssueMarkdownContextValues();
+                    item.iconPath = new vscode.ThemeIcon("notebook");
+                }
+            } catch (e) {
+                item.contextValue = "issueSearchResult";
+            }
+        } else {
+            item.contextValue = "issueSearchResult";
         }
+
         item.command = {
-            command: "issueManager.issueSearch.openResult",
-            title: "打开搜索结果",
-            arguments: [result.filePath]
+            command: 'issueManager.openAndViewRelatedIssues',
+            title: '打开并查看相关联问题',
+            arguments: [item.resourceUri || vscode.Uri.file(result.filePath)]
         };
+
         return item;
     }
 
