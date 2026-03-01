@@ -145,6 +145,12 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
             } else {
                 item.iconPath = new vscode.ThemeIcon("search");
             }
+            // 点击记录节点运行重试命令（用户可点击图标或条目触发）
+            item.command = {
+                command: "issueManager.issueSearch.retryTask",
+                title: "重试搜索会话",
+                arguments: [{ type: "record", record }]
+            } as any;
             return item;
         }
 
@@ -166,6 +172,12 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
                     item.tooltip = s.error;
                 }
             }
+            // 点击子任务节点执行重试子任务命令
+            item.command = {
+                command: "issueManager.issueSearch.retrySubtask",
+                title: "重试子任务",
+                arguments: [{ type: "subtask", recordId: element.recordId, subtask: element.subtask }]
+            } as any;
             return item;
         }
 
