@@ -13,7 +13,7 @@ import { getIssueMarkdownContextValues } from "../data/IssueMarkdowns";
 export type IssueSearchViewNode =
     | { type: "record"; record: IssueSearchRecord }
     | { type: "subtask"; recordId: string; subtask: import("../data/issueSearchHistory").IssueSearchSubtask }
-    | { type: "result"; recordId: string; result: IssueSearchResult };
+    | { type: "result"; recordId: string; result: IssueSearchResult; resourceUri?: vscode.Uri };
 
 interface SearchQuickPickItem extends vscode.QuickPickItem {
     action: "ai" | "filter";
@@ -217,7 +217,18 @@ export class IssueSearchViewProvider implements vscode.TreeDataProvider<IssueSea
         }
 
         if (element.type === "subtask") {
-            return element.subtask.results.map(result => ({ type: "result", recordId: element.recordId, result }));
+                const issueDir = getIssueDir();
+                return element.subtask.results.map(result => {
+                    let uri: vscode.Uri | undefined;
+                    try {
+                        if (issueDir) {
+                            uri = vscode.Uri.file(path.join(issueDir, result.filePath));
+                        }
+                    } catch (e) {
+                        uri = undefined;
+                    }
+                    return { type: "result", recordId: element.recordId, result, resourceUri: uri };
+                });
         }
 
         return [];
