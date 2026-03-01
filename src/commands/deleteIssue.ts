@@ -13,7 +13,7 @@ export function registerDeleteIssueCommand(context: vscode.ExtensionContext) {
             return;
         }
 
-        const fileNames = itemsToDelete.map(i => i.resourceUri ? path.basename(i.resourceUri.fsPath) : '未知文件').join('\n');
+    const fileNames = itemsToDelete.map(i => i.resourceUri ? path.basename(i.resourceUri.fsPath) : '未知文件').join('\n');
         const confirm = await vscode.window.showWarningMessage(
             `您确定要永久删除 ${itemsToDelete.length} 个文件吗？\n${fileNames}\n此操作无法撤销。`,
             { modal: true },

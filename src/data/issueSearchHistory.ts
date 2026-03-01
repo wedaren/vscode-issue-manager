@@ -38,7 +38,7 @@ export interface IssueSearchHistoryData {
 const SEARCH_HISTORY_FILE = "issueSearchHistory.json";
 const DEFAULT_HISTORY_DATA: IssueSearchHistoryData = {
     version: "1.0.0",
-    records: []
+    records: [],
 };
 
 const getSearchHistoryPath = async (): Promise<string | null> => {
@@ -79,7 +79,12 @@ function isIssueSearchSubtask(item: unknown): item is IssueSearchSubtask {
     if (
         typeof s.id !== "string" ||
         !(s.type === "ai" || s.type === "filter" || s.type === "title" || s.type === "summary") ||
-        !(s.status === "pending" || s.status === "running" || s.status === "done" || s.status === "failed") ||
+        !(
+            s.status === "pending" ||
+            s.status === "running" ||
+            s.status === "done" ||
+            s.status === "failed"
+        ) ||
         !Array.isArray(s.results)
     ) {
         return false;
@@ -92,13 +97,26 @@ function isIssueSearchRecord(item: unknown): item is IssueSearchRecord {
         return false;
     }
     const r = item as Record<string, unknown>;
-    if (typeof r.id !== "string" || typeof r.keyword !== "string" || typeof r.createdAt !== "number" || !Array.isArray(r.subtasks)) {
+    if (
+        typeof r.id !== "string" ||
+        typeof r.keyword !== "string" ||
+        typeof r.createdAt !== "number" ||
+        !Array.isArray(r.subtasks)
+    ) {
         return false;
     }
     return (r.subtasks as unknown[]).every(isIssueSearchSubtask);
 }
 
-function isOldStyleRecord(item: unknown): item is { id: string; keyword: string; type: "ai" | "filter"; createdAt: number; results: IssueSearchResult[] } {
+function isOldStyleRecord(
+    item: unknown
+): item is {
+    id: string;
+    keyword: string;
+    type: "ai" | "filter";
+    createdAt: number;
+    results: IssueSearchResult[];
+} {
     if (!item || typeof item !== "object") {
         return false;
     }
@@ -140,13 +158,13 @@ export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> 
                     type: r.type,
                     status: "done",
                     results: r.results,
-                    lastRunAt: r.createdAt
+                    lastRunAt: r.createdAt,
                 };
                 records.push({
                     id: r.id,
                     keyword: r.keyword,
                     createdAt: r.createdAt,
-                    subtasks: [subtask]
+                    subtasks: [subtask],
                 });
                 return;
             }
@@ -155,7 +173,7 @@ export async function readIssueSearchHistory(): Promise<IssueSearchHistoryData> 
 
         return {
             version: typeof data.version === "string" ? data.version : DEFAULT_HISTORY_DATA.version,
-            records
+            records,
         };
     } catch (error) {
         Logger.getInstance().warn("读取 issueSearchHistory.json 失败", error);
