@@ -961,9 +961,21 @@
           "group": "navigation@4"
         },
         {
+          "command": "issueManager.issueSearch.retryTask",
+          "when": "view == 'issueManager.views.search' && (viewItem == 'issueSearchRecord' || viewItem == 'issueSearchRecordLoading')",
+          "group": "inline",
+          "icon": "$(refresh)"
+        },
+        {
           "command": "issueManager.issueSearch.deleteTask",
           "when": "view == 'issueManager.views.search' && (viewItem == 'issueSearchRecord' || viewItem == 'issueSearchRecordLoading')",
           "group": "inline"
+        },
+        {
+          "command": "issueManager.issueSearch.retrySubtask",
+          "when": "view == 'issueManager.views.search' && viewItem == 'issueSearchSubtask'",
+          "group": "inline",
+          "icon": "$(refresh)"
         },
         {
           "command": "issueManager.deepResearch.cancelTask",
