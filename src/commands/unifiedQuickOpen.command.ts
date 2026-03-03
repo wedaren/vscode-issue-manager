@@ -128,6 +128,23 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "为选中文本添加拼音",
+        description: "在选中文本后追加拼音注释（仅在 IssueMarkdown 文档中可用）",
+        require: async ctx => {
+            try {
+                if (!ctx.uri) return false;
+                if (!isIssueMarkdown(await getIssueMarkdown(ctx.uri))) return false;
+                const ed = vscode.window.activeTextEditor;
+                return !!ed && !ed.selection.isEmpty;
+            } catch {
+                return false;
+            }
+        },
+        execute: () => {
+            vscode.commands.executeCommand('issueManager.annotatePinyinWithLLM');
+        },
+    },
+    {
         label: "在问题总览中查看",
         description: "在问题总览中定位当前编辑器对应的 IssueNode",
         require: ctx => !!ctx.issueId,
