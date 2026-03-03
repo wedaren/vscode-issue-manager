@@ -6,6 +6,14 @@ import * as vscode from "vscode";
 export type QuickPickItemWithId = vscode.QuickPickItem & {
     id?: string;
     /**
+     * 可选的分组标签，用于在 QuickPick 中按组显示或为 label 添加前缀
+     */
+    group?: string;
+    /**
+     * 简短提示词，用于在 description 前展示，帮助用户通过输入快速过滤命令
+     */
+    hint?: string;
+    /**
      * 可选的执行器：在用户确认该项时调用，接收当前输入值和可选上下文
      */
     execute?: (
