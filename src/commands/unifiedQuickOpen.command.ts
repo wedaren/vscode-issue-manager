@@ -137,6 +137,23 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
             );
         },
     },
+    {
+        label: "从选中文本创建 Wiki",
+        group: "创建",
+        hint: "wiki",
+        description: "基于当前编辑器的选中文本生成 Wiki 文档并替换为 [[Title]] 链接",
+        require: async ctx => {
+            try {
+                const ed = vscode.window.activeTextEditor;
+                return !!ed && !ed.selection.isEmpty;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.createWikiFromSelection");
+        },
+    },
 
     // --- 编辑 (插入 marks / 插入 terms / 拼音注释) ---
     {
@@ -178,6 +195,23 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
         execute: () => {
             vscode.commands.executeCommand('issueManager.annotatePinyinWithLLM');
+        },
+    },
+    {
+        label: "移除选区中的 Wiki 链接",
+        group: "编辑",
+        hint: "remove-wiki",
+        description: "在当前选区内或包裹选中文本的 [[...]] 中移除 wiki 方括号，仅保留内部文本",
+        require: async ctx => {
+            try {
+                const ed = vscode.window.activeTextEditor;
+                return !!ed && !ed.selection.isEmpty;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.removeWikiLinksFromSelection');
         },
     },
 
