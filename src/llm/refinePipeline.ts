@@ -229,7 +229,10 @@ async function localSearchRelevant(title: string, selection: string, topK = 5): 
 
         const scored: Array<{ md: typeof all[0]; score: number }> = [];
         for (const md of all) {
-            const body = await getIssueMarkdownContent(md.uri).catch(() => '');
+            const body = await getIssueMarkdownContent(md.uri).catch((e) => {
+                Logger.getInstance().warn('读取 Issue 内容失败，将以空内容继续，path=', md.uri.fsPath, e);
+                return '';
+            });
             const text = ((md.title || '') + '\n' + body).toLowerCase();
             let score = 0;
             for (const t of qTokens) {
@@ -244,7 +247,10 @@ async function localSearchRelevant(title: string, selection: string, topK = 5): 
         const issueDir = getIssueDir();
         const results: Array<{ title: string; relPath: string; snippet: string }> = [];
         for (const s of top) {
-            const body = await getIssueMarkdownContent(s.md.uri).catch(() => '');
+            const body = await getIssueMarkdownContent(s.md.uri).catch((e) => {
+                Logger.getInstance().warn('读取 Issue 内容失败，将以空片段继续，path=', s.md.uri.fsPath, e);
+                return '';
+            });
             // extract snippet: find sentence containing first matched token
             const qtok = qTokens.find(t => t.length > 1 && body.toLowerCase().includes(t));
             let snippet = '';
@@ -264,6 +270,7 @@ async function localSearchRelevant(title: string, selection: string, topK = 5): 
         }
         return results;
     } catch (e) {
+        Logger.getInstance().error('localSearchRelevant 出错，返回空结果：', e);
         return [];
     }
 }
