@@ -12,6 +12,7 @@ import { LLMService } from "../llm/LLMService";
 import { openIssueNodeBeside } from "./openIssueNode";
 import { createIssueNodes } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
+import { refreshOpenEditorsIfNeeded } from "../data/IssueMarkdowns";
 
 function buildPromptWithContent(currentEditorContent: string, template?: string) {
     if (!template) {
@@ -54,6 +55,11 @@ async function processLlmCreation(
                     await updateIssueMarkdownFrontmatter(uri, { issue_title: genTitle });
                 }
                 await applyGeneratedIssueContent(uri, finalContent, nodeId);
+                try {
+                    await refreshOpenEditorsIfNeeded(uri);
+                } catch (e) {
+                    // 忽略刷新异常
+                }
             }
         );
     } catch (e) {

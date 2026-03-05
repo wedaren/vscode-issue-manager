@@ -25,7 +25,7 @@ export async function backgroundFillIssueRefine(
     const timeoutMs = options?.timeoutMs ?? 120000;
     const controller = new AbortController();
     const { signal } = controller;
-    const { clear, controller: _c } = createAbortHelper(timeoutMs);
+    const { clear } = createAbortHelper(timeoutMs);
 
     try {
         const result = await vscode.window.withProgress(

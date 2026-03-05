@@ -529,7 +529,7 @@ export default defineBackground(() => {
             sendResponse({ success: false, error: String(e) });
           }
         })();
-        break;
+        return true;
       case 'CAPTURE_VISIBLE_TAB':
         (async () => {
           try {

@@ -8,6 +8,7 @@ import { createIssueNodes } from '../data/issueTreeManager';
 import { backgroundFillIssue } from '../llm/backgroundFill';
 import { backgroundFillIssueRefine } from '../llm/refinePipeline';
 import { openIssueNode } from './openIssueNode';
+import { refreshOpenEditorsIfNeeded } from '../data/IssueMarkdowns';
 
 /**
  * 注册命令：从选中文本创建 Wiki（issueMarkdown）。
@@ -59,7 +60,7 @@ export function registerCreateWikiFromSelectionCommand(context: vscode.Extension
 
             // 后台填充并打开新创建的笔记（后台填充会做冲突检测）
             // 使用多轮 refine 流程生成更可靠的 wiki 正文
-            backgroundFillIssueRefine(uri, selected, selected, newNodeId, { timeoutMs: 120000 }).catch(() => {});
+            const fillPromise = backgroundFillIssueRefine(uri, selected, selected, newNodeId, { timeoutMs: 120000 }).catch(() => ({}));
 
             // 打开新创建的笔记在旁边
             if (newNodeId) {
@@ -67,6 +68,13 @@ export function registerCreateWikiFromSelectionCommand(context: vscode.Extension
             } else {
                 await vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside, preview: true });
             }
+
+            // 当后台填充完成后，尝试强制刷新当前编辑器以确保最新磁盘内容被展示
+            void fillPromise.then(async (res: any) => {
+                try {
+                    await refreshOpenEditorsIfNeeded(uri);
+                } catch {}
+            }).catch(() => {});
 
         } catch (err) {
             console.error('createWikiFromSelection error:', err);
@@ -112,12 +120,18 @@ export function registerOpenOrCreateWikiCommand(context: vscode.ExtensionContext
             }
             const added = await createIssueNodes([uri]);
             const newNodeId = added && added.length > 0 ? added[0].id : undefined;
-            backgroundFillIssueRefine(uri, title, '', newNodeId, { timeoutMs: 120000 }).catch(() => {});
+            const fillPromise = backgroundFillIssueRefine(uri, title, '', newNodeId, { timeoutMs: 120000 }).catch(() => ({}));
             if (newNodeId) {
                 await openIssueNode(newNodeId);
             } else {
                 await vscode.window.showTextDocument(uri);
             }
+
+            void fillPromise.then(async (res: any) => {
+                try {
+                    await refreshOpenEditorsIfNeeded(uri);
+                } catch {}
+            }).catch(() => {});
         } catch (e) {
             console.error('openOrCreateWiki error:', e);
             vscode.window.showErrorMessage('打开或创建 Wiki 失败。');

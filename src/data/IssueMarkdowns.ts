@@ -480,10 +480,23 @@ async function applyContentEdit(
 /**
  * 在写盘后刷新已经打开的编辑器（不会覆盖有未保存修改的编辑器）
  */
-async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent: string): Promise<void> {
+export async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent?: string): Promise<void> {
     let warned = false;
+
+    // 如果没有传入 newContent，则尝试从磁盘读取当前内容
+    if (typeof newContent === 'undefined') {
+        try {
+            const bytes = await vscode.workspace.fs.readFile(uri);
+            newContent = Buffer.from(bytes).toString('utf8');
+        } catch (e) {
+            // 无法读取则直接返回
+            return;
+        }
+    }
+
     for (const editor of vscode.window.visibleTextEditors) {
-        if (editor.document.uri.toString() !== uri.toString()) continue;
+        // 比较 fsPath，忽略可能的 query 部分
+        if (editor.document.uri.fsPath !== uri.fsPath) continue;
 
         if (editor.document.isDirty) {
             if (!warned) {
@@ -501,8 +514,10 @@ async function refreshOpenEditorsIfNeeded(uri: vscode.Uri, newContent: string): 
         }
 
         try {
-            const fullRange = new vscode.Range(0, 0, editor.document.lineCount, 0);
-            const applied = await editor.edit(eb => eb.replace(fullRange, newContent));
+            const endLine = Math.max(0, editor.document.lineCount - 1);
+            const lastLine = editor.document.lineAt(endLine);
+            const fullRange = new vscode.Range(0, 0, endLine, lastLine.range.end.character);
+            const applied = await editor.edit(eb => eb.replace(fullRange, newContent!));
             if (applied) {
                 if (editor.document.isDirty) {
                     await editor.document.save();
