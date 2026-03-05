@@ -230,7 +230,7 @@ async function localSearchRelevant(title: string, selection: string, topK = 5): 
         const scored: Array<{ md: typeof all[0]; score: number }> = [];
         for (const md of all) {
             const body = await getIssueMarkdownContent(md.uri).catch((e) => {
-                Logger.getInstance().warn('读取 Issue 内容失败，将以空内容继续，path=', md.uri.fsPath, e);
+                Logger.getInstance().warn('读取 Issue 内容失败，将以空内容继续', { path: md.uri.fsPath, error: e });
                 return '';
             });
             const text = ((md.title || '') + '\n' + body).toLowerCase();
@@ -248,7 +248,7 @@ async function localSearchRelevant(title: string, selection: string, topK = 5): 
         const results: Array<{ title: string; relPath: string; snippet: string }> = [];
         for (const s of top) {
             const body = await getIssueMarkdownContent(s.md.uri).catch((e) => {
-                Logger.getInstance().warn('读取 Issue 内容失败，将以空片段继续，path=', s.md.uri.fsPath, e);
+                Logger.getInstance().warn('读取 Issue 内容失败，将以空片段继续', { path: s.md.uri.fsPath, error: e });
                 return '';
             });
             // extract snippet: find sentence containing first matched token
