@@ -1028,6 +1028,24 @@ export class CommandRegistry extends BaseCommandRegistry {
         // 插入 terms_references 到当前编辑器
         registerInsertTermsReferenceCommand(this.context);
 
+        // Wiki from selection: 创建 Wiki（将选中文本替换为 [[Title]] 并新建 issueMarkdown）
+        try {
+            import('../commands/createWikiFromSelection')
+                .then((mod) => {
+                    try {
+                        mod.registerCreateWikiFromSelectionCommand(this.context);
+                        mod.registerOpenOrCreateWikiCommand(this.context);
+                    } catch (inner) {
+                        this.logger.warn('注册 Wiki 命令执行失败:', inner);
+                    }
+                })
+                .catch((err) => {
+                    this.logger.warn('动态导入 Wiki 命令模块失败:', err);
+                });
+        } catch (e) {
+            this.logger.warn('注册 Wiki 命令时出错:', e);
+        }
+
         // LLM-based 拼音注释命令
         registerAnnotatePinyinWithLLMCommand(this.context);
 
