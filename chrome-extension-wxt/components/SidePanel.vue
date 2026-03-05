@@ -364,6 +364,10 @@ function handleBackgroundMessage(msg: BackgroundMessage) {
   if (!msg || !msg.type) return;
 
   switch (msg.type) {
+    case 'SHOW_TOAST':
+      // msg: { type: 'SHOW_TOAST', text: string, level?: 'info'|'success'|'error' }
+      showMessage((msg as any).text || '', (msg as any).level || 'info');
+      break;
     case 'CREATION_SUCCESS':
       showMessage('笔记创建成功！', 'success');
       // 刷新关注问题列表
