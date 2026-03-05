@@ -11,6 +11,7 @@ import { registerOpenInSplit } from './commands/openInSplit';
 import { registerLinkCurrentFileToIssue } from './commands/linkCurrentFileToIssue';
 import { registerLinkWorkspaceToIssue } from './commands/linkWorkspaceToIssue';
 import { registerQuickPeekIssue } from './commands/quickPeekIssue';
+import { registerRemoveWikiLinksFromSelection } from './commands/removeWikiLinksFromSelection';
 import { copilotDocumentProvider } from './virtual/CopilotDocumentProvider';
 
 // 当您的扩展被激活时,将调用此方法
@@ -86,6 +87,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 注册快速查看 Issue 命令
 	registerQuickPeekIssue(context);
+
+	// 注册从选区移除 Wiki 链接（[[...]]）命令
+	registerRemoveWikiLinksFromSelection(context);
 
 	// 注册 CSV 搜索命令（由文档链接触发）
 	const csvSearchDisposable = vscode.commands.registerCommand('issueManager.csvSearch', (value: string) => {

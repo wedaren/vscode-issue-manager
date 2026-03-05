@@ -3,7 +3,8 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 import { parseFileLink, parseFileFragment, type FileLocation } from '../utils/fileLinkFormatter';
-import { getSingleIssueNodeByUri } from '../data/issueTreeManager';
+import { getSingleIssueNodeByUri, getFlatTree } from '../data/issueTreeManager';
+import { getIssueMarkdown } from '../data/IssueMarkdowns';
 import { collectTermsForDocument } from '../utils/issueMarkdownTerms';
 import { isDocumentInDirectory } from '../utils/completionUtils';
 
@@ -119,6 +120,82 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
             const link = new vscode.DocumentLink(range, cmdUri);
             link.tooltip = '在当前窗口打开工作区/文件夹';
             links.push(link);
+        }
+
+        // 4) 处理纯 wiki 风格链接 [[Title]]（不含前缀 file: 或 workspace:）
+        // 优化：将扁平化树仅获取一次，避免在每个匹配项中重复调用
+        const plainPattern = /\[\[([^:\]]+?)\]\]/g;
+        let flat: Array<any> = [];
+        try {
+            flat = await getFlatTree();
+        } catch (e) {
+            Logger.getInstance().warn('获取扁平化 Issue 树失败：', e);
+            flat = [];
+        }
+
+        for (const match of text.matchAll(plainPattern)) {
+            if (token.isCancellationRequested) {
+                return links;
+            }
+
+            const title = match[1].trim();
+            if (!title) continue;
+
+            // 使高亮范围包含完整的 [[Title]]（包括前后方括号）
+            const startIndex = match.index!; // 包含 '[['
+            const endIndex = match.index! + match[0].length; // 到 ']]' 结束
+
+            try {
+                const exact = flat.find(n => n.title === title) || flat.find(n => n.title?.toLowerCase() === title.toLowerCase());
+                if (exact) {
+                    // 仅当目标 IssueMarkdown 的 frontmatter 指定为 wiki 时才允许直接打开
+                    try {
+                        const issue = await getIssueMarkdown(exact.resourceUri);
+                        if (issue && issue.frontmatter && (issue.frontmatter as any).issue_type === 'wiki') {
+                            const cmdUri = vscode.Uri.parse(`command:issueManager.openIssueNode?${encodeURIComponent(JSON.stringify([exact.id]))}`);
+                            const range = new vscode.Range(
+                                document.positionAt(startIndex),
+                                document.positionAt(endIndex)
+                            );
+                            const link = new vscode.DocumentLink(range, cmdUri);
+                            link.tooltip = `打开已存在的 Wiki 笔记：${title}`;
+                            links.push(link);
+                        } else {
+                            // 不符合 wiki 类型，视为未找到，生成创建命令以便创建正确类型的 wiki
+                            const cmdUri = vscode.Uri.parse(`command:issueManager.openOrCreateWiki?${encodeURIComponent(JSON.stringify([title]))}`);
+                            const range = new vscode.Range(
+                                document.positionAt(startIndex),
+                                document.positionAt(endIndex)
+                            );
+                            const link = new vscode.DocumentLink(range, cmdUri);
+                            link.tooltip = `创建并打开 Wiki：${title}（已存在但非 wiki 类型）`;
+                            links.push(link);
+                        }
+                    } catch (ie) {
+                        // 无法读取 issue 元数据，退化为创建命令
+                        const cmdUri = vscode.Uri.parse(`command:issueManager.openOrCreateWiki?${encodeURIComponent(JSON.stringify([title]))}`);
+                        const range = new vscode.Range(
+                            document.positionAt(startIndex),
+                            document.positionAt(endIndex)
+                        );
+                        const link = new vscode.DocumentLink(range, cmdUri);
+                        link.tooltip = `创建并打开 Wiki：${title}`;
+                        links.push(link);
+                    }
+                } else {
+                    // 跳转到创建或打开命令，命令会在后台调用 LLM 创建并打开
+                    const cmdUri = vscode.Uri.parse(`command:issueManager.openOrCreateWiki?${encodeURIComponent(JSON.stringify([title]))}`);
+                    const range = new vscode.Range(
+                        document.positionAt(startIndex),
+                        document.positionAt(endIndex)
+                    );
+                    const link = new vscode.DocumentLink(range, cmdUri);
+                    link.tooltip = `创建并打开 Wiki：${title}`;
+                    links.push(link);
+                }
+            } catch (e) {
+                Logger.getInstance().warn('解析 wiki 链接时出错:', e);
+            }
         }
 
         if (token.isCancellationRequested) {

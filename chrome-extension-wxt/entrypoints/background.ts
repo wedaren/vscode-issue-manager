@@ -518,6 +518,38 @@ export default defineBackground(() => {
         sendResponse({ success: true });
         break;
 
+      case 'SHOW_TOAST':
+        (async () => {
+          try {
+            // 将通用的 toast 转发给侧边面板显示
+            await notifySidePanel({ type: 'SHOW_TOAST', text: message.text, level: message.level });
+            sendResponse({ success: true });
+          } catch (e: unknown) {
+            console.error('Failed to forward SHOW_TOAST to side panel:', e);
+            sendResponse({ success: false, error: String(e) });
+          }
+        })();
+        return true;
+      case 'CAPTURE_VISIBLE_TAB':
+        (async () => {
+          try {
+            const windowId = sender.tab?.windowId;
+            // Use chrome.tabs.captureVisibleTab to capture screenshot of the window
+            chrome.tabs.captureVisibleTab(windowId, { format: 'png' }, (dataUrl) => {
+              if (chrome.runtime.lastError) {
+                console.error('captureVisibleTab failed:', chrome.runtime.lastError.message);
+                sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                return;
+              }
+              sendResponse({ success: true, dataUrl });
+            });
+          } catch (e: unknown) {
+            console.error('CAPTURE_VISIBLE_TAB error:', e);
+            sendResponse({ success: false, error: String(e) });
+          }
+        })();
+        return true;
+
       case 'GET_FOCUSED_ISSUES':
         (async () => {
           try {
