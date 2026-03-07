@@ -88,8 +88,8 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         hint: "llm fill answer",
         description: "根据标题和已有内容，用 LLM 生成回答并填充（空文档替换正文，非空追加到末尾）",
         require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
-        execute: async () => {
-            await llmFillIssue();
+        execute: () => {
+            llmFillIssue();
         },
     },
 
