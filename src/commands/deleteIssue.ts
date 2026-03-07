@@ -173,14 +173,14 @@ export function registerDeleteIssueFromEditorCommand(context: vscode.ExtensionCo
             // 关闭当前编辑器标签页
             await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
 
-            // 批量删除所有文件（当前文件 + 子问题文件）
-            const failedFiles: string[] = [];
-            for (const fsPath of filePaths) {
-                try {
-                    await vscode.workspace.fs.delete(vscode.Uri.file(fsPath));
-                } catch (error) {
-                    failedFiles.push(path.basename(fsPath));
-                    console.error(`删除文件 ${path.basename(fsPath)} 时出错:`, error);
+            // 并行删除所有文件（当前文件 + 子问题文件）
+            const results = await Promise.allSettled(
+                [...filePaths].map(fp => vscode.workspace.fs.delete(vscode.Uri.file(fp)))
+            );
+            const failedFiles = [...filePaths].filter((_, i) => results[i].status === 'rejected').map(fp => path.basename(fp));
+            for (const [i, r] of results.entries()) {
+                if (r.status === 'rejected') {
+                    console.error(`删除文件 ${[...filePaths][i]} 时出错:`, r.reason);
                 }
             }
 
