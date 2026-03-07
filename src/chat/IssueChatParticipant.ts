@@ -5,6 +5,7 @@ import { getFlatTree } from "../data/issueTreeManager";
 import * as path from "path";
 import { Logger } from "../core/utils/Logger";
 import { createIssueMarkdown } from "../data/IssueMarkdowns";
+import { AgentService } from "../services/agent/AgentService";
 
 /**
  * 命令别名常量定义
@@ -13,6 +14,7 @@ const CREATE_COMMANDS = ["新建", "new", "create"] as const;
 const SEARCH_COMMANDS = ["搜索", "search", "find"] as const;
 const REVIEW_COMMANDS = ["审阅", "review"] as const;
 const RESEARCH_COMMANDS = ["研究", "research", "deep", "doc", "文档"] as const;
+const AGENT_COMMANDS = ["agent", "智能研究", "自主研究"] as const;
 const HELP_COMMANDS = ["帮助", "help"] as const;
 
 /**
@@ -211,6 +213,8 @@ export class IssueChatParticipant {
                 await this.handleReviewCommand(prompt, request, stream, token);
             } else if ((RESEARCH_COMMANDS as readonly string[]).includes(command)) {
                 await this.handleResearchCommand(prompt, stream, token);
+            } else if ((AGENT_COMMANDS as readonly string[]).includes(command)) {
+                await this.handleAgentResearchCommand(prompt, stream, token);
             } else if ((HELP_COMMANDS as readonly string[]).includes(command)) {
                 this.handleHelpCommand(stream);
             } else {
@@ -655,6 +659,19 @@ export class IssueChatParticipant {
         stream.markdown("- `@issueManager /研究 如何优化 React 性能`\n");
         stream.markdown("- `@issueManager /研究 微服务架构设计模式`\n\n");
 
+        stream.markdown("### `/agent` - 🤖 智能 Agent 自主研究 (NEW!)\n");
+        stream.markdown("使用智能 Agent 进行多步骤自主研究。Agent 会自动规划研究步骤、搜索知识库、分析关系并生成深度报告。\n\n");
+        stream.markdown("**特点:**\n");
+        stream.markdown("- 🧠 自主规划研究步骤\n");
+        stream.markdown("- 🔍 智能搜索相关问题\n");
+        stream.markdown("- 🕸️ 分析知识图谱关系\n");
+        stream.markdown("- 📊 生成详细研究报告\n");
+        stream.markdown("- 💾 可保存完整研究过程\n\n");
+        stream.markdown("**示例:**\n");
+        stream.markdown("- `@issueManager /agent TypeScript 装饰器最佳实践`\n");
+        stream.markdown("- `@issueManager /agent 分布式系统设计模式`\n");
+        stream.markdown("- `@issueManager /agent 如何提升代码质量`\n\n");
+
         stream.markdown("### `/审阅` - 生成可执行计划\n");
         stream.markdown("审阅当前打开的文档/笔记，并生成可执行任务清单（带优先级与下一步动作）。\n\n");
         stream.markdown("**示例:**\n");
@@ -678,6 +695,11 @@ export class IssueChatParticipant {
         stream.button({
             command: "issueManager.openRecentView",
             title: "🕐 打开最近问题",
+        });
+
+        stream.button({
+            command: "issueManager.smartResearch",
+            title: "🤖 启动智能研究",
         });
     }
 
@@ -737,6 +759,87 @@ export class IssueChatParticipant {
         stream.markdown("- `/新建 [标题]` - 创建新问题\n");
         stream.markdown("- `/搜索 [关键词]` - 搜索问题\n");
         stream.markdown("- `/研究 [主题]` - 深度研究并生成文档\n");
+        stream.markdown("- `/agent [主题]` - 🤖 智能 Agent 自主研究（多步骤推理）\n");
         stream.markdown("- `/帮助` - 查看所有命令\n\n");
+    }
+
+    /**
+     * 处理智能 Agent 研究命令
+     * 
+     * 使用多步骤推理和工具调用进行深度研究
+     */
+    private async handleAgentResearchCommand(
+        prompt: string,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (!prompt) {
+            stream.markdown("❓ 请提供研究主题。例如: `/agent TypeScript 装饰器最佳实践`\n");
+            return;
+        }
+
+        stream.markdown("🤖 启动智能 Agent 进行自主研究...\n\n");
+        stream.progress("Agent 正在规划研究步骤...");
+
+        const agentService = new AgentService();
+        const steps: Array<{ stepNumber: number; reasoning: string; tool?: string; result?: unknown }> = [];
+
+        try {
+            const result = await agentService.executeResearchTask(
+                prompt,
+                10,
+                step => {
+                    if (step.reasoning) {
+                        steps.push({
+                            stepNumber: step.stepNumber,
+                            reasoning: step.reasoning,
+                            tool: step.tool,
+                            result: step.result,
+                        });
+                        stream.markdown(`\n### 步骤 ${step.stepNumber}: ${step.reasoning}\n`);
+                        if (step.tool) {
+                            stream.markdown(`**工具**: \`${step.tool}\`\n`);
+                        }
+                        stream.progress(`执行步骤 ${step.stepNumber}...`);
+                    }
+                },
+                token
+            );
+
+            if (!result.success) {
+                throw new Error(result.error || "Agent 研究任务失败");
+            }
+
+            stream.markdown("\n\n---\n\n## 📊 研究报告\n\n");
+
+            const reportContent =
+                result.finalResult && typeof result.finalResult === "object"
+                    ? (result.finalResult as { report: string }).report
+                    : "无法生成报告";
+
+            stream.markdown(reportContent);
+
+            stream.markdown("\n\n---\n\n");
+            stream.markdown(`✅ **Agent 研究完成**，共执行 ${steps.length} 个步骤\n\n`);
+
+            // 提供保存选项
+            stream.button({
+                command: "issueManager.saveAgentResearchReport",
+                arguments: [{ topic: prompt, report: reportContent, steps }],
+                title: "💾 保存研究报告",
+            });
+        } catch (error) {
+            if (
+                token.isCancellationRequested ||
+                (error instanceof Error && error.message === "任务已取消")
+            ) {
+                stream.markdown("\n\n❌ Agent 任务已取消\n");
+                return;
+            }
+            Logger.getInstance().error("[IssueChatParticipant] Agent research failed", error);
+            stream.markdown(
+                `\n\n❌ Agent 研究失败: ${error instanceof Error ? error.message : String(error)}\n`
+            );
+        }
     }
 }
