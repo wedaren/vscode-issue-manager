@@ -146,9 +146,10 @@ async function createCreateModeItems(value: string): Promise<QuickPickItemWithId
     }
 }
 
-function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
+async function buildCreateInitialItems(value: string): Promise<QuickPickItemWithId[]> {
     const currentEditor = vscode.window.activeTextEditor;
     const currentEditorContent = currentEditor?.document?.getText() || "";
+    const currentEditorIssueId = await getCurrentEditorIssueId();
 
     const direct: QuickPickItemWithId = {
         label: [value, '新建问题'].filter(Boolean).join(' '),
@@ -158,6 +159,17 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
             await createAndOpenIssue(input?.trim() || undefined);
         },
     };
+
+    const subIssue: QuickPickItemWithId | undefined = currentEditorIssueId
+        ? {
+            label: [value, '新建子问题'].filter(Boolean).join(' '),
+            description: "在当前问题下创建子问题并打开",
+            alwaysShow: true,
+            execute: async (input?: string) => {
+                await createAndOpenIssue(input?.trim() || undefined, currentEditorIssueId);
+            },
+        }
+        : undefined;
 
     const llm: QuickPickItemWithId = {
         label: [value, 'LLM 新建问题'].filter(Boolean).join(' '),
@@ -181,14 +193,14 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
         },
     };
 
-    return [direct, llm];
+    return [direct, ...(subIssue ? [subIssue] : []), llm];
 }
 
 async function updateCreateModeItems(
     quickPick: vscode.QuickPick<QuickPickItemWithId>,
     value: string
 ): Promise<void> {
-    const initial = buildCreateInitialItems(value || "");
+    const initial = await buildCreateInitialItems(value || "");
     const resolvedPrompts = await createCreateModeItems(value || "");
     quickPick.items = [...initial, ...resolvedPrompts];
 }
