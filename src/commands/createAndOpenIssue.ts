@@ -4,7 +4,7 @@ import { createIssueNodes } from "../data/issueTreeManager";
 import { openIssueNode } from "./openIssueNode";
 
 /**
- * 创建一个新问题并在编辑器中打开，光标定位到正文区域（第三行）。
+ * 创建一个新问题并在编辑器中打开，光标定位到第一行标题末尾。
  * @param title 问题标题（可选，为空则创建无标题问题）
  * @param parentId 父节点 ID（可选，用于创建子问题）
  */
@@ -17,11 +17,11 @@ export async function createAndOpenIssue(title?: string, parentId?: string): Pro
     vscode.commands.executeCommand("issueManager.refreshAllViews");
     if (nodes && nodes[0] && nodes[0].id) {
         const col = `# ${title || ""}`.length;
-        openIssueNode(nodes[0].id, {
+        await openIssueNode(nodes[0].id, {
             viewColumn: vscode.ViewColumn.Beside,
             preview: true,
             preserveFocus: false,
             selection: new vscode.Range(0, col, 0, col),
-        }).catch(() => {});
+        });
     }
 }
