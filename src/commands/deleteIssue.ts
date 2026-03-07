@@ -191,8 +191,7 @@ export function registerDeleteIssueFromEditorCommand(context: vscode.ExtensionCo
             } else {
                 vscode.window.showInformationMessage(`已删除「${displayName}」。`);
             }
-            // 刷新视图
-            void vscode.commands.executeCommand('issueManager.refreshAllViews');
+            // 视图刷新由 FileSystemWatcher → onTitleUpdate debounce 链路自动触发，无需显式调用
         } catch (error) {
             console.error(`删除文件 ${fileName} 时出错:`, error);
             vscode.window.showErrorMessage(`删除「${displayName}」失败: ${error instanceof Error ? error.message : '未知错误'}`);
