@@ -73,7 +73,7 @@ export class EditorEventManager implements vscode.Disposable {
                 const debounceMs = Math.max(0, getIssueMarkdownAutoSaveDebounceMs());
                 const timer = setTimeout(async () => {
                     try {
-                        if (doc.isDirty) {
+                        if (!doc.isClosed && doc.isDirty) {
                             await doc.save();
                         }
                     } catch (err) {
