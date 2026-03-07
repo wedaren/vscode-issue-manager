@@ -1722,6 +1722,16 @@
           "maximum": 500,
           "description": "过滤关键字的最大长度限制（字符数）。"
         },
+        "issueManager.issueMarkdown.autoSave.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "在编辑 IssueMarkdown 文件时启用自动保存（仅由此扩展触发）。"
+        },
+        "issueManager.issueMarkdown.autoSave.debounceMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "自动保存的防抖间隔（毫秒）。当用户停止编辑达到该间隔后触发保存。"
+        },
         "issueManager.llm.modelFamily": {
           "type": "string",
           "default": "gpt-4.1",

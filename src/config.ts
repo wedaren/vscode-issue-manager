@@ -128,6 +128,22 @@ export function isSyncNotificationEnabled(): boolean {
 }
 
 /**
+ * IssueMarkdown 编辑时是否启用自动保存
+ */
+export function isIssueMarkdownAutoSaveEnabled(): boolean {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<boolean>('issueMarkdown.autoSave.enabled', false);
+}
+
+/**
+ * IssueMarkdown 自动保存的防抖间隔（毫秒）
+ */
+export function getIssueMarkdownAutoSaveDebounceMs(): number {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<number>('issueMarkdown.autoSave.debounceMs', 1000);
+}
+
+/**
  * 获取关注列表的最大项目数
  * @returns 关注列表中保留的最大问题数量，默认为 10
  */

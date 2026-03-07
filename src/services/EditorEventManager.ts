@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { isIssueMarkdownFile } from '../data/IssueMarkdowns';
+import { isIssueMarkdownAutoSaveEnabled, getIssueMarkdownAutoSaveDebounceMs } from '../config';
 
 /**
  * 编辑器事件管理器
@@ -16,6 +17,7 @@ export class EditorEventManager implements vscode.Disposable {
     
     /** Issue Markdown 文件激活事件的订阅者列表 */
     private issueFileActivatedHandlers: Array<(uri: vscode.Uri) => void> = [];
+    private saveDebounceTimers: Map<string, NodeJS.Timeout> = new Map();
 
     private constructor(context: vscode.ExtensionContext) {
         this.setupEventListeners();
@@ -54,6 +56,38 @@ export class EditorEventManager implements vscode.Disposable {
             }
         });
         this.disposables.push(activeEditorListener);
+
+        // 监听文本变更以支持 IssueMarkdown 的自动保存（可配置）
+        const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+            const doc = e.document;
+            try {
+                if (!doc || !isIssueMarkdownFile(doc.uri)) return;
+                if (!isIssueMarkdownAutoSaveEnabled()) return;
+
+                const key = doc.uri.fsPath;
+                const existing = this.saveDebounceTimers.get(key);
+                if (existing) {
+                    clearTimeout(existing);
+                }
+
+                const debounceMs = Math.max(0, getIssueMarkdownAutoSaveDebounceMs());
+                const timer = setTimeout(async () => {
+                    try {
+                        if (!doc.isClosed && doc.isDirty) {
+                            await doc.save();
+                        }
+                    } catch (err) {
+                        console.error('IssueMarkdown auto-save failed:', err);
+                    }
+                    this.saveDebounceTimers.delete(key);
+                }, debounceMs);
+
+                this.saveDebounceTimers.set(key, timer);
+            } catch (err) {
+                console.error('处理文本变更时发生错误:', err);
+            }
+        });
+        this.disposables.push(changeListener);
     }
 
     /**
@@ -96,6 +130,11 @@ export class EditorEventManager implements vscode.Disposable {
         this.disposables.forEach(d => d.dispose());
         this.disposables = [];
         this.issueFileActivatedHandlers = [];
+        // 清理所有未触发的自动保存定时器
+        for (const t of this.saveDebounceTimers.values()) {
+            clearTimeout(t);
+        }
+        this.saveDebounceTimers.clear();
         EditorEventManager.instance = null;
     }
 }
