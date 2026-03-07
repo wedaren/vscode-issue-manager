@@ -86,7 +86,7 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
         completionItem.range = replacingRange;
         completionItem.sortText = sortIndex.toString().padStart(6, "0");
 
-        completionItem.detail = path.basename(item.sourceUri.fsPath);
+        completionItem.detail = item.term.definition || '无定义';
 
         const docParts: string[] = [`**${item.displayName}**`];
         if (item.term.definition) {
