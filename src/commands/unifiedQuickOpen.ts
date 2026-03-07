@@ -466,31 +466,36 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
 
                     // 根据当前模式处理确认
                     let handled = false;
-                    
-                    if (currentMode === 'command') {
-                        handled = await handleCommandModeAccept(selected, quickPick.value, historyService);
-                    } else if (currentMode === 'issue') {
-                        handled = await handleIssueModeAccept(selected, quickPick.value, historyService);
-                    } else if (currentMode === 'llm') {
-                        handled = await handleLLMModeAccept(selected, quickPick.value, historyService);
-                    } else if (currentMode === 'create') {
-                        handled = await handleCreateModeAccept(selected, quickPick.value, historyService);
-                    } else if (currentMode === 'history') {
+
+                    if (currentMode === 'history') {
+                        // history 模式需要特殊处理（可能不关闭 QuickPick）
                         const result = await handleHistoryModeAccept(selected, quickPick.value);
                         if (result.handled && result.mode && result.value !== undefined) {
-                            // 切换到对应模式并填充值
                             quickPick.value = result.value;
                             await enterMode(result.mode);
                             return; // 不关闭 QuickPick
                         }
                         handled = result.handled;
-                    } else if (TIME_MODES.includes(currentMode as TimeMode)) {
-                        handled = await handleTimeModeAccept(selected, quickPick.value, currentMode as TimeMode, historyService);
-                    }
-
-                    if (handled) {
+                    } else {
+                        // 其他模式：先关闭 QuickPick 再执行，避免耗时操作阻塞 UI
+                        const value = quickPick.value;
                         quickPick.hide();
-                        return;
+
+                        if (currentMode === 'command') {
+                            handled = await handleCommandModeAccept(selected, value, historyService);
+                        } else if (currentMode === 'issue') {
+                            handled = await handleIssueModeAccept(selected, value, historyService);
+                        } else if (currentMode === 'llm') {
+                            handled = await handleLLMModeAccept(selected, value, historyService);
+                        } else if (currentMode === 'create') {
+                            handled = await handleCreateModeAccept(selected, value, historyService);
+                        } else if (TIME_MODES.includes(currentMode as TimeMode)) {
+                            handled = await handleTimeModeAccept(selected, value, currentMode as TimeMode, historyService);
+                        }
+
+                        if (handled) {
+                            return;
+                        }
                     }
 
                     // 如果未处理，默认行为
