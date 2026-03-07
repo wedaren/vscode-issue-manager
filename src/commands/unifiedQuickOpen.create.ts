@@ -9,8 +9,8 @@ import {
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
 import { applyGeneratedIssueContent } from "../llm/backgroundFill";
 import { LLMService } from "../llm/LLMService";
-import { openIssueNode, openIssueNodeBeside } from "./openIssueNode";
 import { createIssueNodes } from "../data/issueTreeManager";
+import { createAndOpenIssue } from "./createAndOpenIssue";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { refreshOpenEditorsIfNeeded } from "../data/IssueMarkdowns";
 
@@ -155,19 +155,7 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
         description: "直接创建并打开",
         alwaysShow: true,
         execute: async (input?: string) => {
-            const title = input && input.trim();
-            const uri = await createIssueMarkdown({ markdownBody: `# ${title || ""}\n\n` });
-            if (uri) {
-                const nodes = await createIssueNodes([uri], undefined);
-                vscode.commands.executeCommand("issueManager.refreshAllViews");
-                if (nodes && nodes[0] && nodes[0].id) {
-                    openIssueNode(nodes[0].id, {
-                        viewColumn: vscode.ViewColumn.Beside,
-                        preview: true,
-                        preserveFocus: false,
-                    }).catch(() => {});
-                }
-            }
+            await createAndOpenIssue(input?.trim() || undefined);
         },
     };
 

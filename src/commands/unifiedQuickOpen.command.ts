@@ -6,6 +6,7 @@ import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
 import { forceRefreshCurrentEditor } from "./forceRefreshCurrentEditor";
 import { canDeleteFromEditor } from "./deleteIssue";
+import { createAndOpenIssue } from "./createAndOpenIssue";
 
 
 /**
@@ -113,7 +114,16 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
 
-    // --- 创建 (子问题 / 译文) ---
+    // --- 创建 (新建问题 / 子问题 / 译文) ---
+    {
+        label: "新建问题",
+        group: "创建",
+        hint: "create",
+        description: "直接创建一个新问题并在编辑器中打开",
+        execute: async () => {
+            await createAndOpenIssue();
+        },
+    },
     {
         label: "新建子问题",
         group: "创建",

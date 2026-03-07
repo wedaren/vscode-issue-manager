@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { stripFocusedId } from '../data/issueTreeManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
-import { smartCreateIssue } from './smartCreateIssue';
+import { createAndOpenIssue } from './createAndOpenIssue';
 import { Logger } from '../core/utils/Logger';
 
 export function registerCreateSubIssueFromEditorCommand(context: vscode.ExtensionContext): void {
@@ -21,7 +21,7 @@ export function registerCreateSubIssueFromEditorCommand(context: vscode.Extensio
 
             try {
                 const parentId = stripFocusedId(id);
-                await smartCreateIssue(parentId, { addToTree: true, open: true, reveal: true });
+                await createAndOpenIssue(undefined, parentId);
             } catch (error) {
                 // 使用统一 Logger 记录错误
                 Logger.getInstance().error('通过编辑器创建子问题失败:', error);
