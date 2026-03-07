@@ -5,6 +5,7 @@ import { getIssueNodeById } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
 import { forceRefreshCurrentEditor } from "./forceRefreshCurrentEditor";
+import { canDeleteFromEditor } from "./deleteIssue";
 
 
 /**
@@ -282,6 +283,16 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.attachToFromEditor");
+        },
+    },
+    {
+        label: "删除当前问题",
+        group: "管理",
+        hint: "delete",
+        description: "永久删除当前编辑器对应的 IssueMarkdown 或 IssueNode 文件",
+        require: async ctx => !!ctx.uri && await canDeleteFromEditor(ctx.uri),
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.deleteIssueFromEditor");
         },
     },
 ];

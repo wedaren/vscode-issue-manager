@@ -29,7 +29,7 @@ const EXPAND_ANIMATION_DELAY_MS = 100;
 import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand, registerOpenVscodeSIEMDirCommand } from '../commands/openIssueDir';
 import { registerDisassociateIssueCommand } from '../commands/disassociateIssue';
 import { registerSearchIssuesCommand } from '../commands/searchIssues';
-import { registerDeleteIssueCommand } from '../commands/deleteIssue';
+import { registerDeleteIssueCommand, registerDeleteIssueFromEditorCommand } from '../commands/deleteIssue';
 import { registerFocusCommands } from '../commands/focusCommands';
 import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
@@ -556,6 +556,7 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerOpenVscodeSIEMDirCommand(this.context);
         registerSearchIssuesCommand(this.context);
         registerDeleteIssueCommand(this.context);
+        registerDeleteIssueFromEditorCommand(this.context);
         registerFocusCommands(this.context);
         // 注册外部实现的子问题创建命令
         registerCreateSubIssueCommand(this.context);
