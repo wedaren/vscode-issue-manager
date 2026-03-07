@@ -358,8 +358,8 @@ export class IssueDocumentHoverProvider implements vscode.HoverProvider {
                 const regex = /`([^`\n]+)`/g;
                 let m: RegExpExecArray | null;
                 while ((m = regex.exec(line)) !== null) {
-                    const startChar = m.index + 1;
-                    const endChar = startChar + m[1].length;
+                    const startChar = m.index;
+                    const endChar = m.index + m[0].length;
                     const range = new vscode.Range(
                         new vscode.Position(position.line, startChar),
                         new vscode.Position(position.line, endChar)
