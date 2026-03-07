@@ -343,6 +343,60 @@ export class IssueDocumentHoverProvider implements vscode.HoverProvider {
             return new vscode.Hover(tooltip, range);
         }
 
+        // 如果不是内联链接，尝试匹配反引号术语（`术语`），并在悬停时显示术语定义及打开命令
+        try {
+            if (token.isCancellationRequested) return;
+
+            const termItems = await collectTermsForDocument(document, issueDir);
+            if (termItems && termItems.length > 0) {
+                const termMap = new Map<string, typeof termItems[number]>();
+                for (const it of termItems) {
+                    termMap.set(it.displayName, it);
+                }
+
+                const line = document.lineAt(position.line).text;
+                const regex = /`([^`\n]+)`/g;
+                let m: RegExpExecArray | null;
+                while ((m = regex.exec(line)) !== null) {
+                    const startChar = m.index + 1;
+                    const endChar = startChar + m[1].length;
+                    const range = new vscode.Range(
+                        new vscode.Position(position.line, startChar),
+                        new vscode.Position(position.line, endChar)
+                    );
+
+                    if (!range.contains(position)) continue;
+
+                    const termText = m[1].trim();
+                    const termItem = termMap.get(termText);
+                    if (!termItem) {
+                        return;
+                    }
+
+                    const location: FileLocation = { filePath: termItem.sourceUri.fsPath };
+                    if (termItem.location?.line) {
+                        location.startLine = termItem.location.line;
+                        location.startColumn = termItem.location.column;
+                    }
+
+                    const args = { location, source: document.uri.toString() };
+                    const cmdUri = `command:extension.openInSplit?${encodeURIComponent(JSON.stringify([args]))}`;
+
+                    const parts: string[] = [];
+                    parts.push(`**${termItem.displayName}**`);
+                    if (termItem.term.definition) {
+                        parts.push(termItem.term.definition);
+                    }
+
+                    const md = new vscode.MarkdownString(parts.join('\n\n'), true);
+                    md.isTrusted = true;
+                    return new vscode.Hover(md, range);
+                }
+            }
+        } catch (e) {
+            Logger.getInstance().warn('术语悬停显示失败：', e);
+        }
+
         return;
     }
 }

@@ -31,15 +31,24 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
         const termTriggerChars = [...new Set(termTriggers.map(t => (t || '').charAt(0)).filter(c => !!c))];
 
         const filterResult = extractFilterKeyword(document, position, termTriggers, 200);
-        if (!filterResult.hasTrigger && (!context.triggerCharacter || !termTriggerChars.includes(context.triggerCharacter))) {
+
+        const lineText = document.lineAt(position.line).text;
+        const prefix = lineText.slice(0, position.character);
+        // 当没有显式触发前缀时，只使用光标前的最后一个词作为关键字，避免把整行作为关键字
+        const lastTokenMatch = prefix.match(/([^\s`·\[\]\(\)\<\>\{\}]+)$/);
+        const lastToken = lastTokenMatch ? lastTokenMatch[1] : '';
+
+        // 如果既没有显式触发前缀，也没有已输入的关键字，并且触发字符不匹配，则不提供补全
+        if (!filterResult.hasTrigger && !lastToken && (!context.triggerCharacter || !termTriggerChars.includes(context.triggerCharacter))) {
             return undefined;
         }
 
         const termItems = await collectTermsForDocument(document, issueDir);
 
         let filteredItems = termItems;
-        if (filterResult.keyword) {
-            const keyword = filterResult.keyword.toLowerCase();
+        const effectiveKeyword = filterResult.hasTrigger ? (filterResult.keyword || '') : lastToken;
+        if (effectiveKeyword) {
+            const keyword = effectiveKeyword.toLowerCase();
             filteredItems = termItems.filter((item) => {
                 const display = item.displayName.toLowerCase();
                 const name = item.term.name.toLowerCase();
@@ -58,14 +67,29 @@ export class IssueTermCompletionProvider implements vscode.CompletionItemProvide
             filteredItems = filteredItems.slice(0, maxItems);
         }
 
-        const lineText = document.lineAt(position.line).text;
-        const prefix = lineText.slice(0, position.character);
         // 根据配置的触发前缀计算最近的触发位置（选择最后出现的触发字符串）
         const triggerIndex = termTriggers.reduce(
             (maxIndex, trigger) => Math.max(maxIndex, prefix.lastIndexOf(trigger)),
             -1
         );
-        const replaceStart = triggerIndex >= 0 ? triggerIndex : position.character;
+        // 只有当触发前缀后面紧邻光标处的 token（即触发后没有空白或其他分隔符）时，才视为有效触发
+        const triggerValid = triggerIndex >= 0 && (() => {
+            const after = prefix.slice(triggerIndex + 1); // trigger length 1 in common cases, safe for multi-char triggers? use generic check below
+            // 触发后不应包含空白字符或其他触发字符（比如另一个反引号）
+            return /^[^\s`\[\]\(\)<>\{\}]*$/.test(after);
+        })();
+        const effectiveHasTrigger = filterResult.hasTrigger && triggerValid;
+        // 如果找到触发前缀，替换从触发位置开始；否则如果用户输入了关键字，则替换关键字范围；否则在光标处插入
+        let replaceStart: number;
+        if (triggerIndex >= 0 && effectiveHasTrigger) {
+            replaceStart = triggerIndex;
+        } else if (filterResult.hasTrigger && effectiveHasTrigger) {
+            replaceStart = Math.max(0, position.character - (filterResult.keyword ? filterResult.keyword.length : 0));
+        } else if (lastToken) {
+            replaceStart = Math.max(0, position.character - lastToken.length);
+        } else {
+            replaceStart = position.character;
+        }
         const replacingRange = new vscode.Range(
             new vscode.Position(position.line, replaceStart),
             position
