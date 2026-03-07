@@ -9,7 +9,7 @@ import {
 import { getCurrentEditorIssueId } from "./unifiedQuickOpen.issue";
 import { applyGeneratedIssueContent } from "../llm/backgroundFill";
 import { LLMService } from "../llm/LLMService";
-import { openIssueNodeBeside } from "./openIssueNode";
+import { openIssueNode, openIssueNodeBeside } from "./openIssueNode";
 import { createIssueNodes } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { refreshOpenEditorsIfNeeded } from "../data/IssueMarkdowns";
@@ -161,7 +161,11 @@ function buildCreateInitialItems(value: string): QuickPickItemWithId[] {
                 const nodes = await createIssueNodes([uri], undefined);
                 vscode.commands.executeCommand("issueManager.refreshAllViews");
                 if (nodes && nodes[0] && nodes[0].id) {
-                    openIssueNodeBeside(nodes[0].id).catch(() => {});
+                    openIssueNode(nodes[0].id, {
+                        viewColumn: vscode.ViewColumn.Beside,
+                        preview: true,
+                        preserveFocus: false,
+                    }).catch(() => {});
                 }
             }
         },
