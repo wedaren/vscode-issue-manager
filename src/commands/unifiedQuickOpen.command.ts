@@ -290,7 +290,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         group: "管理",
         hint: "delete",
         description: "永久删除当前编辑器对应的 IssueMarkdown 或 IssueNode 文件",
-        require: async ctx => !!ctx.uri && await canDeleteFromEditor(ctx.uri),
+        require: async ctx => !!ctx.uri && !!(await canDeleteFromEditor(ctx.uri)),
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.deleteIssueFromEditor");
         },

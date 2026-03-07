@@ -29,7 +29,18 @@ async function isSubtreeSingleAssociation(
 }
 
 /**
- * 判断当前编辑器对应的 IssueMarkdown/IssueNode 是否可从编辑器安全删除。
+ * 从编辑器安全删除的上下文信息。
+ */
+export interface DeleteFromEditorContext {
+    /** 待删除的所有文件绝对路径（当前文件 + 子问题文件） */
+    filePaths: Set<string>;
+    /** 问题树中的根节点（若存在），用于解除关联 */
+    rootNode?: IssueNode;
+}
+
+/**
+ * 检查当前编辑器对应的 IssueMarkdown/IssueNode 是否可从编辑器安全删除。
+ * 若可以，返回删除上下文（包含待删除文件路径和树节点）；否则返回 null。
  *
  * 允许删除的情况：
  * - 纯 IssueMarkdown（不在问题树中，即无关联的 IssueNode）
@@ -37,25 +48,31 @@ async function isSubtreeSingleAssociation(
  *
  * 任何节点有多处关联的情况应在问题总览右键菜单中处理。
  */
-export async function canDeleteFromEditor(uri: vscode.Uri): Promise<boolean> {
+export async function canDeleteFromEditor(uri: vscode.Uri): Promise<DeleteFromEditorContext | null> {
     const issueMarkdown = await getIssueMarkdown(uri);
     if (!isIssueMarkdown(issueMarkdown)) {
-        return false;
+        return null;
     }
+
+    const filePaths = new Set<string>();
+    filePaths.add(uri.fsPath);
 
     const associatedNodes = await getIssueNodesByUri(uri);
 
     // 纯 IssueMarkdown，不在树中
     if (associatedNodes.length === 0) {
-        return true;
+        return { filePaths };
     }
 
     // 仅 1 处关联，递归检查子树
     if (associatedNodes.length === 1) {
-        return isSubtreeSingleAssociation(associatedNodes[0], new Set());
+        const rootNode = associatedNodes[0];
+        if (await isSubtreeSingleAssociation(rootNode, filePaths)) {
+            return { filePaths, rootNode };
+        }
     }
 
-    return false;
+    return null;
 }
 
 /**
@@ -118,24 +135,17 @@ export function registerDeleteIssueFromEditorCommand(context: vscode.ExtensionCo
 
         const uri = editor.document.uri;
 
-        // 再次校验是否允许从编辑器删除（防止直接调用命令绕过 QuickPick）
-        if (!(await canDeleteFromEditor(uri))) {
+        // 校验是否允许从编辑器删除，同时获取删除上下文（避免重复计算）
+        const deleteCtx = await canDeleteFromEditor(uri);
+        if (!deleteCtx) {
             vscode.window.showWarningMessage('当前问题有多处关联引用或子树中存在多处关联，请在问题总览中操作。');
             return;
         }
 
+        const { filePaths, rootNode } = deleteCtx;
         const issueMarkdown = await getIssueMarkdown(uri);
         const fileName = path.basename(uri.fsPath);
         const displayName = issueMarkdown?.title ?? fileName;
-
-        // 收集子树中所有待删除的文件路径
-        const associatedNodes = await getIssueNodesByUri(uri);
-        const filePaths = new Set<string>();
-        filePaths.add(uri.fsPath);
-        const rootNode = associatedNodes.length === 1 ? associatedNodes[0] : undefined;
-        if (rootNode) {
-            await isSubtreeSingleAssociation(rootNode, filePaths);
-        }
 
         // 构建确认信息
         const childCount = filePaths.size - 1; // 排除当前文件本身
