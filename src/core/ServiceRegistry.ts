@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import { GitSyncService } from '../services/GitSyncService';
+import { GitOperations } from '../services/git-sync/GitOperations';
 import { EditorEventManager } from '../services/EditorEventManager';
 import { RecordContentTool } from '../llm/RecordContentTool';
 import { IssueChatParticipant } from '../chat/IssueChatParticipant';
+import { LLMService } from '../llm/LLMService';
+import { isLLMCommitMessageEnabled } from '../config';
 import { Logger } from './utils/Logger';
 
 /**
@@ -90,6 +93,9 @@ export class ServiceRegistry {
      */
     private initializeGitSyncService(): void {
         try {
+            // 注册 LLM 提交消息生成器
+            this.setupLLMCommitMessageGenerator();
+
             const gitSyncService = GitSyncService.getInstance();
             gitSyncService.initialize();
             this.context.subscriptions.push(gitSyncService);
@@ -99,6 +105,46 @@ export class ServiceRegistry {
             // Git服务失败不应该阻止整个扩展启动
             this.logger.warn('      ⚠️ 继续启动扩展，但Git自动同步功能将不可用');
         }
+    }
+
+    /**
+     * 设置 LLM 智能提交消息生成器
+     *
+     * 当配置启用时，注入一个基于 Copilot 的提交消息生成函数到 GitOperations，
+     * 根据变更文件列表自动生成语义化的提交消息。
+     * 配置变更时会动态更新。
+     */
+    private setupLLMCommitMessageGenerator(): void {
+        const applyConfig = () => {
+            if (isLLMCommitMessageEnabled()) {
+                GitOperations.setCommitMessageGenerator(async (changedFiles: string[]) => {
+                    const prompt = `你是一个 Git 提交消息助手。请根据以下文件变更列表，生成一条简洁的中文 Git 提交消息（不超过 72 个字符）。
+只返回提交消息本身，不要添加任何解释、引号或前缀。
+
+变更文件：
+${changedFiles.join('\n')}`;
+
+                    const result = await LLMService.chat(
+                        [vscode.LanguageModelChatMessage.User(prompt)]
+                    );
+                    return result?.text?.trim() ?? '';
+                });
+                this.logger.info('      ✓ LLM 智能提交消息已启用');
+            } else {
+                GitOperations.setCommitMessageGenerator(null);
+            }
+        };
+
+        applyConfig();
+
+        // 监听配置变更，动态切换
+        this.context.subscriptions.push(
+            vscode.workspace.onDidChangeConfiguration(e => {
+                if (e.affectsConfiguration('issueManager.sync.enableLLMCommitMessage')) {
+                    applyConfig();
+                }
+            })
+        );
     }
 
     /**

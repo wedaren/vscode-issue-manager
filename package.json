@@ -1517,8 +1517,8 @@
         },
         "issueManager.sync.changeDebounceInterval": {
           "type": "number",
-          "default": 300,
-          "description": "文件变更后触发自动同步前的等待时间（单位：秒）。默认值为 300 秒（5 分钟）。"
+          "default": 30,
+          "description": "文件变更后触发自动同步前的等待时间（单位：秒）。默认值为 30 秒。"
         },
         "issueManager.sync.periodicPullInterval": {
           "type": "number",
@@ -1539,6 +1539,11 @@
           "type": "boolean",
           "default": true,
           "description": "启用同步失败时的桌面通知。禁用后仅在状态栏显示错误状态。"
+        },
+        "issueManager.sync.enableLLMCommitMessage": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用 LLM 智能生成提交消息。启用后，自动同步会使用 Copilot 根据变更文件内容生成语义化的提交消息，而不是使用时间戳模板。需要已安装并登录 GitHub Copilot。"
         },
         "issueManager.rss.enableAutoUpdate": {
           "type": "boolean",
