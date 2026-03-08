@@ -53,11 +53,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
 
   constructor(private context: vscode.ExtensionContext) {
     this.loadData();
-    vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('issueManager.issueDir')) {
-        this.loadData();
-      }
-    });
+    // issueDir 配置变更时由 ConfigurationManager → refreshAllViews 统一触发刷新，无需重复监听
   }
 
   private async loadData(): Promise<void> {

@@ -5,8 +5,6 @@ import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { getIssueMarkdown,onTitleUpdate } from '../data/IssueMarkdowns';
 
-const DEBOUNCE_REFRESH_DELAY_MS = 500;
-
 /**
  * 配置监听管理器
  * 

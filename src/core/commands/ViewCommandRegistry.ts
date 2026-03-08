@@ -11,6 +11,8 @@ import { ParaViewProvider } from '../../views/ParaViewProvider';
  * 这些命令主要用于用户与各种树视图的交互。
  */
 export class ViewCommandRegistry extends BaseCommandRegistry {
+    private static readonly REFRESH_DEBOUNCE_MS = 300;
+
     private focusedIssuesProvider?: IFocusedIssuesProvider;
     private issueOverviewProvider?: IIssueOverviewProvider;
     private recentIssuesProvider?: IIssueViewProvider;
@@ -22,6 +24,7 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private paraViewProvider?: ParaViewProvider;
     private overviewView?: vscode.TreeView<IssueNode>;
     private focusedView?: vscode.TreeView<IssueNode>;
+    private refreshTimer?: ReturnType<typeof setTimeout>;
 
     /**
      * 设置视图提供者实例
@@ -84,33 +87,40 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
             '刷新最近问题视图'
         );
 
+        const debouncedRefreshAll = () => this.scheduleRefreshAllViews();
+
         // 刷新所有视图
         this.registerCommand(
             'issueManager.refreshAllViews',
-            () => {
-                this.focusedIssuesProvider?.refresh();
-                this.issueOverviewProvider?.refresh();
-                this.recentIssuesProvider?.refresh();
-                this.issueSearchProvider?.refresh();
-                this.deepResearchProvider?.refresh();
-                this.paraViewProvider?.refresh();
-            },
+            debouncedRefreshAll,
             '刷新所有视图'
         );
 
         // 统一刷新视图命令（用于Language Model Tool等功能）
         this.registerCommand(
             'issueManager.refreshViews',
-            () => {
-                this.focusedIssuesProvider?.refresh();
-                this.issueOverviewProvider?.refresh();
-                this.recentIssuesProvider?.refresh();
-                this.issueSearchProvider?.refresh();
-                this.deepResearchProvider?.refresh();
-                this.paraViewProvider?.refresh();
-            },
+            debouncedRefreshAll,
             '刷新视图'
         );
+    }
+
+    /**
+     * 防抖刷新所有视图
+     * 合并短时间内的多次刷新请求，避免重复执行
+     */
+    private scheduleRefreshAllViews(): void {
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+        }
+        this.refreshTimer = setTimeout(() => {
+            this.refreshTimer = undefined;
+            this.focusedIssuesProvider?.refresh();
+            this.issueOverviewProvider?.refresh();
+            this.recentIssuesProvider?.refresh();
+            this.issueSearchProvider?.refresh();
+            this.deepResearchProvider?.refresh();
+            this.paraViewProvider?.refresh();
+        }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
     }
 
     /**

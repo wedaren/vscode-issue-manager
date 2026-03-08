@@ -65,6 +65,7 @@ import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
 import { openIssueNode } from '../commands/openIssueNode';
 import { registerReviewPlanCommands } from '../commands/reviewPlanCommands';
+import { registerEditorGroupCommands } from '../commands/editorGroupManager';
 import { registerOpenReviewPlanQuickPick } from '../commands/openReviewPlanQuickPick';
 import {
     registerDeepResearchIssueCommand,
@@ -570,6 +571,9 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // 深度调研文档维护命令（例如删除）
         registerDeepResearchDocCommands(this.context);
+
+        // 编辑器组管理命令（关闭/总览/移动/合并/命名/LLM整理）
+        registerEditorGroupCommands(this.context);
     }
 
     /**

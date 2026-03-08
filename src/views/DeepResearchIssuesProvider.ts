@@ -134,16 +134,7 @@ export class DeepResearchIssuesProvider implements vscode.TreeDataProvider<DeepR
 
     constructor(private readonly context: vscode.ExtensionContext) {
         this.registerCommands();
-
-        vscode.workspace.onDidChangeConfiguration(
-            e => {
-                if (e.affectsConfiguration("issueManager.issueDir")) {
-                    this.refresh();
-                }
-            },
-            undefined,
-            this.context.subscriptions
-        );
+        // issueDir 配置变更时由 ConfigurationManager → refreshAllViews 统一触发刷新，无需重复监听
     }
 
     private registerCommands(): void {
