@@ -137,6 +137,10 @@ export interface IViewRegistryResult {
     gitBranchProvider: import('../gitBranch/GitBranchTreeProvider').GitBranchTreeProvider;
     /** Git 分支树视图实例 */
     gitBranchView: vscode.TreeView<vscode.TreeItem>;
+    /** 编辑器组管理视图提供者实例 */
+    editorGroupProvider: import('../views/EditorGroupTreeProvider').EditorGroupTreeProvider;
+    /** 编辑器组管理树视图实例 */
+    editorGroupView: vscode.TreeView<import('../views/EditorGroupTreeProvider').EditorGroupViewNode>;
 }
 
 /**

@@ -24,6 +24,7 @@ import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
+import { EditorGroupTreeProvider, type EditorGroupViewNode } from '../views/EditorGroupTreeProvider';
 
 /**
  * 视图注册管理器
@@ -106,6 +107,9 @@ export class ViewRegistry {
         // 注册 Git 分支视图
         const { gitBranchManager, gitBranchProvider, gitBranchView } = this.registerGitBranchView();
         
+        // 注册编辑器组管理视图
+        const { editorGroupProvider, editorGroupView } = this.registerEditorGroupView();
+
         // 注册相关问题视图
         this.registerRelatedView();
         // 注册回顾视图
@@ -140,7 +144,9 @@ export class ViewRegistry {
             markerView,
             gitBranchManager,
             gitBranchProvider,
-            gitBranchView
+            gitBranchView,
+            editorGroupProvider,
+            editorGroupView,
         };
     }
 
@@ -388,6 +394,28 @@ export class ViewRegistry {
     private registerRSSVirtualFileProvider(): void {
         const rssVirtualFileProvider = registerRSSVirtualFileProvider(this.context);
         this.context.subscriptions.push(rssVirtualFileProvider);
+    }
+
+    /**
+     * 注册编辑器组管理视图
+     */
+    private registerEditorGroupView(): {
+        editorGroupProvider: EditorGroupTreeProvider;
+        editorGroupView: vscode.TreeView<EditorGroupViewNode>;
+    } {
+        const editorGroupProvider = new EditorGroupTreeProvider(this.context);
+        const editorGroupView = vscode.window.createTreeView<EditorGroupViewNode>('issueManager.views.editorGroups', {
+            treeDataProvider: editorGroupProvider,
+            showCollapseAll: true,
+        });
+
+        this.context.subscriptions.push(editorGroupView);
+        this.context.subscriptions.push(editorGroupProvider);
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.editorGroup.refresh', () => editorGroupProvider.refresh()),
+        );
+
+        return { editorGroupProvider, editorGroupView };
     }
 
     /**

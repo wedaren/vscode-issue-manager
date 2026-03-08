@@ -10,6 +10,7 @@ import { createAndOpenIssue } from "./createAndOpenIssue";
 import { llmFillIssue } from "./llmFillIssue";
 
 
+
 /**
  * 命令模式的所有命令项定义
  *
@@ -237,7 +238,43 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
 
-    // --- 文件 (刷新 / 强制刷新) ---
+    // --- 文件 (刷新 / 强制刷新 / 编辑器组管理) ---
+    {
+        label: "编辑器组总览",
+        group: "文件",
+        hint: "group overview",
+        description: "查看所有编辑器组并快速切换聚焦",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.editorGroupOverview");
+        },
+    },
+    {
+        label: "移动编辑器到组",
+        group: "文件",
+        hint: "move group",
+        description: "将当前编辑器移动到指定的编辑器组或新组",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.moveEditorToGroup");
+        },
+    },
+    {
+        label: "关闭编辑器组",
+        group: "文件",
+        hint: "close group",
+        description: "选择并关闭指定的编辑器组（支持多选）",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.closeEditorGroups");
+        },
+    },
+    {
+        label: "LLM 智能整理编辑器组",
+        group: "文件",
+        hint: "llm organize group",
+        description: "使用 Copilot LLM 分析标签页并自动按主题分组",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.organizeEditorGroupsWithLLM");
+        },
+    },
     {
         label: "强制刷新当前编辑器",
         group: "文件",
