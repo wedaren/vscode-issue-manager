@@ -23,6 +23,7 @@ export class GitOperations {
     private static branchCache = new Map<string, { branch: string; timestamp: number }>();
     private static readonly BRANCH_CACHE_TTL = 60_000; // 1分钟缓存
     private static readonly LLM_TIMEOUT_MS = 5_000; // LLM 生成提交消息的超时时间
+    private static readonly TRACKED_PATTERNS = ['*.md', '.issueManager'];
 
     // LLM 提交消息生成器（外部注入，避免直接依赖 LLMService 导致循环引用）
     private static commitMessageGenerator: ((changedFiles: string[]) => Promise<string>) | null = null;
@@ -152,7 +153,7 @@ export class GitOperations {
             }
 
             const changedFiles = await this.getChangedFilesSummary(git);
-            await git.add(['*.md', '.issueManager']);
+            await git.add(this.TRACKED_PATTERNS);
             const commitMessage = await this.generateCommitMessage(changedFiles);
             await git.commit(commitMessage);
             Logger.getInstance().info('[GitOperations] 本地提交完成（网络不可用，推送将延迟）');
@@ -164,26 +165,35 @@ export class GitOperations {
     }
 
     /**
+     * 判断文件路径是否匹配 TRACKED_PATTERNS（*.md 或 .issueManager/**）
+     */
+    private static isTrackedFile(filePath: string): boolean {
+        return filePath.endsWith('.md') || filePath.startsWith('.issueManager');
+    }
+
+    /**
      * 获取变更文件的详细信息（用于 LLM 生成提交消息）
+     *
+     * 仅包含匹配 TRACKED_PATTERNS 的文件，确保与 git add 范围一致。
      */
     private static async getChangedFilesSummary(git: SimpleGit): Promise<string[]> {
         const status = await git.status();
         const files: string[] = [];
 
         for (const f of status.created) {
-            files.push(`新增: ${f}`);
+            if (this.isTrackedFile(f)) { files.push(`新增: ${f}`); }
         }
         for (const f of status.modified) {
-            files.push(`修改: ${f}`);
+            if (this.isTrackedFile(f)) { files.push(`修改: ${f}`); }
         }
         for (const f of status.deleted) {
-            files.push(`删除: ${f}`);
+            if (this.isTrackedFile(f)) { files.push(`删除: ${f}`); }
         }
         for (const f of status.renamed) {
-            files.push(`重命名: ${f.from} -> ${f.to}`);
+            if (this.isTrackedFile(f.to)) { files.push(`重命名: ${f.from} -> ${f.to}`); }
         }
         for (const f of status.not_added) {
-            files.push(`新增: ${f}`);
+            if (this.isTrackedFile(f)) { files.push(`新增: ${f}`); }
         }
 
         return files;
@@ -271,7 +281,7 @@ export class GitOperations {
             const changedFiles = await this.getChangedFilesSummary(git);
 
             // 2. 先 commit 本地变更（确保数据安全）
-            await git.add(['*.md', '.issueManager']);
+            await git.add(this.TRACKED_PATTERNS);
             const commitMessage = await this.generateCommitMessage(changedFiles);
             await git.commit(commitMessage);
 
