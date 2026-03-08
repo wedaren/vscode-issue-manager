@@ -241,29 +241,65 @@
 
       <!-- 消息气泡 -->
       <div v-for="msg in messages" :key="msg.id" :class="['llm-message', msg.role]">
-        <div class="message-avatar" :class="msg.role">
-          <svg v-if="msg.role === 'user'" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="7" r="3.5" stroke="currentColor" stroke-width="1.4"/>
-            <path d="M3 17c0-3.87 3.13-7 7-7s7 3.13 7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-          </svg>
-          <svg v-else viewBox="0 0 20 20" fill="none">
-            <rect x="2" y="5" width="16" height="11" rx="3" stroke="currentColor" stroke-width="1.4"/>
-            <path d="M7 10h2l1 2 2-4 1 2h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <div class="message-body">
-          <div class="message-role-label">{{ msg.role === 'user' ? '我' : msg.role === 'assistant' ? (selectedModel ? selectedModel.family : 'AI') : '系统' }}</div>
-          <!-- 打字气泡占位 -->
-          <div v-if="msg.id === lastAssistantMessageId && msg.text === ''" class="message-text typing-bubble">
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
+        <!-- 工具调用卡片 -->
+        <template v-if="(msg.role as string) === 'tool'">
+          <div
+            class="tool-call-card"
+            :class="[msg.toolPhase, { expandable: msg.toolResult }]"
+            @click="msg.toolResult ? toggleToolExpand(msg) : undefined"
+          >
+            <div class="tool-call-header">
+              <!-- 状态图标 -->
+              <svg v-if="msg.toolPhase === 'calling'" class="tool-icon tool-spin" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4" stroke-dasharray="8 5"/>
+              </svg>
+              <svg v-else-if="msg.toolPhase === 'error'" class="tool-icon" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/>
+                <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+              <svg v-else class="tool-icon" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8l4 4 6-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <!-- 工具名 + 摘要 -->
+              <span class="tool-call-label">{{ getToolLabel(msg.toolName) }}</span>
+              <span v-if="msg.text" class="tool-call-summary">{{ msg.text }}</span>
+              <!-- 展开箭头 -->
+              <svg v-if="msg.toolResult" class="tool-expand-arrow" :class="{ expanded: msg.toolExpanded }" viewBox="0 0 16 16" fill="none">
+                <path d="M5 6.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <!-- 展开的结果详情 -->
+            <div v-if="msg.toolExpanded && msg.toolResult" class="tool-result-detail">
+              {{ msg.toolResult }}
+            </div>
           </div>
-          <!-- 正常文本 + 流式光标 -->
-          <div v-else class="message-text">
-            {{ msg.text }}<span v-if="msg.id === lastAssistantMessageId" class="stream-cursor">|</span>
+        </template>
+        <!-- 普通消息（用户 / 助手 / 系统） -->
+        <template v-else>
+          <div class="message-avatar" :class="msg.role">
+            <svg v-if="msg.role === 'user'" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="7" r="3.5" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M3 17c0-3.87 3.13-7 7-7s7 3.13 7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+            <svg v-else viewBox="0 0 20 20" fill="none">
+              <rect x="2" y="5" width="16" height="11" rx="3" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M7 10h2l1 2 2-4 1 2h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
           </div>
-        </div>
+          <div class="message-body">
+            <div class="message-role-label">{{ msg.role === 'user' ? '我' : msg.role === 'assistant' ? (selectedModel ? selectedModel.family : 'AI') : '系统' }}</div>
+            <!-- 打字气泡占位 -->
+            <div v-if="msg.id === lastAssistantMessageId && msg.text === ''" class="message-text typing-bubble">
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+            </div>
+            <!-- 正常文本 + 流式光标 -->
+            <div v-else class="message-text">
+              {{ msg.text }}<span v-if="msg.id === lastAssistantMessageId" class="stream-cursor">|</span>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -334,6 +370,17 @@
           @keydown.down="handleMentionDown"
           @keydown.enter.exact.prevent="handleEnter"
         />
+        <!-- 工具开关 -->
+        <button
+          class="tools-toggle-btn"
+          :class="{ active: toolsEnabled }"
+          @click="toolsEnabled = !toolsEnabled"
+          :title="toolsEnabled ? '工具已启用（点击关闭）' : '启用工具调用'"
+        >
+          <svg viewBox="0 0 20 20" fill="none">
+            <path d="M15.5 4.5l-3 3-1.5-1.5 3-3A4 4 0 005 8a4 4 0 00.3 1.5L3 11.8A2 2 0 006.2 15l2.3-2.3A4 4 0 0015.5 4.5z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button class="send-btn" @click="handleSend" :disabled="!inputText.trim()" :title="loadingLLM ? '加入排列' : '发送'">
           <svg v-if="loadingLLM" viewBox="0 0 20 20" fill="none">
             <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6" opacity="0.5"/>
@@ -353,17 +400,16 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 
 // ===== 模型选项 =====
-/** Copilot 模型元数据，与 VS Code lm API 返回字段对应 */
 interface CopilotModel {
   id: string;
-  family: string;         // 操作模型时传开 model 字段的值
+  family: string;
   vendor: string;
-  maxInputTokens: number; // 上下文窗口 token 数
+  maxInputTokens: number;
 }
 
 const MODEL_STORAGE_KEY = 'llm_selected_model';
+const TOOLS_STORAGE_KEY = 'llm_tools_enabled';
 
-/** 将 token 数格式化为上下文窗口描述，如 128000 → "128K" */
 function formatTokenCount(n: number): string {
   if (n >= 1_000_000) return `${Math.round(n / 100_000) / 10}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
@@ -373,12 +419,9 @@ function formatTokenCount(n: number): string {
 const availableModels = ref<CopilotModel[]>([]);
 const modelsLoading = ref(false);
 const modelsError = ref<string | null>(null);
-
-// 当前选中的模型（存 family 字符串）
 const _savedModelFamily = localStorage.getItem(MODEL_STORAGE_KEY) || '';
 const selectedModel = ref<CopilotModel | null>(null);
 
-/** 加载可用模型列表：向 background 请求，由 VS Code 插件返回 */
 async function loadModels() {
   modelsLoading.value = true;
   modelsError.value = null;
@@ -387,7 +430,6 @@ async function loadModels() {
       { success: boolean; data?: CopilotModel[]; error?: string };
     if (resp && resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
       availableModels.value = resp.data;
-      // 尝试恢复上次选择
       const saved = resp.data.find(m => m.family === _savedModelFamily);
       selectedModel.value = saved ?? resp.data[0];
     } else {
@@ -409,7 +451,10 @@ function selectModel(m: CopilotModel) {
   localStorage.setItem(MODEL_STORAGE_KEY, m.family);
 }
 
-// 点击面板外部时关闭模型菜单
+// ===== 工具调用开关（默认开启：Chrome 面板的核心能力依赖工具调用） =====
+const toolsEnabled = ref(localStorage.getItem(TOOLS_STORAGE_KEY) !== 'false');
+watch(toolsEnabled, v => localStorage.setItem(TOOLS_STORAGE_KEY, String(v)));
+
 function handleOutsideClick(e: MouseEvent) {
   const target = e.target as HTMLElement;
   if (!target.closest('.model-select-wrapper')) {
@@ -418,19 +463,23 @@ function handleOutsideClick(e: MouseEvent) {
 }
 
 // ===== 类型定义 =====
+/** UI 消息（含 tool 等临时状态） */
 interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   text: string;
-  pageContext?: { title: string; text: string }; // 隐藏的网页上下文，用于发给 LLM 但不在界面展示长内容
+  toolName?: string;
+  toolPhase?: 'calling' | 'done' | 'error';
+  toolResult?: string;
+  toolExpanded?: boolean;
+  pageContext?: { title: string; text: string };
 }
 
-interface Conversation {
+/** 轻量对话元数据（来自 issueMarkdown 后端） */
+interface ConvMeta {
   id: string;
   title: string;
-  messages: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
+  mtime: number;
 }
 
 interface LlmPushPayload {
@@ -439,6 +488,10 @@ interface LlmPushPayload {
   reply?: string;
   event?: string;
   error?: string;
+  toolName?: string;
+  summary?: string;
+  preview?: string;
+  success?: boolean;
 }
 
 interface RuntimeLlmPushMessage {
@@ -447,36 +500,71 @@ interface RuntimeLlmPushMessage {
   requestId?: string;
 }
 
-// ===== 常量 =====
-const STORAGE_KEY = 'llm_conversations';
-const MAX_CONVERSATIONS = 50; // 最多保留 50 条历史
-
 // ===== 工具函数 =====
 function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
-function createConversation(): Conversation {
-  return { id: genId(), title: '新对话', messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+/** 工具中文名映射 */
+const TOOL_LABELS: Record<string, string> = {
+  open_tab: '打开标签页',
+  get_tab_content: '读取页面内容',
+  activate_tab: '切换标签页',
+  list_tabs: '列出标签页',
+  organize_tabs: '整理标签页',
+  close_tabs: '关闭标签页',
+  get_page_elements: '获取页面元素',
+  click_element: '点击元素',
+  fill_input: '填写输入框',
+  select_option: '选择下拉项',
+  press_key: '模拟按键',
+  web_search: '网络搜索',
+  fetch_url: '抓取网页',
+  search_issues: '检索笔记',
+  read_issue: '读取笔记',
+  create_issue: '创建笔记',
+  create_issue_tree: '创建笔记树',
+  list_issue_tree: '笔记结构',
+  update_issue: '更新笔记',
+};
+
+function getToolLabel(name?: string): string {
+  return (name && TOOL_LABELS[name]) || name || '工具';
+}
+
+function toggleToolExpand(msg: ChatMessage) {
+  msg.toolExpanded = !msg.toolExpanded;
+  touchMessages();
 }
 
 /** 取第一条 user 消息前 22 字作为标题 */
-function autoTitle(conv: Conversation): string {
-  const first = conv.messages.find(m => m.role === 'user');
+function autoTitle(msgs: ChatMessage[]): string {
+  const first = msgs.find(m => m.role === 'user');
   if (!first) return '新对话';
   return first.text.trim().slice(0, 22) + (first.text.trim().length > 22 ? '…' : '');
 }
 
-// ===== 多会话状态 =====
-const conversations = ref<Conversation[]>([]);
+// ===== 多会话状态（元数据来自 issueMarkdown 后端） =====
+const conversations = ref<ConvMeta[]>([]);
 const currentConvId = ref<string>('');
 const showHistory = ref(false);
+
+/** 每个会话的消息缓存（内存） */
+const _convMessages: Record<string, ChatMessage[]> = {};
+
+/** 获取指定会话的消息列表（确保缓存存在） */
+function getConvMessages(convId: string): ChatMessage[] {
+  if (!_convMessages[convId]) {
+    _convMessages[convId] = [];
+  }
+  return _convMessages[convId];
+}
 
 // ===== 日志面板 =====
 interface LlmLogEntry {
   id: string;
   ts: number;
-  tsStr: string; // 格式化时间，避免模板里重复计算
+  tsStr: string;
   level: 'info' | 'warn' | 'error';
   message: string;
 }
@@ -488,12 +576,11 @@ const MAX_LOGS = 200;
 
 function addLog(level: LlmLogEntry['level'], message: string) {
   const now = new Date();
-  const tsStr = now.toTimeString().slice(0, 8); // HH:MM:SS
+  const tsStr = now.toTimeString().slice(0, 8);
   llmLogs.value.push({ id: `log-${Date.now()}-${Math.random()}`, ts: now.getTime(), tsStr, level, message });
   if (llmLogs.value.length > MAX_LOGS) {
     llmLogs.value.splice(0, llmLogs.value.length - MAX_LOGS);
   }
-  // 日志面板打开时自动滚到底部
   if (showLogPanel.value) {
     nextTick(() => {
       if (logEntriesEl.value) {
@@ -517,10 +604,9 @@ const editingTitle = ref('');
 const headerTitleInput = ref<HTMLInputElement | null>(null);
 const generatingTitleId = ref<string | null>(null);
 
-// 为了在模板中用 v-if 检查 length 且不覆盖全局 ref，导出 computed 的别名
 const $data_messages = computed(() => messages.value);
 
-function startRename(conv: Conversation) {
+function startRename(conv: ConvMeta) {
   editingConvId.value = conv.id;
   editingTitle.value = conv.title;
   nextTick(() => {
@@ -529,36 +615,41 @@ function startRename(conv: Conversation) {
   });
 }
 
-function commitRename() {
+async function commitRename() {
   const id = editingConvId.value;
   if (!id) return;
-  const conv = conversations.value.find(c => c.id === id);
-  if (conv) {
-    const trimmed = editingTitle.value.trim();
-    if (trimmed) conv.title = trimmed;
-  }
+  const trimmed = editingTitle.value.trim();
   editingConvId.value = null;
+  if (!trimmed) return;
+
+  const conv = conversations.value.find(c => c.id === id);
+  if (conv) conv.title = trimmed;
+
+  // 持久化到 issueMarkdown
+  try {
+    await chrome.runtime.sendMessage({ type: 'CHROME_CHAT_RENAME', convId: id, title: trimmed });
+  } catch (e) {
+    console.error('[LLMPanel] 重命名失败', e);
+  }
 }
 
 function cancelRename() {
   editingConvId.value = null;
 }
 
-// 记录每个请求追踪的 title 生成 requestId -> convId 映射
 const _titleGenMap: Record<string, string> = {};
-// 累积生成标题的流式内容
 const _titleGenBuffer: Record<string, string> = {};
 
-async function generateTitle(conv: Conversation) {
+async function generateTitle(conv: ConvMeta) {
   if (generatingTitleId.value === conv.id) return;
-  
-  // 提取历史文本
-  const textContext = conv.messages
+
+  const msgs = getConvMessages(conv.id);
+  const textContext = msgs
     .filter(m => m.role === 'user' || m.role === 'assistant')
     .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
     .join('\n\n')
-    .slice(0, 4000); // 截取前面一部分供总结即可
-    
+    .slice(0, 4000);
+
   if (!textContext.trim()) return;
 
   generatingTitleId.value = conv.id;
@@ -571,12 +662,10 @@ async function generateTitle(conv: Conversation) {
     });
 
     if (response && response.success && response.data?.requestId) {
-      // 成功发起请求，将其 requestId 注册，让流式拦截器处理后续
       const reqId = response.data.requestId;
       _titleGenMap[reqId] = conv.id;
       _titleGenBuffer[reqId] = '';
     } else {
-      // 发起失败
       generatingTitleId.value = null;
     }
   } catch (e) {
@@ -585,18 +674,12 @@ async function generateTitle(conv: Conversation) {
   }
 }
 
-// ===== 拖拽排序 =====
+// ===== 拖拽排序（仅 UI 层，不持久化顺序） =====
 const draggingId = ref<string | null>(null);
 const dragOverId = ref<string | null>(null);
 
-function onDragStart(convId: string) {
-  draggingId.value = convId;
-}
-
-function onDragOver(convId: string) {
-  if (convId !== draggingId.value) { dragOverId.value = convId; }
-}
-
+function onDragStart(convId: string) { draggingId.value = convId; }
+function onDragOver(convId: string) { if (convId !== draggingId.value) dragOverId.value = convId; }
 function onDrop(targetId: string) {
   const fromId = draggingId.value;
   if (!fromId || fromId === targetId) return;
@@ -607,104 +690,147 @@ function onDrop(targetId: string) {
   const [item] = arr.splice(fromIdx, 1);
   arr.splice(toIdx, 0, item);
 }
-
-function onDragEnd() {
-  draggingId.value = null;
-  dragOverId.value = null;
-}
+function onDragEnd() { draggingId.value = null; dragOverId.value = null; }
 
 const currentConv = computed(() =>
   conversations.value.find(c => c.id === currentConvId.value)
 );
 
-/** messages 直接指向当前会话的消息列表，所有 push/splice 都会触发 watch 自动保存 */
-const messages = computed(() => currentConv.value?.messages ?? []);
+/** 当前会话的消息（响应式触发器通过 _msgTrigger 驱动） */
+const _msgTrigger = ref(0);
+const messages = computed(() => {
+  void _msgTrigger.value; // 依赖此触发器
+  return currentConvId.value ? getConvMessages(currentConvId.value) : [];
+});
 
-/** 按今天/昨天/更早分组，每组内按 updatedAt 倒序 */
+/** 手动触发 messages computed 刷新 */
+function touchMessages() { _msgTrigger.value++; }
+
+/** 按今天/昨天/更早分组 */
 const groupedConversations = computed(() => {
   const todayStart = new Date().setHours(0, 0, 0, 0);
   const yesterdayStart = todayStart - 86400000;
-  const sorted = [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt);
+  const sorted = [...conversations.value].sort((a, b) => b.mtime - a.mtime);
 
-  const todayItems = sorted.filter(c => c.updatedAt >= todayStart);
-  const yesterdayItems = sorted.filter(c => c.updatedAt >= yesterdayStart && c.updatedAt < todayStart);
-  const olderItems = sorted.filter(c => c.updatedAt < yesterdayStart);
+  const todayItems = sorted.filter(c => c.mtime >= todayStart);
+  const yesterdayItems = sorted.filter(c => c.mtime >= yesterdayStart && c.mtime < todayStart);
+  const olderItems = sorted.filter(c => c.mtime < yesterdayStart);
 
-  const groups: { label: string; items: Conversation[] }[] = [];
+  const groups: { label: string; items: ConvMeta[] }[] = [];
   if (todayItems.length) groups.push({ label: '今天', items: todayItems });
   if (yesterdayItems.length) groups.push({ label: '昨天', items: yesterdayItems });
   if (olderItems.length) groups.push({ label: '更早', items: olderItems });
   return groups;
 });
 
-// ===== 持久化 =====
-async function loadConversations() {
+// ===== 持久化：issueMarkdown 文件（通过 WebSocket → VS Code） =====
+
+/** 从后端加载对话列表 */
+async function loadConversationList() {
   try {
-    const result = await chrome.storage.local.get(STORAGE_KEY);
-    const data = result[STORAGE_KEY];
-    if (Array.isArray(data) && data.length > 0) {
-      conversations.value = data;
-      // 切换到最近一次更新的会话
-      const latest = [...data].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      currentConvId.value = latest.id;
+    const resp = await chrome.runtime.sendMessage({ type: 'CHROME_CHAT_LIST' }) as
+      { success: boolean; data?: ConvMeta[]; error?: string };
+    if (resp && resp.success && Array.isArray(resp.data)) {
+      conversations.value = resp.data;
+      if (resp.data.length > 0) {
+        // 选择最近的对话
+        const latest = [...resp.data].sort((a, b) => b.mtime - a.mtime)[0];
+        currentConvId.value = latest.id;
+        await loadMessages(latest.id);
+      } else {
+        // 无对话，自动创建
+        await newConversation();
+      }
     } else {
-      // 初次使用，创建默认会话
-      const conv = createConversation();
-      conversations.value = [conv];
-      currentConvId.value = conv.id;
+      console.error('[LLMPanel] 加载对话列表失败:', resp?.error);
+      await newConversation();
     }
   } catch (e) {
-    console.error('[LLMPanel] 加载历史记录失败:', e);
-    const conv = createConversation();
-    conversations.value = [conv];
-    currentConvId.value = conv.id;
+    console.error('[LLMPanel] 加载对话列表异常:', e);
+    await newConversation();
   }
 }
 
-function saveConversations() {
+/** 从后端加载指定对话的消息 */
+async function loadMessages(convId: string) {
+  // 若已有缓存且非空，跳过加载
+  if (_convMessages[convId] && _convMessages[convId].length > 0) return;
+
   try {
-    // 超出上限时删除最旧的
-    let toSave = [...conversations.value];
-    if (toSave.length > MAX_CONVERSATIONS) {
-      toSave = toSave.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_CONVERSATIONS);
+    const resp = await chrome.runtime.sendMessage({ type: 'CHROME_CHAT_MESSAGES', convId }) as
+      { success: boolean; data?: Array<{ role: string; content: string; timestamp: number }>; error?: string };
+    if (resp && resp.success && Array.isArray(resp.data)) {
+      _convMessages[convId] = resp.data.map((m, i) => ({
+        id: `md-${convId}-${i}-${m.timestamp}`,
+        role: m.role as 'user' | 'assistant',
+        text: m.content,
+      }));
+      touchMessages();
     }
-    chrome.storage.local.set({ [STORAGE_KEY]: toSave });
   } catch (e) {
-    console.error('[LLMPanel] 保存历史记录失败:', e);
+    console.error('[LLMPanel] 加载消息失败:', e);
   }
 }
 
-// 深度监听，消息变化自动保存
-watch(conversations, saveConversations, { deep: true });
+/** 向后端追加消息并更新本地缓存 */
+async function persistMessage(convId: string, role: 'user' | 'assistant', content: string) {
+  try {
+    await chrome.runtime.sendMessage({ type: 'CHROME_CHAT_APPEND', convId, role, content });
+  } catch (e) {
+    console.error('[LLMPanel] 持久化消息失败:', e);
+  }
+}
 
 // ===== 会话管理 =====
-function newConversation() {
-  const conv = createConversation();
-  conversations.value.unshift(conv);
-  currentConvId.value = conv.id;
+async function newConversation() {
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: 'CHROME_CHAT_CREATE', title: '新对话' }) as
+      { success: boolean; data?: ConvMeta; error?: string };
+    if (resp && resp.success && resp.data) {
+      const conv = resp.data;
+      conversations.value.unshift(conv);
+      _convMessages[conv.id] = [];
+      currentConvId.value = conv.id;
+      touchMessages();
+    } else {
+      console.error('[LLMPanel] 创建对话失败:', resp?.error);
+    }
+  } catch (e) {
+    console.error('[LLMPanel] 创建对话异常:', e);
+  }
   showHistory.value = false;
   nextTick(() => scrollToBottom());
 }
 
-function switchConversation(id: string) {
+async function switchConversation(id: string) {
   currentConvId.value = id;
   showHistory.value = false;
+  await loadMessages(id);
+  touchMessages();
   nextTick(() => scrollToBottom());
 }
 
-function deleteConversation(id: string) {
+async function deleteConversation(id: string) {
   const idx = conversations.value.findIndex(c => c.id === id);
   if (idx === -1) return;
-  conversations.value.splice(idx, 1);
 
-  // 如果删除的是当前会话，切换到最新的
+  // 远程删除
+  try {
+    await chrome.runtime.sendMessage({ type: 'CHROME_CHAT_DELETE', convId: id });
+  } catch (e) {
+    console.error('[LLMPanel] 删除对话失败:', e);
+  }
+
+  conversations.value.splice(idx, 1);
+  delete _convMessages[id];
+
   if (id === currentConvId.value) {
     if (conversations.value.length === 0) {
-      const conv = createConversation();
-      conversations.value = [conv];
+      await newConversation();
+    } else {
+      const latest = [...conversations.value].sort((a, b) => b.mtime - a.mtime)[0];
+      await switchConversation(latest.id);
     }
-    const latest = [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    currentConvId.value = latest.id;
   }
 }
 
@@ -713,24 +839,20 @@ const inputText = ref('');
 const messagesContainer = ref<HTMLElement | null>(null);
 const copied = ref(false);
 
-// 以 convId 为 key 的 Map，使每个会话拥有独立的 loading / pending / lastMsgId 状态
 const _loadingMap = ref<Record<string, boolean>>({});
 const _pendingMap = ref<Record<string, string>>({});
 const _lastMsgIdMap = ref<Record<string, string | null>>({});
 
-/** 当前会话是否正在生成（可写） */
 const loadingLLM = computed<boolean>({
   get: () => _loadingMap.value[currentConvId.value] ?? false,
   set: (v) => { _loadingMap.value[currentConvId.value] = v; },
 });
 
-/** 当前会话的排队消息（可写） */
 const pendingText = computed<string>({
   get: () => _pendingMap.value[currentConvId.value] ?? '',
   set: (v) => { _pendingMap.value[currentConvId.value] = v; },
 });
 
-/** 当前会话正在流式接收的 assistant 消息 ID（可写） */
 const lastAssistantMessageId = computed<string | null>({
   get: () => _lastMsgIdMap.value[currentConvId.value] ?? null,
   set: (v) => { _lastMsgIdMap.value[currentConvId.value] = v ?? null; },
@@ -950,17 +1072,16 @@ async function handleSend() {
 const _placeholderConvMap: Record<string, string> = {};
 
 async function doSend(text: string, targetConvId?: string, pageContextData?: { title: string; text: string }) {
-  // 在函数开头捕获 convId，防止后续 await 期间用户切换会话导致路由错误
   const convId = targetConvId ?? currentConvId.value;
-  const conv = conversations.value.find(c => c.id === convId);
-  if (!conv) return;
+  if (!convId) return;
 
+  const convMsgs = getConvMessages(convId);
   const id = genId();
 
-  // 快照历史（不含当前消息），组装给后端的完整上下文
-  const history = conv.messages
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => {
+  // 快照历史（不含当前消息）
+  const history = convMsgs
+    .filter((m: ChatMessage) => m.role === 'user' || m.role === 'assistant')
+    .map((m: ChatMessage) => {
       let content = m.text;
       if (m.pageContext) {
         content = `${content}\n\n\`\`\`page-context\n【当前网页: ${m.pageContext.title}】\n${m.pageContext.text}\n\`\`\``;
@@ -969,17 +1090,25 @@ async function doSend(text: string, targetConvId?: string, pageContextData?: { t
     });
 
   // UI 展示的消息体
-  conv.messages.push({ id, role: 'user', text, pageContext: pageContextData });
-  // 更新标题（第一次发消息时）
-  if (conv.messages.filter(m => m.role === 'user').length === 1) {
-    conv.title = autoTitle(conv);
+  convMsgs.push({ id, role: 'user', text, pageContext: pageContextData });
+  touchMessages();
+
+  // 持久化 user 消息到 issueMarkdown 文件
+  void persistMessage(convId, 'user', text);
+
+  // 更新标题（第一条 user 消息时）
+  const convMeta = conversations.value.find(c => c.id === convId);
+  if (convMeta && convMsgs.filter((m: ChatMessage) => m.role === 'user').length === 1) {
+    const newTitle = autoTitle(convMsgs);
+    convMeta.title = newTitle;
+    void chrome.runtime.sendMessage({ type: 'CHROME_CHAT_RENAME', convId, title: newTitle }).catch(() => {});
   }
-  conv.updatedAt = Date.now();
+  if (convMeta) convMeta.mtime = Date.now();
   scrollToBottom();
 
   try {
     _loadingMap.value[convId] = true;
-    
+
     let realPrompt = text;
     if (pageContextData) {
       realPrompt = `${realPrompt}\n\n\`\`\`page-context\n【当前网页: ${pageContextData.title}】\n${pageContextData.text}\n\`\`\`\n`;
@@ -989,7 +1118,7 @@ async function doSend(text: string, targetConvId?: string, pageContextData?: { t
     addLog('info', `发送 → 模型: ${_sendModel} | 历史: ${history.length}条 | prompt: ${realPrompt.length}字`);
 
     const response = await chrome.runtime.sendMessage({
-      type: 'LLM_REQUEST',
+      type: toolsEnabled.value ? 'LLM_REQUEST_WITH_TOOLS' : 'LLM_REQUEST',
       model: _sendModel,
       prompt: realPrompt,
       history,
@@ -1000,31 +1129,32 @@ async function doSend(text: string, targetConvId?: string, pageContextData?: { t
       const requestId = response.data && response.data.requestId;
       if (typeof reply === 'string' && reply.length > 0) {
         addLog('info', `完成 ← 模型: ${_sendModel} | 响应: ${reply.length}字`);
-        conv.messages.push({ id: 'r-' + id, role: 'assistant', text: reply });
-        conv.updatedAt = Date.now();
+        convMsgs.push({ id: 'r-' + id, role: 'assistant', text: reply });
+        touchMessages();
+        void persistMessage(convId, 'assistant', reply);
         finishLoadingForConv(convId);
       } else if (requestId) {
         addLog('info', `排队 ⟳ 模型: ${_sendModel} | requestId: ${requestId}`);
         const placeholderId = 'p-' + requestId;
-        conv.messages.push({ id: placeholderId, role: 'assistant', text: '' });
-        // 注册路由映射：后续 chunk/reply 通过此 ID 找到正确的会话
+        convMsgs.push({ id: placeholderId, role: 'assistant', text: '' });
+        touchMessages();
         _placeholderConvMap[placeholderId] = convId;
         _lastMsgIdMap.value[convId] = placeholderId;
       } else {
-        conv.messages.push({ id: 'e3-' + id, role: 'assistant', text: '请求失败: LLM 返回结果缺少 reply / requestId' });
-        conv.updatedAt = Date.now();
+        convMsgs.push({ id: 'e3-' + id, role: 'assistant', text: '请求失败: LLM 返回结果缺少 reply / requestId' });
+        touchMessages();
         finishLoadingForConv(convId);
       }
     } else {
-      conv.messages.push({ id: 'e-' + id, role: 'assistant', text: '请求失败: ' + (response?.error || '未知错误') });
-      conv.updatedAt = Date.now();
+      convMsgs.push({ id: 'e-' + id, role: 'assistant', text: '请求失败: ' + (response?.error || '未知错误') });
+      touchMessages();
       finishLoadingForConv(convId);
     }
   } catch (err: unknown) {
     const em = err instanceof Error ? err.message : String(err);
     addLog('error', `发送异常: ${em}`);
-    conv.messages.push({ id: 'e2-' + id, role: 'assistant', text: '发送异常: ' + em });
-    conv.updatedAt = Date.now();
+    convMsgs.push({ id: 'e2-' + id, role: 'assistant', text: '发送异常: ' + em });
+    touchMessages();
     finishLoadingForConv(convId);
   } finally {
     scrollToBottom();
@@ -1061,23 +1191,24 @@ function handleIncomingMessage(msg: unknown) {
   if (!payload) return;
 
   const requestId = msg.requestId;
-  
+
   // 1. 拦截标题生成任务
   if (requestId && _titleGenMap[requestId]) {
     const genConvId = _titleGenMap[requestId];
     const targetConv = conversations.value.find(c => c.id === genConvId);
-    
+
     if (payload.chunk) {
       _titleGenBuffer[requestId] += String(payload.chunk);
     } else if (typeof payload.reply === 'string') {
       const fullText = (payload.reply || _titleGenBuffer[requestId]).trim().replace(/^["']|["']$/g, '');
-      if (fullText && targetConv) targetConv.title = fullText;
-      // 清理状态
+      if (fullText && targetConv) {
+        targetConv.title = fullText;
+        // 持久化标题到 issueMarkdown
+        void chrome.runtime.sendMessage({ type: 'CHROME_CHAT_RENAME', convId: genConvId, title: fullText }).catch(() => {});
+      }
       delete _titleGenMap[requestId];
       delete _titleGenBuffer[requestId];
-      if (generatingTitleId.value === genConvId) {
-        generatingTitleId.value = null;
-      }
+      if (generatingTitleId.value === genConvId) generatingTitleId.value = null;
     } else if (payload.event === 'error') {
       delete _titleGenMap[requestId];
       delete _titleGenBuffer[requestId];
@@ -1093,70 +1224,96 @@ function handleIncomingMessage(msg: unknown) {
   const convId = _placeholderConvMap[placeholderId];
   if (!convId) return;
 
-  const conv = conversations.value.find(c => c.id === convId);
-  if (!conv) return;
-
+  const convMsgs = getConvMessages(convId);
   const chunk = payload.chunk || payload.text;
   const reply = payload.reply;
 
-  if (chunk) {
-    const idx = conv.messages.findIndex(m => m.id === placeholderId);
-    if (idx !== -1) {
-      conv.messages[idx].text += String(chunk);
-    } else {
-      // 占位消息丢失，直接追加
-      conv.messages.push({ id: placeholderId, role: 'assistant', text: String(chunk) });
+  // 工具调用事件（临时 UI 状态，不持久化）
+  if (payload.event === 'tool_call') {
+    const toolMsgId = `tool-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    convMsgs.push({
+      id: toolMsgId,
+      role: 'tool',
+      text: payload.summary || '',
+      toolName: payload.toolName,
+      toolPhase: 'calling',
+    });
+    if (convId === currentConvId.value) { touchMessages(); scrollToBottom(); }
+    return;
+  }
+
+  if (payload.event === 'tool_result') {
+    for (let i = convMsgs.length - 1; i >= 0; i--) {
+      const m = convMsgs[i];
+      if (m.role === 'tool' && m.toolName === payload.toolName && m.toolPhase === 'calling') {
+        const resultPreview = payload.preview || '';
+        const isError = payload.success === false || resultPreview.startsWith('失败') || resultPreview.startsWith('错误');
+        convMsgs[i] = {
+          ...m,
+          toolPhase: isError ? 'error' : 'done',
+          toolResult: resultPreview,
+          toolExpanded: false,
+        };
+        break;
+      }
     }
-    conv.updatedAt = Date.now();
-    // 若正在查看该会话，则滚动到底部
-    if (convId === currentConvId.value) scrollToBottom();
+    if (convId === currentConvId.value) { touchMessages(); scrollToBottom(); }
+    return;
+  }
+
+  if (chunk) {
+    const idx = convMsgs.findIndex((m: ChatMessage) => m.id === placeholderId);
+    if (idx !== -1) {
+      convMsgs[idx].text += String(chunk);
+    } else {
+      convMsgs.push({ id: placeholderId, role: 'assistant', text: String(chunk) });
+    }
+    if (convId === currentConvId.value) { touchMessages(); scrollToBottom(); }
     return;
   }
 
   if (payload.event === 'error') {
-    const idx = conv.messages.findIndex(m => m.id === placeholderId);
+    const idx = convMsgs.findIndex((m: ChatMessage) => m.id === placeholderId);
     const errText = payload.error || '对话生成失败';
     addLog('error', `错误: ${errText}`);
     if (idx !== -1) {
-      conv.messages[idx].text = `请求失败: ${errText}`;
+      convMsgs[idx].text = `请求失败: ${errText}`;
     } else {
-      conv.messages.push({ id: 'e4-' + genId(), role: 'assistant', text: `请求失败: ${errText}` });
+      convMsgs.push({ id: 'e4-' + genId(), role: 'assistant', text: `请求失败: ${errText}` });
     }
-    conv.updatedAt = Date.now();
     finishLoadingForConv(convId);
-    if (convId === currentConvId.value) scrollToBottom();
+    if (convId === currentConvId.value) { touchMessages(); scrollToBottom(); }
     return;
   }
 
   if (typeof reply === 'string') {
     const replyModelFamily = (payload as any).modelFamily as string | undefined;
-    const idx = conv.messages.findIndex(m => m.id === placeholderId);
-    const fullText = reply || conv.messages[idx]?.text || '';
+    const idx = convMsgs.findIndex((m: ChatMessage) => m.id === placeholderId);
+    const fullText = reply || convMsgs[idx]?.text || '';
     addLog('info', `完成 ← 模型: ${replyModelFamily ?? '?'} | 响应: ${fullText.length}字`);
     if (idx !== -1) {
-      conv.messages[idx].text = String(reply);
+      convMsgs[idx].text = String(reply);
     } else {
-      conv.messages.push({ id: 'r-' + genId(), role: 'assistant', text: String(reply) });
+      convMsgs.push({ id: 'r-' + genId(), role: 'assistant', text: String(reply) });
     }
-    conv.updatedAt = Date.now();
+    // 持久化 assistant 最终回复到 issueMarkdown 文件
+    const persistText = reply || fullText;
+    if (persistText) {
+      void persistMessage(convId, 'assistant', persistText);
+    }
     finishLoadingForConv(convId);
-    if (convId === currentConvId.value) scrollToBottom();
+    if (convId === currentConvId.value) { touchMessages(); scrollToBottom(); }
   }
 }
 
 // ===== 生命周期 =====
 onMounted(() => {
-  // 先注册监听，避免重新进入后在加载历史期间错过流式消息
   chrome.runtime.onMessage.removeListener(handleIncomingMessage);
   chrome.runtime.onMessage.addListener(handleIncomingMessage);
-
-  // 注册点击外部关闭模型菜单
   document.addEventListener('click', handleOutsideClick);
 
-  // 动态加载模型列表
   void loadModels();
-
-  void loadConversations();
+  void loadConversationList();
 });
 
 onUnmounted(() => {
@@ -2095,4 +2252,119 @@ onUnmounted(() => {
 .page-context-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent-blue); }
 .page-context-btn:active { transform: scale(0.92); }
 .page-context-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* ========== 工具调用开关 ========== */
+.tools-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+  margin-bottom: 2px;
+}
+.tools-toggle-btn svg { width: 14px; height: 14px; }
+.tools-toggle-btn:hover { background: var(--bg-hover); color: var(--text-secondary); border-color: var(--border-subtle); }
+.tools-toggle-btn.active {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+.tools-toggle-btn.active:hover { background: rgba(52, 211, 153, 0.18); }
+.tools-toggle-btn:active { transform: scale(0.92); }
+
+/* ========== 工具调用卡片 ========== */
+.llm-message.tool {
+  padding: 0 4px;
+}
+
+.tool-call-card {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  background: rgba(167, 139, 250, 0.06);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  max-width: 100%;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tool-call-card.expandable { cursor: pointer; }
+.tool-call-card.expandable:hover { background: rgba(167, 139, 250, 0.10); }
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+}
+
+.tool-icon { width: 13px; height: 13px; flex-shrink: 0; }
+
+.tool-call-label {
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tool-call-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-expand-arrow {
+  width: 14px; height: 14px; flex-shrink: 0;
+  opacity: 0.4;
+  transition: transform 0.2s;
+}
+.tool-expand-arrow.expanded { transform: rotate(180deg); }
+
+.tool-call-card.calling {
+  color: var(--accent-purple);
+  border-color: rgba(167, 139, 250, 0.3);
+  background: rgba(167, 139, 250, 0.08);
+}
+.tool-call-card.done {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.25);
+  background: rgba(52, 211, 153, 0.05);
+}
+.tool-call-card.done.expandable:hover { background: rgba(52, 211, 153, 0.08); }
+.tool-call-card.error {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.06);
+}
+.tool-call-card.error.expandable:hover { background: rgba(248, 113, 113, 0.10); }
+
+.tool-result-detail {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  opacity: 0.8;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.tool-spin {
+  animation: toolSpin 1s linear infinite;
+}
+@keyframes toolSpin {
+  to { transform: rotate(360deg); }
+}
 </style>

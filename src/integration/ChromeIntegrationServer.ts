@@ -53,6 +53,12 @@ const URI_PATH_OPEN_DIR = '/open-issue-dir';
 const URI_PATH_CREATE_FROM_HTML = '/create-from-html';
 const COMMAND_OPEN_ISSUE_DIR = 'issueManager.openIssueDir';
 
+/** 待处理的 VSCode → Chrome 请求 */
+interface PendingRequest {
+  resolve: (data: any) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
 
 /**
  * 负责 VSCode 端与 Chrome 扩展集成:
@@ -65,6 +71,9 @@ export class ChromeIntegrationServer {
   private wss: WebSocketServer | null = null;
   private disposed = false;
   private logger = Logger.getInstance();
+  /** VSCode → Chrome 请求的 pending 映射 */
+  private pendingRequests = new Map<string, PendingRequest>();
+  private requestIdCounter = 0;
 
   public static getInstance(): ChromeIntegrationServer {
     if (!this.instance) {
@@ -98,6 +107,66 @@ export class ChromeIntegrationServer {
     });
 
     this.logger.debug(`[ChromeIntegration] 广播消息到 ${sentCount} 个客户端`, message);
+  }
+
+  /**
+   * 向 Chrome 扩展发送请求并等待响应（请求/响应模式）
+   * @param type 请求类型
+   * @param data 请求数据
+   * @param timeoutMs 超时时间（毫秒），默认 30 秒
+   */
+  public sendRequest<T = any>(type: string, data?: unknown, timeoutMs = 30000): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      if (!this.wss) {
+        reject(new Error('WebSocket 服务未启动'));
+        return;
+      }
+
+      // 寻找一个 OPEN 状态的客户端
+      let targetClient: WebSocket | undefined;
+      this.wss.clients.forEach((client: WebSocket) => {
+        if (client.readyState === WebSocket.OPEN && !targetClient) {
+          targetClient = client;
+        }
+      });
+
+      if (!targetClient) {
+        reject(new Error('没有已连接的 Chrome 扩展'));
+        return;
+      }
+
+      const msgId = `vscode-req-${++this.requestIdCounter}-${Date.now()}`;
+
+      const timer = setTimeout(() => {
+        if (this.pendingRequests.has(msgId)) {
+          this.pendingRequests.delete(msgId);
+          reject(new Error(`Chrome 请求超时: ${type} (${timeoutMs}ms)`));
+        }
+      }, timeoutMs);
+
+      this.pendingRequests.set(msgId, { resolve, reject, timer });
+
+      try {
+        targetClient.send(JSON.stringify({ type, id: msgId, data }));
+        this.logger.info(`[ChromeIntegration] 发送请求到 Chrome: ${type} (${msgId})`);
+      } catch (e) {
+        clearTimeout(timer);
+        this.pendingRequests.delete(msgId);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  }
+
+  /**
+   * 检查是否有 Chrome 扩展连接
+   */
+  public hasConnectedClient(): boolean {
+    if (!this.wss) { return false; }
+    let hasOpen = false;
+    this.wss.clients.forEach((client: WebSocket) => {
+      if (client.readyState === WebSocket.OPEN) { hasOpen = true; }
+    });
+    return hasOpen;
   }
 
   public async start(context: vscode.ExtensionContext): Promise<void> {
@@ -228,6 +297,19 @@ export class ChromeIntegrationServer {
             return;
           }
           message = parsedObj;
+
+          // 检查是否为 VSCode→Chrome 请求的响应
+          if (message.id && this.pendingRequests.has(String(message.id))) {
+            const pending = this.pendingRequests.get(String(message.id))!;
+            this.pendingRequests.delete(String(message.id));
+            clearTimeout(pending.timer);
+            if (message.type === 'error') {
+              pending.reject(new Error((message as any).error || 'Chrome 请求失败'));
+            } else {
+              pending.resolve(message.data ?? message);
+            }
+            return;
+          }
 
           if (message.type === 'create-note') {
             const payload: ChromeRequestPayload = message.data || {};
@@ -541,6 +623,262 @@ export class ChromeIntegrationServer {
                 ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message?.id }));
               } catch { }
             }
+          } else if (message.type === 'start-web-agent') {
+            // Chrome Side Panel 发起的 Web Research Agent 任务
+            try {
+              const payload = message.data as any || {};
+              const taskText = payload.task || '';
+              if (!taskText || typeof taskText !== 'string') {
+                ws.send(JSON.stringify({ type: 'error', error: '请提供研究任务描述', id: message.id }));
+                return;
+              }
+
+              // @ts-ignore webpack resolves .ts directly
+              const agentMod = await import('../webAgent/WebAgentService');
+              const agent = agentMod.WebAgentService.getInstance();
+              const taskId = `agent-${Date.now()}`;
+
+              // 先告知 Chrome 任务已启动
+              ws.send(JSON.stringify({ type: 'web-agent-started', id: message.id, data: { taskId } }));
+
+              // 异步执行研究任务，进度事件实时推送
+              agent.startResearch(
+                { id: taskId, task: taskText, createdAt: Date.now() },
+                (event) => {
+                  try {
+                    ws.send(JSON.stringify({ type: 'web-agent-progress', data: event, taskId }));
+                  } catch { /* 连接可能已断开 */ }
+                },
+              ).then((result) => {
+                try {
+                  ws.send(JSON.stringify({ type: 'web-agent-complete', data: result, taskId }));
+                } catch { /* ignore */ }
+              }).catch((e: unknown) => {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                try {
+                  ws.send(JSON.stringify({ type: 'web-agent-error', data: { error: errMsg }, taskId }));
+                } catch { /* ignore */ }
+              });
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
+          } else if (message.type === 'llm-request-with-tools') {
+            // 带工具调用的 LLM 请求（支持 search_issues, web_search, create_issue_tree 等）
+            try {
+              const payload = message.data as any || {};
+              const prompt = payload.prompt || payload.text || '';
+              if (!prompt || typeof prompt !== 'string') {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing prompt', id: message.id }));
+                return;
+              }
+
+              const history: Array<{ role: string; content: string }> = Array.isArray(payload.history) ? payload.history : [];
+
+              // 构建系统提示（Chrome 面板上下文：浏览器工具直接可用，强调浏览器交互能力）
+              const systemContent = '[系统] 你是一个运行在 Chrome 浏览器侧边面板中的 AI 助手，可以直接控制用户的浏览器并与页面交互。\n\n'
+                + '[标签页管理]\n'
+                + '- open_tab: 打开新标签页到指定 URL（返回 tabId，标签页保持打开）\n'
+                + '- get_tab_content: 读取指定标签页的页面文本内容（需传入 tabId）\n'
+                + '- activate_tab: 切换到指定标签页（使其可见）\n'
+                + '- list_tabs: 列出所有打开的标签页（获取 tabId、标题、URL）\n'
+                + '- organize_tabs: 将标签页按分组整理\n'
+                + '- close_tabs: 关闭指定标签页\n\n'
+                + '[页面交互]\n'
+                + '- get_page_elements: 获取页面上的可交互元素（输入框、按钮、链接、下拉框等），返回 CSS 选择器\n'
+                + '- click_element: 点击页面元素（按钮、链接等），可用 CSS 选择器或文本定位\n'
+                + '- fill_input: 填写表单输入框，可用选择器/name/placeholder 定位\n'
+                + '- select_option: 选择下拉框选项\n'
+                + '- press_key: 模拟键盘按键（Enter 提交、Tab 切换等）\n\n'
+                + '[搜索与抓取]\n'
+                + '- web_search: 通过搜索引擎搜索并返回结果页面文本\n'
+                + '- fetch_url: 访问 URL 并提取页面文本内容\n\n'
+                + '[笔记工具]\n'
+                + '- search_issues: 搜索笔记\n'
+                + '- read_issue: 读取笔记内容\n'
+                + '- create_issue: 创建单个笔记\n'
+                + '- create_issue_tree: 创建层级结构的笔记树（推荐）\n'
+                + '- list_issue_tree: 查看笔记树结构\n'
+                + '- update_issue: 更新已有笔记\n\n'
+                + '[使用指引]\n'
+                + '- 用户要求打开网页 → 使用 open_tab，URL 要完整（如 https://weibo.com）\n'
+                + '- 用户要求查看页面内容 → 先 list_tabs 找 tabId，再 get_tab_content\n'
+                + '- 用户要求填写表单/登录/输入验证码 → 先 get_page_elements 了解表单结构，再用 fill_input 填入，最后 click_element 点击提交\n'
+                + '- 用户要求点击某个按钮/链接 → 使用 click_element，可通过文本或选择器定位\n'
+                + '- 用户要求搜索某个话题 → 使用 web_search\n'
+                + '- 用户要求创建笔记 → 优先使用 create_issue_tree\n'
+                + '- 操作表单的典型流程: open_tab → get_page_elements → fill_input (多次) → click_element 提交\n'
+                + '- 请积极使用工具来完成用户的请求，不要仅仅用文字回复可以操作的事情。';
+
+              const chatMessages: vscode.LanguageModelChatMessage[] = [
+                vscode.LanguageModelChatMessage.User(systemContent),
+                ...history.map((h: { role: string; content: string }) =>
+                  h.role === 'assistant'
+                    ? vscode.LanguageModelChatMessage.Assistant(h.content || '')
+                    : vscode.LanguageModelChatMessage.User(h.content || ''),
+                ),
+                vscode.LanguageModelChatMessage.User(prompt),
+              ];
+
+              const msgId = message?.id;
+              const requestedModelFamily: string | undefined = payload.model ? String(payload.model) : undefined;
+
+              // @ts-ignore webpack resolves .ts directly
+              const chatToolsMod = await import('../llmChat/chatTools');
+              const { CHAT_TOOLS, executeChatTool } = chatToolsMod;
+
+              // @ts-ignore webpack resolves .ts directly
+              const mod = await import('../llm/LLMService');
+              const LLMServiceClass = (mod as any).LLMService;
+
+              this.logger.info(`[ChromeChat] llm-request-with-tools | model=${requestedModelFamily ?? 'default'} | tools=${CHAT_TOOLS.length} | msgs=${chatMessages.length} | prompt=${prompt.slice(0, 80)}`);
+              ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'started' }, id: msgId }));
+
+              const _logger = this.logger;
+              const result = await LLMServiceClass.streamWithTools(
+                chatMessages,
+                CHAT_TOOLS,
+                (chunk: string) => {
+                  try { ws.send(JSON.stringify({ type: 'llm-push', data: { chunk }, id: msgId })); } catch { }
+                },
+                async (toolName: string, input: Record<string, unknown>): Promise<string> => {
+                  _logger.info(`[ChromeChat] 工具调用: ${toolName}`, input);
+                  const summary = getToolInputSummary(toolName, input);
+                  try { ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'tool_call', toolName, summary }, id: msgId })); } catch { }
+                  const res = await executeChatTool(toolName, input);
+                  const preview = typeof res.content === 'string' ? res.content.slice(0, 300) : '';
+                  _logger.info(`[ChromeChat] 工具结果: ${toolName} | success=${res.success} | ${preview.slice(0, 100)}`);
+                  try { ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'tool_result', toolName, preview, success: res.success }, id: msgId })); } catch { }
+                  return res.content;
+                },
+                { modelFamily: requestedModelFamily, maxToolRounds: 10 },
+              );
+
+              if (!result) {
+                this.logger.warn('[ChromeChat] streamWithTools 返回 null（无可用模型）');
+                ws.send(JSON.stringify({ type: 'error', error: 'No available LLM model', id: msgId }));
+                return;
+              }
+              this.logger.info(`[ChromeChat] 完成 | 响应长度=${result.text.length}字 | model=${result.modelFamily}`);
+              ws.send(JSON.stringify({ type: 'llm-reply', data: { reply: result.text, modelFamily: result.modelFamily }, id: msgId }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              try { ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message?.id })); } catch { }
+            }
+
+          } else if (message.type === 'cancel-web-agent') {
+            // 取消正在运行的 Agent 任务
+            try {
+              const payload = message.data as any || {};
+              const taskId = payload.taskId || '';
+              // @ts-ignore webpack resolves .ts directly
+              const agentMod = await import('../webAgent/WebAgentService');
+              const agent = agentMod.WebAgentService.getInstance();
+              agent.cancelTask(taskId);
+              ws.send(JSON.stringify({ type: 'web-agent-cancelled', id: message.id, taskId }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
+          } else if (message.type === 'chrome-chat-list') {
+            // 获取所有 Chrome 面板聊天对话列表
+            try {
+              // @ts-ignore webpack resolves .ts directly
+              const mod = await import('../llmChat/llmChatDataManager');
+              const convos = await mod.getAllChromeChatConversations();
+              ws.send(JSON.stringify({ type: 'chrome-chat-list-result', data: convos, id: message.id }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
+          } else if (message.type === 'chrome-chat-create') {
+            // 创建新的 Chrome 面板聊天对话
+            try {
+              const payload = (message.data || {}) as { title?: string };
+              // @ts-ignore webpack resolves .ts directly
+              const mod = await import('../llmChat/llmChatDataManager');
+              const result = await mod.createChromeChatConversation(payload.title);
+              if (result) {
+                ws.send(JSON.stringify({ type: 'chrome-chat-create-result', data: result, id: message.id }));
+              } else {
+                ws.send(JSON.stringify({ type: 'error', error: '创建对话失败', id: message.id }));
+              }
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
+          } else if (message.type === 'chrome-chat-delete') {
+            // 删除 Chrome 面板聊天对话
+            try {
+              const payload = (message.data || {}) as { id?: string };
+              if (!payload.id) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing id', id: message.id }));
+                return;
+              }
+              // @ts-ignore webpack resolves .ts directly
+              const mod = await import('../llmChat/llmChatDataManager');
+              const ok = await mod.deleteChromeChatConversation(payload.id);
+              ws.send(JSON.stringify({ type: ok ? 'success' : 'error', error: ok ? undefined : '删除失败', id: message.id }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
+          } else if (message.type === 'chrome-chat-rename') {
+            // 重命名 Chrome 面板聊天对话
+            try {
+              const payload = (message.data || {}) as { id?: string; title?: string };
+              if (!payload.id || !payload.title) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing id or title', id: message.id }));
+                return;
+              }
+              // @ts-ignore webpack resolves .ts directly
+              const mod = await import('../llmChat/llmChatDataManager');
+              const ok = await mod.renameChromeChatConversation(payload.id, payload.title);
+              ws.send(JSON.stringify({ type: ok ? 'success' : 'error', error: ok ? undefined : '重命名失败', id: message.id }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
+          } else if (message.type === 'chrome-chat-messages') {
+            // 获取 Chrome 面板聊天对话的消息列表
+            try {
+              const payload = (message.data || {}) as { id?: string };
+              if (!payload.id) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing id', id: message.id }));
+                return;
+              }
+              // @ts-ignore webpack resolves .ts directly
+              const mod = await import('../llmChat/llmChatDataManager');
+              const messages = await mod.getChromeChatMessages(payload.id);
+              ws.send(JSON.stringify({ type: 'chrome-chat-messages-result', data: messages, id: message.id }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
+          } else if (message.type === 'chrome-chat-append') {
+            // 向 Chrome 面板聊天对话追加消息
+            try {
+              const payload = (message.data || {}) as { id?: string; role?: string; content?: string };
+              if (!payload.id || !payload.role || !payload.content) {
+                ws.send(JSON.stringify({ type: 'error', error: 'Missing id, role, or content', id: message.id }));
+                return;
+              }
+              // @ts-ignore webpack resolves .ts directly
+              const mod = await import('../llmChat/llmChatDataManager');
+              const ok = await mod.appendChromeChatMessage(payload.id, payload.role as 'user' | 'assistant', payload.content);
+              ws.send(JSON.stringify({ type: ok ? 'success' : 'error', error: ok ? undefined : '追加消息失败', id: message.id }));
+            } catch (e: unknown) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              ws.send(JSON.stringify({ type: 'error', error: errMsg, id: message.id }));
+            }
+
           } else {
             ws.send(JSON.stringify({
               type: 'error',
@@ -653,5 +991,30 @@ export class ChromeIntegrationServer {
     } catch (e) {
       this.logger.warn('[ChromeIntegration] 停止服务时出错', e);
     }
+  }
+}
+
+/** 为工具调用生成简短摘要，用于推送给 Chrome 端显示 */
+function getToolInputSummary(name: string, input: Record<string, unknown>): string {
+  switch (name) {
+    case 'web_search': return `搜索: ${input.query || ''}`;
+    case 'fetch_url': return `访问: ${input.url || ''}`;
+    case 'search_issues': return `检索: ${input.query || ''}`;
+    case 'read_issue': return `读取: ${input.filename || ''}`;
+    case 'create_issue': return `创建: ${input.title || ''}`;
+    case 'create_issue_tree': return `创建笔记树: ${(input.nodes as any[])?.length ?? 0} 个节点`;
+    case 'update_issue': return `更新: ${input.filename || ''}`;
+    case 'list_tabs': return '获取标签页列表';
+    case 'organize_tabs': return `整理 ${(input.groups as any[])?.length ?? 0} 个分组`;
+    case 'close_tabs': return `关闭 ${(input.tabIds as any[])?.length ?? 0} 个标签`;
+    case 'open_tab': return `打开: ${input.url || ''}`;
+    case 'get_tab_content': return `读取标签 #${input.tabId ?? ''}`;
+    case 'activate_tab': return `切换到标签 #${input.tabId ?? ''}`;
+    case 'get_page_elements': return `获取元素 标签#${input.tabId ?? ''}${input.selector ? ` (${input.selector})` : ''}`;
+    case 'click_element': return `点击 ${input.selector || input.text || ''}`;
+    case 'fill_input': return `填写 ${input.selector || input.name || input.placeholder || ''} = "${String(input.value || '').slice(0, 20)}"`;
+    case 'select_option': return `选择 ${input.value || input.text || ''}`;
+    case 'press_key': return `按键 ${input.key || ''}`;
+    default: return JSON.stringify(input).slice(0, 80);
   }
 }

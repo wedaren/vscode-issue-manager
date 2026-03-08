@@ -215,6 +215,74 @@ export default defineBackground(() => {
                 }
               });
             }
+          } else if (message.type === 'web-search') {
+            // VSCode 发起的网络搜索请求
+            handleWebSearch(message).catch(err => {
+              console.error('[WebSocket] web-search 处理失败:', err);
+            });
+          } else if (message.type === 'fetch-url') {
+            // VSCode 发起的 URL 内容抓取请求
+            handleFetchUrl(message).catch(err => {
+              console.error('[WebSocket] fetch-url 处理失败:', err);
+            });
+          } else if (message.type === 'list-tabs') {
+            handleListTabs(message).catch(err => {
+              console.error('[WebSocket] list-tabs 处理失败:', err);
+            });
+          } else if (message.type === 'organize-tabs') {
+            handleOrganizeTabs(message).catch(err => {
+              console.error('[WebSocket] organize-tabs 处理失败:', err);
+            });
+          } else if (message.type === 'close-tabs') {
+            handleCloseTabs(message).catch(err => {
+              console.error('[WebSocket] close-tabs 处理失败:', err);
+            });
+          } else if (message.type === 'open-tab') {
+            handleOpenTab(message).catch(err => {
+              console.error('[WebSocket] open-tab 处理失败:', err);
+            });
+          } else if (message.type === 'get-tab-content') {
+            handleGetTabContent(message).catch(err => {
+              console.error('[WebSocket] get-tab-content 处理失败:', err);
+            });
+          } else if (message.type === 'activate-tab') {
+            handleActivateTab(message).catch(err => {
+              console.error('[WebSocket] activate-tab 处理失败:', err);
+            });
+          } else if (message.type === 'get-page-elements') {
+            handleGetPageElements(message).catch(err => {
+              console.error('[WebSocket] get-page-elements 处理失败:', err);
+            });
+          } else if (message.type === 'click-element') {
+            handleClickElement(message).catch(err => {
+              console.error('[WebSocket] click-element 处理失败:', err);
+            });
+          } else if (message.type === 'fill-input') {
+            handleFillInput(message).catch(err => {
+              console.error('[WebSocket] fill-input 处理失败:', err);
+            });
+          } else if (message.type === 'select-option') {
+            handleSelectOption(message).catch(err => {
+              console.error('[WebSocket] select-option 处理失败:', err);
+            });
+          } else if (message.type === 'press-key') {
+            handlePressKey(message).catch(err => {
+              console.error('[WebSocket] press-key 处理失败:', err);
+            });
+          } else if (
+            message.type === 'web-agent-started' ||
+            message.type === 'web-agent-progress' ||
+            message.type === 'web-agent-complete' ||
+            message.type === 'web-agent-error' ||
+            message.type === 'web-agent-cancelled'
+          ) {
+            // VSCode Agent 事件 → 转发到 Side Panel
+            notifySidePanel({
+              type: 'WEB_AGENT_EVENT',
+              agentEventType: message.type,
+              data: message.data,
+              taskId: (message as any).taskId,
+            } as any);
           }
         } catch (e: unknown) {
           console.error('[WebSocket] 消息解析失败:', e);
@@ -698,6 +766,77 @@ export default defineBackground(() => {
         })();
         break;
 
+      case 'LLM_REQUEST_WITH_TOOLS':
+        // 带工具调用的 LLM 请求，转发到 VSCode 端用 streamWithTools 处理
+        (async () => {
+          try {
+            const model = (message as any).model || (message.data && (message.data as any).model);
+            const prompt = (message as any).prompt || (message.data && (message.data as any).prompt);
+            const history = (message as any).history || [];
+
+            if (!prompt) {
+              sendResponse({ success: false, error: 'Missing prompt' });
+              return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              await initWebSocket();
+            }
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              sendResponse({ success: false, error: 'WebSocket not connected' });
+              return;
+            }
+
+            const msgId = generateMessageId();
+            ws.send(JSON.stringify({ type: 'llm-request-with-tools', id: msgId, data: { model, prompt, history } }));
+            sendResponse({ success: true, data: { requestId: msgId } });
+          } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      case 'START_WEB_AGENT':
+        // Side Panel → Background → VSCode: 启动 Web Research Agent
+        (async () => {
+          try {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              sendResponse({ success: false, error: 'WebSocket 未连接' });
+              return;
+            }
+            const task = (message as any).task || '';
+            if (!task) {
+              sendResponse({ success: false, error: '请输入研究任务' });
+              return;
+            }
+            ws.send(JSON.stringify({ type: 'start-web-agent', id: generateMessageId(), data: { task } }));
+            sendResponse({ success: true });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CANCEL_WEB_AGENT':
+        // Side Panel → Background → VSCode: 取消 Agent 任务
+        (async () => {
+          try {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              sendResponse({ success: false, error: 'WebSocket 未连接' });
+              return;
+            }
+            const taskId = (message as any).taskId || '';
+            ws.send(JSON.stringify({ type: 'cancel-web-agent', id: generateMessageId(), data: { taskId } }));
+            sendResponse({ success: true });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
       case 'GENERATE_TITLE':
         (async () => {
           try {
@@ -764,6 +903,99 @@ export default defineBackground(() => {
             console.error('GENERATE_BRIEF_SUMMARY failed:', e);
             const errorMessage = e instanceof Error ? e.message : String(e);
             sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      // ─── Chrome 面板聊天持久化（issueMarkdown） ───
+      case 'CHROME_CHAT_LIST':
+        (async () => {
+          try {
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-list' }, 8000);
+            if (response && (response as any).type === 'chrome-chat-list-result') {
+              sendResponse({ success: true, data: (response as any).data || [] });
+            } else {
+              sendResponse({ success: false, error: (response as any)?.error || 'Unexpected response' });
+            }
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_CREATE':
+        (async () => {
+          try {
+            const title = (message as any).title;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-create', data: { title } }, 8000);
+            if (response && (response as any).type === 'chrome-chat-create-result') {
+              sendResponse({ success: true, data: (response as any).data });
+            } else {
+              sendResponse({ success: false, error: (response as any)?.error || '创建失败' });
+            }
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_DELETE':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-delete', data: { id: convId } }, 8000);
+            sendResponse({ success: response?.type === 'success', error: response?.error });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_RENAME':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const title = (message as any).title;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-rename', data: { id: convId, title } }, 8000);
+            sendResponse({ success: response?.type === 'success', error: response?.error });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_MESSAGES':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-messages', data: { id: convId } }, 8000);
+            if (response && (response as any).type === 'chrome-chat-messages-result') {
+              sendResponse({ success: true, data: (response as any).data || [] });
+            } else {
+              sendResponse({ success: false, error: (response as any)?.error || 'Unexpected response' });
+            }
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_APPEND':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const role = (message as any).role;
+            const content = (message as any).content;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-append', data: { id: convId, role, content } }, 10000);
+            sendResponse({ success: response?.type === 'success', error: response?.error });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
           }
         })();
         break;
@@ -1035,6 +1267,725 @@ export default defineBackground(() => {
     } catch (error: unknown) {
       console.error('[getFocusedIssues] Failed to get focused issues via WebSocket:', error);
       throw error;
+    }
+  }
+
+  // ─── VSCode → Chrome 请求处理：网络搜索 & URL 抓取 ────────
+
+  /**
+   * 处理 VSCode 发起的网络搜索请求：
+   * 1. 打开新标签页 → 搜索引擎
+   * 2. 等待页面加载
+   * 3. 提取页面文本内容
+   * 4. 通过 WebSocket 返回结果
+   */
+  async function handleWebSearch(message: WebSocketMessage): Promise<void> {
+    const data = message.data as { query?: string; engine?: string } | undefined;
+    const query = data?.query || '';
+    const engine = data?.engine || 'google';
+
+    if (!query) {
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '搜索关键词不能为空' }));
+      return;
+    }
+
+    const searchUrls: Record<string, string> = {
+      google: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+      bing: `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+      baidu: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`,
+    };
+    const searchUrl = searchUrls[engine] || searchUrls.google;
+
+    try {
+      // 1. 打开新标签页
+      const tab = await chrome.tabs.create({ url: searchUrl, active: false });
+      if (!tab.id) {
+        throw new Error('无法创建标签页');
+      }
+
+      // 2. 等待页面加载完成
+      await waitForTabLoad(tab.id, 15000);
+
+      // 3. 注入内容脚本并获取页面内容
+      await ensureContentScriptInjected(tab.id);
+      const pageData = await getPageContent(tab.id);
+
+      // 4. 保留标签页，方便用户查看搜索过程
+      // 5. 返回结果（截取合理长度）
+      const text = (pageData.text || '').slice(0, 16000);
+      ws?.send(JSON.stringify({
+        type: 'web-search-result',
+        id: message.id,
+        data: {
+          query,
+          url: searchUrl,
+          title: pageData.title || '',
+          content: text,
+        },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleWebSearch] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `网络搜索失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 处理 VSCode 发起的 URL 内容抓取请求：
+   * 1. 打开新标签页 → 目标 URL
+   * 2. 等待页面加载
+   * 3. 提取页面文本内容
+   * 4. 通过 WebSocket 返回结果
+   */
+  async function handleFetchUrl(message: WebSocketMessage): Promise<void> {
+    const data = message.data as { url?: string } | undefined;
+    const url = data?.url || '';
+
+    if (!url) {
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: 'URL 不能为空' }));
+      return;
+    }
+
+    try {
+      // 1. 打开新标签页
+      const tab = await chrome.tabs.create({ url, active: false });
+      if (!tab.id) {
+        throw new Error('无法创建标签页');
+      }
+
+      // 2. 等待页面加载完成
+      await waitForTabLoad(tab.id, 20000);
+
+      // 3. 注入内容脚本并获取页面内容
+      await ensureContentScriptInjected(tab.id);
+      const pageData = await getPageContent(tab.id);
+
+      // 4. 保留标签页，方便用户查看抓取的页面
+      // 5. 返回结果
+      const text = (pageData.text || '').slice(0, 32000);
+      ws?.send(JSON.stringify({
+        type: 'fetch-url-result',
+        id: message.id,
+        data: {
+          url,
+          title: pageData.title || '',
+          content: text,
+        },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleFetchUrl] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `URL 抓取失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 等待标签页加载完成
+   */
+  function waitForTabLoad(tabId: number, timeoutMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        // 超时不报错，尝试继续获取内容
+        resolve();
+      }, timeoutMs);
+
+      const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+        if (updatedTabId === tabId && changeInfo.status === 'complete') {
+          clearTimeout(timer);
+          chrome.tabs.onUpdated.removeListener(listener);
+          // 额外等待一下确保动态内容渲染
+          setTimeout(resolve, 1000);
+        }
+      };
+
+      chrome.tabs.onUpdated.addListener(listener);
+
+      // 检查标签页是否已经加载完成
+      chrome.tabs.get(tabId).then(tab => {
+        if (tab.status === 'complete') {
+          clearTimeout(timer);
+          chrome.tabs.onUpdated.removeListener(listener);
+          setTimeout(resolve, 500);
+        }
+      }).catch(() => {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(listener);
+        reject(new Error('标签页不存在'));
+      });
+    });
+  }
+
+  // ─── Tab 管理 ─────────────────────────────────────────────
+
+  /**
+   * 列出所有打开的标签页
+   */
+  async function handleListTabs(message: WebSocketMessage): Promise<void> {
+    try {
+      const tabs = await chrome.tabs.query({});
+      const tabInfos = tabs.map(tab => ({
+        id: tab.id,
+        title: tab.title || '',
+        url: tab.url || '',
+        groupId: tab.groupId ?? -1,
+        windowId: tab.windowId,
+        active: tab.active,
+        pinned: tab.pinned,
+        index: tab.index,
+      }));
+
+      // 获取已有分组信息
+      let groups: Array<{ id: number; title: string; color: string }> = [];
+      try {
+        const tabGroups = await chrome.tabGroups.query({});
+        groups = tabGroups.map(g => ({ id: g.id, title: g.title || '', color: g.color }));
+      } catch { /* tabGroups API 可能不可用 */ }
+
+      ws?.send(JSON.stringify({
+        type: 'list-tabs-result',
+        id: message.id,
+        data: { tabs: tabInfos, groups },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleListTabs] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `获取标签列表失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 将标签页按指定分组整理
+   * data.groups: Array<{ name: string; color: string; tabIds: number[] }>
+   */
+  async function handleOrganizeTabs(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { groups?: Array<{ name: string; color?: string; tabIds: number[] }> } | undefined;
+      const groupDefs = data?.groups || [];
+
+      if (!groupDefs.length) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '未提供分组信息' }));
+        return;
+      }
+
+      const colors = ['blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'] as const;
+      const results: Array<{ name: string; groupId: number; tabCount: number }> = [];
+
+      for (let i = 0; i < groupDefs.length; i++) {
+        const def = groupDefs[i];
+        if (!def.tabIds || def.tabIds.length === 0) continue;
+
+        // 创建 tab group
+        const groupId = await chrome.tabs.group({ tabIds: def.tabIds });
+
+        // 设置分组名称和颜色
+        const color = (def.color || colors[i % colors.length]) as chrome.tabGroups.ColorEnum;
+        await chrome.tabGroups.update(groupId, {
+          title: def.name,
+          color,
+        });
+
+        results.push({ name: def.name, groupId, tabCount: def.tabIds.length });
+      }
+
+      ws?.send(JSON.stringify({
+        type: 'organize-tabs-result',
+        id: message.id,
+        data: { groups: results, totalGroups: results.length },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleOrganizeTabs] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `整理标签失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 关闭指定标签页
+   * data.tabIds: number[]
+   */
+  async function handleCloseTabs(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { tabIds?: number[] } | undefined;
+      const tabIds = data?.tabIds || [];
+
+      if (!tabIds.length) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '未指定要关闭的标签页' }));
+        return;
+      }
+
+      await chrome.tabs.remove(tabIds);
+
+      ws?.send(JSON.stringify({
+        type: 'close-tabs-result',
+        id: message.id,
+        data: { closed: tabIds.length },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleCloseTabs] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `关闭标签失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 打开新标签页并等待加载，返回标签页信息
+   */
+  async function handleOpenTab(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { url?: string; active?: boolean } | undefined;
+      const url = data?.url || '';
+      const active = data?.active !== false;
+
+      if (!url) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: 'URL 不能为空' }));
+        return;
+      }
+
+      const tab = await chrome.tabs.create({ url, active });
+      if (!tab.id) {
+        throw new Error('无法创建标签页');
+      }
+
+      // 等待页面加载完成
+      await waitForTabLoad(tab.id, 15000);
+
+      // 重新获取标签信息（加载后 title 才有值）
+      const updatedTab = await chrome.tabs.get(tab.id);
+
+      ws?.send(JSON.stringify({
+        type: 'open-tab-result',
+        id: message.id,
+        data: {
+          tabId: updatedTab.id,
+          title: updatedTab.title || '',
+          url: updatedTab.url || url,
+        },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleOpenTab] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `打开标签页失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 获取指定标签页的页面文本内容
+   */
+  async function handleGetTabContent(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { tabId?: number } | undefined;
+      const tabId = data?.tabId;
+
+      if (tabId === undefined || tabId === null) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 tabId' }));
+        return;
+      }
+
+      // 确保标签页存在
+      const tab = await chrome.tabs.get(tabId);
+      if (!tab) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '标签页不存在' }));
+        return;
+      }
+
+      // 注入内容脚本并提取文本
+      await ensureContentScriptInjected(tabId);
+      const pageData = await getPageContent(tabId);
+      const text = (pageData.text || '').slice(0, 32000);
+
+      ws?.send(JSON.stringify({
+        type: 'get-tab-content-result',
+        id: message.id,
+        data: {
+          tabId,
+          title: tab.title || '',
+          url: tab.url || '',
+          content: text,
+        },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleGetTabContent] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `获取页面内容失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 激活（切换到）指定标签页
+   */
+  async function handleActivateTab(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { tabId?: number } | undefined;
+      const tabId = data?.tabId;
+
+      if (tabId === undefined || tabId === null) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 tabId' }));
+        return;
+      }
+
+      const tab = await chrome.tabs.update(tabId, { active: true });
+      if (!tab) {
+        throw new Error('标签页不存在');
+      }
+      // 同时激活所在窗口
+      if (tab.windowId) {
+        await chrome.windows.update(tab.windowId, { focused: true });
+      }
+
+      ws?.send(JSON.stringify({
+        type: 'activate-tab-result',
+        id: message.id,
+        data: {
+          tabId: tab.id ?? tabId,
+          title: tab.title || '',
+          url: tab.url || '',
+        },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleActivateTab] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `切换标签页失败: ${errMsg}` }));
+    }
+  }
+
+  // ─── 页面交互 handler ────────────────────────────────────────
+
+  async function handleGetPageElements(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { tabId?: number; selector?: string } | undefined;
+      const tabId = data?.tabId;
+      if (tabId === undefined || tabId === null) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 tabId' }));
+        return;
+      }
+
+      await ensureContentScriptInjected(tabId);
+      const customSelector = data?.selector || '';
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (sel: string) => {
+          const query = sel
+            ? sel
+            : 'input, textarea, select, button, a[href], [role="button"], [contenteditable="true"]';
+          const nodeList = document.querySelectorAll(query);
+          const elements: Array<{
+            tag: string; type?: string; name?: string; id?: string;
+            placeholder?: string; value?: string; text?: string;
+            selector: string; visible: boolean;
+          }> = [];
+
+          nodeList.forEach((el, idx) => {
+            if (elements.length >= 80) return; // 限制数量
+            const htmlEl = el as HTMLElement;
+            const rect = htmlEl.getBoundingClientRect();
+            const visible = rect.width > 0 && rect.height > 0 && htmlEl.offsetParent !== null;
+            const tag = el.tagName.toLowerCase();
+
+            // 生成唯一 CSS 选择器
+            let cssSelector = '';
+            if (el.id) {
+              cssSelector = `#${CSS.escape(el.id)}`;
+            } else if ((el as HTMLInputElement).name) {
+              cssSelector = `${tag}[name="${CSS.escape((el as HTMLInputElement).name)}"]`;
+            } else {
+              // 用 nth-of-type 兜底
+              const parent = el.parentElement;
+              if (parent) {
+                const siblings = Array.from(parent.querySelectorAll(`:scope > ${tag}`));
+                const nth = siblings.indexOf(el) + 1;
+                const parentId = parent.id ? `#${CSS.escape(parent.id)} > ` : '';
+                cssSelector = `${parentId}${tag}:nth-of-type(${nth})`;
+              } else {
+                cssSelector = `${tag}:nth-of-type(${idx + 1})`;
+              }
+            }
+
+            elements.push({
+              tag,
+              type: (el as HTMLInputElement).type || undefined,
+              name: (el as HTMLInputElement).name || undefined,
+              id: el.id || undefined,
+              placeholder: (el as HTMLInputElement).placeholder || undefined,
+              value: tag === 'select'
+                ? (el as HTMLSelectElement).options[(el as HTMLSelectElement).selectedIndex]?.text
+                : (el as HTMLInputElement).value || undefined,
+              text: (tag === 'button' || tag === 'a' || el.getAttribute('role') === 'button')
+                ? htmlEl.innerText?.trim().slice(0, 60) || undefined
+                : undefined,
+              selector: cssSelector,
+              visible,
+            });
+          });
+          return elements;
+        },
+        args: [customSelector],
+      });
+
+      const elements = results?.[0]?.result || [];
+      ws?.send(JSON.stringify({
+        type: 'get-page-elements-result',
+        id: message.id,
+        data: { elements },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleGetPageElements] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `获取页面元素失败: ${errMsg}` }));
+    }
+  }
+
+  async function handleClickElement(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { tabId?: number; selector?: string; text?: string } | undefined;
+      const tabId = data?.tabId;
+      if (tabId === undefined || tabId === null) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 tabId' }));
+        return;
+      }
+
+      await ensureContentScriptInjected(tabId);
+      const selector = data?.selector || '';
+      const text = data?.text || '';
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (sel: string, txt: string) => {
+          let el: Element | null = null;
+
+          // 优先用 CSS selector
+          if (sel) {
+            el = document.querySelector(sel);
+          }
+          // 退而求其次：按文本匹配
+          if (!el && txt) {
+            const candidates = document.querySelectorAll('button, a, [role="button"], input[type="submit"], input[type="button"]');
+            for (const c of candidates) {
+              const cText = (c as HTMLElement).innerText?.trim() || (c as HTMLInputElement).value?.trim() || '';
+              if (cText.includes(txt)) { el = c; break; }
+            }
+          }
+
+          if (!el) {
+            return { success: false, error: `未找到元素${sel ? ` (selector: ${sel})` : ''}${txt ? ` (text: "${txt}")` : ''}` };
+          }
+
+          (el as HTMLElement).click();
+          return {
+            success: true,
+            tag: el.tagName.toLowerCase(),
+            text: (el as HTMLElement).innerText?.trim().slice(0, 50) || '',
+          };
+        },
+        args: [selector, text],
+      });
+
+      const result = results?.[0]?.result || { success: false, error: '脚本执行失败' };
+      ws?.send(JSON.stringify({
+        type: 'click-element-result',
+        id: message.id,
+        data: result,
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleClickElement] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `点击元素失败: ${errMsg}` }));
+    }
+  }
+
+  async function handleFillInput(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as {
+        tabId?: number; selector?: string; name?: string;
+        placeholder?: string; value?: string;
+      } | undefined;
+      const tabId = data?.tabId;
+      if (tabId === undefined || tabId === null) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 tabId' }));
+        return;
+      }
+
+      await ensureContentScriptInjected(tabId);
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (sel: string, name: string, placeholder: string, value: string) => {
+          let el: HTMLInputElement | HTMLTextAreaElement | null = null;
+
+          // 1. CSS selector
+          if (sel) {
+            el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel);
+          }
+          // 2. name 属性
+          if (!el && name) {
+            el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`input[name="${CSS.escape(name)}"], textarea[name="${CSS.escape(name)}"]`);
+          }
+          // 3. placeholder 模糊匹配
+          if (!el && placeholder) {
+            const inputs = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
+            for (const inp of inputs) {
+              if (inp.placeholder && inp.placeholder.includes(placeholder)) { el = inp; break; }
+            }
+          }
+
+          if (!el) {
+            return { success: false, error: `未找到输入框${sel ? ` (selector: ${sel})` : ''}${name ? ` (name: ${name})` : ''}${placeholder ? ` (placeholder: "${placeholder}")` : ''}` };
+          }
+
+          // 设置值并触发事件（兼容 React/Vue 等框架）
+          el.focus();
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+            Object.getPrototypeOf(el), 'value'
+          )?.set;
+          if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(el, value);
+          } else {
+            el.value = value;
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+
+          return {
+            success: true,
+            tag: el.tagName.toLowerCase(),
+            name: el.name || '',
+          };
+        },
+        args: [data?.selector || '', data?.name || '', data?.placeholder || '', data?.value || ''],
+      });
+
+      const result = results?.[0]?.result || { success: false, error: '脚本执行失败' };
+      ws?.send(JSON.stringify({
+        type: 'fill-input-result',
+        id: message.id,
+        data: result,
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleFillInput] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `填写输入框失败: ${errMsg}` }));
+    }
+  }
+
+  async function handleSelectOption(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as {
+        tabId?: number; selector?: string; value?: string; text?: string;
+      } | undefined;
+      const tabId = data?.tabId;
+      if (tabId === undefined || tabId === null) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 tabId' }));
+        return;
+      }
+
+      await ensureContentScriptInjected(tabId);
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (sel: string, val: string, txt: string) => {
+          const selectEl = document.querySelector<HTMLSelectElement>(sel);
+          if (!selectEl || selectEl.tagName.toLowerCase() !== 'select') {
+            return { success: false, error: `未找到 <select> 元素 (selector: ${sel})` };
+          }
+
+          let targetOption: HTMLOptionElement | null = null;
+
+          // 1. 按 value 匹配
+          if (val) {
+            for (const opt of selectEl.options) {
+              if (opt.value === val) { targetOption = opt; break; }
+            }
+          }
+          // 2. 按文本匹配
+          if (!targetOption && txt) {
+            for (const opt of selectEl.options) {
+              if (opt.text.includes(txt)) { targetOption = opt; break; }
+            }
+          }
+
+          if (!targetOption) {
+            const opts = Array.from(selectEl.options).map(o => `"${o.text}" (${o.value})`).join(', ');
+            return { success: false, error: `未找到匹配的选项。可选项: ${opts}` };
+          }
+
+          selectEl.value = targetOption.value;
+          selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+          selectEl.dispatchEvent(new Event('input', { bubbles: true }));
+
+          return {
+            success: true,
+            selectedText: targetOption.text,
+            selectedValue: targetOption.value,
+          };
+        },
+        args: [data?.selector || '', data?.value || '', data?.text || ''],
+      });
+
+      const result = results?.[0]?.result || { success: false, error: '脚本执行失败' };
+      ws?.send(JSON.stringify({
+        type: 'select-option-result',
+        id: message.id,
+        data: result,
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleSelectOption] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `选择下拉选项失败: ${errMsg}` }));
+    }
+  }
+
+  async function handlePressKey(message: WebSocketMessage): Promise<void> {
+    try {
+      const data = message.data as { tabId?: number; key?: string; selector?: string } | undefined;
+      const tabId = data?.tabId;
+      if (tabId === undefined || tabId === null) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 tabId' }));
+        return;
+      }
+
+      const key = data?.key || '';
+      if (!key) {
+        ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '缺少 key' }));
+        return;
+      }
+
+      await ensureContentScriptInjected(tabId);
+
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (k: string, sel: string) => {
+          const target = sel ? (document.querySelector(sel) as HTMLElement) : document.activeElement as HTMLElement;
+          if (!target) {
+            return { success: false, error: '未找到目标元素' };
+          }
+
+          const opts: KeyboardEventInit = {
+            key: k,
+            code: k,
+            bubbles: true,
+            cancelable: true,
+          };
+
+          target.dispatchEvent(new KeyboardEvent('keydown', opts));
+          target.dispatchEvent(new KeyboardEvent('keypress', opts));
+          target.dispatchEvent(new KeyboardEvent('keyup', opts));
+
+          return { success: true };
+        },
+        args: [key, data?.selector || ''],
+      });
+
+      const result = results?.[0]?.result || { success: false, error: '脚本执行失败' };
+      ws?.send(JSON.stringify({
+        type: 'press-key-result',
+        id: message.id,
+        data: result,
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handlePressKey] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `按键失败: ${errMsg}` }));
     }
   }
 

@@ -15,7 +15,7 @@ export default defineConfig({
       name: 'Issue Manager - 网页笔记选取器',
       version: '1.0.0',
       description: '从网页选取内容并在 VSCode Issue Manager 中创建笔记',
-      permissions: ['activeTab', 'tabs', 'sidePanel', 'scripting', 'storage'],
+      permissions: ['activeTab', 'tabs', 'tabGroups', 'sidePanel', 'scripting', 'storage'],
       host_permissions: ['http://*/*', 'https://*/*'],
       action: {
         default_title: '打开笔记选取器',
@@ -32,6 +32,12 @@ export default defineConfig({
         '128': `${iconPrefix}icon-128.png`,
       },
     };
+  },
+  // 使用正常 Chrome 的用户配置文件（保留书签、登录状态等）
+  webExt: {
+    // chromiumProfile: `${process.env.HOME}/Library/Application Support/Google/Chrome/Default`,
+    keepProfileChanges: true,
+    startUrls: ['https://www.google.com'],
   },
   vite: () => ({
     plugins: [vue()],

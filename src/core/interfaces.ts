@@ -141,6 +141,12 @@ export interface IViewRegistryResult {
     editorGroupProvider: import('../views/EditorGroupTreeProvider').EditorGroupTreeProvider;
     /** 编辑器组管理树视图实例 */
     editorGroupView: vscode.TreeView<import('../views/EditorGroupTreeProvider').EditorGroupViewNode>;
+    /** LLM 聊天角色视图提供者实例 */
+    llmChatRoleProvider: import('../llmChat/LLMChatRoleProvider').LLMChatRoleProvider;
+    /** LLM 聊天角色树视图实例 */
+    llmChatRoleView: vscode.TreeView<import('../llmChat/LLMChatRoleProvider').LLMChatViewNode>;
+    /** 聊天输入面板实例 */
+    chatInputPanel: import('../llmChat/ChatInputPanel').ChatInputPanel;
 }
 
 /**

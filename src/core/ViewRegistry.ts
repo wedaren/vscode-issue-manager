@@ -25,6 +25,9 @@ import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
 import { EditorGroupTreeProvider, type EditorGroupViewNode } from '../views/EditorGroupTreeProvider';
+import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRoleProvider';
+import { ChatInputPanel } from '../llmChat/ChatInputPanel';
+import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
 
 /**
  * 视图注册管理器
@@ -110,11 +113,14 @@ export class ViewRegistry {
         // 注册编辑器组管理视图
         const { editorGroupProvider, editorGroupView } = this.registerEditorGroupView();
 
+        // 注册 LLM 聊天角色视图 + 底部输入面板
+        const { llmChatRoleProvider, llmChatRoleView, chatInputPanel } = this.registerLLMChatViews();
+
         // 注册相关问题视图
         this.registerRelatedView();
         // 注册回顾视图
         this.registerReviewView();
-        
+
         // 注册RSS虚拟文件提供器
         this.registerRSSVirtualFileProvider();
 
@@ -147,6 +153,9 @@ export class ViewRegistry {
             gitBranchView,
             editorGroupProvider,
             editorGroupView,
+            llmChatRoleProvider,
+            llmChatRoleView,
+            chatInputPanel,
         };
     }
 
@@ -441,5 +450,35 @@ export class ViewRegistry {
         commandHandler.registerCommands(this.context);
         
         return { markerManager, markerTreeProvider, markerView };
+    }
+
+    /**
+     * 注册 LLM 聊天角色视图和底部聊天输入面板
+     */
+    private registerLLMChatViews(): {
+        llmChatRoleProvider: LLMChatRoleProvider;
+        llmChatRoleView: vscode.TreeView<LLMChatViewNode>;
+        chatInputPanel: ChatInputPanel;
+    } {
+        // 侧边栏树视图：聊天角色列表
+        const llmChatRoleProvider = new LLMChatRoleProvider(this.context);
+        const llmChatRoleView = vscode.window.createTreeView<LLMChatViewNode>('issueManager.views.llmChat', {
+            treeDataProvider: llmChatRoleProvider,
+            showCollapseAll: true,
+        });
+
+        this.context.subscriptions.push(llmChatRoleView);
+        this.context.subscriptions.push(llmChatRoleProvider);
+
+        // 底部面板：聊天输入框（WebviewView）
+        const chatInputPanel = new ChatInputPanel(this.context);
+        this.context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(ChatInputPanel.viewType, chatInputPanel),
+        );
+
+        // 注册聊天相关命令
+        registerLLMChatCommands(this.context, llmChatRoleProvider, chatInputPanel);
+
+        return { llmChatRoleProvider, llmChatRoleView, chatInputPanel };
     }
 }
