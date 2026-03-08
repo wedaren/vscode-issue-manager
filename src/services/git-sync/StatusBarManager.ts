@@ -17,7 +17,19 @@ export class StatusBarManager {
     constructor() {
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         this.statusBarItem.command = 'issueManager.synchronizeNow';
-        this.statusBarItem.show();
+    }
+
+    /**
+     * 控制状态栏项目的显示/隐藏
+     *
+     * 当自动同步禁用时隐藏状态栏，启用时显示。
+     */
+    public setVisible(visible: boolean): void {
+        if (visible) {
+            this.statusBarItem.show();
+        } else {
+            this.statusBarItem.hide();
+        }
     }
 
     /**

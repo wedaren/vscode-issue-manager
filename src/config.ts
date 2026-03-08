@@ -120,6 +120,14 @@ export function getSyncRetryInitialDelay(): number {
 }
 
 /**
+ * 获取是否启用 LLM 生成提交消息
+ */
+export function isLLMCommitMessageEnabled(): boolean {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<boolean>('sync.enableLLMCommitMessage', false);
+}
+
+/**
  * 获取是否启用同步失败通知
  */
 export function isSyncNotificationEnabled(): boolean {
