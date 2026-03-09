@@ -14,9 +14,10 @@ import {
     getChatGroupById,
     getConversationsForGroup,
     createGroupConversation,
+    appendUserMessageQueued,
 } from './llmChatDataManager';
+import { RoleTimerManager } from './RoleTimerManager';
 import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
-import type { ChatInputPanel } from './ChatInputPanel';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -32,7 +33,6 @@ const DISPLAY_MODE_CTX_KEY = 'issueManager.llmChat.displayMode';
 export function registerLLMChatCommands(
     context: vscode.ExtensionContext,
     roleProvider: LLMChatRoleProvider,
-    chatInputPanel: ChatInputPanel,
 ): void {
     const chatService = LLMChatService.getInstance();
 
@@ -53,7 +53,6 @@ export function registerLLMChatCommands(
             await ChatHistoryPanel.openOrShow(role, convoUri, context.extensionUri);
         }
 
-        chatInputPanel.notifyConversationChanged();
     }
 
     /** 打开对话的通用逻辑（群聊） */
@@ -74,7 +73,6 @@ export function registerLLMChatCommands(
             );
         }
 
-        chatInputPanel.notifyConversationChanged();
     }
 
     // ─── 切换到气泡模式 ───────────────────────────────────────
@@ -511,6 +509,43 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.refresh', () => {
             roleProvider.refresh();
+        }),
+    );
+
+    // ─── 发送消息到队列（定时器模式） ──────────────────────────
+    // 用户在对话文件中完成输入后，执行此命令将消息写入文件并标记 queued。
+    // 定时器会在下一个 tick 或立即触发处理。
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.sendToQueue', async (convoUri?: vscode.Uri) => {
+            // 优先使用传入的 URI，其次尝试当前活跃对话，最后尝试当前编辑器文件
+            let uri = convoUri ?? chatService.activeConversationUri;
+            if (!uri) {
+                const activeEditor = vscode.window.activeTextEditor;
+                if (activeEditor?.document.fileName.endsWith('.md')) {
+                    uri = activeEditor.document.uri;
+                }
+            }
+            if (!uri) {
+                vscode.window.showWarningMessage('请先打开一个对话文件，再发送消息');
+                return;
+            }
+
+            const message = await vscode.window.showInputBox({
+                placeHolder: '输入消息内容…',
+                prompt: '消息将写入对话文件并排队等待 LLM 处理',
+                ignoreFocusOut: true,
+            });
+            if (!message?.trim()) { return; }
+
+            try {
+                await appendUserMessageQueued(uri, message.trim());
+                // 立即触发，不等下一个 tick
+                await RoleTimerManager.getInstance().triggerConversation(uri);
+                vscode.window.showInformationMessage('消息已提交，等待 LLM 处理…');
+            } catch (e) {
+                logger.error('sendToQueue 失败', e);
+                vscode.window.showErrorMessage(`提交失败: ${e instanceof Error ? e.message : '未知错误'}`);
+            }
         }),
     );
 

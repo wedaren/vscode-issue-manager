@@ -35,9 +35,10 @@ export default defineConfig({
   },
   // 使用正常 Chrome 的用户配置文件（保留书签、登录状态等）
   webExt: {
-    // chromiumProfile: `${process.env.HOME}/Library/Application Support/Google/Chrome/Default`,
+    chromiumProfile: `${process.env.HOME}/Library/Application Support/Google/Chrome/DevProfile`,
     keepProfileChanges: true,
     startUrls: ['https://www.google.com'],
+    chromiumArgs: ['--no-first-run', '--no-default-browser-check', '--disable-sync'],
   },
   vite: () => ({
     plugins: [vue()],

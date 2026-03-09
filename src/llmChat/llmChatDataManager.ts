@@ -10,9 +10,9 @@ import {
     extractFrontmatterAndBody,
     createIssueMarkdown,
     updateIssueMarkdownFrontmatter,
-    getIssueMarkdown,
 } from '../data/IssueMarkdowns';
 import type { FrontmatterData } from '../data/IssueMarkdowns';
+import { createIssueNodes } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import type {
     ChatRoleInfo,
@@ -27,6 +27,7 @@ import type {
     ChromeChatFrontmatter,
     ChromeChatInfo,
 } from './types';
+import { stripMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -49,6 +50,13 @@ export async function getAllChatRoles(): Promise<ChatRoleInfo[]> {
             systemPrompt: fm.chat_role_system_prompt || '',
             modelFamily: fm.chat_role_model_family,
             uri: md.uri,
+            // ─── 定时器配置 ───────────────────────────────────
+            timerEnabled: fm.timer_enabled === true,
+            timerInterval: fm.timer_interval,
+            timerMaxConcurrent: fm.timer_max_concurrent,
+            timerTimeout: fm.timer_timeout,
+            timerMaxRetries: fm.timer_max_retries,
+            timerRetryDelay: fm.timer_retry_delay,
         });
     }
     return roles;
@@ -72,6 +80,13 @@ export async function createChatRole(
         chat_role_name: name,
         chat_role_avatar: avatar || 'hubot',
         chat_role_system_prompt: systemPrompt,
+        // ─── 定时器配置（默认关闭，按需开启） ────────────────
+        timer_enabled: false,
+        timer_interval: 30000,
+        timer_max_concurrent: 2,
+        timer_timeout: 60000,
+        timer_max_retries: 3,
+        timer_retry_delay: 5000,
     };
     if (modelFamily) {
         fm.chat_role_model_family = modelFamily;
@@ -82,6 +97,7 @@ export async function createChatRole(
     if (!uri) {
         return null;
     }
+    await createIssueNodes([uri]);
     return extractId(uri);
 }
 
@@ -125,24 +141,28 @@ export async function createConversation(roleId: string, title?: string): Promis
     };
 
     const body = `# ${convoTitle}\n\n`;
-    return createIssueMarkdown({ frontmatter: fm, markdownBody: body });
+    const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
+    if (uri) { await createIssueNodes([uri]); }
+    return uri;
 }
 
-/** 从对话文件中解析所有消息 */
+/** 从对话文件中解析所有消息（自动过滤末尾状态标记，不污染消息内容） */
 export async function parseConversationMessages(uri: vscode.Uri): Promise<ChatMessage[]> {
     try {
         const content = Buffer.from(
             await vscode.workspace.fs.readFile(uri),
         ).toString('utf8');
         const { body } = extractFrontmatterAndBody(content);
-        return parseMessagesFromBody(body);
+        // 去掉末尾状态标记，防止被纳入最后一条消息的内容
+        const cleanBody = stripMarker(body);
+        return parseMessagesFromBody(cleanBody);
     } catch (e) {
         logger.error('parseConversationMessages 失败', e);
         return [];
     }
 }
 
-/** 向对话文件追加一条消息 */
+/** 向对话文件追加一条消息（不影响末尾状态标记） */
 export async function appendMessageToConversation(
     uri: vscode.Uri,
     role: 'user' | 'assistant',
@@ -162,6 +182,32 @@ export async function appendMessageToConversation(
         await vscode.workspace.fs.writeFile(uri, Buffer.from(updated, 'utf8'));
     } catch (e) {
         logger.error('appendMessageToConversation 失败', e);
+        throw e;
+    }
+}
+
+/**
+ * 追加用户消息并在末尾写入 queued 标记（单次写入）。
+ * 若文件末尾已有其他状态标记（如 error/retrying），先清除再追加。
+ * 这是定时器模式下用户"提交消息"的入口。
+ */
+export async function appendUserMessageQueued(
+    uri: vscode.Uri,
+    content: string,
+): Promise<void> {
+    try {
+        const raw = Buffer.from(
+            await vscode.workspace.fs.readFile(uri),
+        ).toString('utf8');
+
+        // 清除旧状态标记
+        const stripped = stripMarker(raw);
+        const dateStr = formatTimestamp(Date.now());
+        const block = `\n## User (${dateStr})\n\n${content}\n\n<!-- llm:queued -->\n`;
+
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
+    } catch (e) {
+        logger.error('appendUserMessageQueued 失败', e);
         throw e;
     }
 }
@@ -208,7 +254,9 @@ export async function createChatGroup(
     };
     const body = `# ${name}\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
-    return uri ? extractId(uri) : null;
+    if (!uri) { return null; }
+    await createIssueNodes([uri]);
+    return extractId(uri);
 }
 
 /** 获取群组下的所有对话 */
@@ -247,17 +295,20 @@ export async function createGroupConversation(groupId: string, title?: string): 
         chat_title: convoTitle,
     };
     const body = `# ${convoTitle}\n\n`;
-    return createIssueMarkdown({ frontmatter: fm, markdownBody: body });
+    const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
+    if (uri) { await createIssueNodes([uri]); }
+    return uri;
 }
 
-/** 从群组对话文件中解析消息（支持 ## Assistant:RoleName 格式） */
+/** 从群组对话文件中解析消息（支持 ## Assistant:RoleName 格式，自动过滤末尾状态标记） */
 export async function parseGroupConversationMessages(uri: vscode.Uri): Promise<ChatGroupMessage[]> {
     try {
         const content = Buffer.from(
             await vscode.workspace.fs.readFile(uri),
         ).toString('utf8');
         const { body } = extractFrontmatterAndBody(content);
-        return parseGroupMessagesFromBody(body);
+        const cleanBody = stripMarker(body);
+        return parseGroupMessagesFromBody(cleanBody);
     } catch (e) {
         logger.error('parseGroupConversationMessages 失败', e);
         return [];
@@ -417,6 +468,7 @@ export async function createChromeChatConversation(title?: string): Promise<Chro
     const body = `# ${convoTitle}\n\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
     if (!uri) { return null; }
+    await createIssueNodes([uri]);
     return {
         id: extractId(uri),
         title: convoTitle,

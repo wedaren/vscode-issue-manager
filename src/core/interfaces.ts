@@ -145,8 +145,6 @@ export interface IViewRegistryResult {
     llmChatRoleProvider: import('../llmChat/LLMChatRoleProvider').LLMChatRoleProvider;
     /** LLM 聊天角色树视图实例 */
     llmChatRoleView: vscode.TreeView<import('../llmChat/LLMChatRoleProvider').LLMChatViewNode>;
-    /** 聊天输入面板实例 */
-    chatInputPanel: import('../llmChat/ChatInputPanel').ChatInputPanel;
 }
 
 /**

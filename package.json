@@ -1934,13 +1934,6 @@
           "title": "问题管理",
           "icon": "resources/icon.svg"
         }
-      ],
-      "panel": [
-        {
-          "id": "issueManager-chatPanel",
-          "title": "LLM 聊天",
-          "icon": "resources/icon.svg"
-        }
       ]
     },
     "views": {
@@ -2004,13 +1997,6 @@
           "id": "issueManager.views.llmChat",
           "name": "LLM 聊天",
           "icon": "resources/icon.svg"
-        }
-      ],
-      "issueManager-chatPanel": [
-        {
-          "type": "webview",
-          "id": "issueManager.views.chatInput",
-          "name": "聊天输入"
         }
       ]
     },

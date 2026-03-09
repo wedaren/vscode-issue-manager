@@ -14,6 +14,19 @@ export interface ChatRoleFrontmatter {
     chat_role_system_prompt?: string;
     /** 指定模型 family（可选，覆盖全局配置） */
     chat_role_model_family?: string;
+    // ─── 定时器配置 ───────────────────────────────────────────
+    /** 是否启用定时器自动处理对话，默认 false */
+    timer_enabled?: boolean;
+    /** 定时器轮询间隔（ms），默认 30000 */
+    timer_interval?: number;
+    /** 同一角色最多并发处理的对话数，默认 2 */
+    timer_max_concurrent?: number;
+    /** 单次 LLM 请求超时（ms），默认 60000 */
+    timer_timeout?: number;
+    /** 最大重试次数，默认 3 */
+    timer_max_retries?: number;
+    /** 初始重试间隔（ms），指数退避，默认 5000 */
+    timer_retry_delay?: number;
 }
 
 /** 聊天消息 */
@@ -49,6 +62,13 @@ export interface ChatRoleInfo {
     uri: import('vscode').Uri;
     /** 角色描述（来自 markdown body 的第一段） */
     description?: string;
+    // ─── 定时器配置（运行时） ────────────────────────────────
+    timerEnabled?: boolean;
+    timerInterval?: number;
+    timerMaxConcurrent?: number;
+    timerTimeout?: number;
+    timerMaxRetries?: number;
+    timerRetryDelay?: number;
 }
 
 /** 运行时对话信息 */
