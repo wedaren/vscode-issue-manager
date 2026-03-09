@@ -27,6 +27,40 @@ export interface ChatRoleFrontmatter {
     timer_max_retries?: number;
     /** 初始重试间隔（ms），指数退避，默认 5000 */
     timer_retry_delay?: number;
+    /** 标记为个人助手角色（系统唯一） */
+    chat_role_is_personal_assistant?: true;
+}
+
+// ─── 个人助手相关 ─────────────────────────────────────────────
+
+/** 个人助手记忆文件的 frontmatter */
+export interface PersonalAssistantMemoryFrontmatter {
+    /** 标记为助手记忆文件 */
+    assistant_memory: true;
+    /** 关联的助手角色 ID */
+    assistant_role_id: string;
+}
+
+/** 个人助手持久记忆结构 */
+export interface PersonalAssistantMemory {
+    /** 用户背景和偏好摘要 */
+    userContext: string;
+    /** 历史任务记录（最近 20 条） */
+    taskHistory: Array<{
+        summary: string;
+        rolesInvolved: string[];
+        outcome: 'success' | 'partial' | 'failed';
+        timestamp: number;
+    }>;
+    /** 角色绩效记录 */
+    rolePerformance: Record<string, {
+        successCount: number;
+        failureCount: number;
+        lastEvaluation: string;
+        improvementNotes: string;
+    }>;
+    /** 助手自我反思笔记 */
+    selfReflection: string;
 }
 
 /** 聊天消息 */
@@ -69,6 +103,8 @@ export interface ChatRoleInfo {
     timerTimeout?: number;
     timerMaxRetries?: number;
     timerRetryDelay?: number;
+    /** 是否为个人助手角色 */
+    isPersonalAssistant?: boolean;
 }
 
 /** 运行时对话信息 */

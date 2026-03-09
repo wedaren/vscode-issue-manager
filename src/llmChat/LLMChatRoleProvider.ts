@@ -2,12 +2,29 @@
  * LLM 聊天角色树视图提供者
  *
  * 两级树：角色/群组 → 历史对话列表。点击对话打开聊天 Webview。
+ * 顶部固定显示「个人助手」专属入口节点。
  */
 import * as vscode from 'vscode';
 import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup } from './llmChatDataManager';
+import { PersonalAssistantService } from './PersonalAssistantService';
 import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo } from './types';
 
 // ─── 节点类型 ────────────────────────────────────────────────
+
+/** 个人助手固定入口节点（树顶部） */
+export class PersonalAssistantNode extends vscode.TreeItem {
+    constructor(public readonly role: ChatRoleInfo) {
+        super('执行官（个人助手）', vscode.TreeItemCollapsibleState.Collapsed);
+        this.contextValue = 'personalAssistant';
+        this.iconPath = new vscode.ThemeIcon('person-add');
+        this.description = '记忆 · 委派 · 进化';
+        this.tooltip = new vscode.MarkdownString(
+            '**执行官（个人助手）**\n\n'
+            + '你的专属个人助手，拥有持久记忆，可委派任务给其他角色，并持续自我进化。\n\n'
+            + '点击展开查看历史对话，或右键新建对话。',
+        );
+    }
+}
 
 export class ChatRoleNode extends vscode.TreeItem {
     constructor(public readonly role: ChatRoleInfo) {
@@ -56,7 +73,7 @@ export class ChatConversationNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode;
+export type LLMChatViewNode = PersonalAssistantNode | ChatRoleNode | ChatGroupNode | ChatConversationNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -73,10 +90,23 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
     async getChildren(element?: LLMChatViewNode): Promise<LLMChatViewNode[]> {
         if (!element) {
             const [roles, groups] = await Promise.all([getAllChatRoles(), getAllChatGroups()]);
-            return [
-                ...groups.map(g => new ChatGroupNode(g)),
-                ...roles.map(r => new ChatRoleNode(r)),
-            ];
+
+            // 个人助手节点置顶
+            const paService = PersonalAssistantService.getInstance();
+            const paRole = roles.find(r => r.isPersonalAssistant);
+            const normalRoles = roles.filter(r => !r.isPersonalAssistant);
+
+            const nodes: LLMChatViewNode[] = [];
+            if (paRole) {
+                nodes.push(new PersonalAssistantNode(paRole));
+            }
+            nodes.push(...groups.map(g => new ChatGroupNode(g)));
+            nodes.push(...normalRoles.map(r => new ChatRoleNode(r)));
+            return nodes;
+        }
+        if (element instanceof PersonalAssistantNode) {
+            const convos = await getConversationsForRole(element.role.id);
+            return convos.map(c => new ChatConversationNode(c, element.role.id, false));
         }
         if (element instanceof ChatRoleNode) {
             const convos = await getConversationsForRole(element.role.id);

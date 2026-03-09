@@ -696,6 +696,12 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "issueManager.llmChat.openPersonalAssistant",
+        "title": "打开个人助手",
+        "category": "Issue Manager",
+        "icon": "$(person-add)"
+      },
+      {
         "command": "issueManager.llmChat.createRole",
         "title": "新建聊天角色",
         "category": "Issue Manager",
@@ -1076,6 +1082,16 @@
         {
           "command": "issueManager.llmChat.setDisplayMode.editor",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole' && issueManager.llmChat.displayMode != 'editor'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.llmChat.openPersonalAssistant",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'personalAssistant'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.newConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'personalAssistant'",
           "group": "inline@2"
         },
         {
@@ -1922,8 +1938,9 @@
         },
         "issueManager.llm.modelFamily": {
           "type": "string",
-          "default": "gpt-4.1",
-          "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
+          "default": "gpt-5-mini",
+          "enum": ["gpt-5-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "claude-3.5-sonnet", "o3-mini", "o1-mini"],
+          "description": "全局默认 AI 模型（聊天角色未单独配置模型时使用）。各聊天角色可在其文件的 chat_role_model_family 字段中覆盖此设置。"
         }
       }
     },

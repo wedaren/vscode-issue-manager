@@ -57,6 +57,7 @@ export async function getAllChatRoles(): Promise<ChatRoleInfo[]> {
             timerTimeout: fm.timer_timeout,
             timerMaxRetries: fm.timer_max_retries,
             timerRetryDelay: fm.timer_retry_delay,
+            isPersonalAssistant: fm.chat_role_is_personal_assistant === true,
         });
     }
     return roles;

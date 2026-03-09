@@ -17,7 +17,8 @@ import {
     appendUserMessageQueued,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
-import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
+import { ChatRoleNode, ChatConversationNode, ChatGroupNode, PersonalAssistantNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
+import { PersonalAssistantService } from './PersonalAssistantService';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -312,7 +313,11 @@ export function registerLLMChatCommands(
                 avatar = pick.avatar || 'hubot';
             }
 
-            const roleId = await createChatRole(name, systemPrompt, avatar);
+            // 选择模型（预设和自定义都走这一步）
+            const modelFamily = await pickModelFamily();
+            if (modelFamily === undefined) { return; }  // 用户按了 ESC
+
+            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined);
             if (roleId) {
                 roleProvider.refresh();
                 vscode.window.showInformationMessage(`已创建聊天角色: ${name}`);
@@ -378,7 +383,19 @@ export function registerLLMChatCommands(
 
     // ─── 新建对话（从角色/群组右键菜单或命令面板） ────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.newConversation', async (node?: string | ChatRoleNode | ChatConversationNode | ChatGroupNode) => {
+        vscode.commands.registerCommand('issueManager.llmChat.newConversation', async (node?: string | ChatRoleNode | ChatConversationNode | ChatGroupNode | PersonalAssistantNode) => {
+            // 个人助手节点：新建一条与助手的对话
+            if (node instanceof PersonalAssistantNode) {
+                const uri = await createConversation(node.role.id, '与执行官的对话');
+                if (!uri) {
+                    vscode.window.showErrorMessage('创建对话失败');
+                    return;
+                }
+                await openConversation(node.role.id, uri);
+                roleProvider.refresh();
+                return;
+            }
+
             if (node instanceof ChatGroupNode) {
                 const uri = await createGroupConversation(node.group.id);
                 if (!uri) {
@@ -505,6 +522,35 @@ export function registerLLMChatCommands(
         }),
     );
 
+    // ─── 打开个人助手 ─────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.openPersonalAssistant', async (node?: PersonalAssistantNode) => {
+            const paService = PersonalAssistantService.getInstance();
+            const roleId = paService.assistantRoleId;
+            if (!roleId) {
+                vscode.window.showWarningMessage('个人助手尚未初始化，请稍后重试');
+                return;
+            }
+
+            // 打开最近的对话，或新建一个
+            const convos = await getConversationsForRole(roleId);
+            let convoUri: vscode.Uri;
+            if (convos.length > 0) {
+                convoUri = convos[0].uri;
+            } else {
+                const uri = await createConversation(roleId, '与执行官的对话');
+                if (!uri) {
+                    vscode.window.showErrorMessage('创建对话失败');
+                    return;
+                }
+                convoUri = uri;
+                roleProvider.refresh();
+            }
+
+            await openConversation(roleId, convoUri);
+        }),
+    );
+
     // ─── 刷新聊天角色视图 ────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.refresh', () => {
@@ -587,4 +633,41 @@ export function registerLLMChatCommands(
     );
 
     logger.info('      ✓ LLM 聊天命令已注册');
+}
+
+// ─── 工具函数 ─────────────────────────────────────────────────
+
+/** 可用模型列表（供 QuickPick 使用） */
+const MODEL_ITEMS: Array<vscode.QuickPickItem & { value: string }> = [
+    { label: '$(sparkle) gpt-5-mini',        description: '快速、轻量，日常任务首选（默认）',        value: 'gpt-5-mini' },
+    { label: '$(rocket) gpt-4o',             description: '均衡能力，适合复杂推理',                  value: 'gpt-4o' },
+    { label: '$(star) gpt-4.1',              description: '旗舰模型，深度分析、长文本',               value: 'gpt-4.1' },
+    { label: '$(pulse) gpt-4.1-mini',        description: '4.1 系列轻量版，速度与质量兼顾',           value: 'gpt-4.1-mini' },
+    { label: '$(brain) o3-mini',             description: '推理模型，擅长逻辑和数学',                  value: 'o3-mini' },
+    { label: '$(comment) claude-3.5-sonnet', description: 'Anthropic 旗舰，优秀的代码与分析',         value: 'claude-3.5-sonnet' },
+];
+
+/**
+ * 弹出模型选择 QuickPick。
+ * @returns 选中的 modelFamily 字符串；空字符串表示使用全局默认；undefined 表示用户取消。
+ */
+async function pickModelFamily(): Promise<string | undefined> {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
+
+    const items: Array<vscode.QuickPickItem & { value: string }> = [
+        {
+            label: `$(settings) 使用全局默认（${globalDefault}）`,
+            description: '跟随 issueManager.llm.modelFamily 设置',
+            value: '',
+        },
+        ...MODEL_ITEMS,
+    ];
+
+    const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: '选择此角色使用的 AI 模型（可随时通过编辑角色文件修改）',
+    });
+
+    if (!pick) { return undefined; }   // 用户按 ESC → 取消整个创建流程
+    return pick.value;                 // '' = 用全局默认，其余为具体 family
 }

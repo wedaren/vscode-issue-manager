@@ -20,6 +20,7 @@ import {
     parseConversationMessages,
 } from './llmChatDataManager';
 import { CHAT_TOOLS, executeChatTool } from './chatTools';
+import { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
 import {
     readStateMarker,
     writeStateMarker,
@@ -230,13 +231,18 @@ export class RoleTimerManager implements vscode.Disposable {
             const ac = new AbortController();
             const timeoutId = setTimeout(() => ac.abort(), timeout);
 
+            const isPA = role.isPersonalAssistant === true;
+            const tools = isPA ? PERSONAL_ASSISTANT_TOOLS : CHAT_TOOLS;
+
             const messages = await this.buildMessages(uri, role);
             const result = await LLMService.streamWithTools(
                 messages,
-                CHAT_TOOLS,
+                tools,
                 () => { /* 定时器模式：静默处理，不需要流式推送 */ },
                 async (toolName, input) => {
-                    const res = await executeChatTool(toolName, input);
+                    const res = isPA
+                        ? await executePersonalAssistantTool(toolName, input, ac.signal)
+                        : await executeChatTool(toolName, input);
                     return res.content;
                 },
                 { signal: ac.signal, modelFamily: role.modelFamily },

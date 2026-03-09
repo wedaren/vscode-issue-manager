@@ -17,6 +17,7 @@ import {
 } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatGroupInfo } from './types';
 import { CHAT_TOOLS, executeChatTool } from './chatTools';
+import { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -177,17 +178,24 @@ export class LLMChatService {
 
         const messages = await this.buildLLMMessages(uri, userMessage);
 
+        // 个人助手使用扩展工具集，支持记忆/委派/角色管理
+        const isPA = !!this._activeRole?.isPersonalAssistant;
+        const tools = isPA ? PERSONAL_ASSISTANT_TOOLS : CHAT_TOOLS;
+        const signal = options?.signal;
+
         try {
             const result = await LLMService.streamWithTools(
                 messages,
-                CHAT_TOOLS,
+                tools,
                 onChunk,
                 async (toolName, input) => {
-                    const res = await executeChatTool(toolName, input);
+                    const res = isPA
+                        ? await executePersonalAssistantTool(toolName, input, signal)
+                        : await executeChatTool(toolName, input);
                     return res.content;
                 },
                 {
-                    signal: options?.signal,
+                    signal,
                     modelFamily: this._activeRole?.modelFamily,
                     onToolStatus: options?.onToolStatus,
                 },
@@ -533,6 +541,19 @@ ${userMessage}
         if (this._activeRole?.systemPrompt) {
             systemContent = `[系统指令] ${this._activeRole.systemPrompt}`;
         }
+
+        // 个人助手追加记忆与委派工具说明
+        if (this._activeRole?.isPersonalAssistant) {
+            systemContent += '\n\n[个人助手专属工具]\n'
+                + '- read_memory: 读取你的持久记忆（对话开始时首先调用）\n'
+                + '- write_memory: 更新记忆（任务结束后调用）\n'
+                + '- list_chat_roles: 列出所有可用专业角色\n'
+                + '- delegate_to_role: 委派任务给指定角色，获取专业回复\n'
+                + '- create_chat_role: 创建新的专业角色\n'
+                + '- update_role_config: 更新角色系统提示词\n'
+                + '- evaluate_role: 记录角色绩效评估\n';
+        }
+
         // VS Code 侧聊天上下文：笔记管理为主，浏览器工具需 Chrome 扩展连接
         systemContent += '\n\n[笔记工具] 你可以管理用户的 issueMarkdown 笔记：\n'
             + '- search_issues: 搜索笔记\n'
