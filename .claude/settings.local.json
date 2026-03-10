@@ -11,7 +11,9 @@
       "Bash(git stash drop)",
       "Bash(git add src/llmChat/RoleTimerManager.ts)",
       "Bash(npx tsc --noEmit --pretty)",
-      "Bash(git add src/llmChat/LLMChatService.ts src/llmChat/RoleTimerManager.ts src/llmChat/index.ts src/llmChat/llmChatDataManager.ts src/llmChat/types.ts .claude/settings.local.json)"
+      "Bash(git add src/llmChat/LLMChatService.ts src/llmChat/RoleTimerManager.ts src/llmChat/index.ts src/llmChat/llmChatDataManager.ts src/llmChat/types.ts .claude/settings.local.json)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ]
   }
 }

@@ -4,8 +4,8 @@
  * 在对话文件末尾通过 HTML 注释标记当前处理状态：
  *
  *   <!-- llm:queued -->
- *   <!-- llm:executing startedAt="1704067200000" retryCount="0" -->
- *   <!-- llm:retrying retryAt="1704067260000" retryCount="1" -->
+ *   <!-- llm:executing startedAt="2026-03-10 14:21:00" retryCount="0" -->
+ *   <!-- llm:retrying retryAt="2026-03-10 14:22:00" retryCount="1" -->
  *   <!-- llm:error message="timeout" -->
  *
  * HTML 注释在 Markdown 渲染中不可见，不影响正常阅读。
@@ -50,18 +50,18 @@ export function parseStateMarker(content: string): ConvStateMarker | null {
     return {
         status,
         retryCount: attrs.retryCount !== undefined ? Number(attrs.retryCount) : undefined,
-        startedAt: attrs.startedAt !== undefined ? Number(attrs.startedAt) : undefined,
-        retryAt: attrs.retryAt !== undefined ? Number(attrs.retryAt) : undefined,
+        startedAt: attrs.startedAt !== undefined ? parseTs(attrs.startedAt) : undefined,
+        retryAt: attrs.retryAt !== undefined ? parseTs(attrs.retryAt) : undefined,
         message: attrs.message,
     };
 }
 
-/** 将状态标记序列化为 HTML 注释字符串 */
+/** 将状态标记序列化为 HTML 注释字符串，时间戳使用人类可读格式 */
 export function formatStateMarker(marker: ConvStateMarker): string {
     const parts: string[] = [];
     if (marker.retryCount !== undefined) { parts.push(`retryCount="${marker.retryCount}"`); }
-    if (marker.startedAt !== undefined) { parts.push(`startedAt="${marker.startedAt}"`); }
-    if (marker.retryAt !== undefined) { parts.push(`retryAt="${marker.retryAt}"`); }
+    if (marker.startedAt !== undefined) { parts.push(`startedAt="${fmtTs(marker.startedAt)}"`); }
+    if (marker.retryAt !== undefined) { parts.push(`retryAt="${fmtTs(marker.retryAt)}"`); }
     if (marker.message !== undefined) {
         // 截断并转义引号
         const safe = marker.message.slice(0, 200).replace(/"/g, "'");
@@ -69,6 +69,20 @@ export function formatStateMarker(marker: ConvStateMarker): string {
     }
     const attrs = parts.length > 0 ? ' ' + parts.join(' ') : '';
     return `<!-- llm:${marker.status}${attrs} -->`;
+}
+
+/** "2026-03-10 14:21:00" 或纯数字 epoch → epoch ms，兼容新旧格式 */
+function parseTs(str: string): number {
+    const n = Number(str);
+    if (Number.isFinite(n)) { return n; }
+    return new Date(str.replace(' ', 'T')).getTime();
+}
+
+/** 时间戳 → "2026-03-10 14:21:00" */
+function fmtTs(ts: number): string {
+    const d = new Date(ts);
+    const p = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /** 读取对话文件中的状态标记，文件不存在或无标记时返回 null */

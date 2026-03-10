@@ -742,7 +742,7 @@ export async function startLogRun(logUri: vscode.Uri, context: {
 
     const runNumber = await getNextRunNumber(logUri);
     const date = new Date();
-    const dateStr = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+    const dateStr = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${formatTimeHMS(date)}`;
     const timeStr = formatTimeHMS(date);
 
     const triggerLabel = context.trigger === 'timer' ? '定时器'
@@ -752,7 +752,7 @@ export async function startLogRun(logUri: vscode.Uri, context: {
     if (context.roleName) { parts.push(`角色: ${context.roleName}`); }
     if (context.modelFamily) { parts.push(`模型: ${context.modelFamily}`); }
     if (context.timeout != null) { parts.push(`超时: ${context.timeout / 1000}s`); }
-    if (context.maxTokens != null) { parts.push(`Token 上限: ${context.maxTokens}`); }
+    if (context.maxTokens) { parts.push(`Token 上限: ${context.maxTokens}`); }
     if (context.retryCount && context.retryCount > 0) { parts.push(`重试 #${context.retryCount}`); }
 
     const header = `\n## Run #${runNumber} (${dateStr})\n\n`;

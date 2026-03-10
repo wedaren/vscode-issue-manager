@@ -30,6 +30,11 @@ import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
 
+/** 生成 issueMarkdown 链接，使用约定前缀 IssueDir/，消费方按需替换为真实路径 */
+function issueLink(title: string, fileName: string): string {
+    return `[${title}](IssueDir/${fileName})`;
+}
+
 // ─── 工具定义 ─────────────────────────────────────────────────
 
 /** 聊天角色可用的所有工具 */
@@ -385,7 +390,7 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
         return { success: true, content: `未找到包含「${query}」的笔记。` };
     }
 
-    const lines = matches.map((m, i) => `${i + 1}. **${m.title}** (${m.fileName})`);
+    const lines = matches.map((m, i) => `${i + 1}. ${issueLink(m.title, m.fileName)}`);
     return {
         success: true,
         content: `找到 ${matches.length} 条匹配结果：\n${lines.join('\n')}`,
@@ -421,7 +426,7 @@ async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCal
 
     return {
         success: true,
-        content: `**${issue.title}** (${fileName})\n\n${truncated}`,
+        content: `📖 ${issueLink(issue.title, fileName)}\n\n${truncated}`,
     };
 }
 
@@ -456,7 +461,7 @@ async function executeCreateIssue(input: Record<string, unknown>): Promise<ToolC
 
     return {
         success: true,
-        content: `✅ 已创建笔记「${title}」(${fileName})`,
+        content: `✅ 已创建 ${issueLink(title, fileName)}`,
     };
 }
 
@@ -534,7 +539,7 @@ async function executeCreateIssueTree(input: Record<string, unknown>): Promise<T
     // 刷新视图
     vscode.commands.executeCommand('issueManager.refreshViews');
 
-    const summary = nodes.map((n, i) => `${i === rootIndex ? '📁' : '  📄'} ${n.title} (${createdFileNames[i]})`).join('\n');
+    const summary = nodes.map((n, i) => `${i === rootIndex ? '📁' : '  📄'} ${issueLink(n.title, createdFileNames[i])}`).join('\n');
     return {
         success: true,
         content: `✅ 已创建 ${nodes.length} 个笔记并建立层级结构：\n${summary}`,
@@ -562,7 +567,7 @@ async function executeListIssueTree(input: Record<string, unknown>): Promise<Too
             const flat = flatTree.find(f => f.id === node.id);
             const title = flat?.title || path.basename(node.filePath, '.md');
             const fileName = path.basename(node.filePath);
-            lines.push(`${'  '.repeat(depth)}${depth === 0 ? '📁' : '📄'} ${title} (${fileName})`);
+            lines.push(`${'  '.repeat(depth)}${depth === 0 ? '📁' : '📄'} ${issueLink(title, fileName)}`);
             if (node.children && node.children.length > 0) {
                 renderNodes(node.children, depth + 1);
             }
@@ -627,7 +632,7 @@ async function executeUpdateIssue(input: Record<string, unknown>): Promise<ToolC
 
     return {
         success: true,
-        content: `✅ 已更新笔记「${issue.title}」(${fileName})`,
+        content: `✅ 已更新 ${issueLink(issue.title, fileName)}`,
     };
 }
 

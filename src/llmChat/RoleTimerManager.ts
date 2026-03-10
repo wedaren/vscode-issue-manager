@@ -315,9 +315,9 @@ export class RoleTimerManager implements vscode.Disposable {
             logger.info(`[RoleTimerManager] 对话处理成功: ${filePath}`);
             this._onDidChange.fire({ uri, roleId: role.id, success: true });
         } catch (e) {
-            // 优先使用 AbortController 的 abort reason
+            // 优先使用 AbortController 的 abort reason（超时时携带具体原因）
             let errMsg: string;
-            if (e instanceof DOMException && e.name === 'AbortError' && ac.signal.reason instanceof Error) {
+            if (ac.signal.aborted && ac.signal.reason instanceof Error) {
                 errMsg = ac.signal.reason.message;
             } else {
                 errMsg = e instanceof Error ? e.message : String(e);
