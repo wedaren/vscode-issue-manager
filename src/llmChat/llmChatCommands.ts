@@ -597,7 +597,7 @@ export function registerLLMChatCommands(
 
     // ─── 编辑角色（右键菜单） ────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.editRole', async (node?: ChatRoleNode) => {
+        vscode.commands.registerCommand('issueManager.llmChat.editRole', async (node?: ChatRoleNode | PersonalAssistantNode) => {
             if (!node) { return; }
             await vscode.window.showTextDocument(node.role.uri, { preview: false });
         }),

@@ -27,6 +27,8 @@ export interface ChatRoleFrontmatter {
     timer_max_retries?: number;
     /** 初始重试间隔（ms），指数退避，默认 5000 */
     timer_retry_delay?: number;
+    /** 角色级 LLM 请求最大 token 预算（可选） */
+    chat_role_max_tokens?: number;
     /** 标记为个人助手角色（系统唯一） */
     chat_role_is_personal_assistant?: true;
 }
@@ -78,6 +80,14 @@ export interface ChatConversationFrontmatter {
     chat_role_id: string;
     /** 对话标题（可选，自动生成或手动设置） */
     chat_title?: string;
+    /** 对话级模型 family（可选，覆盖角色配置） */
+    chat_model_family?: string;
+    /** 对话级 LLM 请求最大 token 预算（可选，覆盖角色配置） */
+    chat_max_tokens?: number;
+    /** 当前对话已消耗的估算 token 数（请求前后自动更新） */
+    chat_token_used?: number;
+    /** 关联的执行日志文件 ID（首次执行时自动创建） */
+    chat_log_id?: string;
 }
 
 /** 运行时聊天角色信息（从 issueMarkdown 解析而来） */
@@ -103,6 +113,8 @@ export interface ChatRoleInfo {
     timerTimeout?: number;
     timerMaxRetries?: number;
     timerRetryDelay?: number;
+    /** 角色级最大 token 预算 */
+    maxTokens?: number;
     /** 是否为个人助手角色 */
     isPersonalAssistant?: boolean;
 }
@@ -119,6 +131,14 @@ export interface ChatConversationInfo {
     uri: import('vscode').Uri;
     /** 最后修改时间 */
     mtime: number;
+    /** 对话级模型 family（覆盖角色配置） */
+    modelFamily?: string;
+    /** 对话级最大 token 预算 */
+    maxTokens?: number;
+    /** 已消耗的估算 token 数 */
+    tokenUsed?: number;
+    /** 关联的执行日志 ID */
+    logId?: string;
 }
 
 // ─── 群组相关 ───────────────────────────────────────────────
@@ -162,6 +182,83 @@ export interface ChatGroupMessage {
     roleName?: string;
     content: string;
     timestamp: number;
+}
+
+// ─── 执行日志 ───────────────────────────────────────────────
+
+/** 执行日志文件的 frontmatter */
+export interface ChatExecutionLogFrontmatter {
+    /** 标记为执行日志文件 */
+    chat_execution_log: true;
+    /** 关联的对话文件 ID */
+    chat_conversation_id: string;
+    /** 日志最大保留条数（超出时自动裁剪），默认 50 */
+    log_max_runs?: number;
+}
+
+/** 单次执行记录中的工具调用信息 */
+export interface ExecutionToolCall {
+    /** 工具名称 */
+    tool: string;
+    /** 输入摘要（截断） */
+    inputSummary: string;
+    /** 耗时（ms） */
+    duration: number;
+    /** 结果摘要（截断） */
+    resultSummary: string;
+}
+
+/** 单次 LLM 执行记录 */
+export interface ExecutionRunRecord {
+    /** 执行序号 */
+    runNumber: number;
+    /** 执行开始时间戳 */
+    startedAt: number;
+    /** 状态轨迹，如 "queued → executing → success" */
+    stateTrace: string;
+    /** 是否成功 */
+    success: boolean;
+    /** 总耗时（ms） */
+    duration: number;
+    /** 输入 token 数 */
+    inputTokens: number;
+    /** 输出 token 数 */
+    outputTokens: number;
+    /** 工具调用明细 */
+    toolCalls: ExecutionToolCall[];
+    /** 错误信息（失败时） */
+    errorMessage?: string;
+    /** 重试次数 */
+    retryCount: number;
+    // ─── 上下文信息（用于审计） ─────────────────────────────
+    /** 触发方式 */
+    trigger?: 'timer' | 'direct' | 'save';
+    /** 角色名称 */
+    roleName?: string;
+    /** 使用的模型 */
+    modelFamily?: string;
+    /** 配置的 max_tokens */
+    maxTokens?: number;
+    /** 配置的超时时间（ms） */
+    timeout?: number;
+}
+
+/** 执行日志运行时信息 */
+export interface ChatExecutionLogInfo {
+    /** 日志文件 ID */
+    id: string;
+    /** 关联的对话 ID */
+    conversationId: string;
+    /** 文件 URI */
+    uri: import('vscode').Uri;
+    /** 最后修改时间 */
+    mtime: number;
+    /** 执行总次数 */
+    totalRuns: number;
+    /** 成功次数 */
+    successCount: number;
+    /** 失败次数 */
+    failureCount: number;
 }
 
 // ─── Chrome 面板聊天 ─────────────────────────────────────────

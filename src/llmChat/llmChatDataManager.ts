@@ -26,11 +26,22 @@ import type {
     ChatGroupMessage,
     ChromeChatFrontmatter,
     ChromeChatInfo,
+    ChatExecutionLogFrontmatter,
+    ChatExecutionLogInfo,
+    ExecutionRunRecord,
+    ExecutionToolCall,
 } from './types';
 import { stripMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
+
+/** YAML 值转有限数字，无效时返回 undefined */
+function toFiniteNumber(v: unknown): number | undefined {
+    if (v == null) { return undefined; }
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+}
 
 // ─── 角色相关 ───────────────────────────────────────────────
 
@@ -50,13 +61,14 @@ export async function getAllChatRoles(): Promise<ChatRoleInfo[]> {
             systemPrompt: fm.chat_role_system_prompt || '',
             modelFamily: fm.chat_role_model_family,
             uri: md.uri,
-            // ─── 定时器配置 ───────────────────────────────────
+            // ─── 定时器配置（YAML 解析可能产生字符串，统一转为 number） ──
             timerEnabled: fm.timer_enabled === true,
-            timerInterval: fm.timer_interval,
-            timerMaxConcurrent: fm.timer_max_concurrent,
-            timerTimeout: fm.timer_timeout,
-            timerMaxRetries: fm.timer_max_retries,
-            timerRetryDelay: fm.timer_retry_delay,
+            timerInterval: toFiniteNumber(fm.timer_interval),
+            timerMaxConcurrent: toFiniteNumber(fm.timer_max_concurrent),
+            timerTimeout: toFiniteNumber(fm.timer_timeout),
+            timerMaxRetries: toFiniteNumber(fm.timer_max_retries),
+            timerRetryDelay: toFiniteNumber(fm.timer_retry_delay),
+            maxTokens: toFiniteNumber(fm.chat_role_max_tokens),
             isPersonalAssistant: fm.chat_role_is_personal_assistant === true,
         });
     }
@@ -76,11 +88,13 @@ export async function createChatRole(
     avatar?: string,
     modelFamily?: string,
 ): Promise<string | null> {
+    const defaultModelFamily = vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily') || 'gpt-5-mini';
     const fm: Partial<FrontmatterData> & ChatRoleFrontmatter = {
         chat_role: true,
         chat_role_name: name,
         chat_role_avatar: avatar || 'hubot',
         chat_role_system_prompt: systemPrompt,
+        chat_role_model_family: modelFamily || defaultModelFamily,
         // ─── 定时器配置（默认关闭，按需开启） ────────────────
         timer_enabled: false,
         timer_interval: 30000,
@@ -89,9 +103,6 @@ export async function createChatRole(
         timer_max_retries: 3,
         timer_retry_delay: 5000,
     };
-    if (modelFamily) {
-        fm.chat_role_model_family = modelFamily;
-    }
 
     const body = `# ${name}\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
@@ -122,6 +133,10 @@ export async function getConversationsForRole(roleId: string): Promise<ChatConve
             title: fm.chat_title || md.title || '未命名对话',
             uri: md.uri,
             mtime: md.mtime,
+            modelFamily: fm.chat_model_family,
+            maxTokens: fm.chat_max_tokens,
+            tokenUsed: fm.chat_token_used,
+            logId: fm.chat_log_id,
         });
     }
     // 按最后修改时间降序
@@ -135,10 +150,18 @@ export async function createConversation(roleId: string, title?: string): Promis
     const roleName = role?.name || '未知角色';
     const convoTitle = title || `与 ${roleName} 的对话`;
 
+    // 对话级默认值：继承角色配置，若无则使用系统默认
+    const defaultModelFamily = role?.modelFamily
+        || vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily')
+        || 'gpt-5-mini';
+
     const fm: Partial<FrontmatterData> & ChatConversationFrontmatter = {
         chat_conversation: true,
         chat_role_id: roleId,
         chat_title: convoTitle,
+        chat_model_family: defaultModelFamily,
+        chat_max_tokens: role?.maxTokens ?? 0,
+        chat_token_used: 0,
     };
 
     const body = `# ${convoTitle}\n\n`;
@@ -210,6 +233,68 @@ export async function appendUserMessageQueued(
     } catch (e) {
         logger.error('appendUserMessageQueued 失败', e);
         throw e;
+    }
+}
+
+/**
+ * 更新对话文件 frontmatter 中的 token 使用量。
+ * 请求前/后各调用一次以跟踪 token 消耗。
+ */
+export async function updateConversationTokenUsed(
+    uri: vscode.Uri,
+    tokenUsed: number,
+): Promise<void> {
+    try {
+        await updateIssueMarkdownFrontmatter(uri, {
+            chat_token_used: tokenUsed,
+        } as Partial<FrontmatterData>);
+    } catch (e) {
+        logger.error('updateConversationTokenUsed 失败', e);
+    }
+}
+
+/**
+ * 估算消息列表的 token 数。
+ * 优先使用 VS Code LanguageModelChat.countTokens()，不可用时按字符数粗估（1 token ≈ 2 字符）。
+ */
+export async function estimateTokens(messages: vscode.LanguageModelChatMessage[]): Promise<number> {
+    try {
+        const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+        if (models.length > 0) {
+            let total = 0;
+            for (const msg of messages) {
+                total += await models[0].countTokens(msg);
+            }
+            return total;
+        }
+    } catch {
+        // countTokens 不可用，回落到字符估算
+    }
+    const totalChars = messages.reduce((sum, m) => sum + String((m as any).content ?? '').length, 0);
+    return Math.ceil(totalChars / 2);
+}
+
+/**
+ * 从对话文件 frontmatter 读取对话级配置（model_family, max_tokens, token_used）。
+ * 用于 RoleTimerManager 在执行前获取对话级覆盖配置。
+ */
+export async function getConversationConfig(uri: vscode.Uri): Promise<{
+    modelFamily?: string;
+    maxTokens?: number;
+    tokenUsed?: number;
+} | null> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        if (!frontmatter) { return null; }
+        const fm = frontmatter as Record<string, unknown>;
+        return {
+            modelFamily: fm.chat_model_family as string | undefined,
+            maxTokens: fm.chat_max_tokens as number | undefined,
+            tokenUsed: fm.chat_token_used as number | undefined,
+        };
+    } catch {
+        return null;
     }
 }
 
@@ -429,6 +514,296 @@ function formatTimestamp(ts: number): string {
 function parseTimestamp(str: string): number | null {
     const d = new Date(str.replace(/\s+/, 'T'));
     return isNaN(d.getTime()) ? null : d.getTime();
+}
+
+// ─── 执行日志 ───────────────────────────────────────────────
+
+/** 默认最大保留条数 */
+const DEFAULT_LOG_MAX_RUNS = 50;
+
+/**
+ * 获取或创建对话关联的执行日志文件。
+ * 首次调用时自动创建日志文件并将 chat_log_id 写回对话 frontmatter。
+ */
+export async function getOrCreateExecutionLog(conversationUri: vscode.Uri): Promise<vscode.Uri | null> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(conversationUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        if (!frontmatter) { return null; }
+
+        const fm = frontmatter as Record<string, unknown>;
+        const existingLogId = fm.chat_log_id as string | undefined;
+
+        // 已有日志文件，直接返回
+        if (existingLogId) {
+            const dir = getIssueDir();
+            if (!dir) { return null; }
+            const logUri = vscode.Uri.file(path.join(dir, `${existingLogId}.md`));
+            try {
+                await vscode.workspace.fs.stat(logUri);
+                return logUri;
+            } catch {
+                // 日志文件不存在，重新创建
+            }
+        }
+
+        // 创建日志文件
+        const convoId = extractId(conversationUri);
+        const convoTitle = (fm.chat_title as string) || '对话';
+        const logFm: Partial<FrontmatterData> & ChatExecutionLogFrontmatter = {
+            chat_execution_log: true,
+            chat_conversation_id: convoId,
+            log_max_runs: DEFAULT_LOG_MAX_RUNS,
+        };
+        const body = `# 执行日志: ${convoTitle}\n\n`;
+        const logUri = await createIssueMarkdown({ frontmatter: logFm, markdownBody: body });
+        if (!logUri) { return null; }
+
+        await createIssueNodes([logUri]);
+
+        // 将 log_id 写回对话文件
+        const logId = extractId(logUri);
+        await updateIssueMarkdownFrontmatter(conversationUri, {
+            chat_log_id: logId,
+        } as Partial<FrontmatterData>);
+
+        return logUri;
+    } catch (e) {
+        logger.error('getOrCreateExecutionLog 失败', e);
+        return null;
+    }
+}
+
+/**
+ * 向执行日志追加一条运行记录。
+ * 自动裁剪超出 log_max_runs 的旧记录。
+ */
+export async function appendExecutionRunRecord(
+    logUri: vscode.Uri,
+    record: ExecutionRunRecord,
+): Promise<void> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(logUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const maxRuns = (frontmatter as Record<string, unknown>)?.log_max_runs as number ?? DEFAULT_LOG_MAX_RUNS;
+
+        const block = formatRunRecord(record);
+        let updated = raw + block;
+
+        // 裁剪旧记录（保留最近 maxRuns 条）
+        const runRegex = /\n## Run #\d+/g;
+        const matches = [...updated.matchAll(runRegex)];
+        if (matches.length > maxRuns) {
+            const cutIndex = matches[matches.length - maxRuns].index!;
+            // 保留 frontmatter + 标题行 + 最近的 maxRuns 条记录
+            const headerEnd = updated.indexOf('\n## Run #');
+            if (headerEnd >= 0 && cutIndex > headerEnd) {
+                const header = updated.slice(0, headerEnd);
+                const kept = updated.slice(cutIndex);
+                updated = header + kept;
+            }
+        }
+
+        await vscode.workspace.fs.writeFile(logUri, Buffer.from(updated, 'utf8'));
+    } catch (e) {
+        logger.error('appendExecutionRunRecord 失败', e);
+    }
+}
+
+/** 获取执行日志的运行时信息 */
+export async function getExecutionLogInfo(conversationUri: vscode.Uri): Promise<ChatExecutionLogInfo | null> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(conversationUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        if (!frontmatter) { return null; }
+
+        const fm = frontmatter as Record<string, unknown>;
+        const logId = fm.chat_log_id as string | undefined;
+        if (!logId) { return null; }
+
+        const dir = getIssueDir();
+        if (!dir) { return null; }
+        const logUri = vscode.Uri.file(path.join(dir, `${logId}.md`));
+
+        let logStat: vscode.FileStat;
+        try {
+            logStat = await vscode.workspace.fs.stat(logUri);
+        } catch {
+            return null;
+        }
+
+        const logRaw = Buffer.from(await vscode.workspace.fs.readFile(logUri)).toString('utf8');
+        const successMatches = logRaw.match(/\*\*状态\*\*.*?→.*?success/g);
+        const failMatches = logRaw.match(/\*\*状态\*\*.*?→.*?(?:error|retrying)/g);
+        const runMatches = logRaw.match(/## Run #\d+/g);
+
+        return {
+            id: logId,
+            conversationId: extractId(conversationUri),
+            uri: logUri,
+            mtime: logStat.mtime,
+            totalRuns: runMatches?.length ?? 0,
+            successCount: successMatches?.length ?? 0,
+            failureCount: failMatches?.length ?? 0,
+        };
+    } catch (e) {
+        logger.error('getExecutionLogInfo 失败', e);
+        return null;
+    }
+}
+
+/** 格式化单条执行记录为 markdown */
+function formatRunRecord(record: ExecutionRunRecord): string {
+    const ts = formatTimestamp(record.startedAt);
+    const icon = record.success ? '✅' : '❌';
+    const totalTokens = record.inputTokens + record.outputTokens;
+    const durationStr = record.duration >= 1000
+        ? `${(record.duration / 1000).toFixed(1)}s`
+        : `${record.duration}ms`;
+
+    // 标题行：序号 + 时间 + 结果图标 + 一句话摘要
+    const summary = record.success
+        ? `成功（${durationStr}，${totalTokens} tokens）`
+        : `失败：${record.errorMessage || '未知错误'}`;
+    let md = `\n## Run #${record.runNumber} (${ts}) ${icon} ${summary}\n\n`;
+
+    // 上下文信息块
+    const triggerLabel = record.trigger === 'timer' ? '定时器' : record.trigger === 'save' ? '保存触发' : '用户直接发送';
+    md += `| 项目 | 值 |\n|------|------|\n`;
+    md += `| 触发方式 | ${triggerLabel} |\n`;
+    if (record.roleName) {
+        md += `| 角色 | ${record.roleName} |\n`;
+    }
+    if (record.modelFamily) {
+        md += `| 模型 | ${record.modelFamily} |\n`;
+    }
+    if (record.maxTokens !== undefined) {
+        md += `| Token 上限 | ${record.maxTokens || '无限制'} |\n`;
+    }
+    if (record.timeout !== undefined) {
+        md += `| 超时 | ${record.timeout / 1000}s |\n`;
+    }
+    md += `| 状态轨迹 | ${record.stateTrace} |\n`;
+    md += `| 耗时 | ${durationStr} |\n`;
+    md += `| Token 消耗 | input ${record.inputTokens} + output ${record.outputTokens} = ${totalTokens} |\n`;
+
+    if (record.retryCount > 0) {
+        md += `| 重试次数 | ${record.retryCount} |\n`;
+    }
+
+    md += '\n';
+
+    // 错误详情（独立块，醒目）
+    if (record.errorMessage) {
+        md += `> **错误详情**: ${record.errorMessage}\n\n`;
+    }
+
+    // 工具调用明细
+    if (record.toolCalls.length > 0) {
+        md += `**工具调用** (${record.toolCalls.length} 次):\n\n`;
+        for (let i = 0; i < record.toolCalls.length; i++) {
+            const tc = record.toolCalls[i];
+            md += `${i + 1}. \`${tc.tool}\` (${tc.duration}ms)\n`;
+            md += `   - 输入: ${tc.inputSummary}\n`;
+            md += `   - 结果: ${tc.resultSummary}\n`;
+        }
+        md += '\n';
+    }
+
+    return md;
+}
+
+/** 计算日志文件中的下一个 run 编号 */
+export async function getNextRunNumber(logUri: vscode.Uri): Promise<number> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(logUri)).toString('utf8');
+        const matches = [...raw.matchAll(/## Run #(\d+)/g)];
+        if (matches.length === 0) { return 1; }
+        const maxNum = Math.max(...matches.map(m => parseInt(m[1], 10)));
+        return maxNum + 1;
+    } catch {
+        return 1;
+    }
+}
+
+// ─── 增量事件日志 ─────────────────────────────────────────────
+
+/** 开始新的 Run 条目并写入标题 + 上下文行，返回 runNumber */
+export async function startLogRun(logUri: vscode.Uri, context: {
+    trigger?: 'timer' | 'direct' | 'save';
+    roleName?: string;
+    modelFamily?: string;
+    timeout?: number;
+    maxTokens?: number;
+    retryCount?: number;
+}): Promise<number> {
+    // 先裁剪旧记录
+    await trimLogRuns(logUri);
+
+    const runNumber = await getNextRunNumber(logUri);
+    const date = new Date();
+    const dateStr = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+    const timeStr = formatTimeHMS(date);
+
+    const triggerLabel = context.trigger === 'timer' ? '定时器'
+        : context.trigger === 'save' ? '保存触发' : '直接发送';
+
+    const parts: string[] = [`触发: ${triggerLabel}`];
+    if (context.roleName) { parts.push(`角色: ${context.roleName}`); }
+    if (context.modelFamily) { parts.push(`模型: ${context.modelFamily}`); }
+    if (context.timeout != null) { parts.push(`超时: ${context.timeout / 1000}s`); }
+    if (context.maxTokens != null) { parts.push(`Token 上限: ${context.maxTokens}`); }
+    if (context.retryCount && context.retryCount > 0) { parts.push(`重试 #${context.retryCount}`); }
+
+    const header = `\n## Run #${runNumber} (${dateStr})\n\n`;
+    const firstLine = `- \`${timeStr}\` 📋 **开始执行** | ${parts.join(' | ')}\n`;
+
+    await appendRawToLog(logUri, header + firstLine);
+    return runNumber;
+}
+
+/** 向日志文件追加一行带时间戳的事件 */
+export async function appendLogLine(logUri: vscode.Uri, line: string): Promise<void> {
+    const ts = formatTimeHMS(new Date());
+    await appendRawToLog(logUri, `- \`${ts}\` ${line}\n`);
+}
+
+/** 向日志文件末尾追加原始文本 */
+async function appendRawToLog(logUri: vscode.Uri, text: string): Promise<void> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(logUri)).toString('utf8');
+        await vscode.workspace.fs.writeFile(logUri, Buffer.from(raw + text, 'utf8'));
+    } catch (e) {
+        logger.warn('appendRawToLog 失败', e);
+    }
+}
+
+/** 裁剪旧的 Run 条目，保留最近 maxRuns 条 */
+async function trimLogRuns(logUri: vscode.Uri): Promise<void> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(logUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const maxRuns = (frontmatter as Record<string, unknown>)?.log_max_runs as number ?? DEFAULT_LOG_MAX_RUNS;
+
+        const runRegex = /\n## Run #\d+/g;
+        const matches = [...raw.matchAll(runRegex)];
+        // 仅当已有 maxRuns 条时才裁剪（为新 run 腾空间）
+        if (matches.length >= maxRuns) {
+            const keepFrom = matches.length - maxRuns + 1; // 保留最近 maxRuns-1 条 + 即将新增的 1 条
+            const cutIndex = matches[keepFrom].index!;
+            const headerEnd = raw.indexOf('\n## Run #');
+            if (headerEnd >= 0 && cutIndex > headerEnd) {
+                const header = raw.slice(0, headerEnd);
+                const kept = raw.slice(cutIndex);
+                await vscode.workspace.fs.writeFile(logUri, Buffer.from(header + kept, 'utf8'));
+            }
+        }
+    } catch { /* 裁剪失败不影响主流程 */ }
+}
+
+function pad2(n: number): string { return n.toString().padStart(2, '0'); }
+function formatTimeHMS(d: Date): string {
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
 // ─── Chrome 面板聊天 ─────────────────────────────────────────

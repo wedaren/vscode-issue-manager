@@ -16,10 +16,10 @@ import {
     updateIssueMarkdownFrontmatter,
 } from '../data/IssueMarkdowns';
 import type { FrontmatterData } from '../data/IssueMarkdowns';
-import { LLMService } from '../llm/LLMService';
-import { CHAT_TOOLS, executeChatTool } from './chatTools';
 import type { ChatRoleInfo, ChatRoleFrontmatter, PersonalAssistantMemoryFrontmatter } from './types';
-import { getAllChatRoles, createConversation, appendMessageToConversation } from './llmChatDataManager';
+import { getAllChatRoles, createConversation, appendUserMessageQueued, parseConversationMessages } from './llmChatDataManager';
+import { RoleTimerManager } from './RoleTimerManager';
+import { readStateMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -123,6 +123,13 @@ export class PersonalAssistantService {
             chat_role_avatar: 'person-add',
             chat_role_system_prompt: PERSONAL_ASSISTANT_SYSTEM_PROMPT,
             [PA_MARKER]: true,
+            // ─── 定时器配置（默认关闭，按需开启） ────────────────
+            timer_enabled: false,
+            timer_interval: 30000,
+            timer_max_concurrent: 2,
+            timer_timeout: 60000,
+            timer_max_retries: 3,
+            timer_retry_delay: 5000,
         };
 
         const body = `# 执行官（个人助手）\n\n这是你的专属个人助手。他拥有持久记忆，可以委派任务给其他角色，并持续进化。\n`;
@@ -249,76 +256,86 @@ export class PersonalAssistantService {
         const taskPreview = task.length > 30 ? task.slice(0, 30) + '…' : task;
         const convoTitle = `[助手委派] ${taskPreview}`;
         const convoUri = await createConversation(role.id, convoTitle);
-
-        // 2. 将任务写入对话文件（用户消息）
-        if (convoUri) {
-            await appendMessageToConversation(convoUri, 'user', task);
+        if (!convoUri) {
+            return '创建委派对话文件失败';
         }
 
-        // 3. 构建 LLM 消息（使用角色的系统提示词 + 历史消息）
-        const messages: vscode.LanguageModelChatMessage[] = [];
-        if (role.systemPrompt) {
-            messages.push(vscode.LanguageModelChatMessage.User(
-                `[系统指令] ${role.systemPrompt}`,
-            ));
-        }
-        messages.push(vscode.LanguageModelChatMessage.User(task));
+        // 2. 写入用户消息 + queued 标记（单次写入，进入状态机）
+        await appendUserMessageQueued(convoUri, task);
 
-        try {
-            const result = await LLMService.streamWithTools(
-                messages,
-                CHAT_TOOLS,
-                () => { /* 委派调用不需要流式回调，最终文本写入文件 */ },
-                async (toolName, input) => {
-                    const res = await executeChatTool(toolName, input);
-                    return res.content;
-                },
-                { signal, modelFamily: role.modelFamily },
-            );
+        // 3. 立即触发执行（不等下一个 tick）
+        await RoleTimerManager.getInstance().triggerConversation(convoUri);
 
-            const reply = result?.text?.trim();
+        // 4. 等待执行完成（通过 onDidChange 事件或超时）
+        const reply = await this._waitForDelegationResult(convoUri, role.name, signal);
 
-            // 4a. 角色无回复 → 写入标记，保证对话文件状态完整
-            if (convoUri && !reply) {
-                await appendMessageToConversation(
-                    convoUri, 'assistant',
-                    '[未返回任何内容]',
-                );
-                void vscode.commands.executeCommand('issueManager.llmChat.refresh');
-                return '（角色未返回任何内容）';
-            }
+        void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+        return reply;
+    }
 
-            // 4b. 正常回复 → 写入对话文件（完整记录可见）
-            if (convoUri && reply) {
-                await appendMessageToConversation(convoUri, 'assistant', reply);
-            }
+    /**
+     * 等待委派的对话被 RoleTimerManager 处理完成。
+     * 监听 onDidChange 事件，超时 2 分钟自动返回。
+     */
+    private _waitForDelegationResult(
+        convoUri: vscode.Uri,
+        roleName: string,
+        signal?: AbortSignal,
+    ): Promise<string> {
+        return new Promise<string>(resolve => {
+            const timerManager = RoleTimerManager.getInstance();
 
-            // 5. 刷新树视图，让用户看到新创建的对话记录
-            void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+            const cleanup = () => {
+                disposable.dispose();
+                clearTimeout(timeout);
+                signal?.removeEventListener('abort', onAbort);
+            };
 
-            logger.info(`[PersonalAssistant] 委派给「${role.name}」完成，回复长度: ${reply!.length}`);
-            return reply!;
-        } catch (e) {
-            const isCancelled = signal?.aborted;
-            const msg = isCancelled ? '已取消' : (e instanceof Error ? e.message : String(e));
+            // 监听执行完成事件
+            const disposable = timerManager.onDidChange(async (e) => {
+                if (e.uri.fsPath !== convoUri.fsPath) { return; }
+                if (e.success) {
+                    cleanup();
+                    const text = await this._readLastAssistantMessage(convoUri);
+                    logger.info(`[PersonalAssistant] 委派给「${roleName}」完成，回复长度: ${text.length}`);
+                    resolve(text);
+                } else {
+                    // 检查是终态 error 还是中间态 retrying
+                    const marker = await readStateMarker(convoUri);
+                    if (marker?.status === 'retrying') {
+                        // 还在重试中，继续等待下一次 onDidChange
+                        logger.info(`[PersonalAssistant] 委派给「${roleName}」重试中（${marker.retryCount}次）`);
+                        return;
+                    }
+                    // 终态：error 或其他非 retrying 状态
+                    cleanup();
+                    const errMsg = marker?.message || '未知错误';
+                    logger.error(`[PersonalAssistant] 委派给「${roleName}」失败: ${errMsg}`);
+                    resolve(`委派给「${roleName}」时出错: ${errMsg}`);
+                }
+            });
 
-            if (!isCancelled) {
-                logger.error(`[PersonalAssistant] 委派给「${role.name}」失败`, e);
-            }
+            // 超时（2 分钟）
+            const timeout = setTimeout(() => {
+                cleanup();
+                logger.warn(`[PersonalAssistant] 委派给「${roleName}」超时`);
+                resolve(`委派给「${roleName}」超时，请查看对话文件了解进度`);
+            }, 120_000);
 
-            // 关键：将失败/取消状态写入对话文件，避免遗留只有用户消息的"幽灵对话"
-            if (convoUri) {
-                const failureNote = isCancelled
-                    ? '[已取消]'
-                    : `[委派失败]\n错误：${msg}`;
-                await appendMessageToConversation(convoUri, 'assistant', failureNote).catch(() => {
-                    logger.warn(`[PersonalAssistant] 写入失败标记时出错，对话文件可能不完整`);
-                });
-            }
+            // 中止信号
+            const onAbort = () => {
+                cleanup();
+                resolve('（已取消）');
+            };
+            signal?.addEventListener('abort', onAbort);
+        });
+    }
 
-            void vscode.commands.executeCommand('issueManager.llmChat.refresh');
-            return isCancelled ? '（已取消）' : `委派给「${role.name}」时出错: ${msg}`;
-        }
+    /** 从对话文件读取最后一条 assistant 消息 */
+    private async _readLastAssistantMessage(uri: vscode.Uri): Promise<string> {
+        const messages = await parseConversationMessages(uri);
+        const last = messages.filter(m => m.role === 'assistant').pop();
+        return last?.content?.trim() || '（角色未返回任何内容）';
     }
 
     // ─── 角色管理 ─────────────────────────────────────────────

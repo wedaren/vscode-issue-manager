@@ -6,7 +6,12 @@
       "Bash(git rebase --continue)",
       "Bash(grep -rn:*)",
       "Bash(GIT_EDITOR=true git rebase --continue)",
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(git stash pop)",
+      "Bash(git stash drop)",
+      "Bash(git add src/llmChat/RoleTimerManager.ts)",
+      "Bash(npx tsc --noEmit --pretty)",
+      "Bash(git add src/llmChat/LLMChatService.ts src/llmChat/RoleTimerManager.ts src/llmChat/index.ts src/llmChat/llmChatDataManager.ts src/llmChat/types.ts .claude/settings.local.json)"
     ]
   }
 }

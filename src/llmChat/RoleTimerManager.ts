@@ -18,6 +18,12 @@ import {
     getChatRoleById,
     getConversationsForRole,
     parseConversationMessages,
+    getConversationConfig,
+    updateConversationTokenUsed,
+    estimateTokens,
+    getOrCreateExecutionLog,
+    startLogRun,
+    appendLogLine,
 } from './llmChatDataManager';
 import { CHAT_TOOLS, executeChatTool } from './chatTools';
 import { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
@@ -216,67 +222,125 @@ export class RoleTimerManager implements vscode.Disposable {
 
         const currentMarker = await readStateMarker(uri);
         const retryCount = currentMarker?.retryCount ?? 0;
+        const startedAt = Date.now();
 
         // 标记为执行中（持久化，崩溃后可检测）
-        await writeStateMarker(uri, {
-            status: 'executing',
-            startedAt: Date.now(),
-            retryCount,
-        });
+        await writeStateMarker(uri, { status: 'executing', startedAt, retryCount });
 
         logger.info(`[RoleTimerManager] 开始处理对话: ${filePath}（尝试 #${retryCount + 1}）`);
 
+        const timeout = role.timerTimeout ?? 60_000;
+        const ac = new AbortController();
+
+        // ── 日志先行：获取日志 URI 并写入 Run 标题 ──
+        let logUri: vscode.Uri | null = null;
+        try { logUri = await getOrCreateExecutionLog(uri); } catch { /* 忽略 */ }
+
+        const convoConfig = await getConversationConfig(uri);
+        const effectiveModelFamily = convoConfig?.modelFamily || role.modelFamily;
+        const effectiveMaxTokens = convoConfig?.maxTokens ?? role.maxTokens;
+
+        if (logUri) {
+            try {
+                await startLogRun(logUri, {
+                    trigger: 'timer',
+                    roleName: role.name,
+                    modelFamily: effectiveModelFamily,
+                    timeout,
+                    maxTokens: effectiveMaxTokens,
+                    retryCount,
+                });
+            } catch { /* 日志写入失败不阻塞主流程 */ }
+        }
+
+        let inputTokens = 0;
+        let outputTokens = 0;
+
         try {
-            const timeout = role.timerTimeout ?? 60_000;
-            const ac = new AbortController();
-            const timeoutId = setTimeout(() => ac.abort(), timeout);
+            const timeoutId = setTimeout(() => {
+                ac.abort(new Error(`LLM 请求超时：${timeout / 1000}s 内无响应，请检查网络或增大 timer_timeout`));
+            }, timeout);
 
             const isPA = role.isPersonalAssistant === true;
             const tools = isPA ? PERSONAL_ASSISTANT_TOOLS : CHAT_TOOLS;
 
             const messages = await this.buildMessages(uri, role);
+            inputTokens = await estimateTokens(messages);
+
+            // 日志：token 预估
+            if (logUri) { void appendLogLine(logUri, `🔢 预估 input: **${inputTokens}** tokens`); }
+
+            // token 门禁
+            if (effectiveMaxTokens && inputTokens > effectiveMaxTokens) {
+                throw new Error(`token 预算超限：预估 ${inputTokens}，上限 ${effectiveMaxTokens}`);
+            }
+
+            await updateConversationTokenUsed(uri, inputTokens);
+
+            // 日志：发起请求
+            if (logUri) { void appendLogLine(logUri, '🚀 发起 LLM 请求...'); }
+
             const result = await LLMService.streamWithTools(
                 messages,
                 tools,
-                () => { /* 定时器模式：静默处理，不需要流式推送 */ },
+                () => { /* 定时器模式：静默处理 */ },
                 async (toolName, input) => {
+                    const tcStart = Date.now();
                     const res = isPA
                         ? await executePersonalAssistantTool(toolName, input, ac.signal)
                         : await executeChatTool(toolName, input);
+                    const dur = Date.now() - tcStart;
+                    // 日志：每次工具调用实时写入
+                    if (logUri) { void appendLogLine(logUri, `🔧 \`${toolName}\` (${dur}ms) → ${summarize(res.content, 60)}`); }
                     return res.content;
                 },
-                { signal: ac.signal, modelFamily: role.modelFamily },
+                { signal: ac.signal, modelFamily: effectiveModelFamily },
             );
 
             clearTimeout(timeoutId);
 
             if (!result?.text) { throw new Error('LLM 返回空响应'); }
 
-            // 成功：移除标记并追加助手回复（单次写入）
+            // 成功：移除标记并追加助手回复
             await this.removeMarkerAndAppendAssistant(uri, result.text.trim());
+
+            const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
+            outputTokens = await estimateTokens([outputMsg]);
+            await updateConversationTokenUsed(uri, inputTokens + outputTokens);
+
+            // 日志：成功
+            const dur = fmtDuration(Date.now() - startedAt);
+            if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${dur} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
 
             logger.info(`[RoleTimerManager] 对话处理成功: ${filePath}`);
             this._onDidChange.fire({ uri, roleId: role.id, success: true });
         } catch (e) {
-            const errMsg = e instanceof Error ? e.message : String(e);
+            // 优先使用 AbortController 的 abort reason
+            let errMsg: string;
+            if (e instanceof DOMException && e.name === 'AbortError' && ac.signal.reason instanceof Error) {
+                errMsg = ac.signal.reason.message;
+            } else {
+                errMsg = e instanceof Error ? e.message : String(e);
+            }
+
             const nextRetry = retryCount + 1;
             const maxRetries = role.timerMaxRetries ?? 3;
+            const dur = fmtDuration(Date.now() - startedAt);
 
             if (nextRetry > maxRetries) {
-                await writeStateMarker(uri, {
-                    status: 'error',
-                    message: errMsg,
-                    retryCount: nextRetry,
-                });
+                await writeStateMarker(uri, { status: 'error', message: errMsg, retryCount: nextRetry });
+                if (logUri) { void appendLogLine(logUri, `❌ **失败（已达最大重试 ${maxRetries} 次）** | 耗时 ${dur} | ${errMsg}`); }
                 logger.error(`[RoleTimerManager] 已达最大重试次数(${maxRetries})，对话: ${filePath}，错误: ${errMsg}`);
             } else {
-                const baseDelay = role.timerRetryDelay ?? 5_000;
-                const delay = baseDelay * Math.pow(2, retryCount); // 指数退避
+                const baseDelay = Number(role.timerRetryDelay) || 5_000;
+                const delay = Math.max(1_000, baseDelay * Math.pow(2, retryCount));
+                const retryAt = Date.now() + delay;
                 await writeStateMarker(uri, {
                     status: 'retrying',
-                    retryAt: Date.now() + delay,
+                    retryAt: Number.isFinite(retryAt) ? retryAt : Date.now() + 5_000,
                     retryCount: nextRetry,
                 });
+                if (logUri) { void appendLogLine(logUri, `⚠️ **失败 → 重试 (${nextRetry}/${maxRetries})** | ${Math.round(delay / 1000)}s 后重试 | 耗时 ${dur} | ${errMsg}`); }
                 logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
             }
 
@@ -330,8 +394,18 @@ export class RoleTimerManager implements vscode.Disposable {
     }
 }
 
+/** 截断字符串，超出 maxLen 时添加省略号 */
+function summarize(text: string, maxLen: number): string {
+    if (text.length <= maxLen) { return text; }
+    return text.slice(0, maxLen - 1) + '…';
+}
+
 function formatTimestamp(ts: number): string {
     const d = new Date(ts);
     const p = (n: number) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function fmtDuration(ms: number): string {
+    return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 }

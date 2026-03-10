@@ -5,9 +5,9 @@
  * 顶部固定显示「个人助手」专属入口节点。
  */
 import * as vscode from 'vscode';
-import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup } from './llmChatDataManager';
+import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo } from './llmChatDataManager';
 import { PersonalAssistantService } from './PersonalAssistantService';
-import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo } from './types';
+import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo } from './types';
 
 // ─── 节点类型 ────────────────────────────────────────────────
 
@@ -58,7 +58,13 @@ export class ChatConversationNode extends vscode.TreeItem {
         public readonly parentId: string,
         public readonly isGroup: boolean,
     ) {
-        super(conversation.title, vscode.TreeItemCollapsibleState.None);
+        // 有日志时可展开，否则为叶子节点
+        super(
+            conversation.title,
+            conversation.logId
+                ? vscode.TreeItemCollapsibleState.Collapsed
+                : vscode.TreeItemCollapsibleState.None,
+        );
         this.contextValue = 'chatConversation';
         this.iconPath = new vscode.ThemeIcon('comment-discussion');
         this.description = formatRelativeTime(conversation.mtime);
@@ -73,7 +79,29 @@ export class ChatConversationNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = PersonalAssistantNode | ChatRoleNode | ChatGroupNode | ChatConversationNode;
+/** 执行日志节点（对话的子节点） */
+export class ChatExecutionLogNode extends vscode.TreeItem {
+    constructor(public readonly logInfo: ChatExecutionLogInfo) {
+        super('执行日志', vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'chatExecutionLog';
+        this.iconPath = new vscode.ThemeIcon('output');
+        this.description = `${logInfo.totalRuns} 次执行 · ${logInfo.successCount}✓ ${logInfo.failureCount}✗`;
+        this.tooltip = new vscode.MarkdownString(
+            `**执行日志**\n\n`
+            + `- 总执行: ${logInfo.totalRuns} 次\n`
+            + `- 成功: ${logInfo.successCount} 次\n`
+            + `- 失败: ${logInfo.failureCount} 次\n\n`
+            + `点击打开日志文件查看详情`,
+        );
+        this.command = {
+            command: 'vscode.open',
+            title: '打开执行日志',
+            arguments: [logInfo.uri],
+        };
+    }
+}
+
+export type LLMChatViewNode = PersonalAssistantNode | ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -115,6 +143,13 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         if (element instanceof ChatGroupNode) {
             const convos = await getConversationsForGroup(element.group.id);
             return convos.map(c => new ChatConversationNode(c, element.group.id, true));
+        }
+        if (element instanceof ChatConversationNode) {
+            const logInfo = await getExecutionLogInfo(element.conversation.uri);
+            if (logInfo) {
+                return [new ChatExecutionLogNode(logInfo)];
+            }
+            return [];
         }
         return [];
     }
