@@ -246,10 +246,14 @@ export class PersonalAssistantService {
         roleNameOrId: string,
         task: string,
         signal?: AbortSignal,
-    ): Promise<string> {
+    ): Promise<{ reply: string; convoId: string; roleName: string }> {
         const role = await this._findRole(roleNameOrId);
         if (!role) {
-            return `找不到角色「${roleNameOrId}」，请先用 list_chat_roles 查看可用角色，或用 create_chat_role 创建新角色。`;
+            return {
+                reply: `找不到角色「${roleNameOrId}」，请先用 list_chat_roles 查看可用角色，或用 create_chat_role 创建新角色。`,
+                convoId: '',
+                roleName: roleNameOrId,
+            };
         }
 
         // 1. 创建真实对话文件——记录这次委派，就像用户亲自与该角色对话
@@ -257,8 +261,11 @@ export class PersonalAssistantService {
         const convoTitle = `[助手委派] ${taskPreview}`;
         const convoUri = await createConversation(role.id, convoTitle);
         if (!convoUri) {
-            return '创建委派对话文件失败';
+            return { reply: '创建委派对话文件失败', convoId: '', roleName: role.name };
         }
+
+        const convoId = path.basename(convoUri.fsPath, '.md');
+        logger.info(`[PersonalAssistant] 委派开始 → 角色「${role.name}」| 对话 ${convoId} | 任务: ${taskPreview}`);
 
         // 2. 写入用户消息 + queued 标记（单次写入，进入状态机）
         await appendUserMessageQueued(convoUri, task);
@@ -269,8 +276,10 @@ export class PersonalAssistantService {
         // 4. 等待执行完成（通过 onDidChange 事件或超时）
         const reply = await this._waitForDelegationResult(convoUri, role.name, signal);
 
+        logger.info(`[PersonalAssistant] 委派结束 → 角色「${role.name}」| 对话 ${convoId} | 回复长度: ${reply.length}`);
+
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
-        return reply;
+        return { reply, convoId, roleName: role.name };
     }
 
     /**

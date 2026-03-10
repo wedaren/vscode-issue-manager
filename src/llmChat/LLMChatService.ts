@@ -248,11 +248,28 @@ export class LLMChatService {
                 onChunk,
                 async (toolName, input) => {
                     const tcStart = Date.now();
+
+                    // PA 委派：记录意图
+                    if (isPA && toolName === 'delegate_to_role' && logUri) {
+                        const targetRole = String((input as Record<string, unknown>).roleNameOrId || '');
+                        const taskStr = String((input as Record<string, unknown>).task || '');
+                        const taskPreview = taskStr.length > 100 ? taskStr.slice(0, 100) + '…' : taskStr;
+                        void appendLogLine(logUri, `📤 **委派给「${targetRole}」**: ${taskPreview}`);
+                    }
+
                     const res = isPA
                         ? await executePersonalAssistantTool(toolName, input, signal)
                         : await executeChatTool(toolName, input);
                     const dur = Date.now() - tcStart;
-                    if (logUri) { void appendLogLine(logUri, `🔧 \`${toolName}\` (${dur}ms) → ${truncate(res.content, 60)}`); }
+
+                    if (logUri) {
+                        if (isPA && toolName === 'delegate_to_role') {
+                            const icon = res.success ? '📥' : '📥❌';
+                            void appendLogLine(logUri, `${icon} **委派结果** (${fmtDuration(dur)}) → ${truncate(res.content, 150)}`);
+                        } else {
+                            void appendLogLine(logUri, `🔧 \`${toolName}\` (${fmtDuration(dur)}) → ${truncate(res.content, 80)}`);
+                        }
+                    }
                     return res.content;
                 },
                 {
@@ -275,6 +292,12 @@ export class LLMChatService {
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
             const outputTokens = await estimateTokens([outputMsg]);
             void updateConversationTokenUsed(uri, inputTokens + outputTokens);
+
+            // 日志：助手回复摘要
+            if (logUri && assistantReply) {
+                const preview = assistantReply.replace(/\n+/g, ' ');
+                void appendLogLine(logUri, `💭 **助手回复**: ${truncate(preview, 200)}`);
+            }
 
             if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
             return assistantReply;

@@ -286,12 +286,29 @@ export class RoleTimerManager implements vscode.Disposable {
                 () => { /* 定时器模式：静默处理 */ },
                 async (toolName, input) => {
                     const tcStart = Date.now();
+
+                    // PA 委派：记录意图
+                    if (isPA && toolName === 'delegate_to_role' && logUri) {
+                        const targetRole = String((input as Record<string, unknown>).roleNameOrId || '');
+                        const taskStr = String((input as Record<string, unknown>).task || '');
+                        const taskPreview = taskStr.length > 100 ? taskStr.slice(0, 100) + '…' : taskStr;
+                        void appendLogLine(logUri, `📤 **委派给「${targetRole}」**: ${taskPreview}`);
+                    }
+
                     const res = isPA
                         ? await executePersonalAssistantTool(toolName, input, ac.signal)
                         : await executeChatTool(toolName, input);
                     const dur = Date.now() - tcStart;
-                    // 日志：每次工具调用实时写入
-                    if (logUri) { void appendLogLine(logUri, `🔧 \`${toolName}\` (${dur}ms) → ${summarize(res.content, 60)}`); }
+
+                    // 日志：每次工具调用实时写入（PA 委派工具使用更长摘要）
+                    if (logUri) {
+                        if (isPA && toolName === 'delegate_to_role') {
+                            const icon = res.success ? '📥' : '📥❌';
+                            void appendLogLine(logUri, `${icon} **委派结果** (${fmtDuration(dur)}) → ${summarize(res.content, 150)}`);
+                        } else {
+                            void appendLogLine(logUri, `🔧 \`${toolName}\` (${fmtDuration(dur)}) → ${summarize(res.content, 80)}`);
+                        }
+                    }
                     return res.content;
                 },
                 { signal: ac.signal, modelFamily: effectiveModelFamily },
@@ -307,6 +324,12 @@ export class RoleTimerManager implements vscode.Disposable {
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
             outputTokens = await estimateTokens([outputMsg]);
             await updateConversationTokenUsed(uri, inputTokens + outputTokens);
+
+            // 日志：助手回复摘要（展示 LLM 的思考与输出）
+            if (logUri && result.text) {
+                const preview = result.text.trim().replace(/\n+/g, ' ');
+                void appendLogLine(logUri, `💭 **助手回复**: ${summarize(preview, 200)}`);
+            }
 
             // 日志：成功
             const dur = fmtDuration(Date.now() - startedAt);

@@ -227,11 +227,13 @@ async function executeDelegateToRole(
     if (!task) { return { success: false, content: '请提供委派任务描述' }; }
 
     logger.info(`[PA Tools] 委派任务给「${roleNameOrId}」`);
-    const reply = await service.delegateToRole(roleNameOrId, task, signal);
-    // 委派结果：包含角色回复 + 提示用户可在树视图查看完整对话
+    const startedAt = Date.now();
+    const result = await service.delegateToRole(roleNameOrId, task, signal);
+    const dur = ((Date.now() - startedAt) / 1000).toFixed(1);
+
     return {
         success: true,
-        content: `**[${roleNameOrId} 的回复]**\n\n${reply}\n\n> 💬 此次委派已在「${roleNameOrId}」下创建对话记录，可在侧边栏查看完整历史。`,
+        content: `**[${roleNameOrId} 的回复]** (耗时 ${dur}s, 对话: ${result.convoId})\n\n${result.reply}\n\n> 💬 委派对话 [${result.convoId}](IssueDir/${result.convoId}.md)`,
     };
 }
 
