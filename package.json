@@ -1898,7 +1898,7 @@
         },
         "issueManager.completion.maxItems": {
           "type": "number",
-          "default": 200,
+          "default": 50,
           "minimum": 10,
           "maximum": 1000,
           "description": "补全提示列表中显示的最大文件数量。"
@@ -1906,7 +1906,8 @@
         "issueManager.completion.triggers": {
           "type": "array",
           "default": [
-            "[["
+            "[",
+            "【"
           ],
           "items": {
             "type": "string"

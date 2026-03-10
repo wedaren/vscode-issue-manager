@@ -1,34 +1,25 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getFlatTree, FlatTreeNode, FocusedData } from '../data/issueTreeManager';
 import { extractFilterKeyword, isDocumentInDirectory } from '../utils/completionUtils';
 import { getIssueDir } from '../config';
-import { readFocused } from '../data/focusedManager';
-
-/**
- * 带节点信息的补全项
- */
-interface CompletionItemWithNode extends vscode.CompletionItem {
-    node: FlatTreeNode;
-    iconPath?: vscode.ThemeIcon;
-}
+import { getAllIssueMarkdowns, IssueMarkdown } from '../data/IssueMarkdowns';
 
 /**
  * Issue 文件补全提供器
- * 复用 searchIssuesInFocused 的逻辑，从问题总览树获取数据
+ * 从 getAllIssueMarkdowns 获取扁平 issue 列表
  */
 export class IssueNodeCompletionProvider implements vscode.CompletionItemProvider {
 
     constructor(context: vscode.ExtensionContext) {
     }
-    
+
     async provideCompletionItems(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
         context: vscode.CompletionContext
     ): Promise<vscode.CompletionItem[] | vscode.CompletionList | undefined> {
-        
+
         // 检查文档语言
         if (document.languageId !== 'markdown') {
             return undefined;
@@ -42,54 +33,14 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
 
         // 获取配置
         const config = vscode.workspace.getConfiguration('issueManager.completion');
-        const triggers = config.get<string[]>('triggers', ['[[']);
-        const maxItems = config.get<number>('maxItems', 200);
+        const triggers = config.get<string[]>('triggers', ['[', '【']);
+        const maxItems = config.get<number>('maxItems', 50);
         const maxFilterLength = config.get<number>('maxFilterLength', 200);
 
         // 提取过滤关键字
         const filterResult = extractFilterKeyword(document, position, triggers, maxFilterLength);
 
         try {
-            // 获取扁平化的树结构（已包含标题）
-            const flatNodes = await getFlatTree();
-            
-            // 过滤节点（过滤后自动保持原始数组顺序）
-            let filteredNodes = flatNodes;
-            if (filterResult.keyword) {
-                filteredNodes = await this.filterNodes(flatNodes, filterResult.keyword);
-            }
-            
-            // 限制数量
-            if (filteredNodes.length > maxItems) {
-                filteredNodes = filteredNodes.slice(0, maxItems);
-            }
-            
-            // 只获取一次配置和聚焦数据，避免在循环中重复读取
-            const insertMode = config.get<string>('insertMode', 'relativePath');
-            const focusedData = await readFocused();
-            
-            // 尝试推断当前上下文的 parentId（如果文档对应某个节点，则使用该节点作为父节点）
-            let inferredParentId: string | null = null;
-            try {
-                const issueDirPath = getIssueDir();
-                if (issueDirPath) {
-                    const docRel = path.relative(issueDirPath, document.uri.fsPath);
-                    const matched = flatNodes.find(n => n.filePath === docRel);
-                    if (matched) {
-                        // 使用当前文档对应的节点作为父节点（即在该节点下创建新问题）
-                        inferredParentId = matched.id;
-                    }
-                }
-            } catch (e) {
-                inferredParentId = null;
-            }
-
-            // 转换为补全项
-            const items = await Promise.all(
-                filteredNodes.map((node, index) =>
-                    this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index+4)
-                )
-            );
             // 获取当前行文本
             const lineText = document.lineAt(position.line).text;
             // 获取光标之前的文本
@@ -98,6 +49,8 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             const lineStart = new vscode.Position(position.line, 0);
             const replacingRange = new vscode.Range(lineStart, position);
             const insertingAtLineStart = new vscode.Range(lineStart, lineStart);
+
+            const insertMode = config.get<string>('insertMode', 'relativePath');
 
             // ─── 固定项 1：## User (当前时间戳) ────────────────────
             const now = new Date();
@@ -129,7 +82,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             createItem.sortText = '\u0002';
             createItem.preselect = true;
             createItem.filterText = prefix ?? '';
-            createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [inferredParentId, prefix ?? undefined, false, insertMode, false] };
+            createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [null, prefix ?? undefined, false, insertMode, false] };
 
             const createBackground = new vscode.CompletionItem('新建问题（后台）', vscode.CompletionItemKind.Keyword);
             createBackground.detail = `后台创建并由 AI 填充（不打开）:${prefix ?? ''}`;
@@ -138,13 +91,53 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             createBackground.sortText = '\u0003';
             createBackground.preselect = true;
             createBackground.filterText = prefix ?? '';
-            createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [inferredParentId, prefix ?? undefined, true, insertMode, false] };
+            createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [null, prefix ?? undefined, true, insertMode, false] };
 
             createItem.range = { inserting: insertingAtLineStart, replacing: replacingRange };
             createBackground.range = { inserting: insertingAtLineStart, replacing: replacingRange };
 
-            // 返回 CompletionList 并设置 isIncomplete=true，确保用户继续输入时会重新构建 items
-            return new vscode.CompletionList([userMsgItem, queuedItem, createItem, createBackground, ...items], true);
+            const fixedItems: vscode.CompletionItem[] = [userMsgItem, queuedItem, createItem, createBackground];
+
+            // 仅在明确输入触发前缀时才加载 issue 补全项
+            if (!filterResult.hasTrigger) {
+                return new vscode.CompletionList(fixedItems, false);
+            }
+
+            // ─── 以下为 issue 项（需要 [ 或 【 触发） ───────────────
+            const allIssues = await getAllIssueMarkdowns();
+
+            let filtered = allIssues;
+            if (filterResult.keyword) {
+                filtered = this.filterIssues(allIssues, filterResult.keyword);
+            }
+
+            if (filtered.length > maxItems) {
+                filtered = filtered.slice(0, maxItems);
+            }
+
+            // 计算触发范围：从触发符开始到光标位置（含右侧 ] 或 】）
+            let triggerRange: vscode.Range | undefined;
+            if (filterResult.triggerName) {
+                const triggerStart = prefix.lastIndexOf(filterResult.triggerName);
+                if (triggerStart >= 0) {
+                    let rangeEnd = position;
+                    const suffix = lineText.slice(position.character);
+                    if (suffix.startsWith(']') || suffix.startsWith('】')) {
+                        rangeEnd = new vscode.Position(position.line, position.character + 1);
+                    }
+                    triggerRange = new vscode.Range(
+                        new vscode.Position(position.line, triggerStart),
+                        rangeEnd
+                    );
+                }
+            }
+
+            const items = filtered.map((issue, index) =>
+                this.createCompletionItem(issue, index + 4, triggerRange)
+            );
+
+            // 触发模式下只返回 issue 项，不混入固定项
+            return new vscode.CompletionList(items, true);
         } catch (error) {
             console.error('补全提供器错误:', error);
             return undefined;
@@ -152,137 +145,75 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
     }
 
     /**
-     * 过滤节点（包含匹配）
-     * 直接使用节点的 title 属性进行过滤
+     * 过滤 issue（包含匹配）
      */
-    private async filterNodes(nodes: FlatTreeNode[], query: string): Promise<FlatTreeNode[]> {
+    private filterIssues(issues: IssueMarkdown[], query: string): IssueMarkdown[] {
         const queryLower = query.toLowerCase();
-        const results: FlatTreeNode[] = [];
-        
-        // 遍历节点进行过滤（现在是同步操作）
-        for (const node of nodes) {
-            // 直接使用节点的标题属性
-            const titleLower = node.title.toLowerCase();
-            
-            const parentTitles = node.parentPath.map(n => n.title);
-            const fullPath = [...parentTitles, node.title].join(' ').toLowerCase();
-            
-            // 文件名
-            const filename = path.basename(node.filePath).toLowerCase();
-            
-            // 只要标题、路径或文件名包含关键字就匹配
-            if (titleLower.includes(queryLower) || 
-                fullPath.includes(queryLower) || 
-                filename.includes(queryLower)) {
-                results.push(node);
-            }
-        }
-        
-        return results;
+        return issues.filter(issue => {
+            const titleLower = issue.title.toLowerCase();
+            const basename = path.basename(issue.uri.fsPath).toLowerCase();
+            const basenameNoExt = basename.replace(/\.[^.]+$/, '');
+            return titleLower.includes(queryLower) ||
+                basename.includes(queryLower) ||
+                basenameNoExt.includes(queryLower);
+        });
     }
 
     /**
-     * 创建补全项（与 searchIssues 的显示格式一致）
+     * 创建补全项
      */
-    private async createCompletionItem(
-        node: FlatTreeNode,
-        document: vscode.TextDocument,
-        hasTrigger: boolean,
-        insertMode: string,
-        focusedData: FocusedData,
-        sortIndex: number
-    ): Promise<CompletionItemWithNode> {
-        // 直接使用节点的 title 属性
-        const title = node.title;
-        
-        // 获取图标（与问题总览一致）
-        // const iconPath = await getIssueNodeIconPath(node.id);
-        
-        // 构建显示标题：路径反序显示（最具体的节点在前）
-        // 例如：/学习/node/vue -> vue/node/学习
-        // 一级节点直接显示：test -> test
-        let displayTitle: string;
-        if (node.parentPath.length > 0) {
-            const parentTitles = node.parentPath.map(n => n.title);
-            // 反序：当前节点在前，父节点在后
-            const reversedPath = [title, ...parentTitles.reverse()].join('/');
-            displayTitle = reversedPath;
-        } else {
-            // 一级节点直接显示
-            displayTitle = title;
-        }
-        
-        const issueDir = getIssueDir();
-        const absolutePath = issueDir ? path.join(issueDir, node.filePath) : node.filePath;
-        const relativePath = node.filePath;
-        
-        // 创建补全项，优先把父路径放到 label.description 以便在紧凑视图中展示
-        const parentPathStr = node.parentPath && node.parentPath.length > 0 ? node.parentPath.map(n => n.title).join(' / ') : undefined;
-        const labelObj: vscode.CompletionItemLabel = { label: displayTitle, description: parentPathStr };
+    private createCompletionItem(
+        issue: IssueMarkdown,
+        sortIndex: number,
+        triggerRange?: vscode.Range
+    ): vscode.CompletionItem {
+        const title = issue.title;
+        const maxTitleLen = 16;
+        const displayTitle = title.length > maxTitleLen ? title.slice(0, maxTitleLen) + '…' : title;
+        const basename = path.basename(issue.uri.fsPath);
+        const basenameNoExt = basename.replace(/\.[^.]+$/, '');
+        const relativePath = `IssueDir/${basename}`;
 
         const item = new vscode.CompletionItem(
-            labelObj,
+            title,
             vscode.CompletionItemKind.Reference
-        ) as CompletionItemWithNode;
-        
-        // 保存节点信息，用于后续操作
-        item.node = node;
+        );
 
-        // 设置排序键（基于 filteredNodes 的数组顺序）
         item.sortText = sortIndex.toString().padStart(6, '0');
-        
-        // 设置过滤文本（包含完整路径，支持通过任意层级路径过滤）
-        // 包含：文件名、节点标题、完整路径（正序和反序）以及带空格的分词版本，改善中文或无分隔符字符串的中间匹配
+
+        // 过滤文本：无扩展名文件名、文件名、标题，以及中文分词变体
         const spacefy = (s: string) => s.split('').join(' ');
-        const parts: string[] = [];
-        const basename = path.basename(node.filePath);
-        parts.push(basename, title);
+        const parts: string[] = [basenameNoExt, basename, title, spacefy(title), spacefy(basename)];
 
-        if (node.parentPath.length > 0) {
-            const parentTitles = node.parentPath.map(n => n.title);
-            const forwardPath = [...parentTitles, title].join('/');
-            const reversedPath = [title, ...[...parentTitles].reverse()].join('/');
-            parts.push(forwardPath, reversedPath);
-            // 带空格的变体，帮助 VS Code 对中文或连续字符的匹配（例如：'问题标记' -> '问 题 标 记'）
-            parts.push(spacefy(title), spacefy(basename), spacefy(forwardPath), spacefy(reversedPath));
+        item.detail = `${relativePath}  ${this.relativeTime(issue.mtime)}`;
+        item.documentation = new vscode.MarkdownString(`**${title}**`);
+
+        // 统一使用 markdown link 格式
+        item.insertText = `[${displayTitle}](${relativePath})`;
+
+        if (triggerRange) {
+            // 同时包含 [ 和 【 以兼容两种触发符
+            item.filterText = '[【' + parts.join(' ');
+            item.range = triggerRange;
         } else {
-            parts.push(spacefy(title), spacefy(basename));
-        }
-
-        item.filterText = parts.join(' ');
-
-        // 设置详情（显示相对路径）
-        item.detail = relativePath;
-
-        // 设置文档说明
-        const docParts = [`**${title}**`];
-        if (node.parentPath.length > 0) {
-            const parentTitles = node.parentPath.map(n => n.title);
-            docParts.push(`路径: ${parentTitles.join(' → ')} → ${title}`);
-        }
-        item.documentation = new vscode.MarkdownString(docParts.join('\n\n'));
-
-        // 根据插入模式设置插入文本
-        switch (insertMode) {
-            case 'markdownLink':
-                if (hasTrigger) {
-                    // 如果有触发前缀（如 [[），插入 wiki 风格链接
-                    item.insertText = `${title}]]`;
-                } else {
-                    item.insertText = `[${title}](${relativePath})`;
-                }
-                break;
-            
-            case 'filename':
-                item.insertText = path.basename(node.filePath);
-                break;
-            
-            case 'relativePath':
-            default:
-                item.insertText = relativePath;
-                break;
+            item.filterText = parts.join(' ');
         }
 
         return item;
+    }
+
+    private relativeTime(ms: number): string {
+        const diff = Date.now() - ms;
+        const sec = Math.floor(diff / 1000);
+        if (sec < 60) { return `${sec}秒前`; }
+        const min = Math.floor(sec / 60);
+        if (min < 60) { return `${min}分钟前`; }
+        const hr = Math.floor(min / 60);
+        if (hr < 24) { return `${hr}小时前`; }
+        const day = Math.floor(hr / 24);
+        if (day < 30) { return `${day}天前`; }
+        const mon = Math.floor(day / 30);
+        if (mon < 12) { return `${mon}个月前`; }
+        return `${Math.floor(mon / 12)}年前`;
     }
 }

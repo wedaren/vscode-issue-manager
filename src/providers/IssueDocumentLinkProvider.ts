@@ -4,9 +4,10 @@ import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 import { parseFileLink, parseFileFragment, type FileLocation } from '../utils/fileLinkFormatter';
 import { getSingleIssueNodeByUri, getFlatTree } from '../data/issueTreeManager';
-import { getIssueMarkdown } from '../data/IssueMarkdowns';
+import { getIssueMarkdown, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 import { collectTermsForDocument } from '../utils/issueMarkdownTerms';
 import { isDocumentInDirectory } from '../utils/completionUtils';
+import { formatRelativeTime } from '../utils/dateUtils';
 
 /**
  * 解析 IssueMarkdown 文档中的链接，特别是包含 ?issueId= 查询参数的链接
@@ -334,11 +335,33 @@ export class IssueDocumentHoverProvider implements vscode.HoverProvider {
                 return;
             }
 
-            const evenSplitCmdUri = `command:issueManager.quickPeekIssueEvenSplit?${encodeURIComponent(JSON.stringify([parsed.issueId]))}`;
-            const tooltip = new vscode.MarkdownString(
-                `快速查看 Issue (${parsed.issueId})\n\n[$(split-horizontal) 对半打开](${evenSplitCmdUri})`,
-                true
+            // 尝试获取完整的 IssueMarkdown 以丰富悬停信息
+            const absolutePath = resolveIssueLinkAbsolutePath(
+                linkPath.split('?')[0].split('#')[0],
+                document,
+                issueDir
             );
+            const issue = absolutePath ? await getIssueMarkdown(vscode.Uri.file(absolutePath)) : null;
+
+            const evenSplitCmdUri = `command:issueManager.quickPeekIssueEvenSplit?${encodeURIComponent(JSON.stringify([parsed.issueId]))}`;
+
+            const parts: string[] = [];
+            if (issue) {
+                parts.push(`**${issue.title}**`);
+                parts.push('');
+                parts.push(`$(edit) 最后编辑　${formatRelativeTime(new Date(issue.mtime))}`);
+                parts.push(`$(add) 创建时间　${formatRelativeTime(new Date(issue.ctime))}`);
+                if (issue.vtime && issue.vtime !== issue.mtime) {
+                    parts.push(`$(eye) 最后查看　${formatRelativeTime(new Date(issue.vtime))}`);
+                }
+            } else {
+                const displayName = parsed.tooltip?.replace(/^快速查看 Issue: /, '') || parsed.issueId;
+                parts.push(`**${displayName}**`);
+            }
+            parts.push('');
+            parts.push(`[$(split-horizontal) 对半打开](${evenSplitCmdUri})`);
+
+            const tooltip = new vscode.MarkdownString(parts.join('\n\n'), true);
             tooltip.isTrusted = true;
             return new vscode.Hover(tooltip, range);
         }
@@ -522,10 +545,12 @@ async function parseIssueLinkPath(
             const issueIdMatch = queryString.match(/(?:^|&)issueId=([^&]+)/);
             if (issueIdMatch) {
                 const issueId = decodeURIComponent(issueIdMatch[1]);
-                return makeQuickPeek(issueId);
+                const title = getIssueMarkdownTitleFromCache(vscode.Uri.file(absolutePath));
+                return makeQuickPeek(issueId, title);
             }
         } else if (issueNode) {
-            return makeQuickPeek(issueNode.id);
+            const title = getIssueMarkdownTitleFromCache(issueNode.resourceUri);
+            return makeQuickPeek(issueNode.id, title);
         }
 
         return { uri };
@@ -536,11 +561,12 @@ async function parseIssueLinkPath(
     }
 }
 
-function makeQuickPeek(id: string): ParsedIssueLink {
+function makeQuickPeek(id: string, title?: string): ParsedIssueLink {
     const cmdUri = vscode.Uri.parse(
         `command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([id]))}`
     );
-    return { uri: cmdUri, tooltip: `快速查看 Issue (${id})`, issueId: id };
+    const displayName = title || id;
+    return { uri: cmdUri, tooltip: `快速查看 Issue: ${displayName}`, issueId: id };
 };
 
 function makeOpenInSplitCommand(fileLocation: FileLocation, source: string): { uri: vscode.Uri; tooltip: string } {
