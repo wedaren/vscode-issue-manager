@@ -26,8 +26,7 @@ import {
     appendLogLine,
     createToolCallNode,
 } from './llmChatDataManager';
-import { CHAT_TOOLS, executeChatTool } from './chatTools';
-import { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
+import { executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 import {
     readStateMarker,
     writeStateMarker,
@@ -280,8 +279,8 @@ export class RoleTimerManager implements vscode.Disposable {
                 }
             }, 5_000);
 
-            const isPA = role.isPersonalAssistant === true;
-            const tools = isPA ? PERSONAL_ASSISTANT_TOOLS : CHAT_TOOLS;
+            const tools = getToolsForRole(role);
+            const toolContext: ToolExecContext = { role, signal: ac.signal };
 
             const messages = await this.buildMessages(uri, role);
             inputTokens = await estimateTokens(messages);
@@ -342,14 +341,15 @@ export class RoleTimerManager implements vscode.Disposable {
                     toolCallSeq++;
                     execPhase = `执行工具 ${toolName} (#${toolCallSeq})`;
                     execLastActivityAt = Date.now();
+                    const isDelegation = toolName === 'delegate_to_role';
 
                     // 日志：工具调用开始
-                    if (logUri && !(isPA && toolName === 'delegate_to_role')) {
+                    if (logUri && !isDelegation) {
                         void appendLogLine(logUri, `⏳ 调用 \`${toolName}\`...`);
                     }
 
-                    // PA 委派：记录意图（带链接）
-                    if (isPA && toolName === 'delegate_to_role' && logUri) {
+                    // 委派：记录意图（带链接）
+                    if (isDelegation && logUri) {
                         const targetRole = String((input as Record<string, unknown>).roleNameOrId || '');
                         const taskStr = String((input as Record<string, unknown>).task || '');
 
@@ -374,14 +374,12 @@ export class RoleTimerManager implements vscode.Disposable {
                         }
                     }
 
-                    const res = isPA
-                        ? await executePersonalAssistantTool(toolName, input, ac.signal)
-                        : await executeChatTool(toolName, input);
+                    const res = await executeChatTool(toolName, input, toolContext);
                     const dur = Date.now() - tcStart;
 
                     // 创建工具调用详情节点 + 日志摘要行（带链接）
                     if (logUri && runNumber > 0) {
-                        const toolDef = tools.find(t => t.name === toolName);
+                        const toolDef = tools.find((t: { name: string }) => t.name === toolName);
                         let fileName: string | null = null;
                         try {
                             fileName = await createToolCallNode(logUri, toolName, input, res.content, dur, {
@@ -397,7 +395,7 @@ export class RoleTimerManager implements vscode.Disposable {
                             : `\`${toolName}\``;
 
                         const statusIcon = res.success ? '✅' : '❌';
-                        if (isPA && toolName === 'delegate_to_role') {
+                        if (isDelegation) {
                             void appendLogLine(logUri, `📥${statusIcon} **委派结果** ${toolLink} (${fmtDuration(dur)})`);
                         } else {
                             void appendLogLine(logUri, `${statusIcon} ${toolLink} (${fmtDuration(dur)})`);
@@ -405,7 +403,7 @@ export class RoleTimerManager implements vscode.Disposable {
                     } else if (logUri) {
                         // runNumber 为 0（startLogRun 失败），仅写摘要
                         const statusIcon = res.success ? '✅' : '❌';
-                        if (isPA && toolName === 'delegate_to_role') {
+                        if (isDelegation) {
                             void appendLogLine(logUri, `📥${statusIcon} **委派结果** (${fmtDuration(dur)})`);
                         } else {
                             void appendLogLine(logUri, `${statusIcon} \`${toolName}\` (${fmtDuration(dur)})`);

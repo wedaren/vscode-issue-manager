@@ -17,6 +17,7 @@ import {
     getIssueMarkdown,
     getIssueMarkdownContent,
     createIssueMarkdown,
+    extractFrontmatterAndBody,
     updateIssueMarkdownFrontmatter,
     updateIssueMarkdownBody,
     type FrontmatterData,
@@ -36,6 +37,21 @@ import {
 } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
+import type { ChatRoleInfo, RoleMemoryFrontmatter } from './types';
+import {
+    getAllChatRoles,
+    createChatRole as dataCreateChatRole,
+    createConversation,
+    appendUserMessageQueued,
+    parseConversationMessages,
+} from './llmChatDataManager';
+import { RoleTimerManager } from './RoleTimerManager';
+import { readStateMarker } from './convStateMarker';
+
+/** 委派递归深度限制 */
+const MAX_DELEGATION_DEPTH = 5;
+/** 当前委派深度（递归计数器，进程级） */
+let _delegationDepth = 0;
 
 const logger = Logger.getInstance();
 
@@ -356,6 +372,135 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
     },
 ];
 
+// ─── 能力工具定义（按需注入） ─────────────────────────────────
+
+/** 记忆工具（memory_enabled 时注入） */
+const MEMORY_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'read_memory',
+        description: '读取本角色的持久记忆，包含积累的知识、历史任务摘要和反思。对话开始时应首先调用此工具。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'write_memory',
+        description: '更新本角色的持久记忆。在任务完成后调用，记录本次任务经验、新了解等。内容为 Markdown 格式，会替换现有记忆。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                content: {
+                    type: 'string',
+                    description: '新的记忆内容（Markdown 格式）',
+                },
+            },
+            required: ['content'],
+        },
+    },
+];
+
+/** 委派工具（delegation_enabled 时注入） */
+const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'list_chat_roles',
+        description: '列出当前所有可用的聊天角色，含名称、系统提示词摘要。用于决定委派给谁。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'delegate_to_role',
+        description: '将一个子任务委派给指定的角色，获取该角色的回复。角色可以使用笔记和浏览器工具。返回角色的完整回复文本。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: {
+                    type: 'string',
+                    description: '目标角色的名称或 ID（文件名去掉 .md）',
+                },
+                task: {
+                    type: 'string',
+                    description: '委派给该角色的具体任务描述，越详细越好',
+                },
+            },
+            required: ['roleNameOrId', 'task'],
+        },
+    },
+];
+
+/** 角色管理工具（role_management_enabled 时注入） */
+const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'create_chat_role',
+        description: '创建一个新的聊天角色。创建后可立即用 delegate_to_role 委派任务（需要委派能力）。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: '角色名称（如"法律顾问"、"数学专家"）' },
+                systemPrompt: { type: 'string', description: '角色的系统提示词，详细描述其职责、能力和行为准则' },
+                avatar: {
+                    type: 'string',
+                    description: 'VS Code ThemeIcon 名称，如 scale、beaker、code、book、shield、person、globe、lightbulb 等',
+                },
+                modelFamily: {
+                    type: 'string',
+                    description: '指定使用的 AI 模型。不填则使用全局默认。',
+                },
+                enableMemory: { type: 'boolean', description: '是否为新角色启用持久记忆，默认 false' },
+                enableDelegation: { type: 'boolean', description: '是否为新角色启用委派能力，默认 false' },
+            },
+            required: ['name', 'systemPrompt'],
+        },
+    },
+    {
+        name: 'update_role_config',
+        description: '根据实际表现更新指定角色的系统提示词，优化其行为。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: { type: 'string', description: '要更新的角色名称或 ID' },
+                newSystemPrompt: { type: 'string', description: '新的系统提示词（完整替换）' },
+                reason: { type: 'string', description: '更新原因（可选，用于记录）' },
+            },
+            required: ['roleNameOrId', 'newSystemPrompt'],
+        },
+    },
+    {
+        name: 'evaluate_role',
+        description: '记录对某个角色的绩效评估。结果会写入本角色的记忆文件（需要同时启用记忆能力）。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: { type: 'string', description: '角色名称或 ID' },
+                outcome: {
+                    type: 'string',
+                    enum: ['success', 'partial', 'failed'],
+                    description: 'success=完成良好, partial=部分完成, failed=未完成或质量差',
+                },
+                notes: { type: 'string', description: '详细评价：做得好的地方、不足之处、改进建议' },
+            },
+            required: ['roleNameOrId', 'outcome', 'notes'],
+        },
+    },
+];
+
+/**
+ * 根据角色的能力配置，组装该角色可用的完整工具集
+ */
+export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatTool[] {
+    const tools = [...CHAT_TOOLS];
+    if (role.memoryEnabled) { tools.push(...MEMORY_TOOLS); }
+    if (role.delegationEnabled) { tools.push(...DELEGATION_TOOLS); }
+    if (role.roleManagementEnabled) { tools.push(...ROLE_MANAGEMENT_TOOLS); }
+    return tools;
+}
+
+// ─── 工具执行上下文 ─────────────────────────────────────────────
+
+/** 工具执行时需要的角色上下文 */
+export interface ToolExecContext {
+    /** 当前角色信息（用于记忆/委派等能力工具） */
+    role?: ChatRoleInfo;
+    /** 中止信号 */
+    signal?: AbortSignal;
+}
+
 // ─── 工具执行 ─────────────────────────────────────────────────
 
 export interface ToolCallResult {
@@ -364,9 +509,14 @@ export interface ToolCallResult {
 }
 
 /**
- * 执行指定工具并返回结果文本
+ * 执行指定工具并返回结果文本。
+ * 能力工具（记忆/委派/角色管理）需要传入 context 提供角色信息。
  */
-export async function executeChatTool(toolName: string, input: Record<string, unknown>): Promise<ToolCallResult> {
+export async function executeChatTool(
+    toolName: string,
+    input: Record<string, unknown>,
+    context?: ToolExecContext,
+): Promise<ToolCallResult> {
     try {
         switch (toolName) {
             case 'search_issues':
@@ -413,6 +563,23 @@ export async function executeChatTool(toolName: string, input: Record<string, un
                 return await executeUnlinkIssue(input);
             case 'get_issue_relations':
                 return await executeGetIssueRelations(input);
+            // ─── 能力工具：记忆 ─────────────────────────────────
+            case 'read_memory':
+                return await executeReadMemory(context);
+            case 'write_memory':
+                return await executeWriteMemory(input, context);
+            // ─── 能力工具：委派 ─────────────────────────────────
+            case 'list_chat_roles':
+                return await executeListChatRoles(context);
+            case 'delegate_to_role':
+                return await executeDelegateToRole(input, context);
+            // ─── 能力工具：角色管理 ─────────────────────────────
+            case 'create_chat_role':
+                return await executeCreateChatRole(input);
+            case 'update_role_config':
+                return await executeUpdateRoleConfig(input);
+            case 'evaluate_role':
+                return await executeEvaluateRole(input, context);
             default:
                 return { success: false, content: `未知工具: ${toolName}` };
         }
@@ -1468,4 +1635,284 @@ async function executeGetIssueRelations(input: Record<string, unknown>): Promise
     }
 
     return { success: true, content: lines.join('\n') };
+}
+
+// ─── 能力工具实现：记忆 ──────────────────────────────────────
+
+/** 查找或创建角色的记忆文件，返回 URI */
+async function findOrCreateMemoryFile(roleId: string): Promise<vscode.Uri | null> {
+    const all = await getAllIssueMarkdowns({});
+    for (const md of all) {
+        if (md.frontmatter?.role_memory === true
+            && md.frontmatter?.role_memory_owner_id === roleId) {
+            return md.uri;
+        }
+    }
+    // 不存在 → 创建
+    const fm: Partial<FrontmatterData> & RoleMemoryFrontmatter = {
+        role_memory: true,
+        role_memory_owner_id: roleId,
+    } as Partial<FrontmatterData> & RoleMemoryFrontmatter;
+    const body = `# 角色记忆\n\n（暂无，将在对话中逐步积累）\n`;
+    const uri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
+    if (uri) {
+        logger.info(`[ChatTools] 已创建角色 ${roleId} 的记忆文件: ${uri.fsPath}`);
+    }
+    return uri ?? null;
+}
+
+async function executeReadMemory(context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.role?.memoryEnabled || !context.role.id) {
+        return { success: false, content: '当前角色未启用记忆能力' };
+    }
+    const memUri = await findOrCreateMemoryFile(context.role.id);
+    if (!memUri) { return { success: false, content: '记忆文件不存在且创建失败' }; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(memUri)).toString('utf8');
+        const { body } = extractFrontmatterAndBody(raw);
+        return { success: true, content: `**[角色记忆]**\n\n${body.trim() || '（记忆为空）'}` };
+    } catch (e) {
+        logger.error('[ChatTools] 读取记忆失败', e);
+        return { success: false, content: '读取记忆失败' };
+    }
+}
+
+async function executeWriteMemory(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.role?.memoryEnabled || !context.role.id) {
+        return { success: false, content: '当前角色未启用记忆能力' };
+    }
+    const content = String(input.content || '').trim();
+    if (!content) { return { success: false, content: '请提供记忆内容' }; }
+    const memUri = await findOrCreateMemoryFile(context.role.id);
+    if (!memUri) { return { success: false, content: '记忆文件不存在且创建失败' }; }
+    try {
+        const ok = await updateIssueMarkdownBody(memUri, content);
+        return ok
+            ? { success: true, content: '✅ 记忆已更新' }
+            : { success: false, content: '记忆更新失败' };
+    } catch (e) {
+        logger.error('[ChatTools] 写入记忆失败', e);
+        return { success: false, content: '记忆写入失败' };
+    }
+}
+
+// ─── 能力工具实现：委派 ──────────────────────────────────────
+
+async function executeListChatRoles(context?: ToolExecContext): Promise<ToolCallResult> {
+    const roles = await getAllChatRoles();
+    // 排除自身
+    const filtered = context?.role ? roles.filter(r => r.id !== context.role!.id) : roles;
+    if (filtered.length === 0) {
+        return { success: true, content: '当前没有其他可用角色。可以用 create_chat_role 创建新角色。' };
+    }
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
+    const lines = filtered.map(r => {
+        const promptPreview = r.systemPrompt
+            ? r.systemPrompt.slice(0, 60) + (r.systemPrompt.length > 60 ? '…' : '')
+            : '（无提示词）';
+        const model = r.modelFamily ? r.modelFamily : `${globalDefault}（全局默认）`;
+        const caps: string[] = [];
+        if (r.memoryEnabled) { caps.push('记忆'); }
+        if (r.delegationEnabled) { caps.push('委派'); }
+        if (r.roleManagementEnabled) { caps.push('角色管理'); }
+        const capStr = caps.length > 0 ? ` · 能力: ${caps.join('/')}` : '';
+        return `- **${r.name}** (ID: \`${r.id}\`) · 模型: ${model}${capStr}\n  ${promptPreview}`;
+    });
+    return { success: true, content: `可用角色（共 ${filtered.length} 个）：\n\n${lines.join('\n\n')}` };
+}
+
+/** 按名称或 ID 查找角色 */
+async function findRole(nameOrId: string): Promise<ChatRoleInfo | undefined> {
+    const roles = await getAllChatRoles();
+    const lower = nameOrId.toLowerCase();
+    return roles.find(r =>
+        r.id === nameOrId
+        || r.name === nameOrId
+        || r.name.toLowerCase() === lower,
+    );
+}
+
+async function executeDelegateToRole(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.role?.delegationEnabled) {
+        return { success: false, content: '当前角色未启用委派能力' };
+    }
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const task = String(input.task || '').trim();
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+    if (!task) { return { success: false, content: '请提供委派任务描述' }; }
+
+    // 递归深度保护
+    if (_delegationDepth >= MAX_DELEGATION_DEPTH) {
+        return { success: false, content: `委派深度超限（最大 ${MAX_DELEGATION_DEPTH} 层），请简化任务链` };
+    }
+
+    const role = await findRole(roleNameOrId);
+    if (!role) {
+        return { success: false, content: `找不到角色「${roleNameOrId}」，请先用 list_chat_roles 查看可用角色。` };
+    }
+
+    // 创建真实对话文件
+    const taskPreview = task.length > 30 ? task.slice(0, 30) + '…' : task;
+    const convoTitle = `[委派] ${taskPreview}`;
+    const convoUri = await createConversation(role.id, convoTitle);
+    if (!convoUri) {
+        return { success: false, content: '创建委派对话文件失败' };
+    }
+    const convoId = path.basename(convoUri.fsPath, '.md');
+    logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId}`);
+
+    // 写入用户消息 + queued 标记
+    await appendUserMessageQueued(convoUri, task);
+
+    // 触发执行
+    _delegationDepth++;
+    try {
+        await RoleTimerManager.getInstance().triggerConversation(convoUri);
+
+        // 等待执行完成
+        const reply = await waitForDelegationResult(convoUri, role.name, context.signal);
+        logger.info(`[ChatTools] 委派结束 → 角色「${role.name}」| 回复长度: ${reply.length}`);
+        void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+
+        return {
+            success: true,
+            content: `**[${role.name} 的回复]** (对话: ${convoId})\n\n${reply}\n\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
+        };
+    } finally {
+        _delegationDepth--;
+    }
+}
+
+/** 等待委派对话被 RoleTimerManager 处理完成 */
+function waitForDelegationResult(
+    convoUri: vscode.Uri,
+    roleName: string,
+    signal?: AbortSignal,
+): Promise<string> {
+    return new Promise<string>(resolve => {
+        const timerManager = RoleTimerManager.getInstance();
+        const cleanup = () => {
+            disposable.dispose();
+            clearTimeout(timeout);
+            signal?.removeEventListener('abort', onAbort);
+        };
+        const disposable = timerManager.onDidChange(async (e) => {
+            if (e.uri.fsPath !== convoUri.fsPath) { return; }
+            if (e.success) {
+                cleanup();
+                const messages = await parseConversationMessages(convoUri);
+                const last = messages.filter(m => m.role === 'assistant').pop();
+                resolve(last?.content?.trim() || '（角色未返回任何内容）');
+            } else {
+                const marker = await readStateMarker(convoUri);
+                if (marker?.status === 'retrying') {
+                    logger.info(`[ChatTools] 委派给「${roleName}」重试中（${marker.retryCount}次）`);
+                    return;
+                }
+                cleanup();
+                const errMsg = marker?.message || '未知错误';
+                resolve(`委派给「${roleName}」时出错: ${errMsg}`);
+            }
+        });
+        const timeout = setTimeout(() => {
+            cleanup();
+            resolve(`委派给「${roleName}」超时，请查看对话文件了解进度`);
+        }, 120_000);
+        const onAbort = () => { cleanup(); resolve('（已取消）'); };
+        signal?.addEventListener('abort', onAbort);
+    });
+}
+
+// ─── 能力工具实现：角色管理 ──────────────────────────────────
+
+async function executeCreateChatRole(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const name = String(input.name || '').trim();
+    const systemPrompt = String(input.systemPrompt || '').trim();
+    const avatar = String(input.avatar || 'hubot').trim();
+    const modelFamily = input.modelFamily ? String(input.modelFamily).trim() : undefined;
+    const enableMemory = input.enableMemory === true;
+    const enableDelegation = input.enableDelegation === true;
+
+    if (!name) { return { success: false, content: '请提供角色名称' }; }
+    if (!systemPrompt) { return { success: false, content: '请提供系统提示词' }; }
+
+    const roleId = await dataCreateChatRole(name, systemPrompt, avatar, modelFamily, {
+        memory: enableMemory,
+        delegation: enableDelegation,
+    });
+    if (!roleId) {
+        return { success: false, content: '创建角色失败' };
+    }
+    void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+
+    const caps: string[] = [];
+    if (enableMemory) { caps.push('记忆'); }
+    if (enableDelegation) { caps.push('委派'); }
+    const capStr = caps.length > 0 ? `，能力：${caps.join('/')}` : '';
+    const modelNote = modelFamily ? `，模型：${modelFamily}` : '';
+    return {
+        success: true,
+        content: `✅ 已创建角色「${name}」(ID: \`${roleId}\`${modelNote}${capStr})。`,
+    };
+}
+
+async function executeUpdateRoleConfig(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const newSystemPrompt = String(input.newSystemPrompt || '').trim();
+    const reason = input.reason ? String(input.reason) : undefined;
+
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+    if (!newSystemPrompt) { return { success: false, content: '请提供新的系统提示词' }; }
+
+    const role = await findRole(roleNameOrId);
+    if (!role) { return { success: false, content: `未找到角色「${roleNameOrId}」` }; }
+
+    try {
+        const ok = await updateIssueMarkdownFrontmatter(role.uri, {
+            chat_role_system_prompt: newSystemPrompt,
+        } as Partial<FrontmatterData>);
+        if (!ok) { return { success: false, content: '更新失败' }; }
+        void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+        const reasonStr = reason ? `\n更新原因：${reason}` : '';
+        return { success: true, content: `✅ 已更新角色「${role.name}」的系统提示词${reasonStr}` };
+    } catch (e) {
+        logger.error('[ChatTools] 更新角色配置失败', e);
+        return { success: false, content: '更新角色配置失败' };
+    }
+}
+
+async function executeEvaluateRole(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const outcome = String(input.outcome || 'partial') as 'success' | 'partial' | 'failed';
+    const notes = String(input.notes || '').trim();
+
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+    if (!notes) { return { success: false, content: '请提供评估说明' }; }
+
+    const outcomeLabel = outcome === 'success' ? '✅ 良好' : outcome === 'partial' ? '⚠️ 部分完成' : '❌ 未完成';
+
+    // 如果当前角色有记忆能力，将评估写入记忆
+    if (context?.role?.memoryEnabled && context.role.id) {
+        const memUri = await findOrCreateMemoryFile(context.role.id);
+        if (memUri) {
+            try {
+                const raw = Buffer.from(await vscode.workspace.fs.readFile(memUri)).toString('utf8');
+                const { body } = extractFrontmatterAndBody(raw);
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const entry = `\n### ${roleNameOrId} — ${timestamp} ${outcomeLabel}\n${notes}\n`;
+                let newBody: string;
+                if (body.includes('## 角色绩效')) {
+                    newBody = body.replace('## 角色绩效', `## 角色绩效${entry}`);
+                } else {
+                    newBody = body + `\n## 角色绩效${entry}`;
+                }
+                await updateIssueMarkdownBody(memUri, newBody);
+            } catch (e) {
+                logger.error('[ChatTools] 写入评估到记忆失败', e);
+            }
+        }
+    }
+
+    return { success: true, content: `✅ 已记录角色「${roleNameOrId}」的绩效评估：${outcomeLabel}` };
 }

@@ -1085,21 +1085,6 @@
           "group": "inline@2"
         },
         {
-          "command": "issueManager.llmChat.openPersonalAssistant",
-          "when": "view == 'issueManager.views.llmChat' && viewItem == 'personalAssistant'",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.llmChat.newConversation",
-          "when": "view == 'issueManager.views.llmChat' && viewItem == 'personalAssistant'",
-          "group": "inline@2"
-        },
-        {
-          "command": "issueManager.llmChat.editRole",
-          "when": "view == 'issueManager.views.llmChat' && viewItem == 'personalAssistant'",
-          "group": "inline@3"
-        },
-        {
           "command": "issueManager.llmChat.newConversation",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
           "group": "inline@3"

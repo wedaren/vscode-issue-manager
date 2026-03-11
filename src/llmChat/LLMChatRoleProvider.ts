@@ -6,36 +6,28 @@
  */
 import * as vscode from 'vscode';
 import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo } from './llmChatDataManager';
-import { PersonalAssistantService } from './PersonalAssistantService';
 import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo } from './types';
 
 // ─── 节点类型 ────────────────────────────────────────────────
-
-/** 个人助手固定入口节点（树顶部） */
-export class PersonalAssistantNode extends vscode.TreeItem {
-    constructor(public readonly role: ChatRoleInfo) {
-        super('执行官（个人助手）', vscode.TreeItemCollapsibleState.Collapsed);
-        this.contextValue = 'personalAssistant';
-        this.iconPath = new vscode.ThemeIcon('person-add');
-        this.description = '记忆 · 委派 · 进化';
-        this.tooltip = new vscode.MarkdownString(
-            '**执行官（个人助手）**\n\n'
-            + '你的专属个人助手，拥有持久记忆，可委派任务给其他角色，并持续自我进化。\n\n'
-            + '点击展开查看历史对话，或右键新建对话。',
-        );
-    }
-}
 
 export class ChatRoleNode extends vscode.TreeItem {
     constructor(public readonly role: ChatRoleInfo) {
         super(role.name, vscode.TreeItemCollapsibleState.Collapsed);
         this.contextValue = 'chatRole';
         this.iconPath = new vscode.ThemeIcon(role.avatar || 'hubot');
+
+        // 能力徽章
+        const caps: string[] = [];
+        if (role.memoryEnabled) { caps.push('记忆'); }
+        if (role.delegationEnabled) { caps.push('委派'); }
+        if (role.roleManagementEnabled) { caps.push('管理'); }
+        const capStr = caps.length > 0 ? ` · ${caps.join('/')}` : '';
+
         this.description = role.systemPrompt
-            ? role.systemPrompt.slice(0, 40) + (role.systemPrompt.length > 40 ? '…' : '')
-            : undefined;
+            ? role.systemPrompt.slice(0, 40) + (role.systemPrompt.length > 40 ? '…' : '') + capStr
+            : capStr || undefined;
         this.tooltip = new vscode.MarkdownString(
-            `**${role.name}**\n\n${role.systemPrompt || '（无系统提示词）'}`,
+            `**${role.name}**${capStr ? `\n\n能力: ${caps.join(' · ')}` : ''}\n\n${role.systemPrompt || '（无系统提示词）'}`,
         );
     }
 }
@@ -101,7 +93,7 @@ export class ChatExecutionLogNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = PersonalAssistantNode | ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode;
+export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -119,22 +111,10 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         if (!element) {
             const [roles, groups] = await Promise.all([getAllChatRoles(), getAllChatGroups()]);
 
-            // 个人助手节点置顶
-            const paService = PersonalAssistantService.getInstance();
-            const paRole = roles.find(r => r.isPersonalAssistant);
-            const normalRoles = roles.filter(r => !r.isPersonalAssistant);
-
             const nodes: LLMChatViewNode[] = [];
-            if (paRole) {
-                nodes.push(new PersonalAssistantNode(paRole));
-            }
             nodes.push(...groups.map(g => new ChatGroupNode(g)));
-            nodes.push(...normalRoles.map(r => new ChatRoleNode(r)));
+            nodes.push(...roles.map(r => new ChatRoleNode(r)));
             return nodes;
-        }
-        if (element instanceof PersonalAssistantNode) {
-            const convos = await getConversationsForRole(element.role.id);
-            return convos.map(c => new ChatConversationNode(c, element.role.id, false));
         }
         if (element instanceof ChatRoleNode) {
             const convos = await getConversationsForRole(element.role.id);

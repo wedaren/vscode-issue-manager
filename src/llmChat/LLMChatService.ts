@@ -22,8 +22,7 @@ import {
     appendLogLine,
 } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatGroupInfo } from './types';
-import { CHAT_TOOLS, executeChatTool } from './chatTools';
-import { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
+import { CHAT_TOOLS, executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -217,8 +216,8 @@ export class LLMChatService {
         this._onDidSendMessage.fire({ uri, role: 'user', content: userMessage });
 
         const messages = await this.buildLLMMessages(uri, userMessage);
-        const isPA = !!this._activeRole?.isPersonalAssistant;
-        const tools = isPA ? PERSONAL_ASSISTANT_TOOLS : CHAT_TOOLS;
+        const tools = this._activeRole ? getToolsForRole(this._activeRole) : CHAT_TOOLS;
+        const toolContext: ToolExecContext = { role: this._activeRole, signal: options?.signal };
         const signal = options?.signal;
         const startedAt = Date.now();
 
@@ -249,21 +248,19 @@ export class LLMChatService {
                 async (toolName, input) => {
                     const tcStart = Date.now();
 
-                    // PA 委派：记录意图
-                    if (isPA && toolName === 'delegate_to_role' && logUri) {
+                    // 委派：记录意图
+                    if (toolName === 'delegate_to_role' && logUri) {
                         const targetRole = String((input as Record<string, unknown>).roleNameOrId || '');
                         const taskStr = String((input as Record<string, unknown>).task || '');
                         const taskPreview = taskStr.length > 100 ? taskStr.slice(0, 100) + '…' : taskStr;
                         void appendLogLine(logUri, `📤 **委派给「${targetRole}」**: ${taskPreview}`);
                     }
 
-                    const res = isPA
-                        ? await executePersonalAssistantTool(toolName, input, signal)
-                        : await executeChatTool(toolName, input);
+                    const res = await executeChatTool(toolName, input, toolContext);
                     const dur = Date.now() - tcStart;
 
                     if (logUri) {
-                        if (isPA && toolName === 'delegate_to_role') {
+                        if (toolName === 'delegate_to_role') {
                             const icon = res.success ? '📥' : '📥❌';
                             void appendLogLine(logUri, `${icon} **委派结果** (${fmtDuration(dur)}) → ${truncate(res.content, 150)}`);
                         } else {
@@ -640,14 +637,20 @@ ${userMessage}
             systemContent = `[系统指令] ${this._activeRole.systemPrompt}`;
         }
 
-        // 个人助手追加记忆与委派工具说明
-        if (this._activeRole?.isPersonalAssistant) {
-            systemContent += '\n\n[个人助手专属工具]\n'
+        // 根据角色能力动态追加工具说明
+        if (this._activeRole?.memoryEnabled) {
+            systemContent += '\n\n[记忆工具]\n'
                 + '- read_memory: 读取你的持久记忆（对话开始时首先调用）\n'
-                + '- write_memory: 更新记忆（任务结束后调用）\n'
-                + '- list_chat_roles: 列出所有可用专业角色\n'
-                + '- delegate_to_role: 委派任务给指定角色，获取专业回复\n'
-                + '- create_chat_role: 创建新的专业角色\n'
+                + '- write_memory: 更新记忆（任务结束后调用）\n';
+        }
+        if (this._activeRole?.delegationEnabled) {
+            systemContent += '\n\n[委派工具]\n'
+                + '- list_chat_roles: 列出所有可用角色\n'
+                + '- delegate_to_role: 委派任务给指定角色，获取回复\n';
+        }
+        if (this._activeRole?.roleManagementEnabled) {
+            systemContent += '\n\n[角色管理工具]\n'
+                + '- create_chat_role: 创建新角色\n'
                 + '- update_role_config: 更新角色系统提示词\n'
                 + '- evaluate_role: 记录角色绩效评估\n';
         }

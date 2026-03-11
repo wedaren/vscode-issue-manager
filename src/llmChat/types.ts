@@ -29,40 +29,23 @@ export interface ChatRoleFrontmatter {
     timer_retry_delay?: number;
     /** 角色级 LLM 请求最大 token 预算（可选） */
     chat_role_max_tokens?: number;
-    /** 标记为个人助手角色（系统唯一） */
-    chat_role_is_personal_assistant?: true;
+    // ─── 能力开关（统一架构，所有角色可选开启） ──────────────
+    /** 启用持久记忆（自动关联记忆文件） */
+    memory_enabled?: boolean;
+    /** 启用委派能力（可将子任务委派给其他角色） */
+    delegation_enabled?: boolean;
+    /** 启用角色管理（可创建/更新/评估其他角色） */
+    role_management_enabled?: boolean;
 }
 
-// ─── 个人助手相关 ─────────────────────────────────────────────
+// ─── 角色记忆相关 ─────────────────────────────────────────────
 
-/** 个人助手记忆文件的 frontmatter */
-export interface PersonalAssistantMemoryFrontmatter {
-    /** 标记为助手记忆文件 */
-    assistant_memory: true;
-    /** 关联的助手角色 ID */
-    assistant_role_id: string;
-}
-
-/** 个人助手持久记忆结构 */
-export interface PersonalAssistantMemory {
-    /** 用户背景和偏好摘要 */
-    userContext: string;
-    /** 历史任务记录（最近 20 条） */
-    taskHistory: Array<{
-        summary: string;
-        rolesInvolved: string[];
-        outcome: 'success' | 'partial' | 'failed';
-        timestamp: number;
-    }>;
-    /** 角色绩效记录 */
-    rolePerformance: Record<string, {
-        successCount: number;
-        failureCount: number;
-        lastEvaluation: string;
-        improvementNotes: string;
-    }>;
-    /** 助手自我反思笔记 */
-    selfReflection: string;
+/** 角色记忆文件的 frontmatter */
+export interface RoleMemoryFrontmatter {
+    /** 标记为角色记忆文件 */
+    role_memory: true;
+    /** 关联的角色 ID */
+    role_memory_owner_id: string;
 }
 
 /** 聊天消息 */
@@ -115,8 +98,13 @@ export interface ChatRoleInfo {
     timerRetryDelay?: number;
     /** 角色级最大 token 预算 */
     maxTokens?: number;
-    /** 是否为个人助手角色 */
-    isPersonalAssistant?: boolean;
+    // ─── 能力标记（运行时） ──────────────────────────────────
+    /** 是否启用持久记忆 */
+    memoryEnabled?: boolean;
+    /** 是否启用委派能力 */
+    delegationEnabled?: boolean;
+    /** 是否启用角色管理 */
+    roleManagementEnabled?: boolean;
 }
 
 /** 运行时对话信息 */

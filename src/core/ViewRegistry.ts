@@ -28,7 +28,6 @@ import { EditorGroupTreeProvider, type EditorGroupViewNode } from '../views/Edit
 import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRoleProvider';
 import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
 import { RoleTimerManager } from '../llmChat/RoleTimerManager';
-import { PersonalAssistantService } from '../llmChat/PersonalAssistantService';
 
 /**
  * 视图注册管理器
@@ -476,11 +475,6 @@ export class ViewRegistry {
         const timerManager = RoleTimerManager.getInstance();
         void timerManager.start();
         this.context.subscriptions.push(timerManager);
-
-        // 异步初始化个人助手（确保角色和记忆文件存在），完成后刷新视图
-        void PersonalAssistantService.getInstance().ensureInitialized().then(() => {
-            llmChatRoleProvider.refresh();
-        });
 
         return { llmChatRoleProvider, llmChatRoleView };
     }

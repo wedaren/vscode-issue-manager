@@ -17,8 +17,7 @@ import {
     appendUserMessageQueued,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
-import { ChatRoleNode, ChatConversationNode, ChatGroupNode, PersonalAssistantNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
-import { PersonalAssistantService } from './PersonalAssistantService';
+import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -383,19 +382,7 @@ export function registerLLMChatCommands(
 
     // ─── 新建对话（从角色/群组右键菜单或命令面板） ────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.newConversation', async (node?: string | ChatRoleNode | ChatConversationNode | ChatGroupNode | PersonalAssistantNode) => {
-            // 个人助手节点：新建一条与助手的对话
-            if (node instanceof PersonalAssistantNode) {
-                const uri = await createConversation(node.role.id, '与执行官的对话');
-                if (!uri) {
-                    vscode.window.showErrorMessage('创建对话失败');
-                    return;
-                }
-                await openConversation(node.role.id, uri);
-                roleProvider.refresh();
-                return;
-            }
-
+        vscode.commands.registerCommand('issueManager.llmChat.newConversation', async (node?: string | ChatRoleNode | ChatConversationNode | ChatGroupNode) => {
             if (node instanceof ChatGroupNode) {
                 const uri = await createGroupConversation(node.group.id);
                 if (!uri) {
@@ -522,32 +509,10 @@ export function registerLLMChatCommands(
         }),
     );
 
-    // ─── 打开个人助手 ─────────────────────────────────────────
+    // ─── 打开个人助手（已废弃，保留命令注册避免报错） ─────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.openPersonalAssistant', async (node?: PersonalAssistantNode) => {
-            const paService = PersonalAssistantService.getInstance();
-            const roleId = paService.assistantRoleId;
-            if (!roleId) {
-                vscode.window.showWarningMessage('个人助手尚未初始化，请稍后重试');
-                return;
-            }
-
-            // 打开最近的对话，或新建一个
-            const convos = await getConversationsForRole(roleId);
-            let convoUri: vscode.Uri;
-            if (convos.length > 0) {
-                convoUri = convos[0].uri;
-            } else {
-                const uri = await createConversation(roleId, '与执行官的对话');
-                if (!uri) {
-                    vscode.window.showErrorMessage('创建对话失败');
-                    return;
-                }
-                convoUri = uri;
-                roleProvider.refresh();
-            }
-
-            await openConversation(roleId, convoUri);
+        vscode.commands.registerCommand('issueManager.llmChat.openPersonalAssistant', () => {
+            vscode.window.showInformationMessage('个人助手已统一为普通角色，请直接在角色列表中操作。');
         }),
     );
 
@@ -597,7 +562,7 @@ export function registerLLMChatCommands(
 
     // ─── 编辑角色（右键菜单） ────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.editRole', async (node?: ChatRoleNode | PersonalAssistantNode) => {
+        vscode.commands.registerCommand('issueManager.llmChat.editRole', async (node?: ChatRoleNode) => {
             if (!node) { return; }
             await vscode.window.showTextDocument(node.role.uri, { preview: false });
         }),
