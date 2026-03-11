@@ -96,11 +96,18 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             createItem.range = { inserting: insertingAtLineStart, replacing: replacingRange };
             createBackground.range = { inserting: insertingAtLineStart, replacing: replacingRange };
 
-            const fixedItems: vscode.CompletionItem[] = [userMsgItem, queuedItem, createItem, createBackground];
-
             // 仅在明确输入触发前缀时才加载 issue 补全项
             if (!filterResult.hasTrigger) {
-                return new vscode.CompletionList(fixedItems, false);
+                const isLineStart = prefix.trim().length === 0;
+                const endsWithSpace = prefix.length > 0 && prefix.endsWith(' ');
+
+                if (isLineStart) {
+                    return new vscode.CompletionList([userMsgItem, queuedItem], false);
+                }
+                if (endsWithSpace) {
+                    return new vscode.CompletionList([createItem, createBackground], false);
+                }
+                return undefined;
             }
 
             // ─── 以下为 issue 项（需要 [ 或 【 触发） ───────────────
