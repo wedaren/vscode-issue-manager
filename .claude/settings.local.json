@@ -15,7 +15,21 @@
       "Bash(git commit:*)",
       "Bash(git push)",
       "Bash(git add src/llmChat/convStateMarker.ts)",
-      "Bash(git add src/llmChat/RoleTimerManager.ts src/llmChat/LLMChatService.ts src/llmChat/personalAssistantTools.ts src/llmChat/PersonalAssistantService.ts)"
+      "Bash(git add src/llmChat/RoleTimerManager.ts src/llmChat/LLMChatService.ts src/llmChat/personalAssistantTools.ts src/llmChat/PersonalAssistantService.ts)",
+      "Bash(git status -u)",
+      "Bash(git add package.json src/extension.ts src/providers/IssueNodeCompletionProvider.ts src/utils/completionUtils.ts)",
+      "Bash(git add package.json src/providers/IssueDocumentLinkProvider.ts src/providers/IssueNodeCompletionProvider.ts)",
+      "Bash(git pull)",
+      "Bash(git add src/providers/IssueNodeCompletionProvider.ts src/providers/IssueDocumentLinkProvider.ts)",
+      "Bash(git add src/llmChat/types.ts src/llmChat/llmChatDataManager.ts src/llmChat/chatTools.ts src/llmChat/LLMChatService.ts src/llmChat/RoleTimerManager.ts src/llmChat/LLMChatRoleProvider.ts src/core/ViewRegistry.ts src/llmChat/llmChatCommands.ts src/llmChat/index.ts package.json)",
+      "Bash(git rm src/llmChat/PersonalAssistantService.ts src/llmChat/personalAssistantTools.ts)",
+      "Bash(find /Users/wedaren -maxdepth 5 -name *.issues -o -name .issueManager)",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $f ===\")",
+      "Read(//Users/wedaren/repositoryDestinationOfGithub/issue-notes/**)",
+      "Bash(done)",
+      "Bash(git add:*)"
     ]
   }
 }

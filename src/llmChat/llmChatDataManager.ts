@@ -73,6 +73,7 @@ export async function getAllChatRoles(): Promise<ChatRoleInfo[]> {
             memoryEnabled: fm.memory_enabled === true,
             delegationEnabled: fm.delegation_enabled === true,
             roleManagementEnabled: fm.role_management_enabled === true,
+            webEnabled: fm.web_enabled === true,
         });
     }
     return roles;
@@ -90,7 +91,7 @@ export async function createChatRole(
     systemPrompt: string,
     avatar?: string,
     modelFamily?: string,
-    capabilities?: { memory?: boolean; delegation?: boolean; roleManagement?: boolean },
+    capabilities?: { memory?: boolean; delegation?: boolean; roleManagement?: boolean; web?: boolean },
 ): Promise<string | null> {
     const defaultModelFamily = vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily') || 'gpt-5-mini';
     const fm: Partial<FrontmatterData> & ChatRoleFrontmatter = {
@@ -110,6 +111,7 @@ export async function createChatRole(
         memory_enabled: capabilities?.memory ?? false,
         delegation_enabled: capabilities?.delegation ?? false,
         role_management_enabled: capabilities?.roleManagement ?? false,
+        web_enabled: capabilities?.web ?? false,
     };
 
     const body = `# ${name}\n`;

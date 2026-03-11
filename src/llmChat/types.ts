@@ -105,6 +105,8 @@ export interface ChatRoleInfo {
     delegationEnabled?: boolean;
     /** 是否启用角色管理 */
     roleManagementEnabled?: boolean;
+    /** 是否启用网络工具（web_search / fetch_url） */
+    webEnabled?: boolean;
 }
 
 /** 运行时对话信息 */

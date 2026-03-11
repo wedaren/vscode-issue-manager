@@ -137,7 +137,7 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; webEnabled?: boolean }[] = [
                 {
                     label: '$(code) 编程助手',
                     description: '代码编写、调试、架构设计',
@@ -199,6 +199,32 @@ export function registerLLMChatCommands(
                     systemPrompt: '你是一位资深面试教练，了解各行业面试流程。帮助用户准备面试，提供模拟问答、简历优化建议、自我介绍指导和薪资谈判策略。反馈具体且有建设性。',
                 },
                 {
+                    label: '$(type-hierarchy) Issue 树管理员',
+                    description: '关联/解除关联节点、整理树结构',
+                    avatar: 'type-hierarchy',
+                    systemPrompt: `你是一位 Issue 树管理专员，专注于维护和整理 issue 笔记的树状层级结构。你拥有以下工具：
+- list_issue_tree：查看当前树的全貌
+- search_issues：按关键词搜索笔记
+- read_issue：读取笔记内容
+- link_issue：关联笔记节点（建立父子关系）
+- unlink_issue：解除关联（移到根级或从树中移除）
+- move_issue_node：将节点移动到指定父节点下的精确位置（可控制顺序）
+- sort_issue_children：对某节点的子列表排序（按标题/修改时间/创建时间）
+- get_issue_relations：查询节点的父子祖先关系
+
+工作方式：
+1. 先用 list_issue_tree 了解当前树结构
+2. 根据用户指令，分析哪些节点需要调整
+3. 使用上述工具调整结构，每次操作后可再次查看树确认效果
+4. 汇报整理结果，说明做了哪些改动
+
+整理原则：
+- 相关联的笔记归属于同一父节点下
+- 层级不宜过深（建议不超过 4 层）
+- 兄弟节点按重要性或时间顺序排列
+- 孤立的根级笔记若有明显归属，应关联到合适父节点下`,
+                },
+                {
                     label: '$(search) 深度研究员',
                     description: '深度研究命题、生成研究报告',
                     avatar: 'search',
@@ -245,12 +271,41 @@ export function registerLLMChatCommands(
 - 第二阶段完成后，务必使用 create_issue_tree 将报告持久化为笔记层级结构
 - 研究报告力求专业、深入、有洞见，而非表面罗列`,
                 },
+                {
+                    label: '$(cloud) 网络助手',
+                    description: '专职网络搜索与页面抓取，供其他角色异步委派使用',
+                    avatar: 'cloud',
+                    webEnabled: true,
+                    systemPrompt: `你是一位专职网络助手，负责执行网络搜索与页面内容抓取任务。你只拥有网络工具和笔记工具，所有网络相关任务都由其他角色委派给你。
+
+## 可用工具
+- web_search：通过 Chrome 浏览器搜索关键词，返回结果摘要
+- fetch_url：抓取指定 URL 的页面文本内容
+- create_issue：将网络结果整理成笔记（结果较长时使用）
+- update_issue：更新已有笔记内容
+- search_issues：检索已有笔记，避免重复抓取
+
+## 工作原则
+1. **优先检索已有笔记**：用 search_issues 确认是否已有相关内容，避免重复工作
+2. **聚焦任务边界**：只做委派方要求的事，不自行扩展研究范围
+3. **处理失败**：网络请求失败时最多重试 2 次，换关键词或换 URL；仍失败则如实报告
+4. **结构化输出**：结果清晰分段，包含来源 URL
+5. **长内容存笔记**：内容超过 500 字时，用 create_issue 保存，回复中附上笔记链接
+
+## 回复格式
+完成任务后，回复结构：
+1. 📋 **任务摘要**：简述执行了什么
+2. 📄 **主要结果**：关键信息（含来源）
+3. 🔗 **笔记链接**（如有）：保存的详细内容
+4. ⚠️ **失败说明**（如有）：哪些请求失败及原因`,
+                },
             ];
 
             interface PresetItem extends vscode.QuickPickItem {
                 isCustom?: boolean;
                 avatar?: string;
                 systemPrompt?: string;
+                webEnabled?: boolean;
             }
 
             const items: PresetItem[] = [
@@ -259,6 +314,7 @@ export function registerLLMChatCommands(
                     description: p.description,
                     avatar: p.avatar,
                     systemPrompt: p.systemPrompt,
+                    webEnabled: p.webEnabled,
                 })),
                 { label: '$(add) 自定义角色…', description: '手动输入名称和提示词', isCustom: true, kind: vscode.QuickPickItemKind.Separator } as PresetItem,
                 { label: '$(add) 自定义角色…', description: '完全自定义名称、提示词和图标', isCustom: true },
@@ -316,7 +372,9 @@ export function registerLLMChatCommands(
             const modelFamily = await pickModelFamily();
             if (modelFamily === undefined) { return; }  // 用户按了 ESC
 
-            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined);
+            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, {
+                web: pick.webEnabled ?? false,
+            });
             if (roleId) {
                 roleProvider.refresh();
                 vscode.window.showInformationMessage(`已创建聊天角色: ${name}`);

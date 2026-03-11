@@ -32,8 +32,10 @@ import {
     writeTree,
     moveNode,
     removeNode,
+    findNodeById,
     findParentNodeById,
     getAncestors,
+    type IssueNode,
 } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
@@ -58,6 +60,23 @@ const logger = Logger.getInstance();
 /** 生成 issueMarkdown 链接，使用约定前缀 IssueDir/，消费方按需替换为真实路径 */
 function issueLink(title: string, fileName: string): string {
     return `[${title}](IssueDir/${fileName})`;
+}
+
+/**
+ * 规范化文件名：IssueDir/ 是真实 issue 目录的缩写，将其剥离后得到相对于
+ * issueDir 的路径。同时兼容 LLM 传入真实绝对路径的情况（取 basename）。
+ */
+function normalizeFileName(name: string, issueDir?: string): string {
+    // IssueDir/ 是 issueDir 的约定缩写，直接剥离该前缀
+    if (name.startsWith('IssueDir/')) {
+        return name.slice('IssueDir/'.length);
+    }
+    // 兼容 LLM 传入真实绝对路径
+    if (issueDir && name.startsWith(issueDir + path.sep)) {
+        return path.relative(issueDir, name);
+    }
+    // 其余情况：可能是纯文件名或带其他前缀，取 basename 兜底
+    return path.basename(name);
 }
 
 // ─── 工具定义 ─────────────────────────────────────────────────
@@ -156,29 +175,6 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
                 body: { type: 'string', description: '新的 Markdown 正文（可选，会替换整个正文）' },
             },
             required: ['fileName'],
-        },
-    },
-    {
-        name: 'web_search',
-        description: '通过 Chrome 浏览器进行网络搜索，返回搜索结果页面的文本内容。需要已连接 Chrome 扩展。',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                query: { type: 'string', description: '搜索关键词' },
-                engine: { type: 'string', description: '搜索引擎：google（默认）、bing、baidu' },
-            },
-            required: ['query'],
-        },
-    },
-    {
-        name: 'fetch_url',
-        description: '通过 Chrome 浏览器访问指定 URL 并提取页面文本内容。需要已连接 Chrome 扩展。适合获取参考资料、文档等。',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                url: { type: 'string', description: '要访问的网页 URL' },
-            },
-            required: ['url'],
         },
     },
     // ─── Chrome Tab 管理工具 ─────────────────────────────────
@@ -370,9 +366,97 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
             required: ['fileName'],
         },
     },
+    {
+        name: 'move_issue_node',
+        description: '将笔记节点移动到指定父节点下的指定位置（精确控制顺序）。可用于调整兄弟节点排列顺序，或将节点迁移到不同父节点。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileName: { type: 'string', description: '要移动的笔记文件名' },
+                parentFileName: { type: 'string', description: '目标父笔记文件名。留空则移到根级。' },
+                index: { type: 'number', description: '在目标父节点子列表中的插入位置（从 0 开始）。默认 0（最前）。超出范围时自动调整到末尾。' },
+            },
+            required: ['fileName'],
+        },
+    },
+    {
+        name: 'sort_issue_children',
+        description: '对指定节点的子列表（或根级节点列表）按标题、修改时间或创建时间排序。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                parentFileName: { type: 'string', description: '父笔记文件名。留空则排序根级节点列表。' },
+                by: {
+                    type: 'string',
+                    enum: ['title', 'mtime', 'ctime'],
+                    description: '排序字段：title（标题字母序）、mtime（修改时间）、ctime（创建时间）。默认 title。',
+                },
+                order: {
+                    type: 'string',
+                    enum: ['asc', 'desc'],
+                    description: '排序方向：asc（升序，默认）、desc（降序）',
+                },
+                recursive: { type: 'boolean', description: '是否递归排序所有子孙节点。默认 false（仅排序直接子节点）。' },
+            },
+        },
+    },
+    {
+        name: 'delete_issue',
+        description: '删除指定的 issueMarkdown 笔记文件，并自动从 issueTree 中解除关联（移除 issueNode）。不可撤销。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileName: { type: 'string', description: '要删除的笔记文件名（如 20240115-103045.md 或 IssueDir/20240115-103045.md）' },
+                removeChildren: { type: 'boolean', description: '是否同时递归删除该节点的所有子孙笔记文件。默认 false（子节点保留，移到根级）。' },
+            },
+            required: ['fileName'],
+        },
+    },
+    {
+        name: 'batch_delete_issues',
+        description: '批量删除多个 issueMarkdown 笔记文件，并自动从 issueTree 中解除所有关联。不可撤销。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileNames: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的笔记文件名列表（支持 IssueDir/ 前缀格式）',
+                },
+            },
+            required: ['fileNames'],
+        },
+    },
 ];
 
 // ─── 能力工具定义（按需注入） ─────────────────────────────────
+
+/** 网络工具（web_enabled 时注入） */
+const WEB_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'web_search',
+        description: '通过 Chrome 浏览器进行网络搜索，返回搜索结果页面的文本内容。需要已连接 Chrome 扩展。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: '搜索关键词' },
+                engine: { type: 'string', description: '搜索引擎：google（默认）、bing、baidu' },
+            },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'fetch_url',
+        description: '通过 Chrome 浏览器访问指定 URL 并提取页面文本内容。需要已连接 Chrome 扩展。适合获取参考资料、文档等。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                url: { type: 'string', description: '要访问的网页 URL' },
+            },
+            required: ['url'],
+        },
+    },
+];
 
 /** 记忆工具（memory_enabled 时注入） */
 const MEMORY_TOOLS: vscode.LanguageModelChatTool[] = [
@@ -406,7 +490,7 @@ const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'delegate_to_role',
-        description: '将一个子任务委派给指定的角色，获取该角色的回复。角色可以使用笔记和浏览器工具。返回角色的完整回复文本。',
+        description: '将子任务委派给指定角色。同步模式（默认）等待角色完成后返回结果；异步模式立即返回 convoId，角色在后台执行，可用 get_delegation_status 轮询结果。网络类耗时任务推荐用异步模式。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -418,8 +502,26 @@ const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
                     type: 'string',
                     description: '委派给该角色的具体任务描述，越详细越好',
                 },
+                async: {
+                    type: 'boolean',
+                    description: '是否异步执行。true = 立即返回 convoId，角色在后台处理；false（默认）= 同步等待角色完成',
+                },
             },
             required: ['roleNameOrId', 'task'],
+        },
+    },
+    {
+        name: 'get_delegation_status',
+        description: '查询异步委派的执行状态和结果。用于跟进之前以 async:true 发起的委派任务。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                convoId: {
+                    type: 'string',
+                    description: '委派时返回的对话 ID（如 20240115-103045）',
+                },
+            },
+            required: ['convoId'],
         },
     },
 ];
@@ -485,6 +587,7 @@ const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
  */
 export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatTool[] {
     const tools = [...CHAT_TOOLS];
+    if (role.webEnabled) { tools.push(...WEB_TOOLS); }
     if (role.memoryEnabled) { tools.push(...MEMORY_TOOLS); }
     if (role.delegationEnabled) { tools.push(...DELEGATION_TOOLS); }
     if (role.roleManagementEnabled) { tools.push(...ROLE_MANAGEMENT_TOOLS); }
@@ -563,6 +666,14 @@ export async function executeChatTool(
                 return await executeUnlinkIssue(input);
             case 'get_issue_relations':
                 return await executeGetIssueRelations(input);
+            case 'move_issue_node':
+                return await executeMoveIssueNode(input);
+            case 'sort_issue_children':
+                return await executeSortIssueChildren(input);
+            case 'delete_issue':
+                return await executeDeleteIssue(input);
+            case 'batch_delete_issues':
+                return await executeBatchDeleteIssues(input);
             // ─── 能力工具：记忆 ─────────────────────────────────
             case 'read_memory':
                 return await executeReadMemory(context);
@@ -573,6 +684,8 @@ export async function executeChatTool(
                 return await executeListChatRoles(context);
             case 'delegate_to_role':
                 return await executeDelegateToRole(input, context);
+            case 'get_delegation_status':
+                return await executeGetDelegationStatus(input);
             // ─── 能力工具：角色管理 ─────────────────────────────
             case 'create_chat_role':
                 return await executeCreateChatRole(input);
@@ -712,14 +825,14 @@ function formatAge(mtime: number): string {
 }
 
 async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
-    if (!fileName) {
-        return { success: false, content: '请提供文件名' };
-    }
-
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: '问题目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供文件名' };
     }
 
     const filePath = path.join(issueDir, fileName);
@@ -827,27 +940,39 @@ async function executeCreateIssueTree(input: Record<string, unknown>): Promise<T
 
     // 2. 构建树结构：先创建根节点到 tree 中
     const rootUri = createdUris[rootIndex];
-    const rootNodes = await createIssueNodes([rootUri]);
+    const rootIssueNodes = await createIssueNodes([rootUri]);
 
-    if (rootNodes && rootNodes.length > 0) {
-        const rootNodeId = rootNodes[0].id;
+    if (rootIssueNodes && rootIssueNodes.length > 0) {
+        const rootNodeId = rootIssueNodes[0].id;
 
-        // 递归添加子节点
+        // 递归添加子节点（按 children 索引数组）
         const addChildren = async (parentIdx: number, parentId: string) => {
             const nodeSpec = nodes[parentIdx];
             if (!nodeSpec.children || nodeSpec.children.length === 0) { return; }
 
             for (const childIdx of nodeSpec.children) {
                 if (childIdx >= 0 && childIdx < createdUris.length && childIdx !== parentIdx) {
-                    const childNodes = await createIssueNodes([createdUris[childIdx]], parentId);
-                    if (childNodes && childNodes.length > 0) {
-                        await addChildren(childIdx, childNodes[0].id);
+                    const childIssueNodes = await createIssueNodes([createdUris[childIdx]], parentId);
+                    if (childIssueNodes && childIssueNodes.length > 0) {
+                        await addChildren(childIdx, childIssueNodes[0].id);
                     }
                 }
             }
         };
 
-        await addChildren(rootIndex, rootNodeId);
+        const rootSpec = nodes[rootIndex];
+        if (!rootSpec.children || rootSpec.children.length === 0) {
+            // 根节点没有显式 children 时，将所有其他节点作为根的直接子节点
+            const otherIndices = nodes.map((_, i) => i).filter(i => i !== rootIndex);
+            for (const childIdx of otherIndices) {
+                const childIssueNodes = await createIssueNodes([createdUris[childIdx]], rootNodeId);
+                if (childIssueNodes && childIssueNodes.length > 0) {
+                    await addChildren(childIdx, childIssueNodes[0].id);
+                }
+            }
+        } else {
+            await addChildren(rootIndex, rootNodeId);
+        }
     }
 
     // 刷新视图
@@ -897,14 +1022,14 @@ async function executeListIssueTree(input: Record<string, unknown>): Promise<Too
 }
 
 async function executeUpdateIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
-    if (!fileName) {
-        return { success: false, content: '请提供文件名' };
-    }
-
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: '问题目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供文件名' };
     }
 
     const filePath = path.join(issueDir, fileName);
@@ -1450,17 +1575,151 @@ async function executePressKey(input: Record<string, unknown>): Promise<ToolCall
 
 // ─── 笔记关联管理实现 ─────────────────────────────────────────
 
-async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const childFileName = String(input.childFileName || '').trim();
-    const parentFileName = String(input.parentFileName || '').trim();
-
-    if (!childFileName) {
-        return { success: false, content: '请提供子笔记文件名（childFileName）' };
+async function executeMoveIssueNode(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return { success: false, content: 'issue 目录未配置' };
     }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    const parentFileName = input.parentFileName ? normalizeFileName(String(input.parentFileName).trim(), issueDir) : '';
+    const index = typeof input.index === 'number' ? Math.floor(input.index) : 0;
+
+    if (!fileName) {
+        return { success: false, content: '请提供文件名（fileName）' };
+    }
+
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+    try {
+        await vscode.workspace.fs.stat(uri);
+    } catch {
+        return { success: false, content: `笔记文件不存在: ${fileName}` };
+    }
+
+    // 确保节点在树中
+    let node = await getSingleIssueNodeByUri(uri);
+    if (!node) {
+        const created = await createIssueNodes([uri]);
+        if (!created?.length) {
+            return { success: false, content: `无法在树中创建节点: ${fileName}` };
+        }
+        node = created[0];
+    }
+
+    // 确定目标父节点 ID
+    let parentNodeId: string | null = null;
+    if (parentFileName) {
+        const parentUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), parentFileName);
+        const parentNode = await getSingleIssueNodeByUri(parentUri);
+        if (!parentNode) {
+            const created = await createIssueNodes([parentUri]);
+            if (!created?.length) {
+                return { success: false, content: `无法在树中找到或创建父节点: ${parentFileName}` };
+            }
+            parentNodeId = created[0].id;
+        } else {
+            parentNodeId = parentNode.id;
+        }
+    }
+
+    const treeData = await readTree();
+
+    // 计算目标列表长度，将超出范围的 index 夹住
+    const targetList = parentNodeId
+        ? (findNodeById(treeData.rootNodes, parentNodeId)?.node.children ?? [])
+        : treeData.rootNodes;
+    // 移除源节点后列表会缩短 1（若在同一列表），保守地限制到 targetList.length
+    const safeIndex = Math.max(0, Math.min(index, targetList.length));
+
+    moveNode(treeData, node.id, parentNodeId, safeIndex);
+    await writeTree(treeData);
+
+    const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
+    return {
+        success: true,
+        content: `✅ 已将 ${issueLink(fileName, fileName)} 移动到 ${target} 第 ${safeIndex} 位`,
+    };
+}
+
+async function executeSortIssueChildren(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const by = (['title', 'mtime', 'ctime'].includes(String(input.by)) ? String(input.by) : 'title') as 'title' | 'mtime' | 'ctime';
+    const order = input.order === 'desc' ? 'desc' : 'asc';
+    const recursive = input.recursive === true;
 
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const parentFileName = input.parentFileName ? normalizeFileName(String(input.parentFileName).trim(), issueDir) : '';
+
+    const treeData = await readTree();
+    const flatTree = await getFlatTree();
+
+    type AnyNode = { id: string; children: AnyNode[] };
+
+    const getSortKey = (node: AnyNode): string | number => {
+        const flat = flatTree.find(f => f.id === node.id);
+        if (by === 'title') { return flat?.title?.toLowerCase() ?? ''; }
+        if (by === 'mtime') { return flat?.mtime ?? 0; }
+        return flat?.ctime ?? 0;
+    };
+
+    const sortNodes = (nodes: AnyNode[]) => {
+        nodes.sort((a, b) => {
+            const ka = getSortKey(a);
+            const kb = getSortKey(b);
+            if (typeof ka === 'string' && typeof kb === 'string') {
+                return order === 'asc' ? ka.localeCompare(kb, 'zh') : kb.localeCompare(ka, 'zh');
+            }
+            const diff = (ka as number) - (kb as number);
+            return order === 'asc' ? diff : -diff;
+        });
+        if (recursive) {
+            for (const node of nodes) {
+                if (node.children?.length > 0) {
+                    sortNodes(node.children);
+                }
+            }
+        }
+    };
+
+    if (!parentFileName) {
+        sortNodes(treeData.rootNodes as unknown as AnyNode[]);
+    } else {
+        const parentUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), parentFileName);
+        const parentNode = await getSingleIssueNodeByUri(parentUri);
+        if (!parentNode) {
+            return { success: false, content: `未在树中找到父节点: ${parentFileName}` };
+        }
+        const found = findNodeById(treeData.rootNodes, parentNode.id);
+        if (!found) {
+            return { success: false, content: `树中未找到节点: ${parentFileName}` };
+        }
+        sortNodes(found.node.children as unknown as AnyNode[]);
+    }
+
+    await writeTree(treeData);
+
+    const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
+    const byLabel: Record<string, string> = { title: '标题', mtime: '修改时间', ctime: '创建时间' };
+    return {
+        success: true,
+        content: `✅ 已对 ${target} 的子节点按「${byLabel[by]}」${order === 'asc' ? '升序' : '降序'} 排序${recursive ? '（含所有子孙节点）' : ''}`,
+    };
+}
+
+async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const childFileName = normalizeFileName(String(input.childFileName || '').trim(), issueDir);
+    const parentFileName = normalizeFileName(String(input.parentFileName || '').trim(), issueDir);
+
+    if (!childFileName) {
+        return { success: false, content: '请提供子笔记文件名（childFileName）' };
     }
 
     const childUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), childFileName);
@@ -1517,16 +1776,16 @@ async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCal
 }
 
 async function executeUnlinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
     const removeFromTree = input.removeFromTree === true;
-
-    if (!fileName) {
-        return { success: false, content: '请提供笔记文件名（fileName）' };
-    }
 
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供笔记文件名（fileName）' };
     }
 
     const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
@@ -1559,15 +1818,14 @@ async function executeUnlinkIssue(input: Record<string, unknown>): Promise<ToolC
 }
 
 async function executeGetIssueRelations(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
-
-    if (!fileName) {
-        return { success: false, content: '请提供笔记文件名（fileName）' };
-    }
-
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供笔记文件名（fileName）' };
     }
 
     const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
@@ -1635,6 +1893,110 @@ async function executeGetIssueRelations(input: Record<string, unknown>): Promise
     }
 
     return { success: true, content: lines.join('\n') };
+}
+
+// ─── 笔记删除实现 ────────────────────────────────────────────
+
+/**
+ * 递归收集节点及其所有子孙的文件路径。
+ */
+function collectSubtreeFilePaths(node: IssueNode, out: Set<string>): void {
+    out.add(node.resourceUri.fsPath);
+    for (const child of node.children ?? []) {
+        collectSubtreeFilePaths(child, out);
+    }
+}
+
+async function executeDeleteIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: 'issue 目录未配置' }; }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) { return { success: false, content: '请提供文件名（fileName）' }; }
+
+    const removeChildren = input.removeChildren === true;
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+
+    // 确认文件存在
+    try { await vscode.workspace.fs.stat(uri); } catch {
+        return { success: false, content: `文件不存在: ${fileName}` };
+    }
+
+    const filesToDelete = new Set<string>([uri.fsPath]);
+    const treeData = await readTree();
+    const nodes = await getIssueNodesByUri(uri);
+
+    // 从树中处理节点
+    for (const node of nodes) {
+        if (removeChildren) {
+            // 收集子树所有文件，一并删除
+            collectSubtreeFilePaths(node, filesToDelete);
+        } else {
+            // 子节点提升：将直接子节点移到根级
+            for (const child of node.children ?? []) {
+                moveNode(treeData, child.id, null, treeData.rootNodes.length);
+            }
+        }
+        removeNode(treeData, node.id);
+    }
+
+    if (nodes.length > 0) { await writeTree(treeData); }
+
+    // 删除文件
+    const failed: string[] = [];
+    for (const fp of filesToDelete) {
+        try { await vscode.workspace.fs.delete(vscode.Uri.file(fp)); }
+        catch { failed.push(path.basename(fp)); }
+    }
+
+    if (failed.length > 0) {
+        return { success: false, content: `部分文件删除失败: ${failed.join(', ')}` };
+    }
+
+    const childCount = filesToDelete.size - 1;
+    const extra = childCount > 0 ? `，连同 ${childCount} 个子孙笔记` : '';
+    return { success: true, content: `✅ 已删除 ${issueLink(fileName, fileName)}${extra}，并解除树关联` };
+}
+
+async function executeBatchDeleteIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: 'issue 目录未配置' }; }
+
+    const raw = Array.isArray(input.fileNames) ? input.fileNames : [];
+    const fileNames = raw.map((n: unknown) => normalizeFileName(String(n).trim(), issueDir)).filter(Boolean);
+    if (fileNames.length === 0) { return { success: false, content: '请提供至少一个文件名（fileNames）' }; }
+
+    const treeData = await readTree();
+    const filesToDelete = new Set<string>();
+    const notFound: string[] = [];
+
+    for (const fileName of fileNames) {
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+        try { await vscode.workspace.fs.stat(uri); } catch {
+            notFound.push(fileName);
+            continue;
+        }
+        filesToDelete.add(uri.fsPath);
+        const nodes = await getIssueNodesByUri(uri);
+        for (const node of nodes) { removeNode(treeData, node.id); }
+    }
+
+    if (filesToDelete.size > 0) { await writeTree(treeData); }
+
+    const failed: string[] = [];
+    for (const fp of filesToDelete) {
+        try { await vscode.workspace.fs.delete(vscode.Uri.file(fp)); }
+        catch { failed.push(path.basename(fp)); }
+    }
+
+    const lines: string[] = [];
+    if (filesToDelete.size - failed.length > 0) {
+        lines.push(`✅ 已删除 ${filesToDelete.size - failed.length} 个笔记并解除树关联`);
+    }
+    if (notFound.length > 0) { lines.push(`⚠️ 文件不存在（已跳过）: ${notFound.join(', ')}`); }
+    if (failed.length > 0) { lines.push(`❌ 删除失败: ${failed.join(', ')}`); }
+
+    return { success: failed.length === 0, content: lines.join('\n') };
 }
 
 // ─── 能力工具实现：记忆 ──────────────────────────────────────
@@ -1739,11 +2101,12 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
     }
     const roleNameOrId = String(input.roleNameOrId || '').trim();
     const task = String(input.task || '').trim();
+    const isAsync = input.async === true;
     if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
     if (!task) { return { success: false, content: '请提供委派任务描述' }; }
 
-    // 递归深度保护
-    if (_delegationDepth >= MAX_DELEGATION_DEPTH) {
+    // 递归深度保护（异步委派不占深度）
+    if (!isAsync && _delegationDepth >= MAX_DELEGATION_DEPTH) {
         return { success: false, content: `委派深度超限（最大 ${MAX_DELEGATION_DEPTH} 层），请简化任务链` };
     }
 
@@ -1760,17 +2123,25 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
         return { success: false, content: '创建委派对话文件失败' };
     }
     const convoId = path.basename(convoUri.fsPath, '.md');
-    logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId}`);
+    logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '同步'}`);
 
     // 写入用户消息 + queued 标记
     await appendUserMessageQueued(convoUri, task);
 
     // 触发执行
+    await RoleTimerManager.getInstance().triggerConversation(convoUri);
+
+    // ── 异步模式：立即返回 convoId，不等待结果 ──
+    if (isAsync) {
+        return {
+            success: true,
+            content: `✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
+        };
+    }
+
+    // ── 同步模式：等待执行完成 ──
     _delegationDepth++;
     try {
-        await RoleTimerManager.getInstance().triggerConversation(convoUri);
-
-        // 等待执行完成
         const reply = await waitForDelegationResult(convoUri, role.name, context.signal);
         logger.info(`[ChatTools] 委派结束 → 角色「${role.name}」| 回复长度: ${reply.length}`);
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
@@ -1781,6 +2152,49 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
         };
     } finally {
         _delegationDepth--;
+    }
+}
+
+async function executeGetDelegationStatus(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const convoId = String(input.convoId || '').trim().replace(/\.md$/, '');
+    if (!convoId) { return { success: false, content: '请提供委派对话 ID（convoId）' }; }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: 'issue 目录未配置' }; }
+
+    const convoUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), `${convoId}.md`);
+    try { await vscode.workspace.fs.stat(convoUri); } catch {
+        return { success: false, content: `找不到委派对话文件: ${convoId}` };
+    }
+
+    const marker = await readStateMarker(convoUri);
+
+    // 无 marker = 执行成功（RoleTimerManager 成功后会移除标记）
+    if (!marker) {
+        const messages = await parseConversationMessages(convoUri);
+        const last = messages.filter(m => m.role === 'assistant').pop();
+        const reply = last?.content?.trim() || '（角色未返回任何内容）';
+        return {
+            success: true,
+            content: `✅ **委派已完成** | 对话: [${convoId}](IssueDir/${convoId}.md)\n\n${reply}`,
+        };
+    }
+
+    switch (marker.status) {
+        case 'queued':
+            return { success: true, content: `⏳ **等待执行中** | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        case 'executing':
+            return { success: true, content: `🔄 **执行中** | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        case 'retrying': {
+            const retryAt = marker.retryAt
+                ? new Date(marker.retryAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : '未知';
+            return { success: true, content: `⚠️ **重试中（第 ${marker.retryCount} 次）** | 预计 ${retryAt} 重试 | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        }
+        case 'error':
+            return { success: false, content: `❌ **委派失败** | ${marker.message || '未知错误'} | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        default:
+            return { success: true, content: `❓ 未知状态 | 对话: [${convoId}](IssueDir/${convoId}.md)` };
     }
 }
 

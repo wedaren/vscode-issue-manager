@@ -193,13 +193,16 @@ export class LLMService {
             onToolStatus?: (status: { toolName: string; phase: 'calling' | 'done'; result?: string }) => void;
             /** LLM 决定调用工具时触发（每轮一次），传入本轮文本和待调用工具列表 */
             onToolsDecided?: (info: { roundText: string; toolNames: string[]; round: number }) => void;
+            /** LLM 决定不再调用工具、进入最终回复轮时触发 */
+            onFinalRound?: (info: { round: number; toolCallsTotal: number }) => void;
             /** 最大工具调用轮次（防止无限循环） */
             maxToolRounds?: number;
         },
     ): Promise<{ text: string; modelFamily?: string } | null> {
         const logger = Logger.getInstance();
         const startMs = Date.now();
-        const maxRounds = options?.maxToolRounds ?? 10;
+        // maxToolRounds 限制工具调用轮数；达到上限后强制不传 tools，让模型生成最终回复
+        const maxToolRounds = options?.maxToolRounds ?? 10;
 
         logger.info(`[LLM.streamWithTools] 开始 | 工具数=${tools.length} | 消息数=${messages.length}`);
 
@@ -225,15 +228,22 @@ export class LLMService {
         const workingMessages = [...messages];
         let fullText = '';
         let round = 0;
+        let toolCallRounds = 0; // 实际发生工具调用的轮次计数
 
         try {
-            while (round < maxRounds) {
+            // 最多 maxToolRounds 轮工具调用 + 1 轮最终回复，循环无硬上限
+            while (true) {
                 if (cts.token.isCancellationRequested) { throw new Error('请求已取消'); }
 
                 round++;
+                // 达到工具调用轮上限时，强制不传 tools，迫使模型生成最终回复
+                const activeTools = toolCallRounds >= maxToolRounds ? [] : tools;
+                if (activeTools.length === 0 && tools.length > 0) {
+                    logger.warn(`[LLM.streamWithTools] 已达工具调用上限（${maxToolRounds} 轮），第 ${round} 轮强制不传工具`);
+                }
                 logger.info(`[LLM.streamWithTools] 第 ${round} 轮请求`);
 
-                const resp = await model.sendRequest(workingMessages, { tools }, cts.token);
+                const resp = await model.sendRequest(workingMessages, { tools: activeTools }, cts.token);
 
                 // 收集本轮的文本和工具调用
                 let roundText = '';
@@ -252,10 +262,15 @@ export class LLMService {
 
                 fullText += roundText;
 
-                // 如果没有工具调用，表示 LLM 完成了回复
+                // 如果没有工具调用，表示 LLM 进入最终回复轮
                 if (toolCalls.length === 0) {
+                    try {
+                        options?.onFinalRound?.({ round, toolCallsTotal: toolCallRounds });
+                    } catch { /* 回调错误不阻塞 */ }
                     break;
                 }
+
+                toolCallRounds++;
 
                 // 通知调用方：LLM 决定调用哪些工具
                 try {

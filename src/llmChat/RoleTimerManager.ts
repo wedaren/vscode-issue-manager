@@ -101,7 +101,8 @@ export class RoleTimerManager implements vscode.Disposable {
         if (this.executing.has(uri.fsPath)) { return; }
 
         const marker = await readStateMarker(uri);
-        if (!marker || marker.status !== 'queued') { return; }
+        // queued：正常排队；retrying：等待重试中，保存可强制立即重试（跳过 retryAt 延迟）
+        if (!marker || (marker.status !== 'queued' && marker.status !== 'retrying')) { return; }
 
         const roleId = await this.getRoleIdFromFile(uri);
         if (!roleId) { return; }
@@ -109,7 +110,7 @@ export class RoleTimerManager implements vscode.Disposable {
         const role = await getChatRoleById(roleId);
         if (!role) { return; }
 
-        void this.executeConversation(uri, role);
+        void this.executeConversation(uri, role, 'save');
     }
 
     // ─── 内部：定时器同步 ─────────────────────────────────────
@@ -209,14 +210,14 @@ export class RoleTimerManager implements vscode.Disposable {
                     logger.warn(`[RoleTimerManager] 检测到僵尸 executing 状态，强制重试: ${convo.uri.fsPath}`);
                 }
                 dispatched++;
-                void this.executeConversation(convo.uri, role);
+                void this.executeConversation(convo.uri, role, 'timer');
             }
         }
     }
 
     // ─── 内部：LLM 执行 ──────────────────────────────────────
 
-    private async executeConversation(uri: vscode.Uri, role: ChatRoleInfo): Promise<void> {
+    private async executeConversation(uri: vscode.Uri, role: ChatRoleInfo, trigger: 'timer' | 'save' = 'timer'): Promise<void> {
         const filePath = uri.fsPath;
         this.executing.add(filePath);
 
@@ -244,7 +245,7 @@ export class RoleTimerManager implements vscode.Disposable {
         if (logUri) {
             try {
                 runNumber = await startLogRun(logUri, {
-                    trigger: 'timer',
+                    trigger,
                     roleName: role.name,
                     modelFamily: effectiveModelFamily,
                     timeout,
@@ -431,12 +432,24 @@ export class RoleTimerManager implements vscode.Disposable {
                             void appendLogLine(logUri, `🤖 **LLM 第${info.round}轮** → 调用 ${names}`);
                         }
                     },
+                    onFinalRound: (info) => {
+                        if (!logUri) { return; }
+                        const hint = info.toolCallsTotal > 0
+                            ? `（完成 ${info.toolCallsTotal} 轮工具调用后）`
+                            : '（无工具调用）';
+                        void appendLogLine(logUri, `⏳ **LLM 第${info.round}轮（最终）** → 期望：生成完整回复 ${hint}`);
+                    },
                 },
             );
 
             clearInterval(idleCheckId);
 
-            if (!result?.text) { throw new Error('LLM 返回空响应'); }
+            if (!result?.text) {
+                const hint = toolCallSeq > 0
+                    ? `（已完成 ${toolCallSeq} 次工具调用，最后一个工具：\`${execLastToolName}\`）`
+                    : '';
+                throw new Error(`LLM 返回空响应${hint}，可能原因：上下文过长 / 模型响应异常`);
+            }
 
             // 成功：移除标记并追加助手回复
             await this.removeMarkerAndAppendAssistant(uri, result.text.trim());
@@ -477,13 +490,14 @@ export class RoleTimerManager implements vscode.Disposable {
             } else {
                 const baseDelay = Number(role.timerRetryDelay) || 5_000;
                 const delay = Math.max(1_000, baseDelay * Math.pow(2, retryCount));
-                const retryAt = Date.now() + delay;
+                const retryAt = Number.isFinite(Date.now() + delay) ? Date.now() + delay : Date.now() + 5_000;
                 await writeStateMarker(uri, {
                     status: 'retrying',
-                    retryAt: Number.isFinite(retryAt) ? retryAt : Date.now() + 5_000,
+                    retryAt,
                     retryCount: nextRetry,
                 });
-                if (logUri) { void appendLogLine(logUri, `⚠️ **失败 → 重试 (${nextRetry}/${maxRetries})** | ${Math.round(delay / 1000)}s 后重试 | 耗时 ${dur} | ${errMsg}`); }
+                const retryAtStr = new Date(retryAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                if (logUri) { void appendLogLine(logUri, `⚠️ **失败 → 重试 (${nextRetry}/${maxRetries})** | ${Math.round(delay / 1000)}s 后重试（${retryAtStr}）| 耗时 ${dur} | ${errMsg}`); }
                 logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
             }
 
