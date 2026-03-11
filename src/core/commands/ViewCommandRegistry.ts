@@ -3,6 +3,7 @@ import { BaseCommandRegistry } from './BaseCommandRegistry';
 import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from '../interfaces';
 import { IssueNode } from '../../data/issueTreeManager';
 import { ParaViewProvider } from '../../views/ParaViewProvider';
+import { isInBatchRefresh, markRefreshNeeded } from '../../utils/refreshBatch';
 
 /**
  * 视图操作命令注册器
@@ -11,7 +12,7 @@ import { ParaViewProvider } from '../../views/ParaViewProvider';
  * 这些命令主要用于用户与各种树视图的交互。
  */
 export class ViewCommandRegistry extends BaseCommandRegistry {
-    private static readonly REFRESH_DEBOUNCE_MS = 300;
+    private static readonly REFRESH_DEBOUNCE_MS = 500;
 
     private focusedIssuesProvider?: IFocusedIssuesProvider;
     private issueOverviewProvider?: IIssueOverviewProvider;
@@ -106,9 +107,16 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
 
     /**
      * 防抖刷新所有视图
-     * 合并短时间内的多次刷新请求，避免重复执行
+     * 合并短时间内的多次刷新请求，避免重复执行。
+     * 在批量操作（batch）期间，刷新会被暂停并标记为待执行。
      */
     private scheduleRefreshAllViews(): void {
+        // 批量操作期间只标记需要刷新，不实际调度
+        if (isInBatchRefresh()) {
+            markRefreshNeeded();
+            return;
+        }
+
         if (this.refreshTimer) {
             clearTimeout(this.refreshTimer);
         }

@@ -137,7 +137,50 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string; webEnabled?: boolean }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; webEnabled?: boolean; memoryEnabled?: boolean; delegationEnabled?: boolean; roleManagementEnabled?: boolean }[] = [
+                {
+                    label: '$(rocket) 个人助理',
+                    description: '中枢调度、记忆进化、团队委派',
+                    avatar: 'rocket',
+                    memoryEnabled: true,
+                    delegationEnabled: true,
+                    roleManagementEnabled: true,
+                    systemPrompt: `你是用户的专属个人助理，拥有记忆、学习和团队管理能力。
+
+## 工作流程
+收到用户任务时，按以下步骤处理：
+1. **获取记忆** — 对话开始时使用 read_memory 了解用户背景和历史任务
+2. **分析需求** — 思考任务性质，判断需要哪些专业能力
+3. **制定计划** — 向用户简述你的处理方案（几句话即可）
+4. **执行任务**：
+   - 简单问答 → 直接回复
+   - 需要专业能力 → 用 delegate_to_role 委派给合适角色
+   - 没有合适角色 → 先用 create_chat_role 创建专家角色，再委派
+5. **汇总汇报** — 整合所有信息，清晰告知用户结果和关键信息
+6. **更新记忆** — 用 write_memory 记录本次任务经验、角色表现
+
+## 可用工具
+**记忆管理**
+- read_memory：读取你的持久记忆（对话开始时调用）
+- write_memory：更新记忆（任务结束后调用）
+
+**团队管理**
+- list_chat_roles：列出当前所有可用专业角色
+- delegate_to_role：委派任务给指定角色，获取专业回复
+- create_chat_role：创建新的专业角色（当现有角色无法胜任时）
+- update_role_config：根据实际表现优化角色的系统提示词
+- evaluate_role：记录角色绩效评估
+
+**笔记工具**
+- search_issues / read_issue / create_issue / create_issue_tree / update_issue / list_issue_tree
+- link_issue / unlink_issue / get_issue_relations
+
+## 核心原则
+- **充分委派**：优先发挥各专业角色的专长，不要什么都自己做
+- **保持记忆**：每次任务后更新记忆，让自己持续进化
+- **持续优化**：根据角色表现，主动改进角色配置或创建更好的角色
+- **清晰汇报**：向用户说明任务由谁完成、结论是什么、有什么建议`,
+                },
                 {
                     label: '$(code) 编程助手',
                     description: '代码编写、调试、架构设计',
@@ -306,6 +349,9 @@ export function registerLLMChatCommands(
                 avatar?: string;
                 systemPrompt?: string;
                 webEnabled?: boolean;
+                memoryEnabled?: boolean;
+                delegationEnabled?: boolean;
+                roleManagementEnabled?: boolean;
             }
 
             const items: PresetItem[] = [
@@ -315,6 +361,9 @@ export function registerLLMChatCommands(
                     avatar: p.avatar,
                     systemPrompt: p.systemPrompt,
                     webEnabled: p.webEnabled,
+                    memoryEnabled: p.memoryEnabled,
+                    delegationEnabled: p.delegationEnabled,
+                    roleManagementEnabled: p.roleManagementEnabled,
                 })),
                 { label: '$(add) 自定义角色…', description: '手动输入名称和提示词', isCustom: true, kind: vscode.QuickPickItemKind.Separator } as PresetItem,
                 { label: '$(add) 自定义角色…', description: '完全自定义名称、提示词和图标', isCustom: true },
@@ -374,6 +423,9 @@ export function registerLLMChatCommands(
 
             const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, {
                 web: pick.webEnabled ?? false,
+                memory: pick.memoryEnabled ?? false,
+                delegation: pick.delegationEnabled ?? false,
+                roleManagement: pick.roleManagementEnabled ?? false,
             });
             if (roleId) {
                 roleProvider.refresh();
