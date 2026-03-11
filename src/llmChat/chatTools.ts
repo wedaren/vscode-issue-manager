@@ -15,6 +15,7 @@ import * as path from 'path';
 import {
     getAllIssueMarkdowns,
     getIssueMarkdown,
+    getIssueMarkdownContent,
     createIssueMarkdown,
     updateIssueMarkdownFrontmatter,
     updateIssueMarkdownBody,
@@ -24,6 +25,14 @@ import {
     createIssueNodes,
     getFlatTree,
     getIssueData,
+    getIssueNodesByUri,
+    getSingleIssueNodeByUri,
+    readTree,
+    writeTree,
+    moveNode,
+    removeNode,
+    findParentNodeById,
+    getAncestors,
 } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
@@ -41,12 +50,17 @@ function issueLink(title: string, fileName: string): string {
 export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
     {
         name: 'search_issues',
-        description: '搜索 issueMarkdown 笔记。根据关键词在所有笔记标题中搜索匹配项，返回标题和文件路径。',
+        description: '搜索 issueMarkdown 笔记。支持在标题、frontmatter 字段和正文中搜索，支持多关键词（空格分隔，全部匹配）。返回标题、文件路径、类型标签和修改时间。',
         inputSchema: {
             type: 'object',
             properties: {
-                query: { type: 'string', description: '搜索关键词（支持模糊匹配）' },
+                query: { type: 'string', description: '搜索关键词（多个词用空格分隔，全部匹配）' },
                 limit: { type: 'number', description: '最多返回条数，默认 20' },
+                scope: {
+                    type: 'string',
+                    enum: ['all', 'title', 'body'],
+                    description: '搜索范围：all（默认，标题+frontmatter+正文）、title（仅标题）、body（仅正文）',
+                },
             },
             required: ['query'],
         },
@@ -304,6 +318,42 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
             required: ['tabId', 'key'],
         },
     },
+    // ─── 笔记关联管理工具 ─────────────────────────────────────
+    {
+        name: 'link_issue',
+        description: '将一个笔记关联到另一个笔记下（建立父子关系）。如果源笔记不在树中，会创建节点；如果已在树中，会移动到新父节点下。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                childFileName: { type: 'string', description: '要关联的子笔记文件名（如 20240115-103045.md）' },
+                parentFileName: { type: 'string', description: '目标父笔记文件名。留空则关联到树根级。' },
+            },
+            required: ['childFileName'],
+        },
+    },
+    {
+        name: 'unlink_issue',
+        description: '解除笔记的父子关联。将笔记从当前父节点移到树根级，或从树中完全移除。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileName: { type: 'string', description: '要解除关联的笔记文件名' },
+                removeFromTree: { type: 'boolean', description: '是否从树中完全移除（默认 false，移到根级）' },
+            },
+            required: ['fileName'],
+        },
+    },
+    {
+        name: 'get_issue_relations',
+        description: '查询笔记的层级关系：父笔记、子笔记列表、祖先链。用于了解笔记之间的关联结构。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileName: { type: 'string', description: '要查询的笔记文件名' },
+            },
+            required: ['fileName'],
+        },
+    },
 ];
 
 // ─── 工具执行 ─────────────────────────────────────────────────
@@ -357,6 +407,12 @@ export async function executeChatTool(toolName: string, input: Record<string, un
                 return await executeSelectOption(input);
             case 'press_key':
                 return await executePressKey(input);
+            case 'link_issue':
+                return await executeLinkIssue(input);
+            case 'unlink_issue':
+                return await executeUnlinkIssue(input);
+            case 'get_issue_relations':
+                return await executeGetIssueRelations(input);
             default:
                 return { success: false, content: `未知工具: ${toolName}` };
         }
@@ -370,31 +426,122 @@ export async function executeChatTool(toolName: string, input: Record<string, un
 // ─── 各工具实现 ───────────────────────────────────────────────
 
 async function executeSearchIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const query = String(input.query || '').trim().toLowerCase();
+    const queryRaw = String(input.query || '').trim();
     const limit = typeof input.limit === 'number' ? input.limit : 20;
+    const scope = String(input.scope || 'all');
 
-    if (!query) {
+    if (!queryRaw) {
         return { success: false, content: '请提供搜索关键词' };
     }
 
-    const allIssues = await getAllIssueMarkdowns({});
-    const matches = allIssues
-        .filter(issue => issue.title.toLowerCase().includes(query))
-        .slice(0, limit)
-        .map(issue => ({
-            fileName: path.basename(issue.uri.fsPath),
-            title: issue.title,
-        }));
+    // 多关键词：空格分隔，全部匹配
+    const keywords = queryRaw.toLowerCase().split(/\s+/).filter(Boolean);
 
-    if (matches.length === 0) {
-        return { success: true, content: `未找到包含「${query}」的笔记。` };
+    const allIssues = await getAllIssueMarkdowns({});
+
+    // 评分搜索：标题匹配权重高，frontmatter 次之，正文最低
+    const scored: { issue: typeof allIssues[number]; score: number; bodyContent?: string }[] = [];
+
+    for (const issue of allIssues) {
+        const titleLower = issue.title.toLowerCase();
+        const fmStr = issue.frontmatter ? JSON.stringify(issue.frontmatter).toLowerCase() : '';
+
+        let score = 0;
+        let allMatched = true;
+
+        for (const kw of keywords) {
+            const inTitle = titleLower.includes(kw);
+            const inFm = fmStr.includes(kw);
+
+            if (inTitle) {
+                score += 10;
+            } else if (inFm) {
+                score += 5;
+            } else if (scope !== 'title') {
+                // 需要搜正文时延迟读取
+                score = -1; // 标记待检查
+                break;
+            } else {
+                allMatched = false;
+                break;
+            }
+        }
+
+        // 标题/frontmatter 已全部匹配
+        if (allMatched && score > 0) {
+            scored.push({ issue, score });
+            continue;
+        }
+
+        // 需要检查正文（scope !== 'title' 且有关键词未在标题/fm 中命中）
+        if (score === -1 && scope !== 'title') {
+            try {
+                const bodyContent = await getIssueMarkdownContent(issue.uri);
+                const bodyLower = bodyContent.toLowerCase();
+                let bodyScore = 0;
+                let bodyAllMatched = true;
+
+                for (const kw of keywords) {
+                    const inTitle = titleLower.includes(kw);
+                    const inFm = fmStr.includes(kw);
+                    const inBody = bodyLower.includes(kw);
+
+                    if (inTitle) { bodyScore += 10; }
+                    else if (inFm) { bodyScore += 5; }
+                    else if (inBody) { bodyScore += 1; }
+                    else { bodyAllMatched = false; break; }
+                }
+
+                if (bodyAllMatched && bodyScore > 0) {
+                    scored.push({ issue, score: bodyScore });
+                }
+            } catch { /* 读取失败跳过 */ }
+        }
     }
 
-    const lines = matches.map((m, i) => `${i + 1}. ${issueLink(m.title, m.fileName)}`);
+    // 按分数降序，同分按 mtime 降序
+    scored.sort((a, b) => b.score - a.score || b.issue.mtime - a.issue.mtime);
+
+    const matches = scored.slice(0, limit);
+
+    if (matches.length === 0) {
+        return { success: true, content: `未找到匹配「${queryRaw}」的笔记。` };
+    }
+
+    const lines = matches.map((m, i) => {
+        const fileName = path.basename(m.issue.uri.fsPath);
+        const fm = m.issue.frontmatter as Record<string, unknown> | null;
+        // 类型标签：从 frontmatter 中提取有意义的类型标记
+        const tags: string[] = [];
+        if (fm?.chat_role) { tags.push('角色'); }
+        else if (fm?.chat_conversation) { tags.push('对话'); }
+        else if (fm?.chat_execution_log) { tags.push('日志'); }
+        else if (fm?.chat_tool_call) { tags.push('工具调用'); }
+        else if (fm?.chat_group) { tags.push('群组'); }
+        else if (fm?.assistant_memory) { tags.push('记忆'); }
+
+        const tagStr = tags.length > 0 ? ` \`${tags.join('/')}\`` : '';
+        const age = formatAge(m.issue.mtime);
+
+        return `${i + 1}. ${issueLink(m.issue.title, fileName)}${tagStr} (${age})`;
+    });
+
     return {
         success: true,
         content: `找到 ${matches.length} 条匹配结果：\n${lines.join('\n')}`,
     };
+}
+
+/** 将时间戳格式化为相对时间描述 */
+function formatAge(mtime: number): string {
+    const diff = Date.now() - mtime;
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) { return '刚刚'; }
+    if (mins < 60) { return `${mins}分钟前`; }
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) { return `${hours}小时前`; }
+    const days = Math.floor(hours / 24);
+    return `${days}天前`;
 }
 
 async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
@@ -1132,4 +1279,193 @@ async function executePressKey(input: Record<string, unknown>): Promise<ToolCall
         logger.error('[ChatTools] 按键失败', e);
         return { success: false, content: `按键失败: ${msg}` };
     }
+}
+
+// ─── 笔记关联管理实现 ─────────────────────────────────────────
+
+async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const childFileName = String(input.childFileName || '').trim();
+    const parentFileName = String(input.parentFileName || '').trim();
+
+    if (!childFileName) {
+        return { success: false, content: '请提供子笔记文件名（childFileName）' };
+    }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const childUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), childFileName);
+
+    // 检查子笔记文件是否存在
+    try {
+        await vscode.workspace.fs.stat(childUri);
+    } catch {
+        return { success: false, content: `笔记文件不存在: ${childFileName}` };
+    }
+
+    // 确定父节点
+    let parentNodeId: string | undefined;
+    if (parentFileName) {
+        const parentUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), parentFileName);
+        const parentNode = await getSingleIssueNodeByUri(parentUri);
+        if (!parentNode) {
+            // 父笔记不在树中，先创建
+            const created = await createIssueNodes([parentUri]);
+            if (created && created.length > 0) {
+                parentNodeId = created[0].id;
+            } else {
+                return { success: false, content: `无法在树中找到或创建父笔记: ${parentFileName}` };
+            }
+        } else {
+            parentNodeId = parentNode.id;
+        }
+    }
+
+    // 检查子笔记是否已在树中
+    const existingNode = await getSingleIssueNodeByUri(childUri);
+
+    if (existingNode) {
+        // 已在树中 → 移动
+        const treeData = await readTree();
+        moveNode(treeData, existingNode.id, parentNodeId ?? null, 0);
+        await writeTree(treeData);
+
+        const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
+        return {
+            success: true,
+            content: `✅ 已将 ${issueLink(childFileName, childFileName)} 移动到 ${target} 下`,
+        };
+    } else {
+        // 不在树中 → 创建节点
+        await createIssueNodes([childUri], parentNodeId);
+
+        const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
+        return {
+            success: true,
+            content: `✅ 已将 ${issueLink(childFileName, childFileName)} 关联到 ${target} 下`,
+        };
+    }
+}
+
+async function executeUnlinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const fileName = String(input.fileName || '').trim();
+    const removeFromTree = input.removeFromTree === true;
+
+    if (!fileName) {
+        return { success: false, content: '请提供笔记文件名（fileName）' };
+    }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+    const node = await getSingleIssueNodeByUri(uri);
+
+    if (!node) {
+        return { success: false, content: `笔记不在树中: ${fileName}` };
+    }
+
+    const treeData = await readTree();
+
+    if (removeFromTree) {
+        // 完全移除
+        const { success } = removeNode(treeData, node.id);
+        if (!success) {
+            return { success: false, content: `移除失败: ${fileName}` };
+        }
+        await writeTree(treeData);
+        return { success: true, content: `✅ 已将 ${issueLink(fileName, fileName)} 从树中移除` };
+    } else {
+        // 移到根级
+        const parent = findParentNodeById(treeData.rootNodes, node.id);
+        if (!parent) {
+            return { success: true, content: `${issueLink(fileName, fileName)} 已在根级，无需操作` };
+        }
+        moveNode(treeData, node.id, null, 0);
+        await writeTree(treeData);
+        return { success: true, content: `✅ 已将 ${issueLink(fileName, fileName)} 移到根级` };
+    }
+}
+
+async function executeGetIssueRelations(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const fileName = String(input.fileName || '').trim();
+
+    if (!fileName) {
+        return { success: false, content: '请提供笔记文件名（fileName）' };
+    }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+    const nodes = await getIssueNodesByUri(uri);
+
+    if (nodes.length === 0) {
+        return { success: true, content: `${issueLink(fileName, fileName)} 不在树中，无层级关系。` };
+    }
+
+    const node = nodes[0];
+    const treeData = await readTree();
+    const flatTree = await getFlatTree();
+    const lines: string[] = [];
+
+    // 祖先链
+    const ancestors = getAncestors(node.id, treeData);
+    if (ancestors.length > 0) {
+        const chain = ancestors.map(a => {
+            const flat = flatTree.find(f => f.id === a.id);
+            const name = flat?.title || path.basename(a.filePath, '.md');
+            return issueLink(name, path.basename(a.filePath));
+        });
+        lines.push(`📍 **祖先链**: ${chain.join(' → ')} → **${fileName}**`);
+    }
+
+    // 父节点
+    const parent = findParentNodeById(treeData.rootNodes, node.id);
+    if (parent) {
+        const flat = flatTree.find(f => f.id === parent.id);
+        const parentName = flat?.title || path.basename(parent.filePath, '.md');
+        lines.push(`⬆️ **父笔记**: ${issueLink(parentName, path.basename(parent.filePath))}`);
+    } else {
+        lines.push('⬆️ **父笔记**: （根级节点）');
+    }
+
+    // 子节点
+    if (node.children && node.children.length > 0) {
+        lines.push(`⬇️ **子笔记** (${node.children.length} 个):`);
+        for (const child of node.children) {
+            const flat = flatTree.find(f => f.id === child.id);
+            const childName = flat?.title || path.basename(child.filePath, '.md');
+            const childFile = path.basename(child.filePath);
+            const grandCount = child.children?.length || 0;
+            const suffix = grandCount > 0 ? ` (含 ${grandCount} 个子节点)` : '';
+            lines.push(`  - ${issueLink(childName, childFile)}${suffix}`);
+        }
+    } else {
+        lines.push('⬇️ **子笔记**: 无');
+    }
+
+    // 兄弟节点
+    if (parent) {
+        const siblings = parent.children.filter(c => c.id !== node.id);
+        if (siblings.length > 0) {
+            lines.push(`↔️ **兄弟笔记** (${siblings.length} 个):`);
+            for (const sib of siblings.slice(0, 10)) {
+                const flat = flatTree.find(f => f.id === sib.id);
+                const sibName = flat?.title || path.basename(sib.filePath, '.md');
+                lines.push(`  - ${issueLink(sibName, path.basename(sib.filePath))}`);
+            }
+            if (siblings.length > 10) {
+                lines.push(`  - …还有 ${siblings.length - 10} 个`);
+            }
+        }
+    }
+
+    return { success: true, content: lines.join('\n') };
 }

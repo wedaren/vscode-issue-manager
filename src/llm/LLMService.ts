@@ -191,6 +191,8 @@ export class LLMService {
             modelFamily?: string;
             /** 工具调用状态回调（用于 UI 显示） */
             onToolStatus?: (status: { toolName: string; phase: 'calling' | 'done'; result?: string }) => void;
+            /** LLM 决定调用工具时触发（每轮一次），传入本轮文本和待调用工具列表 */
+            onToolsDecided?: (info: { roundText: string; toolNames: string[]; round: number }) => void;
             /** 最大工具调用轮次（防止无限循环） */
             maxToolRounds?: number;
         },
@@ -254,6 +256,15 @@ export class LLMService {
                 if (toolCalls.length === 0) {
                     break;
                 }
+
+                // 通知调用方：LLM 决定调用哪些工具
+                try {
+                    options?.onToolsDecided?.({
+                        roundText,
+                        toolNames: toolCalls.map(tc => tc.name),
+                        round,
+                    });
+                } catch { /* 回调错误不阻塞 */ }
 
                 // 处理工具调用
                 // 1. 将本轮助手回复（包含文本和工具调用）添加到消息列表

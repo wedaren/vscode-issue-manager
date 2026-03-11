@@ -261,6 +261,26 @@ export interface ChatExecutionLogInfo {
     failureCount: number;
 }
 
+// ─── 工具调用详情节点 ─────────────────────────────────────────
+
+/** 工具调用详情节点的 frontmatter（每次工具调用一个文件） */
+export interface ChatToolCallFrontmatter {
+    /** 标记为工具调用详情节点 */
+    chat_tool_call: true;
+    /** 关联的执行日志文件 ID */
+    chat_log_id: string;
+    /** Run 编号 */
+    run_number: number;
+    /** 工具名称 */
+    tool_name: string;
+    /** 调用是否成功 */
+    tool_success: boolean;
+    /** 调用耗时（ms） */
+    tool_duration: number;
+    /** 本次 Run 中的调用序号 */
+    call_sequence: number;
+}
+
 // ─── Chrome 面板聊天 ─────────────────────────────────────────
 
 /** Chrome 面板聊天对话的 frontmatter */

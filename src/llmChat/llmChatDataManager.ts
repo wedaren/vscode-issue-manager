@@ -12,7 +12,7 @@ import {
     updateIssueMarkdownFrontmatter,
 } from '../data/IssueMarkdowns';
 import type { FrontmatterData } from '../data/IssueMarkdowns';
-import { createIssueNodes } from '../data/issueTreeManager';
+import { createIssueNodes, getSingleIssueNodeByUri } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import type {
     ChatRoleInfo,
@@ -28,6 +28,7 @@ import type {
     ChromeChatInfo,
     ChatExecutionLogFrontmatter,
     ChatExecutionLogInfo,
+    ChatToolCallFrontmatter,
     ExecutionRunRecord,
     ExecutionToolCall,
 } from './types';
@@ -99,7 +100,7 @@ export async function createChatRole(
         timer_enabled: false,
         timer_interval: 30000,
         timer_max_concurrent: 2,
-        timer_timeout: 60000,
+        timer_timeout: 180000,
         timer_max_retries: 3,
         timer_retry_delay: 5000,
     };
@@ -166,7 +167,11 @@ export async function createConversation(roleId: string, title?: string): Promis
 
     const body = `# ${convoTitle}\n\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
-    if (uri) { await createIssueNodes([uri]); }
+    if (uri) {
+        // 挂在角色的树节点下
+        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
+        await createIssueNodes([uri], roleNode?.id);
+    }
     return uri;
 }
 
@@ -559,7 +564,9 @@ export async function getOrCreateExecutionLog(conversationUri: vscode.Uri): Prom
         const logUri = await createIssueMarkdown({ frontmatter: logFm, markdownBody: body });
         if (!logUri) { return null; }
 
-        await createIssueNodes([logUri]);
+        // 挂在对话的树节点下
+        const convoNode = await getSingleIssueNodeByUri(conversationUri);
+        await createIssueNodes([logUri], convoNode?.id);
 
         // 将 log_id 写回对话文件
         const logId = extractId(logUri);
@@ -804,6 +811,83 @@ async function trimLogRuns(logUri: vscode.Uri): Promise<void> {
 function pad2(n: number): string { return n.toString().padStart(2, '0'); }
 function formatTimeHMS(d: Date): string {
     return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+// ─── 工具调用详情节点 ─────────────────────────────────────────
+
+/** 创建工具调用节点的元数据 */
+export interface ToolCallNodeMeta {
+    /** 工具调用是否成功 */
+    success: boolean;
+    /** 工具描述（来自工具定义） */
+    description?: string;
+    /** 本次 Run 中的调用序号 */
+    sequence: number;
+    /** Run 编号 */
+    runNumber: number;
+}
+
+/**
+ * 为单次工具调用创建独立的 issueMarkdown 节点，挂在执行日志下。
+ * 包含完整的输入 JSON 和输出内容，以及工具元数据。
+ * @returns 文件名（如 `20260310-232134-xxx.md`），用于在执行日志中生成链接；失败时返回 null
+ */
+export async function createToolCallNode(
+    logUri: vscode.Uri,
+    toolName: string,
+    input: unknown,
+    output: string,
+    durationMs: number,
+    meta: ToolCallNodeMeta,
+): Promise<string | null> {
+    try {
+        const logId = extractId(logUri);
+        const ts = formatTimeHMS(new Date());
+        const durLabel = durationMs >= 1000 ? `${(durationMs / 1000).toFixed(1)}s` : `${durationMs}ms`;
+        const statusIcon = meta.success === false ? '❌' : '✅';
+
+        let inputStr: string;
+        try { inputStr = JSON.stringify(input, null, 2); } catch { inputStr = String(input); }
+
+        const outputLen = output.length;
+        const outputLenLabel = outputLen >= 1024
+            ? `${(outputLen / 1024).toFixed(1)}KB`
+            : `${outputLen}字符`;
+
+        const title = `#${meta.sequence} ${toolName} (${durLabel}) ${statusIcon}`;
+
+        const fm: Partial<FrontmatterData> & ChatToolCallFrontmatter = {
+            chat_tool_call: true,
+            chat_log_id: logId,
+            run_number: meta.runNumber,
+            tool_name: toolName,
+            tool_success: meta.success,
+            tool_duration: durationMs,
+            call_sequence: meta.sequence,
+        };
+
+        const infoParts: string[] = [];
+        if (meta.description) { infoParts.push(meta.description); }
+        infoParts.push(`输出 ${outputLenLabel}`);
+        infoParts.push(ts);
+
+        let body = `# ${title}\n\n`;
+        body += `> ${infoParts.join(' | ')}\n\n`;
+        body += `## 输入\n\n\`\`\`json\n${inputStr}\n\`\`\`\n\n`;
+        body += `## 输出\n\n${output}\n`;
+
+        const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
+        if (!uri) { return null; }
+
+        // 挂在执行日志的树节点下
+        const logNode = await getSingleIssueNodeByUri(logUri);
+        await createIssueNodes([uri], logNode?.id);
+
+        return path.basename(uri.fsPath);
+    } catch (e) {
+        logger.warn('createToolCallNode 失败', e);
+        return null;
+    }
 }
 
 // ─── Chrome 面板聊天 ─────────────────────────────────────────

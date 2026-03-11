@@ -127,7 +127,7 @@ export class PersonalAssistantService {
             timer_enabled: false,
             timer_interval: 30000,
             timer_max_concurrent: 2,
-            timer_timeout: 60000,
+            timer_timeout: 180000,
             timer_max_retries: 3,
             timer_retry_delay: 5000,
         };
