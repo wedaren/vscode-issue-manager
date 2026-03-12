@@ -13,6 +13,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { LLMService } from '../llm/LLMService';
+import { whenCacheReady } from '../data/IssueMarkdowns';
 import { Logger } from '../core/utils/Logger';
 import {
     getAllChatRoles,
@@ -70,6 +71,7 @@ export class RoleTimerManager implements vscode.Disposable {
 
     /** 启动：读取所有角色配置并为启用的角色创建定时器，同时监听角色文件变化和保存事件 */
     async start(): Promise<void> {
+        await whenCacheReady;
         await this.syncTimers();
         this.startFileWatcher();
         this.startSaveWatcher();

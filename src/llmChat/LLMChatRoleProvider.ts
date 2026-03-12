@@ -5,6 +5,7 @@
  * 顶部固定显示「个人助手」专属入口节点。
  */
 import * as vscode from 'vscode';
+import { whenCacheReady } from '../data/IssueMarkdowns';
 import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo } from './types';
 
@@ -105,7 +106,9 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
 
     async getChildren(element?: LLMChatViewNode): Promise<LLMChatViewNode[]> {
         if (!element) {
-            const [roles, groups] = await Promise.all([getAllChatRoles(), getAllChatGroups()]);
+            // 确保磁盘缓存 + 类型索引就绪后再查询
+            await whenCacheReady;
+            const [roles, groups] = [getAllChatRoles(), getAllChatGroups()];
 
             const nodes: LLMChatViewNode[] = [];
             nodes.push(...groups.map(g => new ChatGroupNode(g)));
