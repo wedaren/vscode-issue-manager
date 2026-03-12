@@ -20,6 +20,7 @@ import {
     getOrCreateExecutionLog,
     startLogRun,
     appendLogLine,
+    getRoleSystemPrompt,
 } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatGroupInfo } from './types';
 import { CHAT_TOOLS, executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
@@ -375,9 +376,13 @@ export class LLMChatService {
         options?: { signal?: AbortSignal },
     ): Promise<CoordinatorPlan> {
         const members = this._activeGroupMembers;
-        const memberDescriptions = members.map(m =>
-            `- 「${m.name}」(${m.avatar}): ${m.systemPrompt?.slice(0, 80) || '无特定职责'}`,
-        ).join('\n');
+        const memberPrompts = await Promise.all(
+            members.map(async m => {
+                const prompt = await getRoleSystemPrompt(m.uri);
+                return `- 「${m.name}」(${m.avatar}): ${prompt?.slice(0, 80) || '无特定职责'}`;
+            }),
+        );
+        const memberDescriptions = memberPrompts.join('\n');
 
         // 获取最近几条历史消息作为上下文
         const history = await parseGroupConversationMessages(uri);
@@ -633,8 +638,11 @@ ${userMessage}
 
         // 系统指令 + 工具说明
         let systemContent = '';
-        if (this._activeRole?.systemPrompt) {
-            systemContent = `[系统指令] ${this._activeRole.systemPrompt}`;
+        if (this._activeRole) {
+            const prompt = await getRoleSystemPrompt(this._activeRole.uri);
+            if (prompt) {
+                systemContent = `[系统指令] ${prompt}`;
+            }
         }
 
         // 根据角色工具集动态追加工具说明
@@ -707,10 +715,11 @@ ${userMessage}
     ): Promise<vscode.LanguageModelChatMessage[]> {
         const msgs: vscode.LanguageModelChatMessage[] = [];
 
-        // 该成员的 system prompt
-        if (member.systemPrompt) {
+        // 该成员的 system prompt（从文件 body 按需读取）
+        const memberPrompt = await getRoleSystemPrompt(member.uri);
+        if (memberPrompt) {
             msgs.push(vscode.LanguageModelChatMessage.User(
-                `[系统指令] ${member.systemPrompt}`,
+                `[系统指令] ${memberPrompt}`,
             ));
         }
 

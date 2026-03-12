@@ -10,7 +10,7 @@ export interface ChatRoleFrontmatter {
     chat_role_name: string;
     /** 角色图标（ThemeIcon 名称） */
     chat_role_avatar?: string;
-    /** 系统提示词 */
+    /** @deprecated 系统提示词已迁移至 markdown body，此字段仅用于向后兼容读取旧文件 */
     chat_role_system_prompt?: string;
     /** 指定模型 family（可选，覆盖全局配置） */
     chat_role_model_family?: string;
@@ -88,8 +88,8 @@ export interface ChatRoleInfo {
     name: string;
     /** 角色图标 */
     avatar: string;
-    /** 系统提示词 */
-    systemPrompt: string;
+    /** 系统提示词（懒加载，列表查询时为 undefined；使用 getRoleSystemPrompt() 按需读取） */
+    systemPrompt?: string;
     /** 指定模型 family */
     modelFamily?: string;
     /** 文件 URI */

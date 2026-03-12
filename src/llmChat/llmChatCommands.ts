@@ -495,7 +495,7 @@ export function registerLLMChatCommands(
             const memberPicks = await vscode.window.showQuickPick(
                 allRoles.map(r => ({
                     label: `$(${r.avatar}) ${r.name}`,
-                    description: r.systemPrompt?.slice(0, 30) || '',
+                    description: r.toolSets.length > 0 ? r.toolSets.join('/') : '',
                     roleId: r.id,
                 })),
                 {

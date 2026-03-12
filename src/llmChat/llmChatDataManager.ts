@@ -10,6 +10,7 @@ import {
     extractFrontmatterAndBody,
     createIssueMarkdown,
     updateIssueMarkdownFrontmatter,
+    updateIssueMarkdownBody,
 } from '../data/IssueMarkdowns';
 import type { FrontmatterData } from '../data/IssueMarkdowns';
 import { createIssueNodes, getSingleIssueNodeByUri } from '../data/issueTreeManager';
@@ -57,7 +58,6 @@ export function getAllChatRoles(): ChatRoleInfo[] {
             id: extractId(md.uri),
             name: fm.chat_role_name || md.title || '未命名角色',
             avatar: fm.chat_role_avatar || 'hubot',
-            systemPrompt: fm.chat_role_system_prompt || '',
             modelFamily: fm.chat_role_model_family,
             uri: md.uri,
             timerEnabled: fm.timer_enabled === true,
@@ -82,6 +82,52 @@ export function getChatRoleById(roleId: string): ChatRoleInfo | undefined {
     return roles.find(r => r.id === roleId);
 }
 
+/**
+ * 从角色文件的 markdown body 中读取系统提示词（懒加载，按需调用）。
+ * body 格式约定：第一行为 `# 角色名`，其后内容即为 system prompt。
+ * 向后兼容：若 body 为空但 frontmatter 中仍有 chat_role_system_prompt，则回退读取。
+ */
+export async function getRoleSystemPrompt(uri: vscode.Uri): Promise<string> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+        const { frontmatter, body } = extractFrontmatterAndBody(raw);
+
+        // 去掉第一行 # 标题
+        const stripped = body.replace(/^#\s+.*\n?/, '').trim();
+        if (stripped) { return stripped; }
+
+        // 向后兼容：旧文件的 system prompt 可能还在 frontmatter 中
+        const fm = frontmatter as Record<string, unknown> | null;
+        if (fm?.chat_role_system_prompt && typeof fm.chat_role_system_prompt === 'string') {
+            return fm.chat_role_system_prompt;
+        }
+        return '';
+    } catch (e) {
+        logger.warn('[llmChatDataManager] 读取角色 system prompt 失败', e);
+        return '';
+    }
+}
+
+/**
+ * 更新角色文件的系统提示词（写入 markdown body，保留 frontmatter 不变）。
+ */
+export async function updateRoleSystemPrompt(uri: vscode.Uri, newPrompt: string): Promise<boolean> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const fm = frontmatter as Record<string, unknown> | null;
+        const roleName = (fm?.chat_role_name as string) || '未命名角色';
+
+        const newBody = newPrompt
+            ? `# ${roleName}\n\n${newPrompt}\n`
+            : `# ${roleName}\n`;
+        return await updateIssueMarkdownBody(uri, newBody);
+    } catch (e) {
+        logger.error('[llmChatDataManager] 更新角色 system prompt 失败', e);
+        return false;
+    }
+}
+
 /** 创建新的聊天角色文件，返回角色 ID */
 export async function createChatRole(
     name: string,
@@ -96,7 +142,6 @@ export async function createChatRole(
         chat_role: true,
         chat_role_name: name,
         chat_role_avatar: avatar || 'hubot',
-        chat_role_system_prompt: systemPrompt,
         chat_role_model_family: modelFamily || defaultModelFamily,
         // ─── 定时器配置（默认关闭，按需开启） ────────────────
         timer_enabled: false,
@@ -110,7 +155,9 @@ export async function createChatRole(
         mcp_servers: mcpServers ?? [],
     } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[] };
 
-    const body = `# ${name}\n`;
+    const body = systemPrompt
+        ? `# ${name}\n\n${systemPrompt}\n`
+        : `# ${name}\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
     if (!uri) {
         return null;

@@ -18,14 +18,19 @@ export class ChatRoleNode extends vscode.TreeItem {
         this.iconPath = new vscode.ThemeIcon(role.avatar || 'hubot');
 
         // 工具集徽章
-        const capStr = role.toolSets.length > 0 ? ` · ${role.toolSets.join('/')}` : '';
+        const capStr = role.toolSets.length > 0 ? role.toolSets.join('/') : '';
 
-        this.description = role.systemPrompt
-            ? role.systemPrompt.slice(0, 40) + (role.systemPrompt.length > 40 ? '…' : '') + capStr
-            : capStr || undefined;
+        this.description = capStr || undefined;
         this.tooltip = new vscode.MarkdownString(
-            `**${role.name}**${capStr ? `\n\n工具集: ${role.toolSets.join(' · ')}` : ''}\n\n${role.systemPrompt || '（无系统提示词）'}`,
+            `**${role.name}**${capStr ? `\n\n工具集: ${role.toolSets.join(' · ')}` : ''}\n\n（系统提示词在文件正文中）`,
         );
+
+        // 点击打开角色文件（编辑 system prompt）
+        this.command = {
+            command: 'vscode.open',
+            title: '打开角色',
+            arguments: [role.uri],
+        };
     }
 }
 

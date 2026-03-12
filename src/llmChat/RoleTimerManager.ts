@@ -27,6 +27,7 @@ import {
     startLogRun,
     appendLogLine,
     createToolCallNode,
+    getRoleSystemPrompt,
 } from './llmChatDataManager';
 import { executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 import {
@@ -570,8 +571,9 @@ export class RoleTimerManager implements vscode.Disposable {
      * 保留第 1 轮（原始任务）+ 最近 N 轮，中间部分压缩为摘要行。
      */
     private async buildMessages(uri: vscode.Uri, role: ChatRoleInfo): Promise<vscode.LanguageModelChatMessage[]> {
-        const systemText = role.systemPrompt
-            ? `[系统指令] ${role.systemPrompt}`
+        const prompt = await getRoleSystemPrompt(role.uri);
+        const systemText = prompt
+            ? `[系统指令] ${prompt}`
             : '[系统指令] 你是一个智能助手，请根据对话上下文给出有帮助的回复。';
         const systemMsg = vscode.LanguageModelChatMessage.User(systemText);
 

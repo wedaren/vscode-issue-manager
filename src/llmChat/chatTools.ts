@@ -48,6 +48,8 @@ import {
     appendUserMessageQueued,
     parseConversationMessages,
     getConversationsForRole,
+    getRoleSystemPrompt,
+    updateRoleSystemPrompt,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { readStateMarker } from './convStateMarker';
@@ -2233,9 +2235,11 @@ async function executeListChatRoles(context?: ToolExecContext): Promise<ToolCall
     }
     const config = vscode.workspace.getConfiguration('issueManager');
     const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
-    const lines = filtered.map(r => {
-        const promptPreview = r.systemPrompt
-            ? r.systemPrompt.slice(0, 60) + (r.systemPrompt.length > 60 ? '…' : '')
+    const prompts = await Promise.all(filtered.map(r => getRoleSystemPrompt(r.uri)));
+    const lines = filtered.map((r, i) => {
+        const prompt = prompts[i];
+        const promptPreview = prompt
+            ? prompt.slice(0, 60) + (prompt.length > 60 ? '…' : '')
             : '（无提示词）';
         const model = r.modelFamily ? r.modelFamily : `${globalDefault}（全局默认）`;
         const capStr = r.toolSets.length > 0 ? ` · 工具集: ${r.toolSets.join('/')}` : '';
@@ -2591,9 +2595,7 @@ async function executeUpdateRoleConfig(input: Record<string, unknown>): Promise<
     if (!role) { return { success: false, content: `未找到角色「${roleNameOrId}」` }; }
 
     try {
-        const ok = await updateIssueMarkdownFrontmatter(role.uri, {
-            chat_role_system_prompt: newSystemPrompt,
-        } as Partial<FrontmatterData>);
+        const ok = await updateRoleSystemPrompt(role.uri, newSystemPrompt);
         if (!ok) { return { success: false, content: '更新失败' }; }
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
         const reasonStr = reason ? `\n更新原因：${reason}` : '';

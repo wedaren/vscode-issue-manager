@@ -1092,7 +1092,7 @@
         {
           "command": "issueManager.llmChat.editRole",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
-          "group": "inline@4"
+          "group": "9_edit"
         },
         {
           "command": "issueManager.llmChat.newConversation",
