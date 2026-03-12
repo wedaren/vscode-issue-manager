@@ -16,18 +16,14 @@ export class ChatRoleNode extends vscode.TreeItem {
         this.contextValue = 'chatRole';
         this.iconPath = new vscode.ThemeIcon(role.avatar || 'hubot');
 
-        // 能力徽章
-        const caps: string[] = [];
-        if (role.memoryEnabled) { caps.push('记忆'); }
-        if (role.delegationEnabled) { caps.push('委派'); }
-        if (role.roleManagementEnabled) { caps.push('管理'); }
-        const capStr = caps.length > 0 ? ` · ${caps.join('/')}` : '';
+        // 工具集徽章
+        const capStr = role.toolSets.length > 0 ? ` · ${role.toolSets.join('/')}` : '';
 
         this.description = role.systemPrompt
             ? role.systemPrompt.slice(0, 40) + (role.systemPrompt.length > 40 ? '…' : '') + capStr
             : capStr || undefined;
         this.tooltip = new vscode.MarkdownString(
-            `**${role.name}**${capStr ? `\n\n能力: ${caps.join(' · ')}` : ''}\n\n${role.systemPrompt || '（无系统提示词）'}`,
+            `**${role.name}**${capStr ? `\n\n工具集: ${role.toolSets.join(' · ')}` : ''}\n\n${role.systemPrompt || '（无系统提示词）'}`,
         );
     }
 }

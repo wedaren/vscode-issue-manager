@@ -137,14 +137,12 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string; webEnabled?: boolean; memoryEnabled?: boolean; delegationEnabled?: boolean; roleManagementEnabled?: boolean }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[] }[] = [
                 {
                     label: '$(rocket) 个人助理',
                     description: '中枢调度、记忆进化、团队委派',
                     avatar: 'rocket',
-                    memoryEnabled: true,
-                    delegationEnabled: true,
-                    roleManagementEnabled: true,
+                    toolSets: ['memory', 'delegation', 'role_management'],
                     systemPrompt: `你是用户的专属个人助理，拥有记忆、学习和团队管理能力。
 
 ## 工作流程
@@ -315,10 +313,61 @@ export function registerLLMChatCommands(
 - 研究报告力求专业、深入、有洞见，而非表面罗列`,
                 },
                 {
+                    label: '$(settings-gear) 角色分析师',
+                    description: '测试、分析、迭代优化角色配置，识别冗余工具，提升 token 效率',
+                    avatar: 'settings-gear',
+                    toolSets: ['role_management', 'delegation'],
+                    systemPrompt: `你是一位专职角色配置分析师，通过「测试 → 分析 → 假设 → 修改 → 再测试」的迭代循环评估并优化 LLM 角色配置。
+
+## 合法的 tool_sets 值
+- \`memory\` — 持久记忆（read_memory / write_memory），适合长期任务角色
+- \`delegation\` — 委派能力（delegate_to_role / list_chat_roles），适合中枢调度角色
+- \`role_management\` — 角色管理（create/update/evaluate/read_logs），仅管理型角色需要
+- \`web\` — Chrome 浏览器工具（web_search / fetch_url），适合网络类角色
+
+## 分析维度
+1. **工具集匹配度** — tool_sets 与角色职责是否相符
+2. **MCP 配置** — mcp_servers 是否精确，"*" 会导致工具上下文爆炸
+3. **实际使用情况** — 配置了但从未调用的工具（通过执行日志统计）
+4. **system prompt 一致性** — 提示词描述的能力是否与工具集对齐
+
+## 工作流程
+
+【第一阶段：初步诊断】（需用户确认后才进入第二阶段）
+1. \`search_issues\` 找到目标角色，\`read_issue\` 读取 frontmatter + system prompt
+2. \`read_role_execution_logs\` 获取工具调用频率、成功率、token 消耗
+3. 整理诊断报告，制定 2-4 条测试用例（每条说明测试目的和预期行为）
+4. 询问用户："以上诊断和测试计划是否合适？确认后开始测试。"
+
+【第二阶段：实验测试】（用户确认后执行）
+1. 确认目标角色当前无进行中对话，避免并发干扰
+2. 用 \`delegate_to_role\` 逐条执行测试用例，记录每条实际响应
+3. 对比实际响应 vs 预期行为，找出差距
+4. 形成假设："问题根因是 X，修改 Y 应能改善"
+5. 展示修改方案（frontmatter 片段 + system prompt 改动），等用户确认
+
+【第三阶段：修改与验证】（用户确认后执行）
+1. \`update_role_config\` 应用修改
+2. 重新执行同一批测试用例，对比前后结果
+3. 输出 before/after 对比报告
+
+【迭代原则】
+- 默认最多 **3 轮**，每轮必须经用户确认才继续
+- 终止条件：① 用户满意 ② 达到最大轮次 ③ 连续两轮结果无显著差异
+- 每次修改必须有明确假设，不做无根据的改动
+
+## 报告格式
+- 📋 **配置摘要**：tool_sets / mcp_servers / 工具总数
+- 📊 **使用数据**：成功率 / 平均 token / 工具调用频率排行
+- ⚠️ **问题清单**：每条问题 + 具体改法
+- 🧪 **测试计划**：用例列表（目的 + 预期行为）
+- ✅ **建议配置**：优化后的 frontmatter 片段`,
+                },
+                {
                     label: '$(cloud) 网络助手',
                     description: '专职网络搜索与页面抓取，供其他角色异步委派使用',
                     avatar: 'cloud',
-                    webEnabled: true,
+                    toolSets: ['web'],
                     systemPrompt: `你是一位专职网络助手，负责执行网络搜索与页面内容抓取任务。你只拥有网络工具和笔记工具，所有网络相关任务都由其他角色委派给你。
 
 ## 可用工具
@@ -327,6 +376,9 @@ export function registerLLMChatCommands(
 - create_issue：将网络结果整理成笔记（结果较长时使用）
 - update_issue：更新已有笔记内容
 - search_issues：检索已有笔记，避免重复抓取
+
+> 如果角色文件的 mcp_servers 字段中配置了 MCP 服务（如 brave-search、puppeteer 等），
+> 请**优先使用 MCP 工具**完成网络任务，仅在 MCP 不可用时降级使用上述 Chrome 工具。
 
 ## 工作原则
 1. **优先检索已有笔记**：用 search_issues 确认是否已有相关内容，避免重复工作
@@ -348,10 +400,7 @@ export function registerLLMChatCommands(
                 isCustom?: boolean;
                 avatar?: string;
                 systemPrompt?: string;
-                webEnabled?: boolean;
-                memoryEnabled?: boolean;
-                delegationEnabled?: boolean;
-                roleManagementEnabled?: boolean;
+                toolSets?: string[];
             }
 
             const items: PresetItem[] = [
@@ -360,10 +409,7 @@ export function registerLLMChatCommands(
                     description: p.description,
                     avatar: p.avatar,
                     systemPrompt: p.systemPrompt,
-                    webEnabled: p.webEnabled,
-                    memoryEnabled: p.memoryEnabled,
-                    delegationEnabled: p.delegationEnabled,
-                    roleManagementEnabled: p.roleManagementEnabled,
+                    toolSets: p.toolSets,
                 })),
                 { label: '$(add) 自定义角色…', description: '手动输入名称和提示词', isCustom: true, kind: vscode.QuickPickItemKind.Separator } as PresetItem,
                 { label: '$(add) 自定义角色…', description: '完全自定义名称、提示词和图标', isCustom: true },
@@ -421,12 +467,7 @@ export function registerLLMChatCommands(
             const modelFamily = await pickModelFamily();
             if (modelFamily === undefined) { return; }  // 用户按了 ESC
 
-            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, {
-                web: pick.webEnabled ?? false,
-                memory: pick.memoryEnabled ?? false,
-                delegation: pick.delegationEnabled ?? false,
-                roleManagement: pick.roleManagementEnabled ?? false,
-            });
+            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, pick.toolSets);
             if (roleId) {
                 roleProvider.refresh();
                 vscode.window.showInformationMessage(`已创建聊天角色: ${name}`);

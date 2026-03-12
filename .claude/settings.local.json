@@ -29,7 +29,9 @@
       "Bash(echo \"=== $f ===\")",
       "Read(//Users/wedaren/repositoryDestinationOfGithub/issue-notes/**)",
       "Bash(done)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(grep -n \"vscode.lm.tools\\\\|vscode.lm.invokeTool\" src/**/*.ts)",
+      "Bash(npm run:*)"
     ]
   }
 }

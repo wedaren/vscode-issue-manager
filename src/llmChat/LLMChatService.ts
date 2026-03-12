@@ -637,18 +637,19 @@ ${userMessage}
             systemContent = `[系统指令] ${this._activeRole.systemPrompt}`;
         }
 
-        // 根据角色能力动态追加工具说明
-        if (this._activeRole?.memoryEnabled) {
+        // 根据角色工具集动态追加工具说明
+        const toolSets = this._activeRole?.toolSets ?? [];
+        if (toolSets.includes('memory')) {
             systemContent += '\n\n[记忆工具]\n'
                 + '- read_memory: 读取你的持久记忆（对话开始时首先调用）\n'
                 + '- write_memory: 更新记忆（任务结束后调用）\n';
         }
-        if (this._activeRole?.delegationEnabled) {
+        if (toolSets.includes('delegation')) {
             systemContent += '\n\n[委派工具]\n'
                 + '- list_chat_roles: 列出所有可用角色\n'
                 + '- delegate_to_role: 委派任务给指定角色，获取回复\n';
         }
-        if (this._activeRole?.roleManagementEnabled) {
+        if (toolSets.includes('role_management')) {
             systemContent += '\n\n[角色管理工具]\n'
                 + '- create_chat_role: 创建新角色\n'
                 + '- update_role_config: 更新角色系统提示词\n'

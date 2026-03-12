@@ -70,10 +70,10 @@ export async function getAllChatRoles(): Promise<ChatRoleInfo[]> {
             timerMaxRetries: toFiniteNumber(fm.timer_max_retries),
             timerRetryDelay: toFiniteNumber(fm.timer_retry_delay),
             maxTokens: toFiniteNumber(fm.chat_role_max_tokens),
-            memoryEnabled: fm.memory_enabled === true,
-            delegationEnabled: fm.delegation_enabled === true,
-            roleManagementEnabled: fm.role_management_enabled === true,
-            webEnabled: fm.web_enabled === true,
+            toolSets: Array.isArray(fm.tool_sets) ? (fm.tool_sets as unknown[]).map(String) : [],
+            mcpServers: Array.isArray(fm.mcp_servers) ? (fm.mcp_servers as unknown[]).map(String) : undefined,
+            extraTools: Array.isArray(fm.extra_tools) ? (fm.extra_tools as unknown[]).map(String) : undefined,
+            excludedTools: Array.isArray(fm.excluded_tools) ? (fm.excluded_tools as unknown[]).map(String) : undefined,
         });
     }
     return roles;
@@ -91,7 +91,7 @@ export async function createChatRole(
     systemPrompt: string,
     avatar?: string,
     modelFamily?: string,
-    capabilities?: { memory?: boolean; delegation?: boolean; roleManagement?: boolean; web?: boolean },
+    toolSets?: string[],
 ): Promise<string | null> {
     const defaultModelFamily = vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily') || 'gpt-5-mini';
     const fm: Partial<FrontmatterData> & ChatRoleFrontmatter = {
@@ -107,12 +107,12 @@ export async function createChatRole(
         timer_timeout: 180000,
         timer_max_retries: 3,
         timer_retry_delay: 5000,
-        // ─── 能力开关 ─────────────────────────────────────────
-        memory_enabled: capabilities?.memory ?? false,
-        delegation_enabled: capabilities?.delegation ?? false,
-        role_management_enabled: capabilities?.roleManagement ?? false,
-        web_enabled: capabilities?.web ?? false,
-    };
+        // ─── 工具集配置（占位，按需填写） ────────────────────
+        tool_sets: toolSets ?? [],
+        mcp_servers: [] as string[],
+        extra_tools: [] as string[],
+        excluded_tools: [] as string[],
+    } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[]; extra_tools: string[]; excluded_tools: string[] };
 
     const body = `# ${name}\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });

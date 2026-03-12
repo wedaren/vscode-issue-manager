@@ -11,6 +11,7 @@
  *   executing  → 超过 STALE_EXECUTING_MS 视为崩溃 → 重置为 retrying
  */
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { LLMService } from '../llm/LLMService';
 import { Logger } from '../core/utils/Logger';
 import {
@@ -332,6 +333,7 @@ export class RoleTimerManager implements vscode.Disposable {
             }
 
             let toolCallSeq = 0;
+            const toolCallCountMap: Record<string, number> = {};
 
             const result = await LLMService.streamWithTools(
                 messages,
@@ -412,6 +414,7 @@ export class RoleTimerManager implements vscode.Disposable {
                     }
 
                     // 工具完成，更新追踪
+                    toolCallCountMap[toolName] = (toolCallCountMap[toolName] ?? 0) + 1;
                     execToolCalls = toolCallSeq;
                     execLastToolName = toolName;
                     execPhase = `等待 LLM 响应（工具调用 #${toolCallSeq} 后）`;
@@ -451,8 +454,15 @@ export class RoleTimerManager implements vscode.Disposable {
                 throw new Error(`LLM 返回空响应${hint}，可能原因：上下文过长 / 模型响应异常`);
             }
 
-            // 成功：移除标记并追加助手回复
-            await this.removeMarkerAndAppendAssistant(uri, result.text.trim());
+            // 成功：移除标记并追加助手回复（附工具调用摘要）
+            let toolSummary: string | undefined;
+            if (toolCallSeq > 0 && logUri) {
+                const logId = path.basename(logUri.fsPath, '.md');
+                const parts = Object.entries(toolCallCountMap)
+                    .map(([name, count]) => count > 1 ? `\`${name}\`×${count}` : `\`${name}\``);
+                toolSummary = `> 📋 本轮工具调用 · Run #${runNumber}：${parts.join(' · ')} | [执行详情](IssueDir/${logId})`;
+            }
+            await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
 
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
             outputTokens = await estimateTokens([outputMsg]);
@@ -510,11 +520,12 @@ export class RoleTimerManager implements vscode.Disposable {
     /**
      * 移除状态标记并追加助手消息 —— 单次文件写入，保证原子性。
      */
-    private async removeMarkerAndAppendAssistant(uri: vscode.Uri, content: string): Promise<void> {
+    private async removeMarkerAndAppendAssistant(uri: vscode.Uri, content: string, toolSummary?: string): Promise<void> {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
         const stripped = stripMarker(raw);
         const dateStr = formatTimestamp(Date.now());
-        const block = `\n## Assistant (${dateStr})\n\n${content}\n`;
+        const body = toolSummary ? `${content}\n\n${toolSummary}` : content;
+        const block = `\n## Assistant (${dateStr})\n\n${body}\n`;
         await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
     }
 

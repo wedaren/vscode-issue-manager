@@ -46,6 +46,7 @@ import {
     createConversation,
     appendUserMessageQueued,
     parseConversationMessages,
+    getConversationsForRole,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { readStateMarker } from './convStateMarker';
@@ -544,8 +545,11 @@ const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
                     type: 'string',
                     description: '指定使用的 AI 模型。不填则使用全局默认。',
                 },
-                enableMemory: { type: 'boolean', description: '是否为新角色启用持久记忆，默认 false' },
-                enableDelegation: { type: 'boolean', description: '是否为新角色启用委派能力，默认 false' },
+                toolSets: {
+                    type: 'array',
+                    items: { type: 'string', enum: ['memory', 'delegation', 'role_management', 'web'] },
+                    description: '为新角色启用的工具包列表，如 ["memory", "delegation"]，默认为空',
+                },
             },
             required: ['name', 'systemPrompt'],
         },
@@ -580,17 +584,89 @@ const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
             required: ['roleNameOrId', 'outcome', 'notes'],
         },
     },
+    {
+        name: 'read_role_execution_logs',
+        description: '读取指定角色的执行日志，统计工具实际调用情况、成功率、token 消耗，并与角色配置对比，找出冗余或缺失的工具配置。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: { type: 'string', description: '角色名称或 ID' },
+                maxConversations: { type: 'number', description: '分析最近 N 个对话的日志，默认 5' },
+            },
+            required: ['roleNameOrId'],
+        },
+    },
 ];
 
+/** 内置工具包注册表，新增工具包只需在此添加一条记录 */
+const TOOL_SET_REGISTRY: Record<string, vscode.LanguageModelChatTool[]> = {
+    web:             WEB_TOOLS,
+    memory:          MEMORY_TOOLS,
+    delegation:      DELEGATION_TOOLS,
+    role_management: ROLE_MANAGEMENT_TOOLS,
+};
+
 /**
- * 根据角色的能力配置，组装该角色可用的完整工具集
+ * 根据角色的工具集配置，组装该角色可用的完整工具集。
+ * - toolSets: 内置工具包名称列表
+ * - mcpServers / extraTools / excludedTools: 从 vscode.lm.tools 筛选 MCP 工具
  */
 export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatTool[] {
     const tools = [...CHAT_TOOLS];
-    if (role.webEnabled) { tools.push(...WEB_TOOLS); }
-    if (role.memoryEnabled) { tools.push(...MEMORY_TOOLS); }
-    if (role.delegationEnabled) { tools.push(...DELEGATION_TOOLS); }
-    if (role.roleManagementEnabled) { tools.push(...ROLE_MANAGEMENT_TOOLS); }
+
+    // 内置工具包
+    for (const name of role.toolSets) {
+        const bundle = TOOL_SET_REGISTRY[name];
+        if (bundle) {
+            tools.push(...bundle);
+        } else {
+            logger.warn(`[ChatTools] 未知工具包: "${name}"，已跳过`);
+        }
+    }
+
+    // ─── MCP 工具注入 ────────────────────────────────────────
+    const hasMcpConfig =
+        (role.mcpServers && role.mcpServers.length > 0) ||
+        (role.extraTools && role.extraTools.length > 0) ||
+        (role.excludedTools && role.excludedTools.length > 0);
+
+    if (hasMcpConfig) {
+        const allVscodeLmTools = vscode.lm.tools;
+        const mcpToolNames = new Set<string>();
+
+        // 收集来自指定 MCP server 的所有工具（"*" 表示引入全部）
+        if (role.mcpServers && role.mcpServers.length > 0) {
+            const includeAll = role.mcpServers.includes('*');
+            for (const t of allVscodeLmTools) {
+                // vscode.LanguageModelToolInformation 的 name 格式为 "serverName_toolName"
+                const serverName = t.name.includes('_') ? t.name.split('_')[0] : '';
+                if (includeAll || role.mcpServers.includes(serverName)) {
+                    mcpToolNames.add(t.name);
+                }
+            }
+        }
+
+        // 额外引入的具体工具
+        if (role.extraTools) {
+            for (const name of role.extraTools) { mcpToolNames.add(name); }
+        }
+
+        // 排除的工具
+        if (role.excludedTools) {
+            for (const name of role.excludedTools) { mcpToolNames.delete(name); }
+        }
+
+        // 将筛选出的 MCP 工具转换为 LanguageModelChatTool 格式后追加
+        for (const t of allVscodeLmTools) {
+            if (!mcpToolNames.has(t.name)) { continue; }
+            tools.push({
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema as vscode.LanguageModelChatTool['inputSchema'],
+            });
+        }
+    }
+
     return tools;
 }
 
@@ -693,8 +769,33 @@ export async function executeChatTool(
                 return await executeUpdateRoleConfig(input);
             case 'evaluate_role':
                 return await executeEvaluateRole(input, context);
-            default:
-                return { success: false, content: `未知工具: ${toolName}` };
+            case 'read_role_execution_logs':
+                return await executeReadRoleExecutionLogs(input);
+            default: {
+                // 尝试通过 vscode.lm.invokeTool 调用 MCP 工具
+                const vscodeTool = vscode.lm.tools.find(t => t.name === toolName);
+                if (!vscodeTool) {
+                    return { success: false, content: `未知工具: ${toolName}` };
+                }
+                const tokenSource = new vscode.CancellationTokenSource();
+                if (context?.signal) {
+                    context.signal.addEventListener('abort', () => tokenSource.cancel());
+                }
+                try {
+                    const result = await vscode.lm.invokeTool(
+                        toolName,
+                        { input, toolInvocationToken: undefined as never },
+                        tokenSource.token,
+                    );
+                    // result 是 LanguageModelToolResult，content 为 LanguageModelTextPart[] | LanguageModelPromptTsxPart[]
+                    const text = result.content
+                        .map(p => (p instanceof vscode.LanguageModelTextPart ? p.value : '[non-text]'))
+                        .join('');
+                    return { success: true, content: text };
+                } finally {
+                    tokenSource.dispose();
+                }
+            }
         }
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -2024,7 +2125,7 @@ async function findOrCreateMemoryFile(roleId: string): Promise<vscode.Uri | null
 }
 
 async function executeReadMemory(context?: ToolExecContext): Promise<ToolCallResult> {
-    if (!context?.role?.memoryEnabled || !context.role.id) {
+    if (!context?.role?.toolSets.includes('memory') || !context.role.id) {
         return { success: false, content: '当前角色未启用记忆能力' };
     }
     const memUri = await findOrCreateMemoryFile(context.role.id);
@@ -2040,7 +2141,7 @@ async function executeReadMemory(context?: ToolExecContext): Promise<ToolCallRes
 }
 
 async function executeWriteMemory(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
-    if (!context?.role?.memoryEnabled || !context.role.id) {
+    if (!context?.role?.toolSets.includes('memory') || !context.role.id) {
         return { success: false, content: '当前角色未启用记忆能力' };
     }
     const content = String(input.content || '').trim();
@@ -2074,11 +2175,7 @@ async function executeListChatRoles(context?: ToolExecContext): Promise<ToolCall
             ? r.systemPrompt.slice(0, 60) + (r.systemPrompt.length > 60 ? '…' : '')
             : '（无提示词）';
         const model = r.modelFamily ? r.modelFamily : `${globalDefault}（全局默认）`;
-        const caps: string[] = [];
-        if (r.memoryEnabled) { caps.push('记忆'); }
-        if (r.delegationEnabled) { caps.push('委派'); }
-        if (r.roleManagementEnabled) { caps.push('角色管理'); }
-        const capStr = caps.length > 0 ? ` · 能力: ${caps.join('/')}` : '';
+        const capStr = r.toolSets.length > 0 ? ` · 工具集: ${r.toolSets.join('/')}` : '';
         return `- **${r.name}** (ID: \`${r.id}\`) · 模型: ${model}${capStr}\n  ${promptPreview}`;
     });
     return { success: true, content: `可用角色（共 ${filtered.length} 个）：\n\n${lines.join('\n\n')}` };
@@ -2096,7 +2193,7 @@ async function findRole(nameOrId: string): Promise<ChatRoleInfo | undefined> {
 }
 
 async function executeDelegateToRole(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
-    if (!context?.role?.delegationEnabled) {
+    if (!context?.role?.toolSets.includes('delegation')) {
         return { success: false, content: '当前角色未启用委派能力' };
     }
     const roleNameOrId = String(input.roleNameOrId || '').trim();
@@ -2245,25 +2342,20 @@ async function executeCreateChatRole(input: Record<string, unknown>): Promise<To
     const systemPrompt = String(input.systemPrompt || '').trim();
     const avatar = String(input.avatar || 'hubot').trim();
     const modelFamily = input.modelFamily ? String(input.modelFamily).trim() : undefined;
-    const enableMemory = input.enableMemory === true;
-    const enableDelegation = input.enableDelegation === true;
+    const toolSets: string[] = Array.isArray(input.toolSets)
+        ? (input.toolSets as unknown[]).map(String)
+        : [];
 
     if (!name) { return { success: false, content: '请提供角色名称' }; }
     if (!systemPrompt) { return { success: false, content: '请提供系统提示词' }; }
 
-    const roleId = await dataCreateChatRole(name, systemPrompt, avatar, modelFamily, {
-        memory: enableMemory,
-        delegation: enableDelegation,
-    });
+    const roleId = await dataCreateChatRole(name, systemPrompt, avatar, modelFamily, toolSets);
     if (!roleId) {
         return { success: false, content: '创建角色失败' };
     }
     void vscode.commands.executeCommand('issueManager.llmChat.refresh');
 
-    const caps: string[] = [];
-    if (enableMemory) { caps.push('记忆'); }
-    if (enableDelegation) { caps.push('委派'); }
-    const capStr = caps.length > 0 ? `，能力：${caps.join('/')}` : '';
+    const capStr = toolSets.length > 0 ? `，工具集：${toolSets.join('/')}` : '';
     const modelNote = modelFamily ? `，模型：${modelFamily}` : '';
     return {
         success: true,
@@ -2307,7 +2399,7 @@ async function executeEvaluateRole(input: Record<string, unknown>, context?: Too
     const outcomeLabel = outcome === 'success' ? '✅ 良好' : outcome === 'partial' ? '⚠️ 部分完成' : '❌ 未完成';
 
     // 如果当前角色有记忆能力，将评估写入记忆
-    if (context?.role?.memoryEnabled && context.role.id) {
+    if (context?.role?.toolSets.includes('memory') && context.role.id) {
         const memUri = await findOrCreateMemoryFile(context.role.id);
         if (memUri) {
             try {
@@ -2329,4 +2421,124 @@ async function executeEvaluateRole(input: Record<string, unknown>, context?: Too
     }
 
     return { success: true, content: `✅ 已记录角色「${roleNameOrId}」的绩效评估：${outcomeLabel}` };
+}
+
+async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const maxConversations = typeof input.maxConversations === 'number' ? Math.max(1, input.maxConversations) : 5;
+
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+
+    const role = await findRole(roleNameOrId);
+    if (!role) { return { success: false, content: `未找到角色: ${roleNameOrId}` }; }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: '未找到 issueDir' }; }
+
+    const conversations = await getConversationsForRole(role.id);
+    const recentConvos = conversations.sort((a, b) => b.mtime - a.mtime).slice(0, maxConversations);
+
+    if (recentConvos.length === 0) {
+        return { success: true, content: `角色「${role.name}」没有对话记录。` };
+    }
+
+    // ─── 聚合统计 ────────────────────────────────────────────
+    const toolCallCounts: Record<string, number> = {};
+    let totalRuns = 0;
+    let successRuns = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    const recentErrors: string[] = [];
+    let analyzedLogs = 0;
+
+    for (const convo of recentConvos) {
+        if (!convo.logId) { continue; }
+        const logUri = vscode.Uri.file(path.join(issueDir, `${convo.logId}.md`));
+        try {
+            const raw = Buffer.from(await vscode.workspace.fs.readFile(logUri)).toString('utf8');
+            analyzedLogs++;
+
+            // Run 数量
+            const runMatches = [...raw.matchAll(/## Run #(\d+)/g)];
+            totalRuns += runMatches.length;
+
+            // 成功数
+            const successMatches = raw.match(/→.*?success/g);
+            successRuns += successMatches?.length ?? 0;
+
+            // 工具调用：格式为 "N. `tool_name` (Nms)"
+            for (const m of raw.matchAll(/\d+\. `([^`]+)` \(\d+ms\)/g)) {
+                const t = m[1];
+                toolCallCounts[t] = (toolCallCounts[t] ?? 0) + 1;
+            }
+
+            // Token 消耗
+            for (const m of raw.matchAll(/input (\d+) \+ output (\d+)/g)) {
+                totalInputTokens += parseInt(m[1], 10);
+                totalOutputTokens += parseInt(m[2], 10);
+            }
+
+            // 错误信息
+            for (const m of raw.matchAll(/\*\*错误详情\*\*: (.+)/g)) {
+                recentErrors.push(m[1]);
+            }
+        } catch {
+            // 日志文件不可读，跳过
+        }
+    }
+
+    if (analyzedLogs === 0) {
+        return { success: true, content: `角色「${role.name}」有 ${recentConvos.length} 个对话，但均无执行日志。` };
+    }
+
+    // ─── 与配置对比 ──────────────────────────────────────────
+    const configuredTools = getToolsForRole(role).map(t => t.name);
+    const usedTools = Object.keys(toolCallCounts);
+    const neverUsed = configuredTools.filter(t => !usedTools.includes(t));
+
+    // ─── 组装报告 ────────────────────────────────────────────
+    let report = `## 角色「${role.name}」执行日志分析\n\n`;
+    report += `**分析范围**: 最近 ${recentConvos.length} 个对话 / ${analyzedLogs} 份日志 / ${totalRuns} 次执行\n\n`;
+
+    report += `### 当前配置\n`;
+    report += `- 工具集 (tool_sets): ${role.toolSets.length > 0 ? role.toolSets.join(', ') : '（无）'}\n`;
+    report += `- MCP servers: ${role.mcpServers?.length ? role.mcpServers.join(', ') : '（无）'}\n`;
+    report += `- 配置工具总数: **${configuredTools.length}**\n\n`;
+
+    if (totalRuns > 0) {
+        const successRate = Math.round(successRuns / totalRuns * 100);
+        const totalTokens = totalInputTokens + totalOutputTokens;
+        report += `### 执行指标\n`;
+        report += `- 成功率: ${successRuns}/${totalRuns} (**${successRate}%**)\n`;
+        report += `- 累计 token: input ${totalInputTokens} + output ${totalOutputTokens} = **${totalTokens}**\n`;
+        report += `- 平均 token/次: ${Math.round(totalTokens / totalRuns)}\n\n`;
+
+        const totalCalls = Object.values(toolCallCounts).reduce((a, b) => a + b, 0);
+        if (usedTools.length > 0) {
+            report += `### 实际工具调用（共 ${totalCalls} 次）\n`;
+            for (const [tool, count] of Object.entries(toolCallCounts).sort((a, b) => b[1] - a[1])) {
+                const pct = Math.round(count / totalCalls * 100);
+                report += `- \`${tool}\`: ${count} 次 (${pct}%)\n`;
+            }
+            report += '\n';
+        } else {
+            report += `### 实际工具调用\n无任何工具调用记录。\n\n`;
+        }
+
+        if (neverUsed.length > 0) {
+            report += `### ⚠️ 配置但从未调用的工具（${neverUsed.length}/${configuredTools.length}）\n`;
+            report += `> 这些工具占用了 LLM 上下文 token，但从未被使用，可考虑移除：\n\n`;
+            for (const t of neverUsed) { report += `- \`${t}\`\n`; }
+            report += '\n';
+        }
+
+        if (recentErrors.length > 0) {
+            const uniqueErrors = [...new Set(recentErrors)].slice(0, 5);
+            report += `### 近期错误（共 ${recentErrors.length} 次）\n`;
+            for (const e of uniqueErrors) { report += `- ${e}\n`; }
+            report += '\n';
+        }
+    }
+
+    return { success: true, content: report };
 }

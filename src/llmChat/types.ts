@@ -29,13 +29,18 @@ export interface ChatRoleFrontmatter {
     timer_retry_delay?: number;
     /** 角色级 LLM 请求最大 token 预算（可选） */
     chat_role_max_tokens?: number;
-    // ─── 能力开关（统一架构，所有角色可选开启） ──────────────
-    /** 启用持久记忆（自动关联记忆文件） */
-    memory_enabled?: boolean;
-    /** 启用委派能力（可将子任务委派给其他角色） */
-    delegation_enabled?: boolean;
-    /** 启用角色管理（可创建/更新/评估其他角色） */
-    role_management_enabled?: boolean;
+    // ─── 工具集配置 ───────────────────────────────────────────
+    /**
+     * 内置工具包列表，合法值：
+     * "memory" | "delegation" | "role_management" | "web"
+     */
+    tool_sets?: string[];
+    /** 允许使用的 MCP server 名称列表（取其全部工具）；"*" 表示引入所有已注册的 MCP 工具 */
+    mcp_servers?: string[];
+    /** 额外引入的具体工具名称列表（来自任何 MCP server） */
+    extra_tools?: string[];
+    /** 排除的具体工具名称列表 */
+    excluded_tools?: string[];
 }
 
 // ─── 角色记忆相关 ─────────────────────────────────────────────
@@ -98,15 +103,15 @@ export interface ChatRoleInfo {
     timerRetryDelay?: number;
     /** 角色级最大 token 预算 */
     maxTokens?: number;
-    // ─── 能力标记（运行时） ──────────────────────────────────
-    /** 是否启用持久记忆 */
-    memoryEnabled?: boolean;
-    /** 是否启用委派能力 */
-    delegationEnabled?: boolean;
-    /** 是否启用角色管理 */
-    roleManagementEnabled?: boolean;
-    /** 是否启用网络工具（web_search / fetch_url） */
-    webEnabled?: boolean;
+    // ─── 工具集配置（运行时） ────────────────────────────────
+    /** 内置工具包名称列表，如 ["memory", "delegation", "web"] */
+    toolSets: string[];
+    /** 允许使用的 MCP server 名称列表；"*" 表示引入所有已注册的 MCP 工具 */
+    mcpServers?: string[];
+    /** 额外引入的具体工具名称列表 */
+    extraTools?: string[];
+    /** 排除的具体工具名称列表 */
+    excludedTools?: string[];
 }
 
 /** 运行时对话信息 */
