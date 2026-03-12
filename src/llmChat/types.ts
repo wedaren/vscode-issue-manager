@@ -74,6 +74,8 @@ export interface ChatConversationFrontmatter {
     chat_max_tokens?: number;
     /** 当前对话已消耗的估算 token 数（请求前后自动更新） */
     chat_token_used?: number;
+    /** token 使用量占 max_tokens 的百分比（有 max_tokens 时自动更新） */
+    chat_token_used_pct?: number;
     /** 关联的执行日志文件 ID（首次执行时自动创建） */
     chat_log_id?: string;
 }

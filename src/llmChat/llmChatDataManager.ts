@@ -256,11 +256,14 @@ export async function appendUserMessageQueued(
 export async function updateConversationTokenUsed(
     uri: vscode.Uri,
     tokenUsed: number,
+    maxTokens?: number,
 ): Promise<void> {
     try {
-        await updateIssueMarkdownFrontmatter(uri, {
-            chat_token_used: tokenUsed,
-        } as Partial<FrontmatterData>);
+        const updates: Partial<FrontmatterData> = { chat_token_used: tokenUsed };
+        if (maxTokens && maxTokens > 0) {
+            updates.chat_token_used_pct = Math.round((tokenUsed / maxTokens) * 100);
+        }
+        await updateIssueMarkdownFrontmatter(uri, updates);
     } catch (e) {
         logger.error('updateConversationTokenUsed 失败', e);
     }

@@ -177,7 +177,7 @@ export class LLMChatService {
             const inputTokens = await estimateTokens(messages);
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
             const outputTokens = await estimateTokens([outputMsg]);
-            void updateConversationTokenUsed(uri, inputTokens + outputTokens);
+            void updateConversationTokenUsed(uri, inputTokens + outputTokens, convoConfig?.maxTokens ?? this._activeRole?.maxTokens);
 
             if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
             return assistantReply;
@@ -288,7 +288,7 @@ export class LLMChatService {
             const inputTokens = await estimateTokens(messages);
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
             const outputTokens = await estimateTokens([outputMsg]);
-            void updateConversationTokenUsed(uri, inputTokens + outputTokens);
+            void updateConversationTokenUsed(uri, inputTokens + outputTokens, convoConfig?.maxTokens ?? this._activeRole?.maxTokens);
 
             // 日志：助手回复摘要
             if (logUri && assistantReply) {

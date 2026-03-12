@@ -295,7 +295,7 @@ export class RoleTimerManager implements vscode.Disposable {
                 throw new Error(`token 预算超限：预估 ${inputTokens}，上限 ${effectiveMaxTokens}`);
             }
 
-            await updateConversationTokenUsed(uri, inputTokens);
+            await updateConversationTokenUsed(uri, inputTokens, effectiveMaxTokens);
 
             // 日志：发起请求（完整 messages 记录到 issueMarkdown）
             execPhase = '等待 LLM 首次响应';
@@ -333,7 +333,9 @@ export class RoleTimerManager implements vscode.Disposable {
             }
 
             let toolCallSeq = 0;
-            const toolCallItems: Array<{ name: string; time: Date; dur: number; fileName: string | null; success: boolean }> = [];
+            let currentRound = 0;
+            const roundReasonings = new Map<number, string>(); // round → 推理文本
+            const toolCallItems: Array<{ name: string; time: Date; dur: number; fileName: string | null; success: boolean; round: number }> = [];
 
             const result = await LLMService.streamWithTools(
                 messages,
@@ -414,7 +416,7 @@ export class RoleTimerManager implements vscode.Disposable {
                     }
 
                     // 工具完成，更新追踪
-                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName, success: res.success });
+                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName, success: res.success, round: currentRound });
                     execToolCalls = toolCallSeq;
                     execLastToolName = toolName;
                     execPhase = `等待 LLM 响应（工具调用 #${toolCallSeq} 后）`;
@@ -427,6 +429,10 @@ export class RoleTimerManager implements vscode.Disposable {
                     signal: ac.signal,
                     modelFamily: effectiveModelFamily,
                     onToolsDecided: (info) => {
+                        currentRound = info.round;
+                        if (info.roundText) {
+                            roundReasonings.set(info.round, info.roundText.trim());
+                        }
                         if (!logUri) { return; }
                         const names = info.toolNames.map(n => `\`${n}\``).join(', ');
                         if (info.roundText) {
@@ -459,21 +465,30 @@ export class RoleTimerManager implements vscode.Disposable {
             let toolSummary: string | undefined;
             if (toolCallSeq > 0 && logUri) {
                 const logId = path.basename(logUri.fsPath, '.md');
-                const lines = toolCallItems.map(item => {
+                const lines: string[] = [];
+                let lastRound = -1;
+                for (const item of toolCallItems) {
+                    if (item.round !== lastRound) {
+                        const reasoning = roundReasonings.get(item.round);
+                        if (reasoning) {
+                            lines.push(`> 💭 ${reasoning.replace(/\n+/g, ' ')}`);
+                        }
+                        lastRound = item.round;
+                    }
                     const t = fmtHms(item.time);
                     const icon = item.success ? '✅' : '❌';
                     const nameStr = item.fileName
                         ? `[\`${item.name}\`](IssueDir/${item.fileName})`
                         : `\`${item.name}\``;
-                    return `> - \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})`;
-                });
+                    lines.push(`> - \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})`);
+                }
                 toolSummary = `> Run #${runNumber} · [执行详情](IssueDir/${logId}.md)\n${lines.join('\n')}`;
             }
             await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
 
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
             outputTokens = await estimateTokens([outputMsg]);
-            await updateConversationTokenUsed(uri, inputTokens + outputTokens);
+            await updateConversationTokenUsed(uri, inputTokens + outputTokens, effectiveMaxTokens);
 
             // 日志：助手回复摘要（展示 LLM 的思考与输出）
             if (logUri && result.text) {
