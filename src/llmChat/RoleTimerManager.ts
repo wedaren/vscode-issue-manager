@@ -94,6 +94,11 @@ export class RoleTimerManager implements vscode.Disposable {
 
     // ─── 对外接口 ────────────────────────────────────────────
 
+    /** 检查某个对话是否正在执行中（内存锁） */
+    isExecuting(uri: vscode.Uri): boolean {
+        return this.executing.has(uri.fsPath);
+    }
+
     /**
      * 立即触发指定对话的处理（用户提交后绕过定时器等待）。
      * 若对话状态不是 queued，或正在执行中，则忽略。
@@ -282,7 +287,12 @@ export class RoleTimerManager implements vscode.Disposable {
             }, 5_000);
 
             const tools = getToolsForRole(role);
-            const toolContext: ToolExecContext = { role, signal: ac.signal };
+            const toolContext: ToolExecContext = {
+                role,
+                signal: ac.signal,
+                // 心跳回调：长时间工具（如同步委派等待）定期调用，刷新空闲计时
+                onHeartbeat: () => { execLastActivityAt = Date.now(); },
+            };
 
             const messages = await this.buildMessages(uri, role);
             inputTokens = await estimateTokens(messages);
@@ -551,24 +561,89 @@ export class RoleTimerManager implements vscode.Disposable {
         await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
     }
 
-    /** 构造发送给 LLM 的消息列表（包含系统提示词和对话历史） */
+    /**
+     * 构造发送给 LLM 的消息列表（包含系统提示词和对话历史）。
+     *
+     * 当历史消息的预估 token 超过 maxTokens 的 70% 时，启用滑动窗口截断：
+     * 保留第 1 轮（原始任务）+ 最近 N 轮，中间部分压缩为摘要行。
+     */
     private async buildMessages(uri: vscode.Uri, role: ChatRoleInfo): Promise<vscode.LanguageModelChatMessage[]> {
-        const msgs: vscode.LanguageModelChatMessage[] = [];
-
         const systemText = role.systemPrompt
             ? `[系统指令] ${role.systemPrompt}`
             : '[系统指令] 你是一个智能助手，请根据对话上下文给出有帮助的回复。';
-        msgs.push(vscode.LanguageModelChatMessage.User(systemText));
+        const systemMsg = vscode.LanguageModelChatMessage.User(systemText);
 
         const history = await parseConversationMessages(uri);
-        for (const m of history) {
+
+        // 将消息按轮次分组（一组 = user + assistant）
+        const rounds: Array<{ user: typeof history[0]; assistant?: typeof history[0] }> = [];
+        for (let i = 0; i < history.length; i++) {
+            const m = history[i];
             if (m.role === 'user') {
-                msgs.push(vscode.LanguageModelChatMessage.User(m.content));
-            } else {
-                msgs.push(vscode.LanguageModelChatMessage.Assistant(m.content));
+                const next = history[i + 1];
+                if (next?.role === 'assistant') {
+                    rounds.push({ user: m, assistant: next });
+                    i++; // 跳过 assistant
+                } else {
+                    rounds.push({ user: m }); // 末尾 user（待回复）
+                }
             }
+            // 跳过孤立的 assistant 消息（不应出现，但防御性处理）
         }
 
+        const convoConfig = await getConversationConfig(uri);
+        const maxTokens = convoConfig?.maxTokens ?? role.maxTokens;
+
+        // 无 token 预算限制 或 轮次 ≤ 3 时，不截断
+        if (!maxTokens || rounds.length <= 3) {
+            return [systemMsg, ...this.roundsToMessages(rounds)];
+        }
+
+        // 预估全量 token
+        const fullMsgs = [systemMsg, ...this.roundsToMessages(rounds)];
+        const fullTokens = await estimateTokens(fullMsgs);
+        const threshold = maxTokens * 0.7;
+
+        if (fullTokens <= threshold) {
+            return fullMsgs;
+        }
+
+        // 截断：保留第 1 轮 + 最近 N 轮，逐步增加 N 直到接近阈值
+        // 从保留最后 1 轮开始，逐步加到刚好不超过阈值
+        const firstRound = rounds[0];
+        let bestN = 1;
+
+        for (let n = 1; n < rounds.length; n++) {
+            const tail = rounds.slice(-n);
+            const candidate = [systemMsg, ...this.roundsToMessages([firstRound]),
+                vscode.LanguageModelChatMessage.User(`[...已省略 ${rounds.length - 1 - n} 轮对话...]`),
+                ...this.roundsToMessages(tail)];
+            const est = await estimateTokens(candidate);
+            if (est > threshold) { break; }
+            bestN = n;
+        }
+
+        const kept = rounds.slice(-bestN);
+        const omitted = rounds.length - 1 - bestN;
+        const msgs = [systemMsg, ...this.roundsToMessages([firstRound])];
+        if (omitted > 0) {
+            msgs.push(vscode.LanguageModelChatMessage.User(`[...已省略 ${omitted} 轮对话...]`));
+        }
+        msgs.push(...this.roundsToMessages(kept));
+
+        logger.info(`[RoleTimerManager] 滑动窗口截断: 全量 ${rounds.length} 轮 (${fullTokens} tokens) → 保留 ${1 + bestN} 轮, 省略 ${omitted} 轮`);
+        return msgs;
+    }
+
+    /** 将轮次数组转为 LanguageModelChatMessage 数组 */
+    private roundsToMessages(rounds: Array<{ user: { content: string }; assistant?: { content: string } }>): vscode.LanguageModelChatMessage[] {
+        const msgs: vscode.LanguageModelChatMessage[] = [];
+        for (const r of rounds) {
+            msgs.push(vscode.LanguageModelChatMessage.User(r.user.content));
+            if (r.assistant) {
+                msgs.push(vscode.LanguageModelChatMessage.Assistant(r.assistant.content));
+            }
+        }
         return msgs;
     }
 

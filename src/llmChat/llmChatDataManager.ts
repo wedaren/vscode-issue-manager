@@ -32,7 +32,7 @@ import type {
     ExecutionRunRecord,
     ExecutionToolCall,
 } from './types';
-import { stripMarker } from './convStateMarker';
+import { stripMarker, parseStateMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -237,7 +237,13 @@ export async function appendUserMessageQueued(
             await vscode.workspace.fs.readFile(uri),
         ).toString('utf8');
 
-        // 清除旧状态标记
+        // 防御性检查：如果文件已有 executing/queued 标记，说明上一轮尚未完成，拒绝写入
+        const existingMarker = parseStateMarker(raw);
+        if (existingMarker && (existingMarker.status === 'executing' || existingMarker.status === 'queued')) {
+            throw new Error(`对话当前状态为 ${existingMarker.status}，无法追加新消息。请等待当前轮次完成。`);
+        }
+
+        // 清除旧状态标记（如 error/retrying）
         const stripped = stripMarker(raw);
         const dateStr = formatTimestamp(Date.now());
         const block = `\n## User (${dateStr})\n\n${content}\n\n<!-- llm:queued -->\n`;
