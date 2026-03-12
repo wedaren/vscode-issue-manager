@@ -42,6 +42,7 @@ import { Logger } from '../core/utils/Logger';
 import type { ChatRoleInfo, RoleMemoryFrontmatter } from './types';
 import {
     getAllChatRoles,
+    getChatRoleById,
     createChatRole as dataCreateChatRole,
     createConversation,
     appendUserMessageQueued,
@@ -82,8 +83,8 @@ function normalizeFileName(name: string, issueDir?: string): string {
 
 // ─── 工具定义 ─────────────────────────────────────────────────
 
-/** 聊天角色可用的所有工具 */
-export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
+/** 基础笔记工具（所有角色均可用） */
+const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     {
         name: 'search_issues',
         description: '搜索 issueMarkdown 笔记。支持在标题、frontmatter 字段和正文中搜索，支持多关键词（空格分隔，全部匹配）。返回标题、文件路径、类型标签和修改时间。',
@@ -176,6 +177,34 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
                 body: { type: 'string', description: '新的 Markdown 正文（可选，会替换整个正文）' },
             },
             required: ['fileName'],
+        },
+    },
+];
+
+/** 浏览器工具（browser 工具集，需要 Chrome 扩展连接） */
+const BROWSER_TOOLS: vscode.LanguageModelChatTool[] = [
+    // ─── 网络工具 ─────────────────────────────────────────────
+    {
+        name: 'web_search',
+        description: '通过 Chrome 浏览器进行网络搜索，返回搜索结果页面的文本内容。需要已连接 Chrome 扩展。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: '搜索关键词' },
+                engine: { type: 'string', description: '搜索引擎：google（默认）、bing、baidu' },
+            },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'fetch_url',
+        description: '通过 Chrome 浏览器访问指定 URL 并提取页面文本内容。需要已连接 Chrome 扩展。适合获取参考资料、文档等。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                url: { type: 'string', description: '要访问的网页 URL' },
+            },
+            required: ['url'],
         },
     },
     // ─── Chrome Tab 管理工具 ─────────────────────────────────
@@ -331,6 +360,10 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
             required: ['tabId', 'key'],
         },
     },
+];
+
+// CHAT_TOOLS 续：笔记关联管理工具（所有角色基础工具集）
+const ISSUE_RELATION_TOOLS: vscode.LanguageModelChatTool[] = [
     // ─── 笔记关联管理工具 ─────────────────────────────────────
     {
         name: 'link_issue',
@@ -432,33 +465,6 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
 
 // ─── 能力工具定义（按需注入） ─────────────────────────────────
 
-/** 网络工具（web_enabled 时注入） */
-const WEB_TOOLS: vscode.LanguageModelChatTool[] = [
-    {
-        name: 'web_search',
-        description: '通过 Chrome 浏览器进行网络搜索，返回搜索结果页面的文本内容。需要已连接 Chrome 扩展。',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                query: { type: 'string', description: '搜索关键词' },
-                engine: { type: 'string', description: '搜索引擎：google（默认）、bing、baidu' },
-            },
-            required: ['query'],
-        },
-    },
-    {
-        name: 'fetch_url',
-        description: '通过 Chrome 浏览器访问指定 URL 并提取页面文本内容。需要已连接 Chrome 扩展。适合获取参考资料、文档等。',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                url: { type: 'string', description: '要访问的网页 URL' },
-            },
-            required: ['url'],
-        },
-    },
-];
-
 /** 记忆工具（memory_enabled 时注入） */
 const MEMORY_TOOLS: vscode.LanguageModelChatTool[] = [
     {
@@ -530,8 +536,13 @@ const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
 /** 角色管理工具（role_management_enabled 时注入） */
 const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
     {
+        name: 'list_available_tools',
+        description: '列出当前可用的内置工具包（tool_sets）和已注册的 MCP server（mcp_servers）及其工具，供创建或配置角色时参考。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
         name: 'create_chat_role',
-        description: '创建一个新的聊天角色。创建后可立即用 delegate_to_role 委派任务（需要委派能力）。',
+        description: '创建一个新的聊天角色。调用前必须先调用 list_available_tools，了解可用的内置工具包和 MCP server，再按角色职责按需配置 toolSets 和 mcpServers。创建后可立即用 delegate_to_role 委派任务（需要委派能力）。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -547,8 +558,13 @@ const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
                 },
                 toolSets: {
                     type: 'array',
-                    items: { type: 'string', enum: ['memory', 'delegation', 'role_management', 'web'] },
+                    items: { type: 'string', enum: ['memory', 'delegation', 'role_management', 'browser'] },
                     description: '为新角色启用的工具包列表，如 ["memory", "delegation"]，默认为空',
+                },
+                mcpServers: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要注入的 MCP server 名称列表，如 ["memory", "fetch"]。请先调用 list_available_tools 确认实际可用的 server 名称，再按角色职责按需选择。避免使用 "*"（引入全部），会导致 token 上下文爆炸。默认为空',
                 },
             },
             required: ['name', 'systemPrompt'],
@@ -598,12 +614,18 @@ const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
     },
 ];
 
+/** 聊天角色可用的基础工具集（笔记管理 + 关联管理） */
+export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
+    ...BASE_ISSUE_TOOLS,
+    ...ISSUE_RELATION_TOOLS,
+];
+
 /** 内置工具包注册表，新增工具包只需在此添加一条记录 */
 const TOOL_SET_REGISTRY: Record<string, vscode.LanguageModelChatTool[]> = {
-    web:             WEB_TOOLS,
     memory:          MEMORY_TOOLS,
     delegation:      DELEGATION_TOOLS,
     role_management: ROLE_MANAGEMENT_TOOLS,
+    browser:         BROWSER_TOOLS,
 };
 
 /**
@@ -638,9 +660,10 @@ export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatToo
         if (role.mcpServers && role.mcpServers.length > 0) {
             const includeAll = role.mcpServers.includes('*');
             for (const t of allVscodeLmTools) {
-                // vscode.LanguageModelToolInformation 的 name 格式为 "serverName_toolName"
-                const serverName = t.name.includes('_') ? t.name.split('_')[0] : '';
-                if (includeAll || role.mcpServers.includes(serverName)) {
+                // VSCode MCP 工具名格式为 "mcp_<serverName>_<toolName>"，用 startsWith 匹配
+                if (includeAll || role.mcpServers.some(s =>
+                    t.name.startsWith(`mcp_${s}_`) || t.name.startsWith(`${s}_`)
+                )) {
                     mcpToolNames.add(t.name);
                 }
             }
@@ -763,6 +786,8 @@ export async function executeChatTool(
             case 'get_delegation_status':
                 return await executeGetDelegationStatus(input);
             // ─── 能力工具：角色管理 ─────────────────────────────
+            case 'list_available_tools':
+                return executeListAvailableTools();
             case 'create_chat_role':
                 return await executeCreateChatRole(input);
             case 'update_role_config':
@@ -2120,6 +2145,10 @@ async function findOrCreateMemoryFile(roleId: string): Promise<vscode.Uri | null
     const uri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
     if (uri) {
         logger.info(`[ChatTools] 已创建角色 ${roleId} 的记忆文件: ${uri.fsPath}`);
+        // 挂在角色的树节点下
+        const role = await getChatRoleById(roleId);
+        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
+        await createIssueNodes([uri], roleNode?.id);
     }
     return uri ?? null;
 }
@@ -2337,6 +2366,43 @@ function waitForDelegationResult(
 
 // ─── 能力工具实现：角色管理 ──────────────────────────────────
 
+function executeListAvailableTools(): ToolCallResult {
+    const BUILT_IN = [
+        { id: 'memory',          tools: 'read_memory、write_memory',                          desc: '持久记忆，适合长期任务角色' },
+        { id: 'delegation',      tools: 'delegate_to_role、list_chat_roles',                  desc: '委派能力，适合中枢调度角色' },
+        { id: 'role_management', tools: 'list_available_tools、create_chat_role、update_role_config 等', desc: '角色管理，仅管理型角色需要' },
+        { id: 'browser',         tools: 'web_search、fetch_url、list_tabs、click_element 等', desc: 'Chrome 浏览器工具，需要扩展连接' },
+    ];
+
+    const builtInSection = [
+        '## 内置工具包（tool_sets）',
+        ...BUILT_IN.map(s => `- ${s.id}: ${s.tools} — ${s.desc}`),
+    ].join('\n');
+
+    // 从 vscode.lm.tools 解析 MCP server
+    const serverToolsMap = new Map<string, string[]>();
+    for (const tool of vscode.lm.tools) {
+        const match = tool.name.match(/^mcp_([^_]+)_(.+)$/);
+        if (match) {
+            const server = match[1];
+            if (!serverToolsMap.has(server)) { serverToolsMap.set(server, []); }
+            serverToolsMap.get(server)!.push(match[2]);
+        }
+    }
+
+    let mcpSection: string;
+    if (serverToolsMap.size === 0) {
+        mcpSection = '## 已注册 MCP Server（mcp_servers）\n（当前未注册任何 MCP 工具）';
+    } else {
+        const lines = [...serverToolsMap.entries()].map(([server, tools]) =>
+            `- ${server} (${tools.length} 个工具): ${tools.join('、')}`
+        );
+        mcpSection = ['## 已注册 MCP Server（mcp_servers）', '> 按角色职责按需选择 server，避免使用 "*"（会将全部工具注入上下文，消耗大量 token）', ...lines].join('\n');
+    }
+
+    return { success: true, content: `${builtInSection}\n\n${mcpSection}` };
+}
+
 async function executeCreateChatRole(input: Record<string, unknown>): Promise<ToolCallResult> {
     const name = String(input.name || '').trim();
     const systemPrompt = String(input.systemPrompt || '').trim();
@@ -2345,21 +2411,25 @@ async function executeCreateChatRole(input: Record<string, unknown>): Promise<To
     const toolSets: string[] = Array.isArray(input.toolSets)
         ? (input.toolSets as unknown[]).map(String)
         : [];
+    const mcpServers: string[] = Array.isArray(input.mcpServers)
+        ? (input.mcpServers as unknown[]).map(String)
+        : [];
 
     if (!name) { return { success: false, content: '请提供角色名称' }; }
     if (!systemPrompt) { return { success: false, content: '请提供系统提示词' }; }
 
-    const roleId = await dataCreateChatRole(name, systemPrompt, avatar, modelFamily, toolSets);
+    const roleId = await dataCreateChatRole(name, systemPrompt, avatar, modelFamily, toolSets, mcpServers);
     if (!roleId) {
         return { success: false, content: '创建角色失败' };
     }
     void vscode.commands.executeCommand('issueManager.llmChat.refresh');
 
     const capStr = toolSets.length > 0 ? `，工具集：${toolSets.join('/')}` : '';
+    const mcpStr = mcpServers.length > 0 ? `，MCP：${mcpServers.join('/')}` : '';
     const modelNote = modelFamily ? `，模型：${modelFamily}` : '';
     return {
         success: true,
-        content: `✅ 已创建角色「${name}」(ID: \`${roleId}\`${modelNote}${capStr})。`,
+        content: `✅ 已创建角色「${name}」(ID: \`${roleId}\`${modelNote}${capStr}${mcpStr})。`,
     };
 }
 

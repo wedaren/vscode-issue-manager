@@ -19,6 +19,7 @@ import {
 import { RoleTimerManager } from './RoleTimerManager';
 import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
 import { Logger } from '../core/utils/Logger';
+import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
 const logger = Logger.getInstance();
 
@@ -323,7 +324,7 @@ export function registerLLMChatCommands(
 - \`memory\` — 持久记忆（read_memory / write_memory），适合长期任务角色
 - \`delegation\` — 委派能力（delegate_to_role / list_chat_roles），适合中枢调度角色
 - \`role_management\` — 角色管理（create/update/evaluate/read_logs），仅管理型角色需要
-- \`web\` — Chrome 浏览器工具（web_search / fetch_url），适合网络类角色
+- \`browser\` — Chrome 浏览器工具（web_search / fetch_url / list_tabs / click_element 等），需要网络或浏览器操作的角色
 
 ## 分析维度
 1. **工具集匹配度** — tool_sets 与角色职责是否相符
@@ -367,7 +368,7 @@ export function registerLLMChatCommands(
                     label: '$(cloud) 网络助手',
                     description: '专职网络搜索与页面抓取，供其他角色异步委派使用',
                     avatar: 'cloud',
-                    toolSets: ['web'],
+                    toolSets: ['browser'],
                     systemPrompt: `你是一位专职网络助手，负责执行网络搜索与页面内容抓取任务。你只拥有网络工具和笔记工具，所有网络相关任务都由其他角色委派给你。
 
 ## 可用工具
@@ -745,6 +746,136 @@ export function registerLLMChatCommands(
                 logger.error('删除对话失败', e);
                 vscode.window.showErrorMessage('删除对话失败');
             }
+        }),
+    );
+
+    // ─── 交互式配置角色工具集（tool_sets + MCP） ────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.configureTools', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+
+            // 读取 frontmatter，确认是角色文件
+            const contentBytes = await vscode.workspace.fs.readFile(targetUri);
+            const { frontmatter } = extractFrontmatterAndBody(Buffer.from(contentBytes).toString('utf-8'));
+            if (!frontmatter?.chat_role) {
+                vscode.window.showWarningMessage('当前文件不是聊天角色文件');
+                return;
+            }
+
+            const currentToolSets: string[] = Array.isArray(frontmatter.tool_sets)      ? (frontmatter.tool_sets      as string[]) : [];
+            const currentServers:  string[] = Array.isArray(frontmatter.mcp_servers)     ? (frontmatter.mcp_servers     as string[]) : [];
+            const currentExtra:    string[] = Array.isArray(frontmatter.extra_tools)     ? (frontmatter.extra_tools     as string[]) : [];
+            const currentExcluded: string[] = Array.isArray(frontmatter.excluded_tools)  ? (frontmatter.excluded_tools  as string[]) : [];
+
+            // ── Step 1: 选择 tool_sets（内置工具包） ─────────────
+            const BUILT_IN_SETS: Array<{ id: string; description: string; detail: string }> = [
+                { id: 'memory',          description: '持久记忆',     detail: 'read_memory、write_memory — 适合需要跨对话记忆的角色' },
+                { id: 'delegation',      description: '委派能力',     detail: 'delegate_to_role、list_chat_roles — 适合中枢调度角色' },
+                { id: 'role_management', description: '角色管理',     detail: 'create/update/evaluate_role、read_role_execution_logs — 仅管理型角色需要' },
+                { id: 'browser',         description: 'Chrome 浏览器', detail: 'web_search、fetch_url、list_tabs、click_element 等 — 需要网络或浏览器操作' },
+            ];
+            const toolSetItems = BUILT_IN_SETS.map(s => ({
+                label: s.id,
+                description: s.description,
+                detail: s.detail,
+                picked: currentToolSets.includes(s.id),
+            }));
+            const selectedSets = await vscode.window.showQuickPick(toolSetItems, {
+                canPickMany: true,
+                title: '配置 tool_sets（第 1 步 / 共 4 步）',
+                placeHolder: '勾选要启用的内置工具包（留空则仅使用基础笔记工具）',
+            });
+            if (selectedSets === undefined) { return; }
+            const newToolSets = selectedSets.map(i => i.label);
+
+            // ── Step 2: 选择 mcp_servers ──────────────────────────
+            const serverToolsMap = new Map<string, string[]>();
+            for (const tool of vscode.lm.tools) {
+                const match = tool.name.match(/^mcp_([^_]+)_(.+)$/);
+                if (match) {
+                    const server = match[1];
+                    if (!serverToolsMap.has(server)) { serverToolsMap.set(server, []); }
+                    serverToolsMap.get(server)!.push(tool.name);
+                }
+            }
+            type ServerItem = vscode.QuickPickItem & { serverId: string };
+            const serverItems: ServerItem[] = serverToolsMap.size > 0 ? [
+                { label: '*', serverId: '*', description: '引入全部已注册 MCP 工具', picked: currentServers.includes('*') },
+                { label: '', kind: vscode.QuickPickItemKind.Separator, serverId: '' },
+                ...[...serverToolsMap.entries()].map(([server, tools]): ServerItem => ({
+                    label: server,
+                    serverId: server,
+                    description: `${tools.length} 个工具`,
+                    detail: tools.slice(0, 4).map(t => t.replace(`mcp_${server}_`, '')).join('、') +
+                        (tools.length > 4 ? ` … +${tools.length - 4}` : ''),
+                    picked: currentServers.includes(server),
+                })),
+            ] : [
+                { label: '（未检测到已注册的 MCP 工具）', serverId: '', description: '可跳过此步' },
+            ];
+            const selectedServers = await vscode.window.showQuickPick(serverItems, {
+                canPickMany: true,
+                title: '配置 mcp_servers（第 2 步 / 共 4 步）',
+                placeHolder: '勾选要注入的 MCP server，留空则不使用 MCP 工具',
+            });
+            if (selectedServers === undefined) { return; }
+            const newServers = selectedServers
+                .filter(i => i.kind !== vscode.QuickPickItemKind.Separator && i.serverId)
+                .map(i => i.serverId);
+            const includeAll = newServers.includes('*');
+
+            // ── Step 3: extra_tools（非所选 server 的额外单个工具） ──
+            let newExtra: string[] = [];
+            if (!includeAll && serverToolsMap.size > 0) {
+                const coveredServers = new Set(newServers);
+                const extraItems = [...serverToolsMap.entries()]
+                    .filter(([s]) => !coveredServers.has(s))
+                    .flatMap(([, tools]) => tools)
+                    .map(name => ({ label: name, picked: currentExtra.includes(name) }));
+                if (extraItems.length > 0) {
+                    const sel = await vscode.window.showQuickPick(extraItems, {
+                        canPickMany: true,
+                        title: '配置 extra_tools（第 3 步 / 共 4 步）',
+                        placeHolder: '从未选中的 server 中单独引入某些工具（留空跳过）',
+                    });
+                    if (sel === undefined) { return; }
+                    newExtra = sel.map(i => i.label);
+                }
+            }
+
+            // ── Step 4: excluded_tools（从所选 server 中排除） ──────
+            let newExcluded: string[] = [];
+            if (!includeAll && newServers.length > 0) {
+                const coveredTools = newServers.flatMap(s => serverToolsMap.get(s) ?? []);
+                if (coveredTools.length > 0) {
+                    const sel = await vscode.window.showQuickPick(
+                        coveredTools.map(name => ({ label: name, picked: currentExcluded.includes(name) })),
+                        {
+                            canPickMany: true,
+                            title: '配置 excluded_tools（第 4 步 / 共 4 步）',
+                            placeHolder: '从已选中的 server 中排除某些工具（留空跳过）',
+                        },
+                    );
+                    if (sel === undefined) { return; }
+                    newExcluded = sel.map(i => i.label);
+                }
+            }
+
+            // 写入 frontmatter
+            const updates: Record<string, unknown> = {
+                tool_sets: newToolSets,
+                mcp_servers: newServers,
+            };
+            if (newExtra.length > 0)    { updates['extra_tools']    = newExtra; }
+            if (newExcluded.length > 0) { updates['excluded_tools'] = newExcluded; }
+            await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+
+            vscode.window.showInformationMessage(
+                `已更新工具配置 — tool_sets: [${newToolSets.join(', ')}]  mcp_servers: [${newServers.join(', ')}]` +
+                (newExtra.length    ? `  extra: ${newExtra.length} 个`       : '') +
+                (newExcluded.length ? `  excluded: ${newExcluded.length} 个` : ''),
+            );
         }),
     );
 

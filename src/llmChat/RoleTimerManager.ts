@@ -333,7 +333,7 @@ export class RoleTimerManager implements vscode.Disposable {
             }
 
             let toolCallSeq = 0;
-            const toolCallCountMap: Record<string, number> = {};
+            const toolCallItems: Array<{ name: string; time: Date; dur: number; fileName: string | null; success: boolean }> = [];
 
             const result = await LLMService.streamWithTools(
                 messages,
@@ -381,9 +381,9 @@ export class RoleTimerManager implements vscode.Disposable {
                     const dur = Date.now() - tcStart;
 
                     // 创建工具调用详情节点 + 日志摘要行（带链接）
+                    let fileName: string | null = null;
                     if (logUri && runNumber > 0) {
                         const toolDef = tools.find((t: { name: string }) => t.name === toolName);
-                        let fileName: string | null = null;
                         try {
                             fileName = await createToolCallNode(logUri, toolName, input, res.content, dur, {
                                 success: res.success,
@@ -414,13 +414,14 @@ export class RoleTimerManager implements vscode.Disposable {
                     }
 
                     // 工具完成，更新追踪
-                    toolCallCountMap[toolName] = (toolCallCountMap[toolName] ?? 0) + 1;
+                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName, success: res.success });
                     execToolCalls = toolCallSeq;
                     execLastToolName = toolName;
                     execPhase = `等待 LLM 响应（工具调用 #${toolCallSeq} 后）`;
                     execLastActivityAt = Date.now();
 
-                    return res.content;
+                    // 结果过大时外存引用，避免超出 token 上限
+                    return buildToolResultForLlm(res.content, fileName);
                 },
                 {
                     signal: ac.signal,
@@ -458,9 +459,15 @@ export class RoleTimerManager implements vscode.Disposable {
             let toolSummary: string | undefined;
             if (toolCallSeq > 0 && logUri) {
                 const logId = path.basename(logUri.fsPath, '.md');
-                const parts = Object.entries(toolCallCountMap)
-                    .map(([name, count]) => count > 1 ? `\`${name}\`×${count}` : `\`${name}\``);
-                toolSummary = `> 📋 本轮工具调用 · Run #${runNumber}：${parts.join(' · ')} | [执行详情](IssueDir/${logId})`;
+                const lines = toolCallItems.map(item => {
+                    const t = fmtHms(item.time);
+                    const icon = item.success ? '✅' : '❌';
+                    const nameStr = item.fileName
+                        ? `[\`${item.name}\`](IssueDir/${item.fileName})`
+                        : `\`${item.name}\``;
+                    return `> - \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})`;
+                });
+                toolSummary = `> Run #${runNumber} · [执行详情](IssueDir/${logId}.md)\n${lines.join('\n')}`;
             }
             await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
 
@@ -574,6 +581,31 @@ function formatTimestamp(ts: number): string {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+function fmtHms(d: Date): string {
+    const p = (n: number) => n.toString().padStart(2, '0');
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 function fmtDuration(ms: number): string {
     return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+/**
+ * 决定工具结果如何传回给 LLM。
+ * - 结果较小（≤ INLINE_MAX_CHARS）：直接 inline
+ * - 结果过大且已写入文件：传引用 + 预览，让 LLM 自主决定是否读取完整内容
+ * - 结果过大但文件写入失败：截断并附注
+ */
+const INLINE_MAX_CHARS = 8000;
+
+function buildToolResultForLlm(content: string, fileName: string | null): string {
+    if (content.length <= INLINE_MAX_CHARS) {
+        return content;
+    }
+    if (fileName) {
+        const preview = content.slice(0, 300).trimEnd();
+        return `[工具结果（${content.length} 字符）](IssueDir/${fileName})\n预览：${preview}${content.length > 300 ? '\n...' : ''}\n如需完整内容，请调用 read_issue("${fileName}")`;
+    }
+    // 文件写入失败时兜底截断
+    return content.slice(0, INLINE_MAX_CHARS) + `\n...[内容已截断，原始长度 ${content.length} 字符]`;
 }

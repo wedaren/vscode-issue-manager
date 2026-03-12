@@ -32,7 +32,7 @@ export interface ChatRoleFrontmatter {
     // ─── 工具集配置 ───────────────────────────────────────────
     /**
      * 内置工具包列表，合法值：
-     * "memory" | "delegation" | "role_management" | "web"
+     * "memory" | "delegation" | "role_management" | "browser"
      */
     tool_sets?: string[];
     /** 允许使用的 MCP server 名称列表（取其全部工具）；"*" 表示引入所有已注册的 MCP 工具 */

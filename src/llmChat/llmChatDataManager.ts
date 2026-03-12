@@ -92,6 +92,7 @@ export async function createChatRole(
     avatar?: string,
     modelFamily?: string,
     toolSets?: string[],
+    mcpServers?: string[],
 ): Promise<string | null> {
     const defaultModelFamily = vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily') || 'gpt-5-mini';
     const fm: Partial<FrontmatterData> & ChatRoleFrontmatter = {
@@ -109,10 +110,8 @@ export async function createChatRole(
         timer_retry_delay: 5000,
         // ─── 工具集配置（占位，按需填写） ────────────────────
         tool_sets: toolSets ?? [],
-        mcp_servers: [] as string[],
-        extra_tools: [] as string[],
-        excluded_tools: [] as string[],
-    } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[]; extra_tools: string[]; excluded_tools: string[] };
+        mcp_servers: mcpServers ?? [],
+    } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[] };
 
     const body = `# ${name}\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
