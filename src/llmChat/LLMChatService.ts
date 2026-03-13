@@ -701,6 +701,20 @@ ${userMessage}
                 + '- 整理标签页时，先 list_tabs 获取所有标签，再用 organize_tabs 分组。\n'
                 + '- 填写表单：先 get_page_elements 了解结构 → fill_input 填入 → click_element 提交。\n';
         }
+
+        // ─── 执行模式注入 ─────────────────────────────────────
+        // 仅读对话级显式配置，默认 false（交互模式）
+        const convoConfig = await getConversationConfig(uri);
+        const autonomous = convoConfig?.autonomous ?? false;
+        if (autonomous) {
+            systemContent += '\n[执行模式: 自主] 当前为自主执行模式。'
+                + '你应该独立思考、主动调用工具完成任务，不要等待用户确认。'
+                + '遇到不明确的地方自行做出合理决策，完成后在回复中说明你的决策和理由。';
+        } else {
+            systemContent += '\n[执行模式: 交互] 当前为交互对话模式。'
+                + '执行破坏性操作（修改角色配置、删除笔记、大规模变更）前应征求用户确认。'
+                + '常规的信息查询、笔记创建、分析建议等可直接执行。';
+        }
         msgs.push(vscode.LanguageModelChatMessage.User(systemContent));
 
         const history = await parseConversationMessages(uri);

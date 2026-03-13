@@ -298,7 +298,7 @@ export class RoleTimerManager implements vscode.Disposable {
                 onHeartbeat: () => { execLastActivityAt = Date.now(); },
             };
 
-            const messages = await this.buildMessages(uri, role);
+            const messages = await this.buildMessages(uri, role, trigger);
             inputTokens = await estimateTokens(messages);
 
             // 日志：token 预估
@@ -393,7 +393,15 @@ export class RoleTimerManager implements vscode.Disposable {
                         }
                     }
 
-                    const res = await executeChatTool(toolName, input, toolContext);
+                    // 工具执行期间自动刷新空闲计时，防止慢工具被误杀
+                    // （委派工具已有自己的 onHeartbeat，但普通工具没有）
+                    const toolHeartbeatId = setInterval(() => { execLastActivityAt = Date.now(); }, 10_000);
+                    let res: Awaited<ReturnType<typeof executeChatTool>>;
+                    try {
+                        res = await executeChatTool(toolName, input, toolContext);
+                    } finally {
+                        clearInterval(toolHeartbeatId);
+                    }
                     const dur = Date.now() - tcStart;
 
                     // 创建工具调用详情节点 + 日志摘要行（带链接）
@@ -588,11 +596,25 @@ export class RoleTimerManager implements vscode.Disposable {
      * 当历史消息的预估 token 超过 maxTokens 的 70% 时，启用滑动窗口截断：
      * 保留第 1 轮（原始任务）+ 最近 N 轮，中间部分压缩为摘要行。
      */
-    private async buildMessages(uri: vscode.Uri, role: ChatRoleInfo): Promise<vscode.LanguageModelChatMessage[]> {
+    private async buildMessages(uri: vscode.Uri, role: ChatRoleInfo, trigger?: 'timer' | 'direct' | 'save'): Promise<vscode.LanguageModelChatMessage[]> {
         const prompt = await getRoleSystemPrompt(role.uri);
-        const systemText = prompt
+        let systemText = prompt
             ? `[系统指令] ${prompt}`
             : '[系统指令] 你是一个智能助手，请根据对话上下文给出有帮助的回复。';
+
+        // ─── 执行模式注入 ─────────────────────────────────────
+        // 仅读对话级显式配置，默认 false（交互模式）
+        const convoConfigForMode = await getConversationConfig(uri);
+        const autonomous = convoConfigForMode?.autonomous ?? false;
+        if (autonomous) {
+            systemText += '\n\n[执行模式: 自主] 当前为自主执行模式，用户不在场。'
+                + '你应该独立思考、主动调用工具完成任务，不要等待用户确认。'
+                + '遇到不明确的地方自行做出合理决策，完成后在回复中说明你的决策和理由。';
+        } else {
+            systemText += '\n\n[执行模式: 交互] 当前为交互对话模式，用户在场。'
+                + '执行破坏性操作（修改角色配置、删除笔记、大规模变更）前应征求用户确认。'
+                + '常规的信息查询、笔记创建、分析建议等可直接执行。';
+        }
         const systemMsg = vscode.LanguageModelChatMessage.User(systemText);
 
         const history = await parseConversationMessages(uri);

@@ -337,6 +337,7 @@ export function registerLLMChatCommands(
 - \`chat_role_max_tokens\`: number — token 预算
 - \`timer_enabled\`, \`timer_interval\`, \`timer_max_concurrent\`, \`timer_timeout\`, \`timer_max_retries\`, \`timer_retry_delay\` — 定时器配置
 除以上字段外，不要建议任何其他 frontmatter 字段。
+注意：自主模式（chat_autonomous）是对话级配置，不是角色级配置。
 
 ## 合法的 tool_sets 值
 - \`memory\` — 持久记忆（read_memory / write_memory），适合长期任务角色

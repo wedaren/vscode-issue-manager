@@ -2410,6 +2410,19 @@ async function findRole(nameOrId: string): Promise<ChatRoleInfo | undefined> {
     );
 }
 
+/** 读取委派对话的 chat_log_id，返回追溯链接文本（无日志时返回空字符串） */
+async function getDelegationLogTrace(convoUri: vscode.Uri, convoId: string): Promise<string> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(convoUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const logId = (frontmatter as Record<string, unknown> | null)?.chat_log_id as string | undefined;
+        if (logId) {
+            return `\n> 📋 执行日志 [${logId}](IssueDir/${logId}.md)（对话 ${convoId} 的完整执行记录）`;
+        }
+    } catch { /* ignore */ }
+    return '';
+}
+
 async function executeDelegateToRole(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
     if (!context?.role?.toolSets.includes('delegation')) {
         return { success: false, content: '当前角色未启用委派能力' };
@@ -2435,13 +2448,15 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
         return { success: false, content: `找不到角色「${roleNameOrId}」，请先用 list_chat_roles 查看可用角色。` };
     }
 
-    // 创建真实对话文件
+    // 创建真实对话文件（委派对话默认自主模式）
     const taskPreview = task.length > 30 ? task.slice(0, 30) + '…' : task;
     const convoTitle = `[委派] ${taskPreview}`;
     const convoUri = await createConversation(role.id, convoTitle);
     if (!convoUri) {
         return { success: false, content: '创建委派对话文件失败' };
     }
+    // 委派对话自动启用自主模式
+    await updateIssueMarkdownFrontmatter(convoUri, { chat_autonomous: true } as Partial<FrontmatterData>);
     const convoId = path.basename(convoUri.fsPath, '.md');
     logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '同步'}`);
 
@@ -2467,9 +2482,12 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
         logger.info(`[ChatTools] 委派结束 → 角色「${role.name}」| 回复长度: ${reply.length}`);
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
 
+        // 读取委派对话的执行日志 ID，用于跨对话追溯
+        const logTraceInfo = await getDelegationLogTrace(convoUri, convoId);
+
         return {
             success: true,
-            content: `**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
         };
     } finally {
         _delegationDepth--;
@@ -2564,9 +2582,11 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
         logger.info(`[ChatTools] 追问完成 → 角色「${roleName}」| 对话 ${convoId} | 回复长度: ${reply.length}`);
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
 
+        const logTraceInfo = await getDelegationLogTrace(convoUri, convoId);
+
         return {
             success: true,
-            content: `**[${roleName} 的追问回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续追问，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。如果任务已完成，无需再调用。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `**[${roleName} 的追问回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续追问，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。如果任务已完成，无需再调用。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
         };
     } finally {
         _delegationDepth--;

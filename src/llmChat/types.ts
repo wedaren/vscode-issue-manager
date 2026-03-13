@@ -78,6 +78,11 @@ export interface ChatConversationFrontmatter {
     chat_token_used_pct?: number;
     /** 关联的执行日志文件 ID（首次执行时自动创建） */
     chat_log_id?: string;
+    /**
+     * 对话级自主模式（覆盖角色配置）：true = 自主决策，false = 交互确认。
+     * 优先级：对话 > 角色 > 触发方式自动推断。
+     */
+    chat_autonomous?: boolean;
 }
 
 /** 运行时聊天角色信息（从 issueMarkdown 解析而来） */
@@ -136,6 +141,8 @@ export interface ChatConversationInfo {
     tokenUsed?: number;
     /** 关联的执行日志 ID */
     logId?: string;
+    /** 对话级自主模式 */
+    autonomous?: boolean;
 }
 
 // ─── 群组相关 ───────────────────────────────────────────────
@@ -179,6 +186,30 @@ export interface ChatGroupMessage {
     roleName?: string;
     content: string;
     timestamp: number;
+}
+
+// ─── 最近活动（聚合视图） ─────────────────────────────────────
+
+/** 从多个执行日志聚合出的单次 Run 条目 */
+export interface RecentActivityEntry {
+    /** Run 编号 */
+    runNumber: number;
+    /** 执行开始时间戳 */
+    timestamp: number;
+    /** 关联的对话 ID */
+    conversationId: string;
+    /** 日志文件 URI */
+    logUri: import('vscode').Uri;
+    /** 角色名称 */
+    roleName?: string;
+    /** 模型 */
+    modelFamily?: string;
+    /** 触发方式 */
+    trigger?: string;
+    /** 是否成功 */
+    success: boolean;
+    /** 摘要（一行描述） */
+    summary: string;
 }
 
 // ─── 执行日志 ───────────────────────────────────────────────

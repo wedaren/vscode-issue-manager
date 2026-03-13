@@ -32,6 +32,7 @@ import type {
     ChatToolCallFrontmatter,
     ExecutionRunRecord,
     ExecutionToolCall,
+    RecentActivityEntry,
 } from './types';
 import { stripMarker, parseStateMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
@@ -210,6 +211,7 @@ export async function createConversation(roleId: string, title?: string): Promis
         chat_model_family: defaultModelFamily,
         chat_max_tokens: role?.maxTokens ?? 0,
         chat_token_used: 0,
+        chat_autonomous: false,
     };
 
     const body = `# ${convoTitle}\n\n`;
@@ -343,6 +345,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
     modelFamily?: string;
     maxTokens?: number;
     tokenUsed?: number;
+    autonomous?: boolean;
 } | null> {
     try {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
@@ -353,6 +356,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
             modelFamily: fm.chat_model_family as string | undefined,
             maxTokens: fm.chat_max_tokens as number | undefined,
             tokenUsed: fm.chat_token_used as number | undefined,
+            autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
         };
     } catch {
         return null;
@@ -707,6 +711,96 @@ export async function getExecutionLogInfo(conversationUri: vscode.Uri): Promise<
         logger.error('getExecutionLogInfo 失败', e);
         return null;
     }
+}
+
+/**
+ * 聚合所有执行日志，返回最近 N 条 Run 条目（跨对话）。
+ * 用于「最近活动」视图。
+ */
+export async function getRecentActivityEntries(limit = 30): Promise<RecentActivityEntry[]> {
+    const allLogs = getIssueMarkdownsByType('chat_execution_log');
+    const entries: RecentActivityEntry[] = [];
+
+    for (const md of allLogs) {
+        if (!md.frontmatter || md.frontmatter.chat_execution_log !== true) { continue; }
+        const fm = md.frontmatter as unknown as ChatExecutionLogFrontmatter;
+        const conversationId = fm.chat_conversation_id;
+
+        let raw: string;
+        try {
+            raw = Buffer.from(await vscode.workspace.fs.readFile(md.uri)).toString('utf8');
+        } catch { continue; }
+
+        // 按 Run header 拆分（streaming 格式: ## Run #N (YYYY-MM-DD HH:mm:ss)，无 icon/summary）
+        const runHeaderRe = /## Run #(\d+) \((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)/g;
+        let match: RegExpExecArray | null;
+        const runPositions: { runNumber: number; timestamp: number; startIdx: number }[] = [];
+
+        while ((match = runHeaderRe.exec(raw)) !== null) {
+            const ts = new Date(match[2].replace(' ', 'T')).getTime();
+            runPositions.push({
+                runNumber: Number(match[1]),
+                timestamp: ts,
+                startIdx: match.index,
+            });
+        }
+
+        // 解析每个 run section 的上下文和结果
+        for (let i = 0; i < runPositions.length; i++) {
+            const h = runPositions[i];
+            const nextStart = i + 1 < runPositions.length ? runPositions[i + 1].startIdx : raw.length;
+            const section = raw.slice(h.startIdx, nextStart);
+
+            // 上下文来自 startLogRun 写的首行: 📋 **开始执行** | 触发: X | 角色: Y | 模型: Z
+            const ctxMatch = /📋 \*\*开始执行\*\* \| (.+)/.exec(section);
+            let roleName: string | undefined;
+            let modelFamily: string | undefined;
+            let trigger: string | undefined;
+            if (ctxMatch) {
+                const parts = ctxMatch[1];
+                const r = /角色: ([^|]+)/.exec(parts);
+                const m = /模型: ([^|]+)/.exec(parts);
+                const t = /触发: ([^|]+)/.exec(parts);
+                roleName = r?.[1]?.trim();
+                modelFamily = m?.[1]?.trim();
+                trigger = t?.[1]?.trim();
+            }
+
+            // 成功/失败从 appendLogLine 写的结果行提取
+            const hasSuccess = /✅ \*\*成功\*\*/.test(section);
+            const hasFailure = /❌ \*\*失败/.test(section);
+            const success = hasSuccess && !hasFailure;
+
+            // 生成摘要
+            let summary: string;
+            if (hasSuccess) {
+                const sm = /✅ \*\*成功\*\* \| (.+)/.exec(section);
+                summary = sm ? `成功 | ${sm[1].trim()}` : '成功';
+            } else if (hasFailure) {
+                const fm2 = /❌ \*\*失败[^*]*\*\* \| (.+)/.exec(section);
+                summary = fm2 ? `失败 | ${fm2[1].trim()}` : '失败';
+            } else {
+                // 可能仍在执行中
+                summary = '执行中…';
+            }
+
+            entries.push({
+                runNumber: h.runNumber,
+                timestamp: h.timestamp,
+                conversationId,
+                logUri: md.uri,
+                roleName,
+                modelFamily,
+                trigger,
+                success,
+                summary,
+            });
+        }
+    }
+
+    // 按时间倒序，取前 N 条
+    entries.sort((a, b) => b.timestamp - a.timestamp);
+    return entries.slice(0, limit);
 }
 
 /** 格式化单条执行记录为 markdown */
