@@ -711,7 +711,7 @@
         "command": "issueManager.llmChat.newConversation",
         "title": "新建对话",
         "category": "Issue Manager",
-        "icon": "$(comment-discussion)"
+        "icon": "$(add)"
       },
       {
         "command": "issueManager.llmChat.openConversation",

@@ -138,7 +138,7 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[] }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[]; modelFamily?: string }[] = [
                 {
                     label: '$(rocket) 个人助理',
                     description: '中枢调度、记忆进化、团队委派',
@@ -318,7 +318,25 @@ export function registerLLMChatCommands(
                     description: '测试、分析、迭代优化角色配置，识别冗余工具，提升 token 效率',
                     avatar: 'settings-gear',
                     toolSets: ['role_management', 'delegation'],
+                    modelFamily: 'gpt-5.4',
                     systemPrompt: `你是一位专职角色配置分析师，通过「测试 → 分析 → 假设 → 修改 → 再测试」的迭代循环评估并优化 LLM 角色配置。
+
+⚠️ **反幻觉铁律 — 违反即失败**
+1. **所有数据必须来自工具调用**。严禁凭空编造统计数字、成功率、token 消耗等任何数值。
+2. 在输出「使用数据」或「配置摘要」之前，你必须已经成功调用了 \`read_issue\` 和 \`read_role_execution_logs\`。如果工具调用失败或无数据，必须如实说明「暂无数据」，不得用假数据填充。
+3. 建议的配置修改只能使用系统中实际存在的 frontmatter 字段（见下方合法字段列表），严禁发明不存在的字段。
+4. 如果不确定某功能是否存在，直接告知用户你不确定，不要编造。
+
+## 合法的 frontmatter 字段
+角色文件支持的字段（ChatRoleFrontmatter）：
+- \`tool_sets\`: string[] — 合法值: \`memory\`, \`delegation\`, \`role_management\`, \`browser\`
+- \`mcp_servers\`: string[] — MCP server 名称列表，"*" 引入全部（慎用）
+- \`extra_tools\`: string[] — 额外引入的具体工具名
+- \`excluded_tools\`: string[] — 排除的具体工具名
+- \`chat_role_model_family\`: string — 指定模型
+- \`chat_role_max_tokens\`: number — token 预算
+- \`timer_enabled\`, \`timer_interval\`, \`timer_max_concurrent\`, \`timer_timeout\`, \`timer_max_retries\`, \`timer_retry_delay\` — 定时器配置
+除以上字段外，不要建议任何其他 frontmatter 字段。
 
 ## 合法的 tool_sets 值
 - \`memory\` — 持久记忆（read_memory / write_memory），适合长期任务角色
@@ -335,17 +353,16 @@ export function registerLLMChatCommands(
 ## 工作流程
 
 【第一阶段：初步诊断】（需用户确认后才进入第二阶段）
-1. \`search_issues\` 找到目标角色，\`read_issue\` 读取 frontmatter + system prompt
-2. \`read_role_execution_logs\` 获取工具调用频率、成功率、token 消耗
-3. 整理诊断报告，制定 2-4 条测试用例（每条说明测试目的和预期行为）
-4. 询问用户："以上诊断和测试计划是否合适？确认后开始测试。"
+1. **必须先调用工具获取数据**：
+   - \`search_issues\` 找到目标角色 → \`read_issue\` 读取 frontmatter + system prompt
+   - \`read_role_execution_logs\` 获取工具调用频率、成功率、token 消耗
+2. 基于工具返回的真实数据整理诊断报告，制定 2-4 条测试用例
+3. 询问用户确认
 
 【第二阶段：实验测试】（用户确认后执行）
-1. 确认目标角色当前无进行中对话，避免并发干扰
-2. 用 \`delegate_to_role\` 逐条执行测试用例，记录每条实际响应
-3. 对比实际响应 vs 预期行为，找出差距
-4. 形成假设："问题根因是 X，修改 Y 应能改善"
-5. 展示修改方案（frontmatter 片段 + system prompt 改动），等用户确认
+1. 用 \`delegate_to_role\` 逐条执行测试用例，记录每条实际响应
+2. 对比实际响应 vs 预期行为，找出差距
+3. 形成假设，展示修改方案（仅使用合法 frontmatter 字段），等用户确认
 
 【第三阶段：修改与验证】（用户确认后执行）
 1. \`update_role_config\` 应用修改
@@ -358,11 +375,11 @@ export function registerLLMChatCommands(
 - 每次修改必须有明确假设，不做无根据的改动
 
 ## 报告格式
-- 📋 **配置摘要**：tool_sets / mcp_servers / 工具总数
-- 📊 **使用数据**：成功率 / 平均 token / 工具调用频率排行
-- ⚠️ **问题清单**：每条问题 + 具体改法
+- 📋 **配置摘要**：tool_sets / mcp_servers / 工具总数（来自 read_issue 的真实数据）
+- 📊 **使用数据**：成功率 / 平均 token / 工具调用频率排行（来自 read_role_execution_logs 的真实数据）
+- ⚠️ **问题清单**：每条问题 + 具体改法（仅使用合法字段）
 - 🧪 **测试计划**：用例列表（目的 + 预期行为）
-- ✅ **建议配置**：优化后的 frontmatter 片段`,
+- ✅ **建议配置**：优化后的 frontmatter 片段（仅包含合法字段）`,
                 },
                 {
                     label: '$(cloud) 网络助手',
@@ -402,6 +419,7 @@ export function registerLLMChatCommands(
                 avatar?: string;
                 systemPrompt?: string;
                 toolSets?: string[];
+                modelFamily?: string;
             }
 
             const items: PresetItem[] = [
@@ -411,6 +429,7 @@ export function registerLLMChatCommands(
                     avatar: p.avatar,
                     systemPrompt: p.systemPrompt,
                     toolSets: p.toolSets,
+                    modelFamily: p.modelFamily,
                 })),
                 { label: '$(add) 自定义角色…', description: '手动输入名称和提示词', isCustom: true, kind: vscode.QuickPickItemKind.Separator } as PresetItem,
                 { label: '$(add) 自定义角色…', description: '完全自定义名称、提示词和图标', isCustom: true },
@@ -464,8 +483,8 @@ export function registerLLMChatCommands(
                 avatar = pick.avatar || 'hubot';
             }
 
-            // 选择模型（预设和自定义都走这一步）
-            const modelFamily = await pickModelFamily();
+            // 选择模型（预设和自定义都走这一步；预设可提供推荐模型）
+            const modelFamily = await pickModelFamily(pick.modelFamily);
             if (modelFamily === undefined) { return; }  // 用户按了 ESC
 
             const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, pick.toolSets);
@@ -960,9 +979,10 @@ export function registerLLMChatCommands(
 
 /**
  * 弹出模型选择 QuickPick（动态从 VS Code Copilot API 获取可用模型）。
+ * @param presetModelFamily 预设推荐的模型 family，有值时自动预选
  * @returns 选中的 modelFamily 字符串；空字符串表示使用全局默认；undefined 表示用户取消。
  */
-async function pickModelFamily(): Promise<string | undefined> {
+async function pickModelFamily(presetModelFamily?: string): Promise<string | undefined> {
     const config = vscode.workspace.getConfiguration('issueManager');
     const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
 
@@ -975,21 +995,35 @@ async function pickModelFamily(): Promise<string | undefined> {
         }
     }
 
+    const modelItems: Array<vscode.QuickPickItem & { value: string }> = [...familyMap.values()].map(m => ({
+        label: `$(sparkle) ${m.family}`,
+        description: `最大输入 ${(m.maxInputTokens / 1000).toFixed(0)}k tokens`
+            + (m.family === presetModelFamily ? '（预设推荐）' : ''),
+        value: m.family,
+    }));
+
+    // 预设推荐的模型排到最前面
+    if (presetModelFamily) {
+        const idx = modelItems.findIndex(i => i.value === presetModelFamily);
+        if (idx > 0) {
+            const [item] = modelItems.splice(idx, 1);
+            modelItems.unshift(item);
+        }
+    }
+
     const items: Array<vscode.QuickPickItem & { value: string }> = [
         {
             label: `$(settings) 使用全局默认（${globalDefault}）`,
             description: '跟随 issueManager.llm.modelFamily 设置',
             value: '',
         },
-        ...[...familyMap.values()].map(m => ({
-            label: `$(sparkle) ${m.family}`,
-            description: `最大输入 ${(m.maxInputTokens / 1000).toFixed(0)}k tokens`,
-            value: m.family,
-        })),
+        ...modelItems,
     ];
 
     const pick = await vscode.window.showQuickPick(items, {
-        placeHolder: '选择此角色使用的 AI 模型（可随时通过编辑角色文件修改）',
+        placeHolder: presetModelFamily
+            ? `推荐模型: ${presetModelFamily}（可选择其他）`
+            : '选择此角色使用的 AI 模型（可随时通过编辑角色文件修改）',
     });
 
     if (!pick) { return undefined; }   // 用户按 ESC → 取消整个创建流程

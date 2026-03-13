@@ -2819,6 +2819,8 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     const recentErrors: string[] = [];
+    /** 失败原因分类计数 */
+    const failureCategories: Record<string, number> = {};
     let analyzedLogs = 0;
 
     for (const convo of recentConvos) {
@@ -2832,14 +2834,24 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
             const runMatches = [...raw.matchAll(/## Run #(\d+)/g)];
             totalRuns += runMatches.length;
 
-            // 成功数
-            const successMatches = raw.match(/→.*?success/g);
+            // 成功数：匹配 "✅ **成功**"
+            const successMatches = raw.match(/✅ \*\*成功\*\*/g);
             successRuns += successMatches?.length ?? 0;
 
-            // 工具调用：格式为 "N. `tool_name` (Nms)"
-            for (const m of raw.matchAll(/\d+\. `([^`]+)` \(\d+ms\)/g)) {
+            // 工具调用：匹配 backtick 包裹的工具名 + 括号内的耗时
+            // 覆盖多种日志格式：
+            //   Timer:  ✅ [`tool_name`](link) (1.2s)  或  ✅ `tool_name` (250ms)
+            //   Direct: 🔧 `tool_name` (250ms) → result
+            //   委派:   📥✅ **委派结果** [`delegate_to_role`](link) (3.2s)
+            for (const m of raw.matchAll(/`([^`]+)`[^\n]*?\((\d+(?:\.\d+)?(?:ms|s))\)/g)) {
                 const t = m[1];
-                toolCallCounts[t] = (toolCallCounts[t] ?? 0) + 1;
+                // 排除非工具调用行（如 LLM 轮次摘要中的工具名列表）
+                // 工具调用行包含状态图标 ✅❌🔧📥 或 ⏳
+                const lineStart = raw.lastIndexOf('\n', m.index!) + 1;
+                const linePrefix = raw.slice(lineStart, m.index!);
+                if (/[✅❌🔧📥]/.test(linePrefix)) {
+                    toolCallCounts[t] = (toolCallCounts[t] ?? 0) + 1;
+                }
             }
 
             // Token 消耗
@@ -2848,9 +2860,22 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
                 totalOutputTokens += parseInt(m[2], 10);
             }
 
-            // 错误信息
-            for (const m of raw.matchAll(/\*\*错误详情\*\*: (.+)/g)) {
-                recentErrors.push(m[1]);
+            // 错误信息：匹配 "❌ **失败...** | 耗时 ... | 错误详情"
+            for (const m of raw.matchAll(/❌ \*\*失败[^|]*\|[^|]*\| (.+)/g)) {
+                const errMsg = m[1];
+                recentErrors.push(errMsg);
+                // 归类失败原因
+                const cat = /空响应/.test(errMsg) ? '空响应'
+                    : /超时|timeout/i.test(errMsg) ? '超时'
+                    : /abort|中止/i.test(errMsg) ? '用户中止'
+                    : '其他错误';
+                failureCategories[cat] = (failureCategories[cat] ?? 0) + 1;
+            }
+
+            // 空闲超时（单独的日志格式）
+            const idleTimeouts = raw.match(/⏰ \*\*空闲超时\*\*/g);
+            if (idleTimeouts) {
+                failureCategories['空闲超时'] = (failureCategories['空闲超时'] ?? 0) + idleTimeouts.length;
             }
         } catch {
             // 日志文件不可读，跳过
@@ -2866,6 +2891,13 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
     const usedTools = Object.keys(toolCallCounts);
     const neverUsed = configuredTools.filter(t => !usedTools.includes(t));
 
+    // ─── 读取 system prompt 长度 ─────────────────────────────
+    let promptLength = 0;
+    try {
+        const fullPrompt = await getRoleSystemPrompt(role.uri);
+        promptLength = fullPrompt.length;
+    } catch { /* 读取失败不影响报告 */ }
+
     // ─── 组装报告 ────────────────────────────────────────────
     let report = `## 角色「${role.name}」执行日志分析\n\n`;
     report += `**分析范围**: 最近 ${recentConvos.length} 个对话 / ${analyzedLogs} 份日志 / ${totalRuns} 次执行\n\n`;
@@ -2873,7 +2905,11 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
     report += `### 当前配置\n`;
     report += `- 工具集 (tool_sets): ${role.toolSets.length > 0 ? role.toolSets.join(', ') : '（无）'}\n`;
     report += `- MCP servers: ${role.mcpServers?.length ? role.mcpServers.join(', ') : '（无）'}\n`;
-    report += `- 配置工具总数: **${configuredTools.length}**\n\n`;
+    report += `- 配置工具总数: **${configuredTools.length}**\n`;
+    if (promptLength > 0) {
+        report += `- System prompt 长度: ${promptLength} 字（需查看全文请调用 read_issue）\n`;
+    }
+    report += '\n';
 
     if (totalRuns > 0) {
         const successRate = Math.round(successRuns / totalRuns * 100);
@@ -2896,15 +2932,41 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
         }
 
         if (neverUsed.length > 0) {
+            // 按来源分组：内置工具 vs MCP 工具，避免冗长的逐个列举
+            const neverUsedBuiltin = neverUsed.filter(t => !t.startsWith('mcp_'));
+            const neverUsedMcp = neverUsed.filter(t => t.startsWith('mcp_'));
             report += `### ⚠️ 配置但从未调用的工具（${neverUsed.length}/${configuredTools.length}）\n`;
-            report += `> 这些工具占用了 LLM 上下文 token，但从未被使用，可考虑移除：\n\n`;
-            for (const t of neverUsed) { report += `- \`${t}\`\n`; }
+            report += `> 这些工具占用了 LLM 上下文 token，但从未被使用，可考虑移除。\n\n`;
+            if (neverUsedBuiltin.length > 0) {
+                report += `**内置工具** (${neverUsedBuiltin.length})：${neverUsedBuiltin.map(t => `\`${t}\``).join(', ')}\n`;
+            }
+            if (neverUsedMcp.length > 0) {
+                // MCP 工具按 server 前缀分组汇总，不逐个列出
+                const mcpGroups: Record<string, number> = {};
+                for (const t of neverUsedMcp) {
+                    const parts = t.split('_');
+                    const server = parts.length >= 3 ? `${parts[0]}_${parts[1]}` : t;
+                    mcpGroups[server] = (mcpGroups[server] ?? 0) + 1;
+                }
+                const groupSummary = Object.entries(mcpGroups).map(([s, n]) => `${s} (${n})`).join(', ');
+                report += `**MCP 工具** (${neverUsedMcp.length})：${groupSummary}\n`;
+            }
+            report += '\n';
+        }
+
+        // 失败原因分布
+        const failureCats = Object.entries(failureCategories);
+        if (failureCats.length > 0) {
+            report += `### 失败原因分布\n`;
+            for (const [cat, count] of failureCats.sort((a, b) => b[1] - a[1])) {
+                report += `- ${cat}: ${count} 次\n`;
+            }
             report += '\n';
         }
 
         if (recentErrors.length > 0) {
-            const uniqueErrors = [...new Set(recentErrors)].slice(0, 5);
-            report += `### 近期错误（共 ${recentErrors.length} 次）\n`;
+            const uniqueErrors = [...new Set(recentErrors)].slice(0, 3);
+            report += `### 近期错误样例（取 ${uniqueErrors.length} 条去重）\n`;
             for (const e of uniqueErrors) { report += `- ${e}\n`; }
             report += '\n';
         }

@@ -664,35 +664,43 @@ ${userMessage}
                 + '- evaluate_role: 记录角色绩效评估\n';
         }
 
-        // VS Code 侧聊天上下文：笔记管理为主，浏览器工具需 Chrome 扩展连接
+        // 笔记工具（所有角色都有）
         systemContent += '\n\n[笔记工具] 你可以管理用户的 issueMarkdown 笔记：\n'
             + '- search_issues: 搜索笔记\n'
             + '- read_issue: 读取笔记内容\n'
             + '- create_issue: 创建单个独立笔记（无层级关系）\n'
             + '- **create_issue_tree**: 创建层级结构的笔记树（推荐！可一次创建多个有父子关系的笔记节点）\n'
             + '- list_issue_tree: 查看笔记树结构\n'
-            + '- update_issue: 更新已有笔记\n\n'
-            + '[浏览器工具]（需要已连接 Chrome 扩展）：\n'
-            + '- web_search: 通过 Chrome 浏览器进行网络搜索\n'
-            + '- fetch_url: 通过 Chrome 浏览器访问指定 URL 获取页面文本内容\n'
-            + '- open_tab: 在 Chrome 中打开新标签页到指定 URL\n'
-            + '- get_tab_content: 获取指定标签页的页面文本内容\n'
-            + '- activate_tab: 切换到指定标签页\n'
-            + '- list_tabs: 列出 Chrome 所有打开的标签页\n'
-            + '- organize_tabs: 将标签页按分组整理\n'
-            + '- close_tabs: 关闭指定标签页\n\n'
-            + '[页面交互工具]（需要已连接 Chrome 扩展）：\n'
-            + '- get_page_elements: 获取页面上的可交互元素（输入框、按钮、链接等）\n'
-            + '- click_element: 点击页面元素（按钮、链接等）\n'
-            + '- fill_input: 填写表单输入框\n'
-            + '- select_option: 选择下拉框选项\n'
-            + '- press_key: 模拟键盘按键\n\n'
-            + '[使用指引]\n'
+            + '- update_issue: 更新已有笔记\n';
+
+        // 浏览器工具说明仅在角色启用了 browser 工具集时注入，避免上下文膨胀
+        if (toolSets.includes('browser')) {
+            systemContent += '\n[浏览器工具]（需要已连接 Chrome 扩展）：\n'
+                + '- web_search: 通过 Chrome 浏览器进行网络搜索\n'
+                + '- fetch_url: 通过 Chrome 浏览器访问指定 URL 获取页面文本内容\n'
+                + '- open_tab: 在 Chrome 中打开新标签页到指定 URL\n'
+                + '- get_tab_content: 获取指定标签页的页面文本内容\n'
+                + '- activate_tab: 切换到指定标签页\n'
+                + '- list_tabs: 列出 Chrome 所有打开的标签页\n'
+                + '- organize_tabs: 将标签页按分组整理\n'
+                + '- close_tabs: 关闭指定标签页\n\n'
+                + '[页面交互工具]（需要已连接 Chrome 扩展）：\n'
+                + '- get_page_elements: 获取页面上的可交互元素（输入框、按钮、链接等）\n'
+                + '- click_element: 点击页面元素（按钮、链接等）\n'
+                + '- fill_input: 填写表单输入框\n'
+                + '- select_option: 选择下拉框选项\n'
+                + '- press_key: 模拟键盘按键\n';
+        }
+
+        // 使用指引（根据实际可用工具裁剪）
+        systemContent += '\n[使用指引]\n'
             + '- 创建笔记时，优先使用 create_issue_tree 来创建有层级关系的笔记树。\n'
-            + '- 检索或整理已有笔记时使用 search_issues/read_issue。\n'
-            + '- 查找外部资料时使用 web_search/fetch_url。\n'
-            + '- 整理标签页时，先 list_tabs 获取所有标签，再用 organize_tabs 分组。\n'
-            + '- 填写表单：先 get_page_elements 了解结构 → fill_input 填入 → click_element 提交。';
+            + '- 检索或整理已有笔记时使用 search_issues/read_issue。\n';
+        if (toolSets.includes('browser')) {
+            systemContent += '- 查找外部资料时使用 web_search/fetch_url。\n'
+                + '- 整理标签页时，先 list_tabs 获取所有标签，再用 organize_tabs 分组。\n'
+                + '- 填写表单：先 get_page_elements 了解结构 → fill_input 填入 → click_element 提交。\n';
+        }
         msgs.push(vscode.LanguageModelChatMessage.User(systemContent));
 
         const history = await parseConversationMessages(uri);
