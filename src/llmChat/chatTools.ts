@@ -504,7 +504,7 @@ const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'delegate_to_role',
-        description: '将子任务委派给指定角色。同步模式（默认）等待角色完成后返回结果；异步模式立即返回 convoId，角色在后台执行，可用 get_delegation_status 轮询结果。网络类耗时任务推荐用异步模式。',
+        description: '将子任务委派给指定角色（单轮）。同步模式（默认）等待角色完成后返回结果；异步模式立即返回 convoId。注意：这只是发起第一轮对话。如果任务需要多轮交互（如需要反馈、修正、确认），请在收到回复后评估结果，再用 continue_delegation 追问，循环直到满意为止。典型多轮委派流程：delegate_to_role → 评估回复 → continue_delegation → 评估 → ... → 完成。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -526,7 +526,7 @@ const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'continue_delegation',
-        description: '对已完成的委派对话进行多轮追问。对话必须已完成（有 assistant 回复且无执行中状态）才能追问。每次追问相当于在同一对话中追加一条 user 消息并等待角色回复，角色可看到完整历史上下文。',
+        description: '对已完成的委派对话进行多轮追问（必须配合 delegate_to_role 使用）。对话必须已完成（有 assistant 回复且无执行中状态）才能追问。每次追问相当于在同一对话中追加一条 user 消息并等待角色回复，角色可看到完整历史上下文。可多次调用形成多轮对话，直到任务完成。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -643,10 +643,55 @@ const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
     },
 ];
 
-/** 聊天角色可用的基础工具集（笔记管理 + 关联管理） */
+// ─── 对话级 Todo 工具（所有角色基础工具集） ─────────────────────
+const TODO_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'read_todos',
+        description: '读取当前对话的 todo 列表。返回 JSON 数组，每项含 id、content（任务描述）、status（pending/in_progress/done）。建议在处理复杂任务前先读取，了解已有计划。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'write_todos',
+        description: '整体写入当前对话的 todo 列表（覆盖已有列表）。适合初始规划或大幅调整任务列表。每个 todo 需含 content 和 status 字段，id 自动分配。建议在收到复杂任务时先拆分为 todo 列表再逐项执行。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                todos: {
+                    type: 'array',
+                    description: 'todo 项数组',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            content: { type: 'string', description: '任务描述' },
+                            status: { type: 'string', enum: ['pending', 'in_progress', 'done'], description: '状态，默认 pending' },
+                        },
+                        required: ['content'],
+                    },
+                },
+            },
+            required: ['todos'],
+        },
+    },
+    {
+        name: 'update_todo',
+        description: '更新当前对话 todo 列表中的单个 todo 项。可修改状态或内容。完成一个子任务后应立即调用此工具将对应 todo 标记为 done。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'number', description: 'todo 的 id（从 read_todos 获取）' },
+                status: { type: 'string', enum: ['pending', 'in_progress', 'done'], description: '新状态' },
+                content: { type: 'string', description: '新的任务描述（可选，不传则不修改）' },
+            },
+            required: ['id'],
+        },
+    },
+];
+
+/** 聊天角色可用的基础工具集（笔记管理 + 关联管理 + todo） */
 export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
     ...BASE_ISSUE_TOOLS,
     ...ISSUE_RELATION_TOOLS,
+    ...TODO_TOOLS,
 ];
 
 /** 内置工具包注册表，新增工具包只需在此添加一条记录 */
@@ -728,6 +773,8 @@ export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatToo
 export interface ToolExecContext {
     /** 当前角色信息（用于记忆/委派等能力工具） */
     role?: ChatRoleInfo;
+    /** 当前对话文件 URI（用于对话级工具如 todo） */
+    conversationUri?: import('vscode').Uri;
     /** 中止信号 */
     signal?: AbortSignal;
     /**
@@ -807,6 +854,13 @@ export async function executeChatTool(
                 return await executeDeleteIssue(input);
             case 'batch_delete_issues':
                 return await executeBatchDeleteIssues(input);
+            // ─── 基础工具：对话级 todo ───────────────────────────
+            case 'read_todos':
+                return await executeReadTodos(context);
+            case 'write_todos':
+                return await executeWriteTodos(input, context);
+            case 'update_todo':
+                return await executeUpdateTodo(input, context);
             // ─── 能力工具：记忆 ─────────────────────────────────
             case 'read_memory':
                 return await executeReadMemory(context);
@@ -2161,6 +2215,103 @@ async function executeBatchDeleteIssues(input: Record<string, unknown>): Promise
     return { success: failed.length === 0, content: lines.join('\n') };
 }
 
+// ─── 基础工具实现：对话级 todo ────────────────────────────────
+
+interface TodoItem {
+    id: number;
+    content: string;
+    status: 'pending' | 'in_progress' | 'done';
+}
+
+/** 从对话文件 frontmatter 读取 chat_todos 字段 */
+async function readTodosFromConversation(uri: vscode.Uri): Promise<TodoItem[]> {
+    const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    const { frontmatter } = extractFrontmatterAndBody(raw);
+    const fm = frontmatter as Record<string, unknown> | null;
+    const todos = fm?.chat_todos;
+    if (!Array.isArray(todos)) { return []; }
+    return todos.map((t: Record<string, unknown>, i: number) => ({
+        id: typeof t.id === 'number' ? t.id : i + 1,
+        content: String(t.content ?? ''),
+        status: (['pending', 'in_progress', 'done'].includes(String(t.status)) ? String(t.status) : 'pending') as TodoItem['status'],
+    }));
+}
+
+/** 将 todo 列表写回对话文件 frontmatter */
+async function writeTodosToConversation(uri: vscode.Uri, todos: TodoItem[]): Promise<void> {
+    // 转为纯对象数组用于 YAML 序列化
+    const payload = todos.map(t => ({ id: t.id, content: t.content, status: t.status }));
+    await updateIssueMarkdownFrontmatter(uri, { chat_todos: payload } as unknown as FrontmatterData);
+}
+
+async function executeReadTodos(context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.conversationUri) {
+        return { success: false, content: '无法获取当前对话文件' };
+    }
+    try {
+        const todos = await readTodosFromConversation(context.conversationUri);
+        if (todos.length === 0) {
+            return { success: true, content: '当前对话暂无 todo 项。可使用 write_todos 创建任务列表。' };
+        }
+        return { success: true, content: JSON.stringify(todos, null, 2) };
+    } catch (e) {
+        return { success: false, content: `读取 todo 失败: ${e}` };
+    }
+}
+
+async function executeWriteTodos(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.conversationUri) {
+        return { success: false, content: '无法获取当前对话文件' };
+    }
+    const rawTodos = input.todos;
+    if (!Array.isArray(rawTodos)) {
+        return { success: false, content: '参数 todos 必须是数组' };
+    }
+    const todos: TodoItem[] = rawTodos.map((t: Record<string, unknown>, i: number) => ({
+        id: i + 1,
+        content: String(t.content ?? ''),
+        status: (['pending', 'in_progress', 'done'].includes(String(t.status)) ? String(t.status) : 'pending') as TodoItem['status'],
+    }));
+    try {
+        await writeTodosToConversation(context.conversationUri, todos);
+        const summary = todos.map(t => {
+            const icon = t.status === 'done' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬚';
+            return `${icon} ${t.id}. ${t.content}`;
+        }).join('\n');
+        return { success: true, content: `已写入 ${todos.length} 个 todo 项：\n${summary}` };
+    } catch (e) {
+        return { success: false, content: `写入 todo 失败: ${e}` };
+    }
+}
+
+async function executeUpdateTodo(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.conversationUri) {
+        return { success: false, content: '无法获取当前对话文件' };
+    }
+    const id = Number(input.id);
+    if (!id || isNaN(id)) {
+        return { success: false, content: '请提供有效的 todo id（数字）' };
+    }
+    try {
+        const todos = await readTodosFromConversation(context.conversationUri);
+        const target = todos.find(t => t.id === id);
+        if (!target) {
+            return { success: false, content: `找不到 id=${id} 的 todo 项。当前 id 列表: ${todos.map(t => t.id).join(', ') || '（空）'}` };
+        }
+        if (input.status && ['pending', 'in_progress', 'done'].includes(String(input.status))) {
+            target.status = String(input.status) as TodoItem['status'];
+        }
+        if (typeof input.content === 'string' && input.content.trim()) {
+            target.content = input.content.trim();
+        }
+        await writeTodosToConversation(context.conversationUri, todos);
+        const icon = target.status === 'done' ? '✅' : target.status === 'in_progress' ? '🔄' : '⬚';
+        return { success: true, content: `已更新: ${icon} ${target.id}. ${target.content} [${target.status}]` };
+    } catch (e) {
+        return { success: false, content: `更新 todo 失败: ${e}` };
+    }
+}
+
 // ─── 能力工具实现：记忆 ──────────────────────────────────────
 
 /** 查找或创建角色的记忆文件，返回 URI */
@@ -2318,7 +2469,7 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
 
         return {
             success: true,
-            content: `**[${role.name} 的回复]** (对话: ${convoId})\n\n${reply}\n\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
         };
     } finally {
         _delegationDepth--;
@@ -2415,7 +2566,7 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
 
         return {
             success: true,
-            content: `**[${roleName} 的追问回复]** (对话: ${convoId})\n\n${reply}\n\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `**[${roleName} 的追问回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续追问，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。如果任务已完成，无需再调用。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
         };
     } finally {
         _delegationDepth--;
@@ -2518,8 +2669,9 @@ function waitForDelegationResult(
 
 function executeListAvailableTools(): ToolCallResult {
     const BUILT_IN = [
+        { id: '(基础)',          tools: 'read_todos、write_todos、update_todo',               desc: '对话级 todo 管理，所有角色默认可用，无需配置' },
         { id: 'memory',          tools: 'read_memory、write_memory',                          desc: '持久记忆，适合长期任务角色' },
-        { id: 'delegation',      tools: 'delegate_to_role、continue_delegation、list_chat_roles、get_delegation_status', desc: '委派能力（支持多轮追问），适合中枢调度角色' },
+        { id: 'delegation',      tools: 'delegate_to_role、continue_delegation、list_chat_roles、get_delegation_status', desc: '委派能力（delegate_to_role 发起 → continue_delegation 多轮追问直到完成），适合中枢调度角色' },
         { id: 'role_management', tools: 'list_available_tools、create_chat_role、update_role_config 等', desc: '角色管理，仅管理型角色需要' },
         { id: 'browser',         tools: 'web_search、fetch_url、list_tabs、click_element 等', desc: 'Chrome 浏览器工具，需要扩展连接' },
     ];

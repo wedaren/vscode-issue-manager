@@ -292,6 +292,7 @@ export class RoleTimerManager implements vscode.Disposable {
             const tools = getToolsForRole(role);
             const toolContext: ToolExecContext = {
                 role,
+                conversationUri: uri,
                 signal: ac.signal,
                 // 心跳回调：长时间工具（如同步委派等待）定期调用，刷新空闲计时
                 onHeartbeat: () => { execLastActivityAt = Date.now(); },
@@ -348,7 +349,7 @@ export class RoleTimerManager implements vscode.Disposable {
             let toolCallSeq = 0;
             let currentRound = 0;
             const roundReasonings = new Map<number, string>(); // round → 推理文本
-            const toolCallItems: Array<{ name: string; time: Date; dur: number; fileName: string | null; success: boolean; round: number }> = [];
+            const toolCallItems: Array<{ name: string; time: Date; dur: number; fileName: string | null; success: boolean; round: number; delegationHint?: string }> = [];
 
             const result = await LLMService.streamWithTools(
                 messages,
@@ -429,7 +430,23 @@ export class RoleTimerManager implements vscode.Disposable {
                     }
 
                     // 工具完成，更新追踪
-                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName, success: res.success, round: currentRound });
+                    // 委派类工具：提取内联摘要（目标角色 + 回复预览）
+                    let delegationHint: string | undefined;
+                    if ((toolName === 'delegate_to_role' || toolName === 'continue_delegation') && res.success) {
+                        const targetRole = String((input as Record<string, unknown>).roleNameOrId || (input as Record<string, unknown>).convoId || '');
+                        // 从结果中提取角色名 **[角色名 的回复]** 或 **[角色名 的追问回复]**
+                        const roleMatch = /\*\*\[(.+?) 的(?:追问)?回复\]\*\*/.exec(res.content);
+                        const replyRole = roleMatch?.[1] || targetRole;
+                        // 提取回复正文预览（跳过标题行和尾部提示）
+                        const bodyMatch = res.content.match(/\*\*\n\n([\s\S]*?)\n\n---/);
+                        const replyPreview = bodyMatch?.[1]
+                            ? summarize(bodyMatch[1].replace(/\n+/g, ' ').trim(), 60)
+                            : '';
+                        delegationHint = replyPreview
+                            ? `→ ${replyRole}: ${replyPreview}`
+                            : `→ ${replyRole}`;
+                    }
+                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName, success: res.success, round: currentRound, delegationHint });
                     execToolCalls = toolCallSeq;
                     execLastToolName = toolName;
                     execPhase = `等待 LLM 响应（工具调用 #${toolCallSeq} 后）`;
@@ -493,7 +510,8 @@ export class RoleTimerManager implements vscode.Disposable {
                     const nameStr = item.fileName
                         ? `[\`${item.name}\`](IssueDir/${item.fileName})`
                         : `\`${item.name}\``;
-                    lines.push(`> - \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})`);
+                    const delegSuffix = item.delegationHint ? ` ${item.delegationHint}` : '';
+                    lines.push(`> - \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})${delegSuffix}`);
                 }
                 toolSummary = `> Run #${runNumber} · [执行详情](IssueDir/${logId}.md)\n${lines.join('\n')}`;
             }
