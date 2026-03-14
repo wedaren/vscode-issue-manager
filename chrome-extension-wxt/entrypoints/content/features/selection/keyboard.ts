@@ -28,7 +28,7 @@ export function handleKeyboardNavigation(
     if (state.currentElement) {
       const html = state.currentElement.outerHTML;
       const title = extractTitle();
-      const url = window.location.href;
+      const url = replaceDomain(window.location.href, 'http://127.0.0.1:5173');
 
       chrome.runtime.sendMessage({
         type: 'CONTENT_SELECTED',
@@ -154,4 +154,35 @@ function extractTitle(): string {
     return h1.textContent?.trim() || '未命名页面';
   }
   return document.title || '未命名页面';
+}
+
+/**
+ * 简要描述：替换 URL 的域名与协议，保留路径、查询字符串与哈希部分。
+ * @param originalUrl - 原始 URL（可以是完整 URL 或相对/缺少 "//" 的协议形式）
+ * @param newBase - 新的基址，例如 "http://127.0.0.1:5173" 或 "127.0.0.1:5173"
+ * @returns 返回替换域名后的完整 URL 字符串
+ */
+export function replaceDomain(originalUrl: string, newBase: string): string {
+  // 将像 "https:192.168.1.19/..." 这种缺少 // 的协议形式规范化为可被 URL 解析的形式
+  const normalized = originalUrl.replace(/^([a-zA-Z]+:)(?!\/\/)/, '$1//');
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch (err) {
+    // 可能是相对路径或解析失败，使用当前页面 origin 作为 base
+    parsed = new URL(originalUrl, window.location.origin);
+  }
+
+  const path = (parsed.pathname || '') + (parsed.search || '') + (parsed.hash || '');
+
+  let base = newBase.trim();
+  if (!/^[a-zA-Z]+:\/\//.test(base)) {
+    base = 'http://' + base;
+  }
+  base = base.replace(/\/$/, '');
+
+  // 确保返回的 URL 在 base 与 path之间只保留一个 '/'
+  if (!path) return base;
+  return base + (path.startsWith('/') ? path : '/' + path);
 }

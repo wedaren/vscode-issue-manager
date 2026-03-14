@@ -137,6 +137,7 @@ export default defineContentScript({
       if (e.metaKey && e.shiftKey && e.code === 'KeyP') {
         e.preventDefault();
         const commands = [
+          { id: 'use_dev_base', label: '使用开发路径 http://127.0.0.1:5173', description: '将当前页面 URL 替换为开发地址并复制到剪贴板' },
           { id: 'start_selection', label: '进入选取模式', description: '进入页面选取模式' },
           { id: 'start_llm_selection', label: '进入 LLM 选取', description: '用于 LLM 的选取模式' },
           { id: 'get_page_selection', label: '显示当前选中内容', description: '打印当前选中文本' },
@@ -150,6 +151,30 @@ export default defineContentScript({
         console.log('[QuickPick] commands to show:', commands.length, commands.map(c=>c.id));
         showQuickPick(commands, (id) => {
           try {
+            if (id === 'use_dev_base') {
+              try {
+                const replaceDomainFn = (window as any).replaceDomain as ((u: string, b: string) => string) | undefined;
+                // 如果 replaceDomain 在当前作用域不可用，则使用同样的替换策略
+                const newUrl = typeof replaceDomainFn === 'function'
+                  ? replaceDomainFn(window.location.href, 'http://127.0.0.1:5173')
+                  : (function (original: string) {
+                      const normalized = original.replace(/^([a-zA-Z]+:)(?!\/\/)/, '$1//');
+                      try { const p = new URL(normalized); return 'http://127.0.0.1:5173' + (p.pathname || '') + (p.search || '') + (p.hash || ''); } catch { return 'http://127.0.0.1:5173' + original; }
+                    })(window.location.href);
+
+                // 直接导航当前 tab 到新 URL（替换当前页面）
+                try {
+                  window.location.href = newUrl;
+                  chrome.runtime.sendMessage({ type: 'SHOW_TOAST', level: 'info', text: '正在跳转：' + newUrl });
+                } catch (err) {
+                  console.error('导航到 dev base 失败', err);
+                  chrome.runtime.sendMessage({ type: 'SHOW_TOAST', level: 'error', text: '导航失败，请手动打开：' + newUrl });
+                }
+                return;
+              } catch (err) {
+                console.error('use_dev_base handler error', err);
+              }
+            }
             if (id === 'start_selection') {
               startSelectionMode(selectionState);
             } else if (id === 'start_llm_selection') {
