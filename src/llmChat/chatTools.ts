@@ -16,6 +16,7 @@ import {
     getAllIssueMarkdowns,
     getIssueMarkdown,
     getIssueMarkdownContent,
+    getIssueMarkdownsByType,
     createIssueMarkdown,
     extractFrontmatterAndBody,
     updateIssueMarkdownFrontmatter,
@@ -94,12 +95,17 @@ function normalizeFileName(name: string, issueDir?: string): string {
 const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     {
         name: 'search_issues',
-        description: '搜索 issueMarkdown 笔记。支持在标题、frontmatter 字段和正文中搜索，支持多关键词（空格分隔，全部匹配）。返回标题、文件路径、类型标签和修改时间。',
+        description: '搜索 issueMarkdown 笔记。支持多关键词（空格分隔，全部匹配）、按类型过滤、按范围搜索。返回标题、类型标签、修改时间和关键词匹配的上下文片段。',
         inputSchema: {
             type: 'object',
             properties: {
                 query: { type: 'string', description: '搜索关键词（多个词用空格分隔，全部匹配）' },
                 limit: { type: 'number', description: '最多返回条数，默认 20' },
+                type: {
+                    type: 'string',
+                    enum: ['note', 'role', 'conversation', 'log', 'tool_call', 'group', 'memory', 'chrome_chat'],
+                    description: '按文件类型过滤（可选）：note=普通笔记、role=角色、conversation=对话、log=执行日志、tool_call=工具调用、group=群组、memory=记忆、chrome_chat=浏览器对话',
+                },
                 scope: {
                     type: 'string',
                     enum: ['all', 'title', 'body'],
@@ -111,11 +117,13 @@ const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'read_issue',
-        description: '读取指定 issueMarkdown 笔记的完整内容，包括 frontmatter 元数据和正文。通过文件名（如 20240115-103045.md）定位。',
+        description: '读取指定 issueMarkdown 笔记的内容。支持分页读取大文件：通过 offset 和 maxChars 控制读取范围。返回值包含总长度和剩余字符数，据此判断是否需要继续读取。对于大文件，建议边读边处理（读一段、处理、写入），而非一次性读取全部内容。',
         inputSchema: {
             type: 'object',
             properties: {
                 fileName: { type: 'string', description: 'issue 文件名（如 20240115-103045.md）' },
+                offset: { type: 'number', description: '起始字符位置（默认 0，即从头开始）' },
+                maxChars: { type: 'number', description: '本次最多读取的字符数（默认 15000）' },
             },
             required: ['fileName'],
         },
@@ -174,14 +182,15 @@ const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'update_issue',
-        description: '更新已有 issueMarkdown 笔记的标题、描述或正文内容。',
+        description: '更新已有 issueMarkdown 笔记的标题、描述或正文内容。body 默认替换整个正文；设置 append=true 可追加到正文末尾（适合分块写入）。',
         inputSchema: {
             type: 'object',
             properties: {
                 fileName: { type: 'string', description: 'issue 文件名（如 20240115-103045.md）' },
                 title: { type: 'string', description: '新标题（可选）' },
                 description: { type: 'string', description: '新描述（可选）' },
-                body: { type: 'string', description: '新的 Markdown 正文（可选，会替换整个正文）' },
+                body: { type: 'string', description: '新的 Markdown 正文（可选，默认替换整个正文）' },
+                append: { type: 'boolean', description: '为 true 时将 body 追加到现有正文末尾而非替换（默认 false）' },
             },
             required: ['fileName'],
         },
@@ -921,10 +930,48 @@ export async function executeChatTool(
 
 // ─── 各工具实现 ───────────────────────────────────────────────
 
+/** type 参数值 → frontmatter 类型索引键的映射 */
+const TYPE_FILTER_MAP: Record<string, string> = {
+    role: 'chat_role',
+    conversation: 'chat_conversation',
+    log: 'chat_execution_log',
+    tool_call: 'chat_tool_call',
+    group: 'chat_group',
+    memory: 'role_memory',
+    chrome_chat: 'chrome_chat',
+};
+
+/** 从 frontmatter 提取文件类型的显示标签 */
+function getTypeTag(fm: Record<string, unknown> | null): string {
+    if (!fm) { return '笔记'; }
+    if (fm.chat_role) { return '角色'; }
+    if (fm.chat_conversation) { return '对话'; }
+    if (fm.chat_execution_log) { return '日志'; }
+    if (fm.chat_tool_call) { return '工具调用'; }
+    if (fm.chat_group) { return '群组'; }
+    if (fm.role_memory) { return '记忆'; }
+    if (fm.chrome_chat) { return '浏览器对话'; }
+    return '笔记';
+}
+
+/** 提取关键词周围的上下文片段（前后各取一部分） */
+function extractSnippet(text: string, keyword: string, contextChars = 40): string | null {
+    const lower = text.toLowerCase();
+    const idx = lower.indexOf(keyword.toLowerCase());
+    if (idx === -1) { return null; }
+    const start = Math.max(0, idx - contextChars);
+    const end = Math.min(text.length, idx + keyword.length + contextChars);
+    let snippet = text.slice(start, end).replace(/\n+/g, ' ').trim();
+    if (start > 0) { snippet = '…' + snippet; }
+    if (end < text.length) { snippet += '…'; }
+    return snippet;
+}
+
 async function executeSearchIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
     const queryRaw = String(input.query || '').trim();
     const limit = typeof input.limit === 'number' ? input.limit : 20;
     const scope = String(input.scope || 'all');
+    const typeFilter = input.type ? String(input.type) : undefined;
 
     if (!queryRaw) {
         return { success: false, content: '请提供搜索关键词' };
@@ -933,29 +980,44 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
     // 多关键词：空格分隔，全部匹配
     const keywords = queryRaw.toLowerCase().split(/\s+/).filter(Boolean);
 
-    const allIssues = await getAllIssueMarkdowns({});
+    // 按类型过滤候选集
+    let candidates: Awaited<ReturnType<typeof getAllIssueMarkdowns>>;
+    if (typeFilter === 'note') {
+        // "note" = 排除所有已知系统类型的普通笔记
+        const allIssues = await getAllIssueMarkdowns({});
+        const systemTypeKeys = Object.values(TYPE_FILTER_MAP);
+        candidates = allIssues.filter(issue => {
+            const fm = issue.frontmatter as Record<string, unknown> | null;
+            if (!fm) { return true; }
+            return !systemTypeKeys.some(key => fm[key] === true);
+        });
+    } else if (typeFilter && TYPE_FILTER_MAP[typeFilter]) {
+        candidates = getIssueMarkdownsByType(TYPE_FILTER_MAP[typeFilter] as any);
+    } else {
+        candidates = await getAllIssueMarkdowns({});
+    }
 
-    // 评分搜索：标题匹配权重高，frontmatter 次之，正文最低
-    const scored: { issue: typeof allIssues[number]; score: number; bodyContent?: string }[] = [];
+    // 评分搜索
+    const scored: { issue: typeof candidates[number]; score: number; snippet?: string }[] = [];
 
-    for (const issue of allIssues) {
+    for (const issue of candidates) {
         const titleLower = issue.title.toLowerCase();
         const fmStr = issue.frontmatter ? JSON.stringify(issue.frontmatter).toLowerCase() : '';
 
         let score = 0;
         let allMatched = true;
+        let snippet: string | undefined;
 
         for (const kw of keywords) {
-            const inTitle = titleLower.includes(kw);
-            const inFm = fmStr.includes(kw);
+            const titleCount = countOccurrences(titleLower, kw);
+            const fmCount = countOccurrences(fmStr, kw);
 
-            if (inTitle) {
-                score += 10;
-            } else if (inFm) {
-                score += 5;
+            if (titleCount > 0) {
+                score += 10 + Math.min(titleCount - 1, 3) * 2; // 出现越多分越高，上限 +6
+            } else if (fmCount > 0) {
+                score += 5 + Math.min(fmCount - 1, 3);
             } else if (scope !== 'title') {
-                // 需要搜正文时延迟读取
-                score = -1; // 标记待检查
+                score = -1; // 标记需要查正文
                 break;
             } else {
                 allMatched = false;
@@ -969,7 +1031,7 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
             continue;
         }
 
-        // 需要检查正文（scope !== 'title' 且有关键词未在标题/fm 中命中）
+        // 需要检查正文
         if (score === -1 && scope !== 'title') {
             try {
                 const bodyContent = await getIssueMarkdownContent(issue.uri);
@@ -978,18 +1040,23 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
                 let bodyAllMatched = true;
 
                 for (const kw of keywords) {
-                    const inTitle = titleLower.includes(kw);
-                    const inFm = fmStr.includes(kw);
-                    const inBody = bodyLower.includes(kw);
+                    const titleCount = countOccurrences(titleLower, kw);
+                    const fmCount = countOccurrences(fmStr, kw);
+                    const bodyCount = countOccurrences(bodyLower, kw);
 
-                    if (inTitle) { bodyScore += 10; }
-                    else if (inFm) { bodyScore += 5; }
-                    else if (inBody) { bodyScore += 1; }
-                    else { bodyAllMatched = false; break; }
+                    if (titleCount > 0) { bodyScore += 10 + Math.min(titleCount - 1, 3) * 2; }
+                    else if (fmCount > 0) { bodyScore += 5 + Math.min(fmCount - 1, 3); }
+                    else if (bodyCount > 0) {
+                        bodyScore += 1 + Math.min(bodyCount - 1, 3); // 正文出现次数也加权
+                        // 提取第一个命中关键词的上下文片段
+                        if (!snippet) {
+                            snippet = extractSnippet(bodyContent, kw) ?? undefined;
+                        }
+                    } else { bodyAllMatched = false; break; }
                 }
 
                 if (bodyAllMatched && bodyScore > 0) {
-                    scored.push({ issue, score: bodyScore });
+                    scored.push({ issue, score: bodyScore, snippet });
                 }
             } catch { /* 读取失败跳过 */ }
         }
@@ -1001,31 +1068,39 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
     const matches = scored.slice(0, limit);
 
     if (matches.length === 0) {
-        return { success: true, content: `未找到匹配「${queryRaw}」的笔记。` };
+        const typeHint = typeFilter ? `（类型: ${typeFilter}）` : '';
+        return { success: true, content: `未找到匹配「${queryRaw}」的笔记${typeHint}。` };
     }
 
     const lines = matches.map((m, i) => {
         const fileName = path.basename(m.issue.uri.fsPath);
         const fm = m.issue.frontmatter as Record<string, unknown> | null;
-        // 类型标签：从 frontmatter 中提取有意义的类型标记
-        const tags: string[] = [];
-        if (fm?.chat_role) { tags.push('角色'); }
-        else if (fm?.chat_conversation) { tags.push('对话'); }
-        else if (fm?.chat_execution_log) { tags.push('日志'); }
-        else if (fm?.chat_tool_call) { tags.push('工具调用'); }
-        else if (fm?.chat_group) { tags.push('群组'); }
-        else if (fm?.assistant_memory) { tags.push('记忆'); }
-
-        const tagStr = tags.length > 0 ? ` \`${tags.join('/')}\`` : '';
+        const tag = getTypeTag(fm);
         const age = formatAge(m.issue.mtime);
-
-        return `${i + 1}. ${issueLink(m.issue.title, fileName)}${tagStr} (${age})`;
+        let line = `${i + 1}. ${issueLink(m.issue.title, fileName)} \`${tag}\` (${age})`;
+        if (m.snippet) {
+            line += `\n   > ${m.snippet}`;
+        }
+        return line;
     });
 
+    const typeHint = typeFilter ? ` (类型: ${typeFilter})` : '';
     return {
         success: true,
-        content: `找到 ${matches.length} 条匹配结果：\n${lines.join('\n')}`,
+        content: `找到 ${matches.length} 条匹配结果${typeHint}：\n${lines.join('\n')}`,
     };
+}
+
+/** 计算子串出现次数 */
+function countOccurrences(text: string, sub: string): number {
+    if (!sub) { return 0; }
+    let count = 0;
+    let pos = 0;
+    while ((pos = text.indexOf(sub, pos)) !== -1) {
+        count++;
+        pos += sub.length;
+    }
+    return count;
 }
 
 /** 将时间戳格式化为相对时间描述 */
@@ -1061,15 +1136,40 @@ async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCal
     const contentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
     const content = Buffer.from(contentBytes).toString('utf8');
 
-    // 截断过长内容
-    const maxLen = 8000;
-    const truncated = content.length > maxLen
-        ? content.slice(0, maxLen) + `\n\n... (内容过长，已截断，共 ${content.length} 字符)`
-        : content;
+    const offset = Math.max(0, Number(input.offset) || 0);
+    const maxChars = Math.max(1, Number(input.maxChars) || 15000);
+    const totalLength = content.length;
+
+    // 如果文件小于等于 maxChars 且 offset 为 0，直接返回全部内容
+    if (offset === 0 && totalLength <= maxChars) {
+        return {
+            success: true,
+            content: `📖 ${issueLink(issue.title, fileName)} (${totalLength} 字符)\n\n${content}`,
+        };
+    }
+
+    // 分页读取
+    if (offset >= totalLength) {
+        return { success: false, content: `offset(${offset}) 超出文件长度(${totalLength})` };
+    }
+
+    const slice = content.slice(offset, offset + maxChars);
+    const end = offset + slice.length;
+    const remaining = totalLength - end;
+
+    let header = `📖 ${issueLink(issue.title, fileName)}\n`;
+    header += `总长度: ${totalLength} 字符 | 本次: ${offset}-${end} | 剩余: ${remaining} 字符`;
+    if (remaining > 0) {
+        header += `\n如需继续读取，调用 read_issue("${fileName}", offset=${end})`;
+        // 首次读取大文件时提示 LLM 边读边处理，节省工具轮次
+        if (offset === 0) {
+            header += `\n⚠️ 文件较大，建议先处理当前内容再读取下一段，避免工具轮次耗尽。`;
+        }
+    }
 
     return {
         success: true,
-        content: `📖 ${issueLink(issue.title, fileName)}\n\n${truncated}`,
+        content: `${header}\n\n---\n${slice}`,
     };
 }
 
@@ -1275,7 +1375,14 @@ async function executeUpdateIssue(input: Record<string, unknown>): Promise<ToolC
     }
 
     if (input.body) {
-        const newBody = String(input.body);
+        let newBody = String(input.body);
+        if (input.append) {
+            // 追加模式：读取现有正文，拼接新内容
+            const contentBytes = await vscode.workspace.fs.readFile(uri);
+            const raw = Buffer.from(contentBytes).toString('utf8');
+            const { body: existingBody } = extractFrontmatterAndBody(raw);
+            newBody = existingBody + newBody;
+        }
         const ok = await updateIssueMarkdownBody(uri, newBody);
         if (!ok) {
             return { success: false, content: '更新正文失败' };

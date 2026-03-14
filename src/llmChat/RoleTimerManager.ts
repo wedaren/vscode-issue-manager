@@ -730,7 +730,7 @@ function fmtDuration(ms: number): string {
  * - 结果过大且已写入文件：传引用 + 预览，让 LLM 自主决定是否读取完整内容
  * - 结果过大但文件写入失败：截断并附注
  */
-const INLINE_MAX_CHARS = 8000;
+const INLINE_MAX_CHARS = 16000;
 
 function buildToolResultForLlm(content: string, fileName: string | null): string {
     if (content.length <= INLINE_MAX_CHARS) {
