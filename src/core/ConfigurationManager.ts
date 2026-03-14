@@ -3,7 +3,9 @@ import { getIssueDir } from '../config';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
-import { getIssueMarkdown,onTitleUpdate } from '../data/IssueMarkdowns';
+import { getIssueMarkdown, onTitleUpdate } from '../data/IssueMarkdowns';
+import { updateRecentIssue, invalidateRecentIssuesStore } from '../data/recentIssuesManager';
+import { FileChangeType } from '../services/UnifiedFileWatcher';
 
 /**
  * 配置监听管理器
@@ -114,6 +116,17 @@ export class ConfigurationManager {
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
         fileWatcher.onMarkdownChange((e) => {
             getIssueMarkdown(e.uri); // 预热标题缓存
+            // 增量更新最近问题存储（避免全量重查）
+            const changeType = e.type === FileChangeType.Delete ? 'delete'
+                : e.type === FileChangeType.Create ? 'create' : 'change';
+            void updateRecentIssue(e.uri, changeType);
+        });
+
+        // tree.json 变更 → 标记最近问题存储脏（isolation 状态可能变化）
+        fileWatcher.onIssueManagerChange((e) => {
+            if (e.fileName === 'tree.json') {
+                invalidateRecentIssuesStore();
+            }
         });
 
         // 订阅内存标题缓存写入/更新事件，触发刷新所有视图（加短延迟以合并快速连续更新）

@@ -176,13 +176,164 @@ export class LLMService {
         return { text: full, modelFamily };
     }
 
+    /**
+     * 带工具调用的流式请求。
+     * 当 LLM 请求调用工具时，自动执行工具并将结果反馈给 LLM 继续生成。
+     * 循环直到 LLM 不再调用工具为止。
+     */
+    public static async streamWithTools(
+        messages: vscode.LanguageModelChatMessage[],
+        tools: vscode.LanguageModelChatTool[],
+        onChunk: (chunk: string) => void,
+        onToolCall: (toolName: string, input: Record<string, unknown>) => Promise<string>,
+        options?: {
+            signal?: AbortSignal;
+            modelFamily?: string;
+            /** 工具调用状态回调（用于 UI 显示） */
+            onToolStatus?: (status: { toolName: string; phase: 'calling' | 'done'; result?: string }) => void;
+            /** LLM 决定调用工具时触发（每轮一次），传入本轮文本和待调用工具列表 */
+            onToolsDecided?: (info: { roundText: string; toolNames: string[]; round: number }) => void;
+            /** LLM 决定不再调用工具、进入最终回复轮时触发 */
+            onFinalRound?: (info: { round: number; toolCallsTotal: number }) => void;
+            /** 最大工具调用轮次（防止无限循环） */
+            maxToolRounds?: number;
+        },
+    ): Promise<{ text: string; modelFamily?: string } | null> {
+        const logger = Logger.getInstance();
+        const startMs = Date.now();
+        // maxToolRounds 限制工具调用轮数；达到上限后强制不传 tools，让模型生成最终回复
+        const maxToolRounds = options?.maxToolRounds ?? 10;
+
+        logger.info(`[LLM.streamWithTools] 开始 | 工具数=${tools.length} | 消息数=${messages.length}`);
+
+        if (options?.signal?.aborted) {
+            throw new Error('请求已取消');
+        }
+
+        const model = await LLMService.selectModel(options);
+        if (!model) {
+            vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
+            return null;
+        }
+
+        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        const cts = new vscode.CancellationTokenSource();
+        let onAbort: (() => void) | undefined;
+        if (options?.signal) {
+            onAbort = () => cts.cancel();
+            try { options.signal.addEventListener('abort', onAbort); } catch { onAbort = undefined; }
+        }
+
+        // 使用工作副本的消息列表，在工具调用循环中追加
+        const workingMessages = [...messages];
+        let fullText = '';
+        let round = 0;
+        let toolCallRounds = 0; // 实际发生工具调用的轮次计数
+
+        try {
+            // 最多 maxToolRounds 轮工具调用 + 1 轮最终回复，循环无硬上限
+            while (true) {
+                if (cts.token.isCancellationRequested) { throw new Error('请求已取消'); }
+
+                round++;
+                // 达到工具调用轮上限时，强制不传 tools，迫使模型生成最终回复
+                const activeTools = toolCallRounds >= maxToolRounds ? [] : tools;
+                if (activeTools.length === 0 && tools.length > 0) {
+                    logger.warn(`[LLM.streamWithTools] 已达工具调用上限（${maxToolRounds} 轮），第 ${round} 轮强制不传工具`);
+                }
+                logger.info(`[LLM.streamWithTools] 第 ${round} 轮请求`);
+
+                const resp = await model.sendRequest(workingMessages, { tools: activeTools }, cts.token);
+
+                // 收集本轮的文本和工具调用
+                let roundText = '';
+                const toolCalls: vscode.LanguageModelToolCallPart[] = [];
+
+                for await (const part of resp.stream) {
+                    if (cts.token.isCancellationRequested) { throw new Error('请求已取消'); }
+
+                    if (part instanceof vscode.LanguageModelTextPart) {
+                        roundText += part.value;
+                        try { onChunk(part.value); } catch { /* 忽略回调错误 */ }
+                    } else if (part instanceof vscode.LanguageModelToolCallPart) {
+                        toolCalls.push(part);
+                    }
+                }
+
+                fullText += roundText;
+
+                // 如果没有工具调用，表示 LLM 进入最终回复轮
+                if (toolCalls.length === 0) {
+                    try {
+                        options?.onFinalRound?.({ round, toolCallsTotal: toolCallRounds });
+                    } catch { /* 回调错误不阻塞 */ }
+                    break;
+                }
+
+                toolCallRounds++;
+
+                // 通知调用方：LLM 决定调用哪些工具
+                try {
+                    options?.onToolsDecided?.({
+                        roundText,
+                        toolNames: toolCalls.map(tc => tc.name),
+                        round,
+                    });
+                } catch { /* 回调错误不阻塞 */ }
+
+                // 处理工具调用
+                // 1. 将本轮助手回复（包含文本和工具调用）添加到消息列表
+                const assistantParts: Array<vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart> = [];
+                if (roundText) {
+                    assistantParts.push(new vscode.LanguageModelTextPart(roundText));
+                }
+                assistantParts.push(...toolCalls);
+                workingMessages.push(vscode.LanguageModelChatMessage.Assistant(assistantParts));
+
+                // 2. 执行每个工具调用并收集结果
+                const toolResultParts: vscode.LanguageModelToolResultPart[] = [];
+                for (const tc of toolCalls) {
+                    logger.info(`[LLM.streamWithTools] 调用工具: ${tc.name}`, tc.input);
+                    options?.onToolStatus?.({ toolName: tc.name, phase: 'calling' });
+
+                    try {
+                        const result = await onToolCall(tc.name, tc.input as Record<string, unknown>);
+                        toolResultParts.push(
+                            new vscode.LanguageModelToolResultPart(tc.callId, [new vscode.LanguageModelTextPart(result)]),
+                        );
+                        options?.onToolStatus?.({ toolName: tc.name, phase: 'done', result });
+                    } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        toolResultParts.push(
+                            new vscode.LanguageModelToolResultPart(tc.callId, [new vscode.LanguageModelTextPart(`工具执行失败: ${errMsg}`)]),
+                        );
+                        options?.onToolStatus?.({ toolName: tc.name, phase: 'done', result: `失败: ${errMsg}` });
+                    }
+                }
+
+                // 3. 将工具结果作为 User 消息追加
+                workingMessages.push(vscode.LanguageModelChatMessage.User(toolResultParts));
+            }
+        } finally {
+            try {
+                if (options?.signal && onAbort) {
+                    options.signal.removeEventListener('abort', onAbort);
+                }
+            } catch { /* ignore */ }
+            cts.dispose();
+        }
+
+        logger.info(`[LLM.streamWithTools] 完成 | 轮次=${round} | 响应长度=${fullText.length}字 | 耗时=${Date.now() - startMs}ms`);
+        return { text: fullText, modelFamily };
+    }
+
     private static async selectModel(options?: {
         signal?: AbortSignal;
         modelFamily?: string; // 外部传入的指定模型 family，优先级高于 VS Code 配置
     }): Promise<vscode.LanguageModelChat | undefined> {
         const logger = Logger.getInstance();
         const config = vscode.workspace.getConfiguration("issueManager");
-        const configFamily = config.get<string>("llm.modelFamily") || "gpt-4.1";
+        const configFamily = config.get<string>("llm.modelFamily") || "gpt-5-mini";
         // 如果调用方指定了 modelFamily，优先使用；否则回落到 VS Code 配置
         const preferredFamily = options?.modelFamily || configFamily;
 
@@ -199,19 +350,25 @@ export class LLMService {
             logger.warn(`[LLM.selectModel] 未找到指定模型 family="${options.modelFamily}"，尝试回落`);
         }
 
-        // 3. 回落到 gpt-4o
+        // 3. 回落到 gpt-5-mini
+        if (models.length === 0 && preferredFamily !== "gpt-5-mini") {
+            models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-5-mini" });
+            if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-5-mini'); }
+        }
+
+        // 4. 回落到 gpt-4o
         if (models.length === 0 && preferredFamily !== "gpt-4o") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4o" });
             if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4o'); }
         }
 
-        // 4. 回落到 gpt-4.1
+        // 5. 回落到 gpt-4.1
         if (models.length === 0 && preferredFamily !== "gpt-4.1") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4.1" });
             if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4.1'); }
         }
 
-        // 5. 回落到任意 Copilot 模型
+        // 6. 回落到任意 Copilot 模型
         if (models.length === 0) {
             models = await vscode.lm.selectChatModels({ vendor: "copilot" });
             if (models.length > 0) { logger.info(`[LLM.selectModel] 回落到任意可用模型: ${(models[0] as any)?.family}`); }
@@ -1077,3 +1234,4 @@ ${JSON.stringify(
         }
     }
 }
+
