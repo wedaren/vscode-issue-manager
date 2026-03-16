@@ -41,6 +41,13 @@ export interface ChatRoleFrontmatter {
     extra_tools?: string[];
     /** 排除的具体工具名称列表 */
     excluded_tools?: string[];
+    /**
+     * 委派可用状态：
+     * - 'ready'（默认）— 可正常接受委派
+     * - 'testing' — 调试中，委派时会显示警告
+     * - 'disabled' — 禁止接受委派
+     */
+    role_status?: 'ready' | 'testing' | 'disabled';
 }
 
 // ─── 角色记忆相关 ─────────────────────────────────────────────
@@ -119,6 +126,8 @@ export interface ChatRoleInfo {
     extraTools?: string[];
     /** 排除的具体工具名称列表 */
     excludedTools?: string[];
+    /** 委派可用状态，undefined 等同于 'ready' */
+    roleStatus?: 'ready' | 'testing' | 'disabled';
 }
 
 /** 运行时对话信息 */

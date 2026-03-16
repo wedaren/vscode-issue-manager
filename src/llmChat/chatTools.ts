@@ -2486,8 +2486,10 @@ async function executeWriteMemory(input: Record<string, unknown>, context?: Tool
 
 async function executeListChatRoles(context?: ToolExecContext): Promise<ToolCallResult> {
     const roles = await getAllChatRoles();
-    // 排除自身
-    const filtered = context?.role ? roles.filter(r => r.id !== context.role!.id) : roles;
+    // 排除自身、排除 disabled 角色
+    const filtered = roles.filter(r =>
+        r.id !== context?.role?.id && r.roleStatus !== 'disabled',
+    );
     if (filtered.length === 0) {
         return { success: true, content: '当前没有其他可用角色。可以用 create_chat_role 创建新角色。' };
     }
@@ -2501,7 +2503,8 @@ async function executeListChatRoles(context?: ToolExecContext): Promise<ToolCall
             : '（无提示词）';
         const model = r.modelFamily ? r.modelFamily : `${globalDefault}（全局默认）`;
         const capStr = r.toolSets.length > 0 ? ` · 工具集: ${r.toolSets.join('/')}` : '';
-        return `- **${r.name}** (ID: \`${r.id}\`) · 模型: ${model}${capStr}\n  ${promptPreview}`;
+        const statusTag = r.roleStatus === 'testing' ? ' ⚠️ 调试中' : '';
+        return `- **${r.name}**${statusTag} (ID: \`${r.id}\`) · 模型: ${model}${capStr}\n  ${promptPreview}`;
     });
     return { success: true, content: `可用角色（共 ${filtered.length} 个）：\n\n${lines.join('\n\n')}` };
 }
@@ -2554,6 +2557,12 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
     if (!role) {
         return { success: false, content: `找不到角色「${roleNameOrId}」，请先用 list_chat_roles 查看可用角色。` };
     }
+    if (role.roleStatus === 'disabled') {
+        return { success: false, content: `角色「${role.name}」已被禁用（role_status: disabled），无法接受委派。请选择其他角色。` };
+    }
+    const delegationWarning = role.roleStatus === 'testing'
+        ? `⚠️ 注意：角色「${role.name}」处于调试状态，执行结果可能不稳定。\n\n`
+        : '';
 
     // 创建真实对话文件（委派对话默认自主模式）
     const taskPreview = task.length > 30 ? task.slice(0, 30) + '…' : task;
@@ -2577,7 +2586,7 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
     if (isAsync) {
         return {
             success: true,
-            content: `✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `${delegationWarning}✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
         };
     }
 
@@ -2594,7 +2603,7 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
 
         return {
             success: true,
-            content: `**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
+            content: `${delegationWarning}**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
         };
     } finally {
         _delegationDepth--;

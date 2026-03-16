@@ -769,6 +769,49 @@ export function registerLLMChatCommands(
         }),
     );
 
+    // ─── 统一角色配置入口（模型 / 工具集 / 委派状态） ────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.configureRole', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+
+            const contentBytes = await vscode.workspace.fs.readFile(targetUri);
+            const { frontmatter } = extractFrontmatterAndBody(Buffer.from(contentBytes).toString('utf-8'));
+            if (!frontmatter?.chat_role) {
+                vscode.window.showWarningMessage('当前文件不是聊天角色文件');
+                return;
+            }
+
+            const currentStatus = String((frontmatter as Record<string, unknown>)['role_status'] || 'ready');
+            const category = await vscode.window.showQuickPick([
+                { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
+                { label: '$(tools) 工具集',           description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
+                { label: '$(shield) 委派状态',         description: `当前: ${currentStatus}`, id: 'status' },
+            ], { title: '配置角色', placeHolder: '选择要配置的项目' });
+            if (!category) { return; }
+
+            if (category.id === 'model') {
+                await vscode.commands.executeCommand('issueManager.llmChat.configureModel', targetUri);
+            } else if (category.id === 'tools') {
+                await vscode.commands.executeCommand('issueManager.llmChat.configureTools', targetUri);
+            } else {
+                // ── 委派状态 ──────────────────────────────────────
+                const statusItems = [
+                    { label: '✅ ready',    description: '可正常接受委派（默认）',              value: 'ready',    picked: currentStatus === 'ready' },
+                    { label: '⚠️ testing',  description: '调试中，委派时显示警告',              value: 'testing',  picked: currentStatus === 'testing' },
+                    { label: '🚫 disabled', description: '禁止接受委派，不在可用角色列表中显示', value: 'disabled', picked: currentStatus === 'disabled' },
+                ];
+                const sel = await vscode.window.showQuickPick(statusItems, {
+                    title: '配置委派状态',
+                    placeHolder: `当前: ${currentStatus}`,
+                });
+                if (sel === undefined) { return; }
+                await updateIssueMarkdownFrontmatter(targetUri, { role_status: sel.value } as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                vscode.window.showInformationMessage(`已更新委派状态 → ${sel.value}`);
+            }
+        }),
+    );
+
     // ─── 交互式配置角色工具集（tool_sets + MCP） ────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.configureTools', async (uri?: vscode.Uri) => {

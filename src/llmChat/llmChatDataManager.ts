@@ -72,6 +72,7 @@ export function getAllChatRoles(): ChatRoleInfo[] {
             mcpServers: Array.isArray(fm.mcp_servers) ? (fm.mcp_servers as unknown[]).map(String) : undefined,
             extraTools: Array.isArray(fm.extra_tools) ? (fm.extra_tools as unknown[]).map(String) : undefined,
             excludedTools: Array.isArray(fm.excluded_tools) ? (fm.excluded_tools as unknown[]).map(String) : undefined,
+            roleStatus: fm.role_status as 'ready' | 'testing' | 'disabled' | undefined,
         });
     }
     return roles;
