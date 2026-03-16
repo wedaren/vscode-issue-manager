@@ -73,6 +73,7 @@ export function getAllChatRoles(): ChatRoleInfo[] {
             extraTools: Array.isArray(fm.extra_tools) ? (fm.extra_tools as unknown[]).map(String) : undefined,
             excludedTools: Array.isArray(fm.excluded_tools) ? (fm.excluded_tools as unknown[]).map(String) : undefined,
             roleStatus: fm.role_status as 'ready' | 'testing' | 'disabled' | undefined,
+            autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
         });
     }
     return roles;

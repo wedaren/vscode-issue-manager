@@ -48,6 +48,11 @@ export interface ChatRoleFrontmatter {
      * - 'disabled' — 禁止接受委派
      */
     role_status?: 'ready' | 'testing' | 'disabled';
+    /**
+     * 角色级自主模式默认值：true = 自主执行，false = 交互确认（默认）。
+     * 对话级 chat_autonomous 可覆盖此设置，优先级：对话 > 角色。
+     */
+    chat_autonomous?: boolean;
 }
 
 // ─── 角色记忆相关 ─────────────────────────────────────────────
@@ -87,7 +92,7 @@ export interface ChatConversationFrontmatter {
     chat_log_id?: string;
     /**
      * 对话级自主模式（覆盖角色配置）：true = 自主决策，false = 交互确认。
-     * 优先级：对话 > 角色 > 触发方式自动推断。
+     * 优先级：对话 > 角色。
      */
     chat_autonomous?: boolean;
 }
@@ -128,6 +133,8 @@ export interface ChatRoleInfo {
     excludedTools?: string[];
     /** 委派可用状态，undefined 等同于 'ready' */
     roleStatus?: 'ready' | 'testing' | 'disabled';
+    /** 角色级自主模式默认值，undefined 等同于 false（交互模式） */
+    autonomous?: boolean;
 }
 
 /** 运行时对话信息 */

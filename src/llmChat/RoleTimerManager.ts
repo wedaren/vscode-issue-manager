@@ -603,9 +603,9 @@ export class RoleTimerManager implements vscode.Disposable {
             : '[系统指令] 你是一个智能助手，请根据对话上下文给出有帮助的回复。';
 
         // ─── 执行模式注入 ─────────────────────────────────────
-        // 仅读对话级显式配置，默认 false（交互模式）
+        // 优先级：对话 > 角色，均未设置时默认 false（交互模式）
         const convoConfigForMode = await getConversationConfig(uri);
-        const autonomous = convoConfigForMode?.autonomous ?? false;
+        const autonomous = convoConfigForMode?.autonomous ?? role.autonomous ?? false;
         if (autonomous) {
             systemText += '\n\n[执行模式: 自主] 当前为自主执行模式，用户不在场。'
                 + '你应该独立思考、主动调用工具完成任务，不要等待用户确认。'

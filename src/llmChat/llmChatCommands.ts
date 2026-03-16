@@ -783,10 +783,13 @@ export function registerLLMChatCommands(
             }
 
             const currentStatus = String((frontmatter as Record<string, unknown>)['role_status'] || 'ready');
+            const currentAutonomous = (frontmatter as Record<string, unknown>)['chat_autonomous'];
+            const autonomousLabel = currentAutonomous === true ? '自主' : currentAutonomous === false ? '交互' : '未设置（继承交互默认）';
             const category = await vscode.window.showQuickPick([
                 { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
                 { label: '$(tools) 工具集',           description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
                 { label: '$(shield) 委派状态',         description: `当前: ${currentStatus}`, id: 'status' },
+                { label: '$(robot) 自主模式',          description: `当前: ${autonomousLabel}`, id: 'autonomous' },
             ], { title: '配置角色', placeHolder: '选择要配置的项目' });
             if (!category) { return; }
 
@@ -794,7 +797,7 @@ export function registerLLMChatCommands(
                 await vscode.commands.executeCommand('issueManager.llmChat.configureModel', targetUri);
             } else if (category.id === 'tools') {
                 await vscode.commands.executeCommand('issueManager.llmChat.configureTools', targetUri);
-            } else {
+            } else if (category.id === 'status') {
                 // ── 委派状态 ──────────────────────────────────────
                 const statusItems = [
                     { label: '✅ ready',    description: '可正常接受委派（默认）',              value: 'ready',    picked: currentStatus === 'ready' },
@@ -808,6 +811,24 @@ export function registerLLMChatCommands(
                 if (sel === undefined) { return; }
                 await updateIssueMarkdownFrontmatter(targetUri, { role_status: sel.value } as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
                 vscode.window.showInformationMessage(`已更新委派状态 → ${sel.value}`);
+            } else {
+                // ── 自主模式 ──────────────────────────────────────
+                const autonomousItems = [
+                    { label: '🤖 自主执行',  description: '角色默认以自主模式运行，独立完成任务不等待确认', value: true,      picked: currentAutonomous === true },
+                    { label: '💬 交互确认',  description: '角色默认以交互模式运行，破坏性操作前征求确认',   value: false,     picked: currentAutonomous === false },
+                    { label: '⬜ 继承默认',  description: '不在角色级设置，由对话级或系统默认决定',         value: undefined, picked: currentAutonomous === undefined || currentAutonomous === null },
+                ];
+                const sel = await vscode.window.showQuickPick(autonomousItems as vscode.QuickPickItem[], {
+                    title: '配置角色自主模式',
+                    placeHolder: `当前: ${autonomousLabel}`,
+                });
+                if (sel === undefined) { return; }
+                const picked = autonomousItems.find(i => i.label === (sel as typeof autonomousItems[0]).label);
+                const updates: Record<string, unknown> = picked?.value === undefined
+                    ? { chat_autonomous: null }   // null → updateIssueMarkdownFrontmatter 会删除该字段
+                    : { chat_autonomous: picked.value };
+                await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                vscode.window.showInformationMessage(`已更新角色自主模式 → ${picked?.label ?? sel.label}`);
             }
         }),
     );
@@ -995,9 +1016,10 @@ export function registerLLMChatCommands(
             const newModel = selectedModel.value;
 
             // ── Step 2: 设置 max tokens ───────────────────────────
+            const totalSteps = isConvo ? 3 : 2;
             const suggested = currentTokens || (newModel ? 8192 : 0);
             const tokenInput = await vscode.window.showInputBox({
-                title: `配置 ${tokensKey}（第 2 步 / 共 2 步）`,
+                title: `配置 ${tokensKey}（第 2 步 / 共 ${totalSteps} 步）`,
                 prompt: '单次 LLM 请求最大 token 预算，0 表示继承上级默认',
                 value: String(suggested || currentTokens || 0),
                 placeHolder: '例如：8192',
@@ -1008,6 +1030,24 @@ export function registerLLMChatCommands(
 
             const updates: Record<string, unknown> = { [modelKey]: newModel || undefined };
             if (newTokens > 0) { updates[tokensKey] = newTokens; }
+
+            // ── Step 3（仅对话）: 自主模式 ────────────────────────
+            if (isConvo) {
+                const currentAuto = (frontmatter as Record<string, unknown>)['chat_autonomous'];
+                const autoItems = [
+                    { label: '🤖 自主执行', description: '独立完成任务，不等待用户确认', value: true,      picked: currentAuto === true },
+                    { label: '💬 交互确认', description: '破坏性操作前征求用户确认',     value: false,     picked: currentAuto === false },
+                    { label: '⬜ 继承角色', description: '由角色级设置或系统默认决定',   value: undefined, picked: currentAuto === undefined || currentAuto === null },
+                ];
+                const autoSel = await vscode.window.showQuickPick(autoItems as vscode.QuickPickItem[], {
+                    title: `配置对话自主模式（第 3 步 / 共 ${totalSteps} 步）`,
+                    placeHolder: `当前: ${currentAuto === true ? '自主执行' : currentAuto === false ? '交互确认' : '继承角色'}`,
+                });
+                if (autoSel === undefined) { return; }
+                const picked = autoItems.find(i => i.label === (autoSel as typeof autoItems[0]).label);
+                updates['chat_autonomous'] = picked?.value === undefined ? null : picked.value;
+            }
+
             await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
 
             vscode.window.showInformationMessage(

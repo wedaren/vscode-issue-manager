@@ -703,9 +703,9 @@ ${userMessage}
         }
 
         // ─── 执行模式注入 ─────────────────────────────────────
-        // 仅读对话级显式配置，默认 false（交互模式）
+        // 优先级：对话 > 角色，均未设置时默认 false（交互模式）
         const convoConfig = await getConversationConfig(uri);
-        const autonomous = convoConfig?.autonomous ?? false;
+        const autonomous = convoConfig?.autonomous ?? this._activeRole?.autonomous ?? false;
         if (autonomous) {
             systemContent += '\n[执行模式: 自主] 当前为自主执行模式。'
                 + '你应该独立思考、主动调用工具完成任务，不要等待用户确认。'
