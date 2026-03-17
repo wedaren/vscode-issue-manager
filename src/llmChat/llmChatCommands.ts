@@ -17,7 +17,7 @@ import {
     appendUserMessageQueued,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
-import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
+import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
 import { Logger } from '../core/utils/Logger';
 import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
@@ -34,6 +34,7 @@ const DISPLAY_MODE_CTX_KEY = 'issueManager.llmChat.displayMode';
 export function registerLLMChatCommands(
     context: vscode.ExtensionContext,
     roleProvider: LLMChatRoleProvider,
+    llmChatView: vscode.TreeView<LLMChatViewNode>,
 ): void {
     const chatService = LLMChatService.getInstance();
 
@@ -588,6 +589,12 @@ export function registerLLMChatCommands(
 
             await openConversation(roleId, uri);
             roleProvider.refresh();
+
+            // 刷新完成后在聊天视图中高亮新建的对话节点
+            const revealNode = await roleProvider.findNodeByUri(uri);
+            if (revealNode) {
+                try { await llmChatView.reveal(revealNode, { select: true, focus: false, expand: false }); } catch { /* ignore */ }
+            }
         }),
     );
 
@@ -692,6 +699,24 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.refresh', () => {
             roleProvider.refresh();
+        }),
+    );
+
+    // ─── 在聊天视图中定位当前文件 ────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.revealInView', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+            const node = await roleProvider.findNodeByUri(targetUri);
+            if (!node) {
+                vscode.window.showWarningMessage('当前文件不在聊天视图中（不是角色、对话或执行日志文件）');
+                return;
+            }
+            try {
+                await llmChatView.reveal(node, { select: true, focus: true, expand: true });
+            } catch (e) {
+                logger.warn('[LLMChat] revealInView 失败', e);
+            }
         }),
     );
 

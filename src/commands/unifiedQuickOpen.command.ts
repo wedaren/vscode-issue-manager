@@ -300,6 +300,25 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "在聊天视图中定位",
+        group: "导航",
+        hint: "reveal llm chat role conversation log",
+        description: "在聊天视图中高亮当前角色、对话或执行日志文件",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_role || !!frontmatter?.chat_conversation || !!frontmatter?.chat_execution_log;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.revealInView', vscode.window.activeTextEditor?.document?.uri);
+        },
+    },
+    {
         label: "在最近视图中查看",
         group: "导航",
         hint: "recent",

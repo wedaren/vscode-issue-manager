@@ -216,7 +216,7 @@ export async function createConversation(roleId: string, title?: string): Promis
         chat_autonomous: false,
     };
 
-    const body = `# ${convoTitle}\n\n`;
+    const body = `# ${convoTitle}\n\n<!-- llm:ready -->\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
     if (uri) {
         // 挂在角色的树节点下

@@ -5,6 +5,7 @@
  * 顶部固定显示「个人助手」专属入口节点。
  */
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { whenCacheReady } from '../data/IssueMarkdowns';
 import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentActivityEntries } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, RecentActivityEntry } from './types';
@@ -14,6 +15,7 @@ import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLo
 export class ChatRoleNode extends vscode.TreeItem {
     constructor(public readonly role: ChatRoleInfo) {
         super(role.name, vscode.TreeItemCollapsibleState.Collapsed);
+        this.id = `role:${role.id}`;
         this.contextValue = 'chatRole';
         this.iconPath = new vscode.ThemeIcon(role.avatar || 'hubot');
 
@@ -37,6 +39,7 @@ export class ChatRoleNode extends vscode.TreeItem {
 export class ChatGroupNode extends vscode.TreeItem {
     constructor(public readonly group: ChatGroupInfo) {
         super(group.name, vscode.TreeItemCollapsibleState.Collapsed);
+        this.id = `group:${group.id}`;
         this.contextValue = 'chatGroup';
         this.iconPath = new vscode.ThemeIcon(group.avatar || 'organization');
         this.description = `${group.memberIds.length} 位成员`;
@@ -59,6 +62,7 @@ export class ChatConversationNode extends vscode.TreeItem {
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None,
         );
+        this.id = `convo:${conversation.id}`;
         this.contextValue = 'chatConversation';
         this.iconPath = new vscode.ThemeIcon('comment-discussion');
         this.description = formatRelativeTime(conversation.mtime);
@@ -75,8 +79,15 @@ export class ChatConversationNode extends vscode.TreeItem {
 
 /** 执行日志节点（对话的子节点） */
 export class ChatExecutionLogNode extends vscode.TreeItem {
-    constructor(public readonly logInfo: ChatExecutionLogInfo) {
+    constructor(
+        public readonly logInfo: ChatExecutionLogInfo,
+        /** 父对话（供 getParent() 使用） */
+        public readonly parentConversation?: ChatConversationInfo,
+        public readonly parentRoleOrGroupId?: string,
+        public readonly parentIsGroup?: boolean,
+    ) {
         super('执行日志', vscode.TreeItemCollapsibleState.None);
+        this.id = `log:${logInfo.id}`;
         this.contextValue = 'chatExecutionLog';
         this.iconPath = new vscode.ThemeIcon('output');
         this.description = `${logInfo.totalRuns} 次执行 · ${logInfo.successCount}✓ ${logInfo.failureCount}✗`;
@@ -173,7 +184,7 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         if (element instanceof ChatConversationNode) {
             const logInfo = await getExecutionLogInfo(element.conversation.uri);
             if (logInfo) {
-                return [new ChatExecutionLogNode(logInfo)];
+                return [new ChatExecutionLogNode(logInfo, element.conversation, element.parentId, element.isGroup)];
             }
             return [];
         }
@@ -182,6 +193,74 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
 
     getTreeItem(element: LLMChatViewNode): vscode.TreeItem {
         return element;
+    }
+
+    /** 供 treeView.reveal() 使用，返回节点的逻辑父节点 */
+    getParent(element: LLMChatViewNode): LLMChatViewNode | undefined {
+        if (element instanceof ChatConversationNode) {
+            if (element.isGroup) {
+                const group = getAllChatGroups().find(g => g.id === element.parentId);
+                return group ? new ChatGroupNode(group) : undefined;
+            }
+            const role = getAllChatRoles().find(r => r.id === element.parentId);
+            return role ? new ChatRoleNode(role) : undefined;
+        }
+        if (element instanceof ChatExecutionLogNode) {
+            if (element.parentConversation && element.parentRoleOrGroupId !== undefined) {
+                return new ChatConversationNode(element.parentConversation, element.parentRoleOrGroupId, element.parentIsGroup ?? false);
+            }
+        }
+        if (element instanceof RecentActivityItemNode) {
+            return new RecentActivityRootNode();
+        }
+        return undefined;
+    }
+
+    /** 通过文件 URI 查找对应的树节点（用于 reveal） */
+    async findNodeByUri(uri: vscode.Uri): Promise<LLMChatViewNode | undefined> {
+        await whenCacheReady;
+        const fsPath = uri.fsPath;
+        const roles = getAllChatRoles();
+        const groups = getAllChatGroups();
+
+        // 角色文件
+        const role = roles.find(r => r.uri.fsPath === fsPath);
+        if (role) { return new ChatRoleNode(role); }
+
+        // 群组文件
+        const group = groups.find(g => g.uri.fsPath === fsPath);
+        if (group) { return new ChatGroupNode(group); }
+
+        // 角色对话文件
+        for (const r of roles) {
+            const convo = getConversationsForRole(r.id).find(c => c.uri.fsPath === fsPath);
+            if (convo) { return new ChatConversationNode(convo, r.id, false); }
+        }
+
+        // 群组对话文件
+        for (const g of groups) {
+            const convo = getConversationsForGroup(g.id).find(c => c.uri.fsPath === fsPath);
+            if (convo) { return new ChatConversationNode(convo, g.id, true); }
+        }
+
+        // 执行日志文件（通过 logId 反查所属对话）
+        const logId = path.basename(fsPath, '.md');
+        for (const r of roles) {
+            const convo = getConversationsForRole(r.id).find(c => c.logId === logId);
+            if (convo) {
+                const logInfo = await getExecutionLogInfo(convo.uri);
+                if (logInfo) { return new ChatExecutionLogNode(logInfo, convo, r.id, false); }
+            }
+        }
+        for (const g of groups) {
+            const convo = getConversationsForGroup(g.id).find(c => c.logId === logId);
+            if (convo) {
+                const logInfo = await getExecutionLogInfo(convo.uri);
+                if (logInfo) { return new ChatExecutionLogNode(logInfo, convo, g.id, true); }
+            }
+        }
+
+        return undefined;
     }
 
     dispose(): void {

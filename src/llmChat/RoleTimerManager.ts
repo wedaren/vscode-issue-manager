@@ -230,6 +230,9 @@ export class RoleTimerManager implements vscode.Disposable {
         const filePath = uri.fsPath;
         this.executing.add(filePath);
 
+        // 若用户在 <!-- llm:ready --> 后直接输入内容，自动补全 ## User (ts) 标头
+        await this._normalizePendingInput(uri);
+
         const currentMarker = await readStateMarker(uri);
         const retryCount = currentMarker?.retryCount ?? 0;
         const startedAt = Date.now();
@@ -579,6 +582,48 @@ export class RoleTimerManager implements vscode.Disposable {
     }
 
     /**
+     * 处理用户在 <!-- llm:ready --> 后直接输入内容的场景：
+     *   Case A：body 末尾为 <!-- llm:ready -->\n用户内容\n<!-- llm:queued --> → 自动插入 ## User (ts)
+     *   Case B：body 无 ## User/## Assistant 历史但有内容（用户从空文件直接输入）→ 同上
+     */
+    private async _normalizePendingInput(uri: vscode.Uri): Promise<void> {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+        if (!/<!--\s*llm:queued\s*-->\s*$/.test(raw)) { return; }
+
+        // 分离 frontmatter block 与 body（支持 LF / CRLF）
+        const fmMatch = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/.exec(raw);
+        if (!fmMatch) { return; }
+        const fmBlock = fmMatch[1];
+        const bodyFull = fmMatch[2];
+
+        const bodyWithoutQueued = bodyFull.replace(/\n*<!--\s*llm:queued\s*-->\s*$/, '').trimEnd();
+
+        // ── Case A: <!-- llm:ready --> + 用户内容 ─────────────────
+        const readyMatch = /^([\s\S]*?)<!--\s*llm:ready\s*-->\r?\n+([\s\S]+?)\s*$/.exec(bodyWithoutQueued);
+        if (readyMatch) {
+            const userContent = readyMatch[2].trim();
+            if (!userContent) { return; }
+            const before = readyMatch[1].trimEnd();
+            const dateStr = formatTimestamp(Date.now());
+            const newBody = `${before}\n\n## User (${dateStr})\n\n${userContent}\n\n<!-- llm:queued -->\n`;
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(fmBlock + newBody, 'utf8'));
+            return;
+        }
+
+        // ── Case B: 无 <!-- llm:ready -->，无历史消息，直接在文件中输入 ──
+        const hasHistory = /^## (?:User|Assistant)\s*\(/m.test(bodyWithoutQueued);
+        if (!hasHistory) {
+            const titleMatch = /^(#+[^\n]*\n+)/.exec(bodyWithoutQueued);
+            const titlePart = titleMatch ? titleMatch[0] : '';
+            const userContent = bodyWithoutQueued.slice(titlePart.length).trim();
+            if (!userContent) { return; }
+            const dateStr = formatTimestamp(Date.now());
+            const newBody = `${titlePart}## User (${dateStr})\n\n${userContent}\n\n<!-- llm:queued -->\n`;
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(fmBlock + newBody, 'utf8'));
+        }
+    }
+
+    /**
      * 移除状态标记并追加助手消息 —— 单次文件写入，保证原子性。
      */
     private async removeMarkerAndAppendAssistant(uri: vscode.Uri, content: string, toolSummary?: string): Promise<void> {
@@ -586,7 +631,7 @@ export class RoleTimerManager implements vscode.Disposable {
         const stripped = stripMarker(raw);
         const dateStr = formatTimestamp(Date.now());
         const body = toolSummary ? `${content}\n\n${toolSummary}` : content;
-        const block = `\n## Assistant (${dateStr})\n\n${body}\n`;
+        const block = `\n## Assistant (${dateStr})\n\n${body}\n\n<!-- llm:ready -->\n`;
         await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
     }
 

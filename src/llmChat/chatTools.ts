@@ -69,7 +69,7 @@ const logger = Logger.getInstance();
 
 /** 生成 issueMarkdown 链接，使用约定前缀 IssueDir/，消费方按需替换为真实路径 */
 function issueLink(title: string, fileName: string): string {
-    return `[${title}](IssueDir/${fileName})`;
+    return `[\`${title}\`](IssueDir/${fileName})`;
 }
 
 /**
@@ -130,7 +130,7 @@ const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'create_issue',
-        description: '创建一个新的 issueMarkdown 笔记文件。可以指定标题、描述和正文内容。返回创建的文件名。',
+        description: '创建一个新的 issueMarkdown 笔记文件。可以指定标题、描述和正文内容。创建成功后必须在回复中向用户提供文档链接（格式：[`标题`](IssueDir/文件名)）。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -1204,7 +1204,7 @@ async function executeCreateIssue(input: Record<string, unknown>): Promise<ToolC
 
     return {
         success: true,
-        content: `✅ 已创建 ${issueLink(title, fileName)}`,
+        content: `✅ 已创建 ${issueLink(title, fileName)}\n> 请在回复中向用户提供上述文档链接。`,
     };
 }
 
