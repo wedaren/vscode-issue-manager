@@ -36,6 +36,8 @@ import {
     stripMarker,
 } from './convStateMarker';
 import type { ChatRoleInfo } from './types';
+import { PostResponseHookRunner } from './hooks/PostResponseHookRunner';
+import { titleGeneratorHook } from './hooks/titleGeneratorHook';
 
 const logger = Logger.getInstance();
 
@@ -58,8 +60,11 @@ export class RoleTimerManager implements vscode.Disposable {
 
     private readonly _disposables: vscode.Disposable[] = [];
     private _watcherDebounce: ReturnType<typeof setTimeout> | undefined;
+    private readonly _hookRunner = new PostResponseHookRunner();
 
-    private constructor() {}
+    private constructor() {
+        this._hookRunner.register('titleGenerator', titleGeneratorHook);
+    }
 
     static getInstance(): RoleTimerManager {
         if (!RoleTimerManager._instance) {
@@ -302,6 +307,10 @@ export class RoleTimerManager implements vscode.Disposable {
             };
 
             const messages = await this.buildMessages(uri, role, trigger);
+            // [systemMsg, userMsg] = 首轮对话，无历史 assistant 消息
+            const isFirstResponse = messages.length === 2;
+            // 提取首条用户消息文本，供 hook 使用（避免 hook 内重复读文件）
+            const firstUserText = isFirstResponse ? extractMessageText(messages[1]) : '';
             inputTokens = await estimateTokens(messages);
 
             // 日志：token 预估
@@ -527,6 +536,16 @@ export class RoleTimerManager implements vscode.Disposable {
                 toolSummary = `> Run #${runNumber} · [执行详情](IssueDir/${logId}.md)\n${lines.join('\n')}`;
             }
             await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
+
+            // 触发 post-response hooks（fire-and-forget，不阻塞主流程）
+            this._hookRunner.fire({
+                uri,
+                role,
+                isFirstResponse,
+                firstUserText,
+                assistantText: result.text.trim(),
+                notifyChange: (p) => this._onDidChange.fire(p),
+            });
 
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
             outputTokens = await estimateTokens([outputMsg]);
@@ -776,6 +795,16 @@ function fmtDuration(ms: number): string {
  * - 结果过大但文件写入失败：截断并附注
  */
 const INLINE_MAX_CHARS = 16000;
+
+/** 从 LanguageModelChatMessage 中提取纯文本内容 */
+function extractMessageText(msg: vscode.LanguageModelChatMessage): string {
+    if (msg.content instanceof Array) {
+        return msg.content
+            .map((p: unknown) => (p && typeof p === 'object' && 'value' in p) ? String((p as { value: unknown }).value ?? '') : '')
+            .join('');
+    }
+    return String((msg as unknown as { content: unknown }).content ?? '');
+}
 
 function buildToolResultForLlm(content: string, fileName: string | null): string {
     if (content.length <= INLINE_MAX_CHARS) {

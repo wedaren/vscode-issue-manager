@@ -298,6 +298,11 @@ export async function appendUserMessageQueued(
     }
 }
 
+/** 更新对话文件的 chat_title frontmatter 字段 */
+export async function updateConversationTitle(uri: vscode.Uri, newTitle: string): Promise<void> {
+    await updateIssueMarkdownFrontmatter(uri, { chat_title: newTitle } as any);
+}
+
 /**
  * 更新对话文件 frontmatter 中的 token 使用量。
  * 请求前/后各调用一次以跟踪 token 消耗。
