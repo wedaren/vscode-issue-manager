@@ -8,7 +8,8 @@ import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { EditorContextService } from '../services/EditorContextService';
 import { EditorEventManager } from '../services/EditorEventManager';
-import { updateIssueVtime } from '../data/IssueMarkdowns';
+import { updateIssueVtime, whenCacheReady } from '../data/IssueMarkdowns';
+import { initRecentIssuesStore } from '../data/recentIssuesManager';
 
 const INITIALIZATION_RETRY_DELAY_MS = 2000;
 
@@ -117,6 +118,9 @@ export class ExtensionInitializer {
             // 4. 注册所有命令
             this.logger.info('⌨️ 步骤 4/4: 注册命令处理器...');
             await this.registerCommandsSafely(views);
+
+            // 缓存就绪后预热最近问题增量存储（不阻塞激活流程）
+            void whenCacheReady.then(() => initRecentIssuesStore());
 
             const duration = Date.now() - startTime;
             const finalMemory = this.getMemoryUsage();

@@ -586,7 +586,7 @@ export class IssueStructureProvider
         this.refreshDebouncer = setTimeout(() => {
             this.refresh();
             this.refreshDebouncer = null;
-        }, 150); // 150ms 防抖延迟
+        }, 300); // 300ms 防抖延迟（与 ViewCommandRegistry 对齐）
     }
 
     /**
