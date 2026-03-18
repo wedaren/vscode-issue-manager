@@ -33,6 +33,7 @@ import type {
     ExecutionRunRecord,
     ExecutionToolCall,
     RecentActivityEntry,
+    RoleAutoMemoryFrontmatter,
 } from './types';
 import { stripMarker, parseStateMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
@@ -303,6 +304,142 @@ export async function updateConversationTitle(uri: vscode.Uri, newTitle: string)
     await updateIssueMarkdownFrontmatter(uri, { chat_title: newTitle } as any);
 }
 
+// ─── 自动提取记忆（Auto Memory）───────────────────────────────
+// hook 自动写入，LLM 只读不写。与 role_memory（LLM 主动管理）完全隔离。
+
+const AUTO_MEMORY_MAX_ENTRIES = 100;
+
+/** 查找或创建角色的自动提取记忆文件，返回 URI */
+async function findOrCreateAutoMemoryFile(roleId: string): Promise<vscode.Uri | null> {
+    const all = getIssueMarkdownsByType('role_auto_memory');
+    for (const md of all) {
+        if (md.frontmatter?.role_auto_memory_owner_id === roleId) {
+            return md.uri;
+        }
+    }
+    const fm: Partial<FrontmatterData> & RoleAutoMemoryFrontmatter = {
+        role_auto_memory: true,
+        role_auto_memory_owner_id: roleId,
+    } as Partial<FrontmatterData> & RoleAutoMemoryFrontmatter;
+    const body = '# 自动提取记忆\n\n';
+    const uri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
+    if (uri) {
+        const role = getChatRoleById(roleId);
+        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
+        await createIssueNodes([uri], roleNode?.id);
+    }
+    return uri ?? null;
+}
+
+/**
+ * 向角色的自动提取记忆文件追加条目。
+ * 按日期分节（## YYYY-MM-DD），超过 MAX_ENTRIES 时删除最旧条目。
+ */
+export async function appendAutoMemoryEntries(
+    roleId: string,
+    entries: string[],
+    conversationId: string,
+): Promise<void> {
+    if (entries.length === 0) { return; }
+
+    const uri = await findOrCreateAutoMemoryFile(roleId);
+    if (!uri) { return; }
+
+    const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+
+    const today = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const dateStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const entryLines = entries.map(e => `- [对话 ${conversationId}] ${e}`);
+
+    // 重新构建 body：找到今日 section 追加，或新建 section
+    const fmBlock = raw.slice(0, raw.indexOf('\n---\n', 4) + 5); // frontmatter block
+    const bodyMatch = /^---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S]*)$/.exec(raw);
+    let body = bodyMatch ? bodyMatch[1] : '# 自动提取记忆\n\n';
+
+    const todaySectionRe = new RegExp(`(## ${dateStr}\\r?\\n)([\\s\\S]*?)(?=\\n## |$)`);
+    if (todaySectionRe.test(body)) {
+        body = body.replace(todaySectionRe, (_, header, content) =>
+            `${header}${content.trimEnd()}\n${entryLines.join('\n')}\n`,
+        );
+    } else {
+        body = body.trimEnd() + `\n\n## ${dateStr}\n\n${entryLines.join('\n')}\n`;
+    }
+
+    // 超限：删除最旧的条目行（以 "- [对话" 开头），保留结构
+    const allEntryLines = body.match(/^- \[对话 .+$/gm) ?? [];
+    if (allEntryLines.length > AUTO_MEMORY_MAX_ENTRIES) {
+        const excess = allEntryLines.length - AUTO_MEMORY_MAX_ENTRIES;
+        let removed = 0;
+        body = body.replace(/^- \[对话 .+$\n?/gm, (line) => {
+            if (removed < excess) { removed++; return ''; }
+            return line;
+        });
+        // 清理因删除产生的空 section（只剩标题行的 ## 节）
+        body = body.replace(/^## \d{4}-\d{2}-\d{2}\n+(?=## |\s*$)/gm, '');
+    }
+
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(fmBlock + body, 'utf8'));
+}
+
+/**
+ * 读取角色自动提取记忆，用于注入 system prompt。
+ * 从最新条目开始取，直到累计字符数达到 maxChars（默认 3000）。
+ */
+export async function readAutoMemoryForInjection(
+    roleId: string,
+    maxChars = 3000,
+): Promise<string> {
+    const all = getIssueMarkdownsByType('role_auto_memory');
+    const md = all.find(m => m.frontmatter?.role_auto_memory_owner_id === roleId);
+    if (!md) { return ''; }
+
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(md.uri)).toString('utf8');
+        const { body } = extractFrontmatterAndBody(raw);
+
+        // 提取所有条目行（带所属日期），逆序后按预算截取
+        const sections: Array<{ date: string; line: string }> = [];
+        let currentDate = '';
+        for (const line of body.split('\n')) {
+            const dateMatch = /^## (\d{4}-\d{2}-\d{2})$/.exec(line);
+            if (dateMatch) { currentDate = dateMatch[1]; continue; }
+            if (line.startsWith('- [对话') && currentDate) {
+                sections.push({ date: currentDate, line });
+            }
+        }
+
+        // 最新在后 → 逆序取
+        sections.reverse();
+        const kept: Array<{ date: string; line: string }> = [];
+        let total = 0;
+        for (const s of sections) {
+            const len = s.line.length + 1;
+            if (total + len > maxChars) { break; }
+            kept.push(s);
+            total += len;
+        }
+
+        if (kept.length === 0) { return ''; }
+
+        // 还原为按日期分组的格式（正序输出）
+        kept.reverse();
+        const grouped = new Map<string, string[]>();
+        for (const s of kept) {
+            if (!grouped.has(s.date)) { grouped.set(s.date, []); }
+            grouped.get(s.date)!.push(s.line);
+        }
+        const lines: string[] = ['[自动提取记忆]'];
+        for (const [date, entries] of grouped) {
+            lines.push(`\n${date}`);
+            lines.push(...entries);
+        }
+        return lines.join('\n');
+    } catch {
+        return '';
+    }
+}
+
 /**
  * 更新对话文件 frontmatter 中的 token 使用量。
  * 请求前/后各调用一次以跟踪 token 消耗。
@@ -353,6 +490,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
     maxTokens?: number;
     tokenUsed?: number;
     autonomous?: boolean;
+    intent?: string;
 } | null> {
     try {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
@@ -364,10 +502,16 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
             maxTokens: fm.chat_max_tokens as number | undefined,
             tokenUsed: fm.chat_token_used as number | undefined,
             autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
+            intent: typeof fm.chat_intent === 'string' ? fm.chat_intent : undefined,
         };
     } catch {
         return null;
     }
+}
+
+/** 写入或更新对话的意图锚点（chat_intent frontmatter 字段） */
+export async function updateConversationIntent(uri: vscode.Uri, intent: string): Promise<void> {
+    await updateIssueMarkdownFrontmatter(uri, { chat_intent: intent } as any);
 }
 
 // ─── 群组相关 ───────────────────────────────────────────────

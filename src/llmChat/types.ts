@@ -57,12 +57,23 @@ export interface ChatRoleFrontmatter {
 
 // ─── 角色记忆相关 ─────────────────────────────────────────────
 
-/** 角色记忆文件的 frontmatter */
+/** 角色记忆文件的 frontmatter（LLM 主动写入，自由格式） */
 export interface RoleMemoryFrontmatter {
     /** 标记为角色记忆文件 */
     role_memory: true;
     /** 关联的角色 ID */
     role_memory_owner_id: string;
+}
+
+/**
+ * 自动提取记忆文件的 frontmatter（hook 自动写入，结构化格式）。
+ * 与 role_memory 完全独立，LLM 只读不写此文件。
+ */
+export interface RoleAutoMemoryFrontmatter {
+    /** 标记为自动提取记忆文件 */
+    role_auto_memory: true;
+    /** 关联的角色 ID */
+    role_auto_memory_owner_id: string;
 }
 
 /** 聊天消息 */
@@ -95,6 +106,11 @@ export interface ChatConversationFrontmatter {
      * 优先级：对话 > 角色。
      */
     chat_autonomous?: boolean;
+    /**
+     * 意图锚点：首次回复后由 hook 自动提取并写入，注入到 system prompt 最前。
+     * 防止长对话中目标漂移。可由用户手动修改以更正意图描述。
+     */
+    chat_intent?: string;
 }
 
 /** 运行时聊天角色信息（从 issueMarkdown 解析而来） */
@@ -159,6 +175,8 @@ export interface ChatConversationInfo {
     logId?: string;
     /** 对话级自主模式 */
     autonomous?: boolean;
+    /** 意图锚点（首次回复后自动提取，防止目标漂移） */
+    intent?: string;
 }
 
 // ─── 群组相关 ───────────────────────────────────────────────

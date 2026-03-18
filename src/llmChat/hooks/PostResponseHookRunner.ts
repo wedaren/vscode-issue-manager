@@ -18,12 +18,16 @@ const logger = Logger.getInstance();
 export interface PostResponseHookContext {
     /** 对话文件 URI */
     uri: vscode.Uri;
+    /** 对话 ID（文件名去掉 .md） */
+    conversationId: string;
     /** 当前角色信息 */
     role: ChatRoleInfo;
     /** 是否为本对话的首次 LLM 回复 */
     isFirstResponse: boolean;
     /** 首条用户消息的纯文本（已提取），isFirstResponse=true 时有意义 */
     firstUserText: string;
+    /** 本次用户消息的纯文本 */
+    lastUserText: string;
     /** 本次 LLM 回复的文本 */
     assistantText: string;
     /** 通知树视图刷新（hook 写入数据后应调用） */

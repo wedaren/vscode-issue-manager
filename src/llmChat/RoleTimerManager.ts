@@ -22,6 +22,8 @@ import {
     parseConversationMessages,
     getConversationConfig,
     updateConversationTokenUsed,
+    updateConversationTitle,
+    readAutoMemoryForInjection,
     estimateTokens,
     getOrCreateExecutionLog,
     startLogRun,
@@ -38,6 +40,8 @@ import {
 import type { ChatRoleInfo } from './types';
 import { PostResponseHookRunner } from './hooks/PostResponseHookRunner';
 import { titleGeneratorHook } from './hooks/titleGeneratorHook';
+import { memoryExtractorHook } from './hooks/memoryExtractorHook';
+import { intentAnchorHook } from './hooks/intentAnchorHook';
 
 const logger = Logger.getInstance();
 
@@ -64,6 +68,8 @@ export class RoleTimerManager implements vscode.Disposable {
 
     private constructor() {
         this._hookRunner.register('titleGenerator', titleGeneratorHook);
+        this._hookRunner.register('intentAnchor', intentAnchorHook);
+        this._hookRunner.register('memoryExtractor', memoryExtractorHook);
     }
 
     static getInstance(): RoleTimerManager {
@@ -538,11 +544,15 @@ export class RoleTimerManager implements vscode.Disposable {
             await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
 
             // 触发 post-response hooks（fire-and-forget，不阻塞主流程）
+            // messages 末尾始终是当前用户消息
+            const lastUserText = extractMessageText(messages[messages.length - 1]);
             this._hookRunner.fire({
                 uri,
+                conversationId: path.basename(uri.fsPath, '.md'),
                 role,
                 isFirstResponse,
                 firstUserText,
+                lastUserText,
                 assistantText: result.text.trim(),
                 notifyChange: (p) => this._onDidChange.fire(p),
             });
@@ -666,9 +676,16 @@ export class RoleTimerManager implements vscode.Disposable {
             ? `[系统指令] ${prompt}`
             : '[系统指令] 你是一个智能助手，请根据对话上下文给出有帮助的回复。';
 
+        // ─── 意图锚点注入 ─────────────────────────────────────
+        // 首次回复后由 intentAnchorHook 写入，防止长对话目标漂移
+        const convoConfig = await getConversationConfig(uri);
+        if (convoConfig?.intent) {
+            systemText += `\n\n[当前任务] ${convoConfig.intent}`;
+        }
+
         // ─── 执行模式注入 ─────────────────────────────────────
         // 优先级：对话 > 角色，均未设置时默认 false（交互模式）
-        const convoConfigForMode = await getConversationConfig(uri);
+        const convoConfigForMode = convoConfig;
         const autonomous = convoConfigForMode?.autonomous ?? role.autonomous ?? false;
         if (autonomous) {
             systemText += '\n\n[执行模式: 自主] 当前为自主执行模式，用户不在场。'
@@ -679,6 +696,12 @@ export class RoleTimerManager implements vscode.Disposable {
                 + '执行破坏性操作（修改角色配置、删除笔记、大规模变更）前应征求用户确认。'
                 + '常规的信息查询、笔记创建、分析建议等可直接执行。';
         }
+        // ─── 自动记忆注入 ─────────────────────────────────────
+        const autoMemory = await readAutoMemoryForInjection(role.id);
+        if (autoMemory) {
+            systemText += `\n\n${autoMemory}`;
+        }
+
         const systemMsg = vscode.LanguageModelChatMessage.User(systemText);
 
         const history = await parseConversationMessages(uri);
@@ -699,7 +722,6 @@ export class RoleTimerManager implements vscode.Disposable {
             // 跳过孤立的 assistant 消息（不应出现，但防御性处理）
         }
 
-        const convoConfig = await getConversationConfig(uri);
         const maxTokens = convoConfig?.maxTokens ?? role.maxTokens;
 
         // 无 token 预算限制 或 轮次 ≤ 3 时，不截断
