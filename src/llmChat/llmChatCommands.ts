@@ -18,6 +18,7 @@ import {
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
+import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
 import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
@@ -1077,6 +1078,20 @@ export function registerLLMChatCommands(
 
             vscode.window.showInformationMessage(
                 `已更新${fileLabel}模型配置 — 模型：${newModel || '继承上级默认'}  max_tokens：${newTokens || '继承上级默认'}`,
+            );
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.generateDiagnosticReport', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+            if (!targetUri) {
+                vscode.window.showErrorMessage('请先打开一个对话文件');
+                return;
+            }
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: '正在生成对话诊断报告…', cancellable: false },
+                () => generateDiagnosticReport(targetUri),
             );
         }),
     );

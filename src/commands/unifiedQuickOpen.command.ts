@@ -401,6 +401,25 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "生成对话诊断报告",
+        group: "管理",
+        hint: "diagnostic report debug analyze conversation log",
+        description: "聚合对话、执行日志、注入上下文，生成还原 LLM 视角的诊断报告",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_conversation;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.generateDiagnosticReport', vscode.window.activeTextEditor?.document?.uri);
+        },
+    },
+    {
         label: "删除当前问题",
         group: "管理",
         hint: "delete",
