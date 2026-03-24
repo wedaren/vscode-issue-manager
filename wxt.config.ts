@@ -38,7 +38,9 @@ export default defineConfig({
     chromiumProfile: `${process.env.HOME}/Library/Application Support/Google/Chrome/DevProfile`,
     keepProfileChanges: true,
     startUrls: ['https://www.google.com'],
-    chromiumArgs: ['--no-first-run', '--no-default-browser-check', '--disable-sync'],
+    // ⚠️ disable-blink-features=AutomationControlled: 移除自动化检测标记，使 Google 登录不被拦截
+    // 风险：部分网站的反爬/反自动化检测会失效，仅用于开发环境，勿用于生产或自动化测试
+    chromiumArgs: ['--no-first-run', '--no-default-browser-check', '--disable-sync', '--disable-blink-features=AutomationControlled'],
   },
   vite: () => ({
     plugins: [vue()],

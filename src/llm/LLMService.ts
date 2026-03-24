@@ -191,6 +191,8 @@ export class LLMService {
             modelFamily?: string;
             /** 工具调用状态回调（用于 UI 显示） */
             onToolStatus?: (status: { toolName: string; phase: 'calling' | 'done'; result?: string }) => void;
+            /** LLM 决定调用工具时触发（每轮一次），传入本轮文本和待调用工具列表 */
+            onToolsDecided?: (info: { roundText: string; toolNames: string[]; round: number }) => void;
             /** 最大工具调用轮次（防止无限循环） */
             maxToolRounds?: number;
         },
@@ -255,6 +257,15 @@ export class LLMService {
                     break;
                 }
 
+                // 通知调用方：LLM 决定调用哪些工具
+                try {
+                    options?.onToolsDecided?.({
+                        roundText,
+                        toolNames: toolCalls.map(tc => tc.name),
+                        round,
+                    });
+                } catch { /* 回调错误不阻塞 */ }
+
                 // 处理工具调用
                 // 1. 将本轮助手回复（包含文本和工具调用）添加到消息列表
                 const assistantParts: Array<vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart> = [];
@@ -307,7 +318,7 @@ export class LLMService {
     }): Promise<vscode.LanguageModelChat | undefined> {
         const logger = Logger.getInstance();
         const config = vscode.workspace.getConfiguration("issueManager");
-        const configFamily = config.get<string>("llm.modelFamily") || "gpt-4.1";
+        const configFamily = config.get<string>("llm.modelFamily") || "gpt-5-mini";
         // 如果调用方指定了 modelFamily，优先使用；否则回落到 VS Code 配置
         const preferredFamily = options?.modelFamily || configFamily;
 
@@ -324,19 +335,25 @@ export class LLMService {
             logger.warn(`[LLM.selectModel] 未找到指定模型 family="${options.modelFamily}"，尝试回落`);
         }
 
-        // 3. 回落到 gpt-4o
+        // 3. 回落到 gpt-5-mini
+        if (models.length === 0 && preferredFamily !== "gpt-5-mini") {
+            models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-5-mini" });
+            if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-5-mini'); }
+        }
+
+        // 4. 回落到 gpt-4o
         if (models.length === 0 && preferredFamily !== "gpt-4o") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4o" });
             if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4o'); }
         }
 
-        // 4. 回落到 gpt-4.1
+        // 5. 回落到 gpt-4.1
         if (models.length === 0 && preferredFamily !== "gpt-4.1") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4.1" });
             if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4.1'); }
         }
 
-        // 5. 回落到任意 Copilot 模型
+        // 6. 回落到任意 Copilot 模型
         if (models.length === 0) {
             models = await vscode.lm.selectChatModels({ vendor: "copilot" });
             if (models.length > 0) { logger.info(`[LLM.selectModel] 回落到任意可用模型: ${(models[0] as any)?.family}`); }

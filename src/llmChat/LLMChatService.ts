@@ -14,9 +14,16 @@ import {
     getChatGroupById,
     parseGroupConversationMessages,
     appendGroupMessageToConversation,
+    getConversationConfig,
+    updateConversationTokenUsed,
+    estimateTokens,
+    getOrCreateExecutionLog,
+    startLogRun,
+    appendLogLine,
 } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatGroupInfo } from './types';
 import { CHAT_TOOLS, executeChatTool } from './chatTools';
+import { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -132,24 +139,58 @@ export class LLMChatService {
         this._onDidSendMessage.fire({ uri, role: 'user', content: userMessage });
 
         const messages = await this.buildLLMMessages(uri, userMessage);
+        const startedAt = Date.now();
+
+        // 对话级配置覆盖角色级
+        const convoConfig = await getConversationConfig(uri);
+        const effectiveModelFamily = convoConfig?.modelFamily || this._activeRole?.modelFamily;
+
+        // ── 日志先行 ──
+        const logUri = await this.getLogUri(uri);
+        if (logUri) {
+            try {
+                await startLogRun(logUri, {
+                    trigger: 'direct',
+                    roleName: this._activeRole?.name,
+                    modelFamily: effectiveModelFamily,
+                    maxTokens: convoConfig?.maxTokens ?? this._activeRole?.maxTokens,
+                });
+            } catch { /* 日志写入失败不阻塞主流程 */ }
+        }
 
         try {
+            if (logUri) { void appendLogLine(logUri, '🚀 发起 LLM 请求...'); }
+
             const result = await LLMService.chat(messages, {
                 signal: options?.signal,
-                modelFamily: this._activeRole?.modelFamily,
+                modelFamily: effectiveModelFamily,
             });
 
-            if (!result?.text) { return null; }
+            if (!result?.text) {
+                if (logUri) { void appendLogLine(logUri, `❌ **失败** | LLM 返回空响应 | 耗时 ${fmtDuration(Date.now() - startedAt)}`); }
+                return null;
+            }
 
             const assistantReply = result.text.trim();
             await appendMessageToConversation(uri, 'assistant', assistantReply);
             this._onDidSendMessage.fire({ uri, role: 'assistant', content: assistantReply });
 
+            const inputTokens = await estimateTokens(messages);
+            const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
+            const outputTokens = await estimateTokens([outputMsg]);
+            void updateConversationTokenUsed(uri, inputTokens + outputTokens);
+
+            if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
             return assistantReply;
         } catch (e) {
-            if (options?.signal?.aborted) { return null; }
+            const errMsg = e instanceof Error ? e.message : String(e);
+            if (options?.signal?.aborted) {
+                if (logUri) { void appendLogLine(logUri, `⏹️ **用户中止** | 耗时 ${fmtDuration(Date.now() - startedAt)}`); }
+                return null;
+            }
+            if (logUri) { void appendLogLine(logUri, `❌ **失败** | 耗时 ${fmtDuration(Date.now() - startedAt)} | ${errMsg}`); }
             logger.error('[LLMChat] 发送消息失败', e);
-            vscode.window.showErrorMessage(`LLM 回复失败: ${e instanceof Error ? e.message : '未知错误'}`);
+            vscode.window.showErrorMessage(`LLM 回复失败: ${errMsg}`);
             return null;
         }
     }
@@ -176,34 +217,99 @@ export class LLMChatService {
         this._onDidSendMessage.fire({ uri, role: 'user', content: userMessage });
 
         const messages = await this.buildLLMMessages(uri, userMessage);
+        const isPA = !!this._activeRole?.isPersonalAssistant;
+        const tools = isPA ? PERSONAL_ASSISTANT_TOOLS : CHAT_TOOLS;
+        const signal = options?.signal;
+        const startedAt = Date.now();
+
+        // 对话级配置覆盖角色级
+        const convoConfig = await getConversationConfig(uri);
+        const effectiveModelFamily = convoConfig?.modelFamily || this._activeRole?.modelFamily;
+
+        // ── 日志先行 ──
+        const logUri = await this.getLogUri(uri);
+        if (logUri) {
+            try {
+                await startLogRun(logUri, {
+                    trigger: 'direct',
+                    roleName: this._activeRole?.name,
+                    modelFamily: effectiveModelFamily,
+                    maxTokens: convoConfig?.maxTokens ?? this._activeRole?.maxTokens,
+                });
+            } catch { /* 日志写入失败不阻塞主流程 */ }
+        }
 
         try {
+            if (logUri) { void appendLogLine(logUri, '🚀 发起 LLM 请求...'); }
+
             const result = await LLMService.streamWithTools(
                 messages,
-                CHAT_TOOLS,
+                tools,
                 onChunk,
                 async (toolName, input) => {
-                    const res = await executeChatTool(toolName, input);
+                    const tcStart = Date.now();
+
+                    // PA 委派：记录意图
+                    if (isPA && toolName === 'delegate_to_role' && logUri) {
+                        const targetRole = String((input as Record<string, unknown>).roleNameOrId || '');
+                        const taskStr = String((input as Record<string, unknown>).task || '');
+                        const taskPreview = taskStr.length > 100 ? taskStr.slice(0, 100) + '…' : taskStr;
+                        void appendLogLine(logUri, `📤 **委派给「${targetRole}」**: ${taskPreview}`);
+                    }
+
+                    const res = isPA
+                        ? await executePersonalAssistantTool(toolName, input, signal)
+                        : await executeChatTool(toolName, input);
+                    const dur = Date.now() - tcStart;
+
+                    if (logUri) {
+                        if (isPA && toolName === 'delegate_to_role') {
+                            const icon = res.success ? '📥' : '📥❌';
+                            void appendLogLine(logUri, `${icon} **委派结果** (${fmtDuration(dur)}) → ${truncate(res.content, 150)}`);
+                        } else {
+                            void appendLogLine(logUri, `🔧 \`${toolName}\` (${fmtDuration(dur)}) → ${truncate(res.content, 80)}`);
+                        }
+                    }
                     return res.content;
                 },
                 {
-                    signal: options?.signal,
-                    modelFamily: this._activeRole?.modelFamily,
+                    signal,
+                    modelFamily: effectiveModelFamily,
                     onToolStatus: options?.onToolStatus,
                 },
             );
 
-            if (!result?.text) { return null; }
+            if (!result?.text) {
+                if (logUri) { void appendLogLine(logUri, `❌ **失败** | LLM 返回空响应 | 耗时 ${fmtDuration(Date.now() - startedAt)}`); }
+                return null;
+            }
 
             const assistantReply = result.text.trim();
             await appendMessageToConversation(uri, 'assistant', assistantReply);
             this._onDidSendMessage.fire({ uri, role: 'assistant', content: assistantReply });
 
+            const inputTokens = await estimateTokens(messages);
+            const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
+            const outputTokens = await estimateTokens([outputMsg]);
+            void updateConversationTokenUsed(uri, inputTokens + outputTokens);
+
+            // 日志：助手回复摘要
+            if (logUri && assistantReply) {
+                const preview = assistantReply.replace(/\n+/g, ' ');
+                void appendLogLine(logUri, `💭 **助手回复**: ${truncate(preview, 200)}`);
+            }
+
+            if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
             return assistantReply;
         } catch (e) {
-            if (options?.signal?.aborted) { return null; }
+            const errMsg = e instanceof Error ? e.message : String(e);
+            if (options?.signal?.aborted) {
+                if (logUri) { void appendLogLine(logUri, `⏹️ **用户中止** | 耗时 ${fmtDuration(Date.now() - startedAt)}`); }
+                return null;
+            }
+            if (logUri) { void appendLogLine(logUri, `❌ **失败** | 耗时 ${fmtDuration(Date.now() - startedAt)} | ${errMsg}`); }
             logger.error('[LLMChat] 流式发送失败', e);
-            vscode.window.showErrorMessage(`LLM 回复失败: ${e instanceof Error ? e.message : '未知错误'}`);
+            vscode.window.showErrorMessage(`LLM 回复失败: ${errMsg}`);
             return null;
         }
     }
@@ -533,6 +639,19 @@ ${userMessage}
         if (this._activeRole?.systemPrompt) {
             systemContent = `[系统指令] ${this._activeRole.systemPrompt}`;
         }
+
+        // 个人助手追加记忆与委派工具说明
+        if (this._activeRole?.isPersonalAssistant) {
+            systemContent += '\n\n[个人助手专属工具]\n'
+                + '- read_memory: 读取你的持久记忆（对话开始时首先调用）\n'
+                + '- write_memory: 更新记忆（任务结束后调用）\n'
+                + '- list_chat_roles: 列出所有可用专业角色\n'
+                + '- delegate_to_role: 委派任务给指定角色，获取专业回复\n'
+                + '- create_chat_role: 创建新的专业角色\n'
+                + '- update_role_config: 更新角色系统提示词\n'
+                + '- evaluate_role: 记录角色绩效评估\n';
+        }
+
         // VS Code 侧聊天上下文：笔记管理为主，浏览器工具需 Chrome 扩展连接
         systemContent += '\n\n[笔记工具] 你可以管理用户的 issueMarkdown 笔记：\n'
             + '- search_issues: 搜索笔记\n'
@@ -629,7 +748,22 @@ ${userMessage}
         return msgs;
     }
 
+    /** 获取日志文件 URI（按需创建） */
+    private async getLogUri(uri: vscode.Uri): Promise<vscode.Uri | null> {
+        try { return await getOrCreateExecutionLog(uri); } catch { return null; }
+    }
+
     dispose(): void {
         this._onDidSendMessage.dispose();
     }
+}
+
+/** 截断字符串，超出 maxLen 时添加省略号 */
+function truncate(text: string, maxLen: number): string {
+    if (text.length <= maxLen) { return text; }
+    return text.slice(0, maxLen - 1) + '…';
+}
+
+function fmtDuration(ms: number): string {
+    return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 }
