@@ -11,6 +11,7 @@
  *   executing  → 超过 STALE_EXECUTING_MS 视为崩溃 → 重置为 retrying
  */
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { LLMService } from '../llm/LLMService';
 import { Logger } from '../core/utils/Logger';
 import {
@@ -26,8 +27,7 @@ import {
     appendLogLine,
     createToolCallNode,
 } from './llmChatDataManager';
-import { CHAT_TOOLS, executeChatTool } from './chatTools';
-import { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
+import { executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 import {
     readStateMarker,
     writeStateMarker,
@@ -102,7 +102,8 @@ export class RoleTimerManager implements vscode.Disposable {
         if (this.executing.has(uri.fsPath)) { return; }
 
         const marker = await readStateMarker(uri);
-        if (!marker || marker.status !== 'queued') { return; }
+        // queued：正常排队；retrying：等待重试中，保存可强制立即重试（跳过 retryAt 延迟）
+        if (!marker || (marker.status !== 'queued' && marker.status !== 'retrying')) { return; }
 
         const roleId = await this.getRoleIdFromFile(uri);
         if (!roleId) { return; }
@@ -110,7 +111,7 @@ export class RoleTimerManager implements vscode.Disposable {
         const role = await getChatRoleById(roleId);
         if (!role) { return; }
 
-        void this.executeConversation(uri, role);
+        void this.executeConversation(uri, role, 'save');
     }
 
     // ─── 内部：定时器同步 ─────────────────────────────────────
@@ -210,14 +211,14 @@ export class RoleTimerManager implements vscode.Disposable {
                     logger.warn(`[RoleTimerManager] 检测到僵尸 executing 状态，强制重试: ${convo.uri.fsPath}`);
                 }
                 dispatched++;
-                void this.executeConversation(convo.uri, role);
+                void this.executeConversation(convo.uri, role, 'timer');
             }
         }
     }
 
     // ─── 内部：LLM 执行 ──────────────────────────────────────
 
-    private async executeConversation(uri: vscode.Uri, role: ChatRoleInfo): Promise<void> {
+    private async executeConversation(uri: vscode.Uri, role: ChatRoleInfo, trigger: 'timer' | 'save' = 'timer'): Promise<void> {
         const filePath = uri.fsPath;
         this.executing.add(filePath);
 
@@ -245,7 +246,7 @@ export class RoleTimerManager implements vscode.Disposable {
         if (logUri) {
             try {
                 runNumber = await startLogRun(logUri, {
-                    trigger: 'timer',
+                    trigger,
                     roleName: role.name,
                     modelFamily: effectiveModelFamily,
                     timeout,
@@ -280,8 +281,8 @@ export class RoleTimerManager implements vscode.Disposable {
                 }
             }, 5_000);
 
-            const isPA = role.isPersonalAssistant === true;
-            const tools = isPA ? PERSONAL_ASSISTANT_TOOLS : CHAT_TOOLS;
+            const tools = getToolsForRole(role);
+            const toolContext: ToolExecContext = { role, signal: ac.signal };
 
             const messages = await this.buildMessages(uri, role);
             inputTokens = await estimateTokens(messages);
@@ -332,6 +333,7 @@ export class RoleTimerManager implements vscode.Disposable {
             }
 
             let toolCallSeq = 0;
+            const toolCallItems: Array<{ name: string; time: Date; dur: number; fileName: string | null; success: boolean }> = [];
 
             const result = await LLMService.streamWithTools(
                 messages,
@@ -342,14 +344,15 @@ export class RoleTimerManager implements vscode.Disposable {
                     toolCallSeq++;
                     execPhase = `执行工具 ${toolName} (#${toolCallSeq})`;
                     execLastActivityAt = Date.now();
+                    const isDelegation = toolName === 'delegate_to_role';
 
                     // 日志：工具调用开始
-                    if (logUri && !(isPA && toolName === 'delegate_to_role')) {
+                    if (logUri && !isDelegation) {
                         void appendLogLine(logUri, `⏳ 调用 \`${toolName}\`...`);
                     }
 
-                    // PA 委派：记录意图（带链接）
-                    if (isPA && toolName === 'delegate_to_role' && logUri) {
+                    // 委派：记录意图（带链接）
+                    if (isDelegation && logUri) {
                         const targetRole = String((input as Record<string, unknown>).roleNameOrId || '');
                         const taskStr = String((input as Record<string, unknown>).task || '');
 
@@ -374,15 +377,13 @@ export class RoleTimerManager implements vscode.Disposable {
                         }
                     }
 
-                    const res = isPA
-                        ? await executePersonalAssistantTool(toolName, input, ac.signal)
-                        : await executeChatTool(toolName, input);
+                    const res = await executeChatTool(toolName, input, toolContext);
                     const dur = Date.now() - tcStart;
 
                     // 创建工具调用详情节点 + 日志摘要行（带链接）
+                    let fileName: string | null = null;
                     if (logUri && runNumber > 0) {
-                        const toolDef = tools.find(t => t.name === toolName);
-                        let fileName: string | null = null;
+                        const toolDef = tools.find((t: { name: string }) => t.name === toolName);
                         try {
                             fileName = await createToolCallNode(logUri, toolName, input, res.content, dur, {
                                 success: res.success,
@@ -397,7 +398,7 @@ export class RoleTimerManager implements vscode.Disposable {
                             : `\`${toolName}\``;
 
                         const statusIcon = res.success ? '✅' : '❌';
-                        if (isPA && toolName === 'delegate_to_role') {
+                        if (isDelegation) {
                             void appendLogLine(logUri, `📥${statusIcon} **委派结果** ${toolLink} (${fmtDuration(dur)})`);
                         } else {
                             void appendLogLine(logUri, `${statusIcon} ${toolLink} (${fmtDuration(dur)})`);
@@ -405,7 +406,7 @@ export class RoleTimerManager implements vscode.Disposable {
                     } else if (logUri) {
                         // runNumber 为 0（startLogRun 失败），仅写摘要
                         const statusIcon = res.success ? '✅' : '❌';
-                        if (isPA && toolName === 'delegate_to_role') {
+                        if (isDelegation) {
                             void appendLogLine(logUri, `📥${statusIcon} **委派结果** (${fmtDuration(dur)})`);
                         } else {
                             void appendLogLine(logUri, `${statusIcon} \`${toolName}\` (${fmtDuration(dur)})`);
@@ -413,12 +414,14 @@ export class RoleTimerManager implements vscode.Disposable {
                     }
 
                     // 工具完成，更新追踪
+                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName, success: res.success });
                     execToolCalls = toolCallSeq;
                     execLastToolName = toolName;
                     execPhase = `等待 LLM 响应（工具调用 #${toolCallSeq} 后）`;
                     execLastActivityAt = Date.now();
 
-                    return res.content;
+                    // 结果过大时外存引用，避免超出 token 上限
+                    return buildToolResultForLlm(res.content, fileName);
                 },
                 {
                     signal: ac.signal,
@@ -433,15 +436,40 @@ export class RoleTimerManager implements vscode.Disposable {
                             void appendLogLine(logUri, `🤖 **LLM 第${info.round}轮** → 调用 ${names}`);
                         }
                     },
+                    onFinalRound: (info) => {
+                        if (!logUri) { return; }
+                        const hint = info.toolCallsTotal > 0
+                            ? `（完成 ${info.toolCallsTotal} 轮工具调用后）`
+                            : '（无工具调用）';
+                        void appendLogLine(logUri, `⏳ **LLM 第${info.round}轮（最终）** → 期望：生成完整回复 ${hint}`);
+                    },
                 },
             );
 
             clearInterval(idleCheckId);
 
-            if (!result?.text) { throw new Error('LLM 返回空响应'); }
+            if (!result?.text) {
+                const hint = toolCallSeq > 0
+                    ? `（已完成 ${toolCallSeq} 次工具调用，最后一个工具：\`${execLastToolName}\`）`
+                    : '';
+                throw new Error(`LLM 返回空响应${hint}，可能原因：上下文过长 / 模型响应异常`);
+            }
 
-            // 成功：移除标记并追加助手回复
-            await this.removeMarkerAndAppendAssistant(uri, result.text.trim());
+            // 成功：移除标记并追加助手回复（附工具调用摘要）
+            let toolSummary: string | undefined;
+            if (toolCallSeq > 0 && logUri) {
+                const logId = path.basename(logUri.fsPath, '.md');
+                const lines = toolCallItems.map(item => {
+                    const t = fmtHms(item.time);
+                    const icon = item.success ? '✅' : '❌';
+                    const nameStr = item.fileName
+                        ? `[\`${item.name}\`](IssueDir/${item.fileName})`
+                        : `\`${item.name}\``;
+                    return `> - \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})`;
+                });
+                toolSummary = `> Run #${runNumber} · [执行详情](IssueDir/${logId}.md)\n${lines.join('\n')}`;
+            }
+            await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
 
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
             outputTokens = await estimateTokens([outputMsg]);
@@ -479,13 +507,14 @@ export class RoleTimerManager implements vscode.Disposable {
             } else {
                 const baseDelay = Number(role.timerRetryDelay) || 5_000;
                 const delay = Math.max(1_000, baseDelay * Math.pow(2, retryCount));
-                const retryAt = Date.now() + delay;
+                const retryAt = Number.isFinite(Date.now() + delay) ? Date.now() + delay : Date.now() + 5_000;
                 await writeStateMarker(uri, {
                     status: 'retrying',
-                    retryAt: Number.isFinite(retryAt) ? retryAt : Date.now() + 5_000,
+                    retryAt,
                     retryCount: nextRetry,
                 });
-                if (logUri) { void appendLogLine(logUri, `⚠️ **失败 → 重试 (${nextRetry}/${maxRetries})** | ${Math.round(delay / 1000)}s 后重试 | 耗时 ${dur} | ${errMsg}`); }
+                const retryAtStr = new Date(retryAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                if (logUri) { void appendLogLine(logUri, `⚠️ **失败 → 重试 (${nextRetry}/${maxRetries})** | ${Math.round(delay / 1000)}s 后重试（${retryAtStr}）| 耗时 ${dur} | ${errMsg}`); }
                 logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
             }
 
@@ -498,11 +527,12 @@ export class RoleTimerManager implements vscode.Disposable {
     /**
      * 移除状态标记并追加助手消息 —— 单次文件写入，保证原子性。
      */
-    private async removeMarkerAndAppendAssistant(uri: vscode.Uri, content: string): Promise<void> {
+    private async removeMarkerAndAppendAssistant(uri: vscode.Uri, content: string, toolSummary?: string): Promise<void> {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
         const stripped = stripMarker(raw);
         const dateStr = formatTimestamp(Date.now());
-        const block = `\n## Assistant (${dateStr})\n\n${content}\n`;
+        const body = toolSummary ? `${content}\n\n${toolSummary}` : content;
+        const block = `\n## Assistant (${dateStr})\n\n${body}\n`;
         await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
     }
 
@@ -551,6 +581,31 @@ function formatTimestamp(ts: number): string {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+function fmtHms(d: Date): string {
+    const p = (n: number) => n.toString().padStart(2, '0');
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 function fmtDuration(ms: number): string {
     return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+/**
+ * 决定工具结果如何传回给 LLM。
+ * - 结果较小（≤ INLINE_MAX_CHARS）：直接 inline
+ * - 结果过大且已写入文件：传引用 + 预览，让 LLM 自主决定是否读取完整内容
+ * - 结果过大但文件写入失败：截断并附注
+ */
+const INLINE_MAX_CHARS = 8000;
+
+function buildToolResultForLlm(content: string, fileName: string | null): string {
+    if (content.length <= INLINE_MAX_CHARS) {
+        return content;
+    }
+    if (fileName) {
+        const preview = content.slice(0, 300).trimEnd();
+        return `[工具结果（${content.length} 字符）](IssueDir/${fileName})\n预览：${preview}${content.length > 300 ? '\n...' : ''}\n如需完整内容，请调用 read_issue("${fileName}")`;
+    }
+    // 文件写入失败时兜底截断
+    return content.slice(0, INLINE_MAX_CHARS) + `\n...[内容已截断，原始长度 ${content.length} 字符]`;
 }

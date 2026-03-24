@@ -3,7 +3,7 @@ import { QuickPickItemWithId, filterItems } from "./unifiedQuickOpen.types";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 import { getIssueNodeById } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
-import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
+import { getIssueMarkdown, isIssueMarkdown, extractFrontmatterAndBody } from "../data/IssueMarkdowns";
 import { forceRefreshCurrentEditor } from "./forceRefreshCurrentEditor";
 import { canDeleteFromEditor } from "./deleteIssue";
 import { createAndOpenIssue } from "./createAndOpenIssue";
@@ -341,6 +341,25 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.attachToFromEditor");
+        },
+    },
+    {
+        label: "配置工具集",
+        group: "管理",
+        hint: "tools configure",
+        description: "交互式配置当前角色的 tool_sets / mcp_servers / extra_tools / excluded_tools",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_role;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.configureTools', vscode.window.activeTextEditor?.document?.uri);
         },
     },
     {

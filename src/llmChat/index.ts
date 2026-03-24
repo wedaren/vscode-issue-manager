@@ -1,11 +1,9 @@
-export { LLMChatRoleProvider, type LLMChatViewNode, ChatRoleNode, ChatConversationNode, ChatGroupNode, PersonalAssistantNode, ChatExecutionLogNode } from './LLMChatRoleProvider';
+export { LLMChatRoleProvider, type LLMChatViewNode, ChatRoleNode, ChatConversationNode, ChatGroupNode, ChatExecutionLogNode } from './LLMChatRoleProvider';
 export { LLMChatService } from './LLMChatService';
 export { ChatHistoryPanel } from './ChatHistoryPanel';
 export { registerLLMChatCommands } from './llmChatCommands';
-export { CHAT_TOOLS, executeChatTool } from './chatTools';
+export { CHAT_TOOLS, executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 export { RoleTimerManager } from './RoleTimerManager';
-export { PERSONAL_ASSISTANT_TOOLS, executePersonalAssistantTool } from './personalAssistantTools';
-export { PersonalAssistantService } from './PersonalAssistantService';
 export {
     getAllChromeChatConversations,
     createChromeChatConversation,
@@ -20,4 +18,4 @@ export {
     startLogRun,
     appendLogLine,
 } from './llmChatDataManager';
-export type { ChatRoleInfo, ChatConversationInfo, ChatMessage, ChatGroupInfo, ChatGroupMessage, ChromeChatInfo, PersonalAssistantMemory, ChatExecutionLogInfo, ExecutionRunRecord, ExecutionToolCall } from './types';
+export type { ChatRoleInfo, ChatConversationInfo, ChatMessage, ChatGroupInfo, ChatGroupMessage, ChromeChatInfo, ChatExecutionLogInfo, ExecutionRunRecord, ExecutionToolCall } from './types';

@@ -17,6 +17,7 @@ import {
     getIssueMarkdown,
     getIssueMarkdownContent,
     createIssueMarkdown,
+    extractFrontmatterAndBody,
     updateIssueMarkdownFrontmatter,
     updateIssueMarkdownBody,
     type FrontmatterData,
@@ -31,11 +32,30 @@ import {
     writeTree,
     moveNode,
     removeNode,
+    findNodeById,
     findParentNodeById,
     getAncestors,
+    type IssueNode,
 } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
+import type { ChatRoleInfo, RoleMemoryFrontmatter } from './types';
+import {
+    getAllChatRoles,
+    getChatRoleById,
+    createChatRole as dataCreateChatRole,
+    createConversation,
+    appendUserMessageQueued,
+    parseConversationMessages,
+    getConversationsForRole,
+} from './llmChatDataManager';
+import { RoleTimerManager } from './RoleTimerManager';
+import { readStateMarker } from './convStateMarker';
+
+/** 委派递归深度限制 */
+const MAX_DELEGATION_DEPTH = 5;
+/** 当前委派深度（递归计数器，进程级） */
+let _delegationDepth = 0;
 
 const logger = Logger.getInstance();
 
@@ -44,10 +64,27 @@ function issueLink(title: string, fileName: string): string {
     return `[${title}](IssueDir/${fileName})`;
 }
 
+/**
+ * 规范化文件名：IssueDir/ 是真实 issue 目录的缩写，将其剥离后得到相对于
+ * issueDir 的路径。同时兼容 LLM 传入真实绝对路径的情况（取 basename）。
+ */
+function normalizeFileName(name: string, issueDir?: string): string {
+    // IssueDir/ 是 issueDir 的约定缩写，直接剥离该前缀
+    if (name.startsWith('IssueDir/')) {
+        return name.slice('IssueDir/'.length);
+    }
+    // 兼容 LLM 传入真实绝对路径
+    if (issueDir && name.startsWith(issueDir + path.sep)) {
+        return path.relative(issueDir, name);
+    }
+    // 其余情况：可能是纯文件名或带其他前缀，取 basename 兜底
+    return path.basename(name);
+}
+
 // ─── 工具定义 ─────────────────────────────────────────────────
 
-/** 聊天角色可用的所有工具 */
-export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
+/** 基础笔记工具（所有角色均可用） */
+const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     {
         name: 'search_issues',
         description: '搜索 issueMarkdown 笔记。支持在标题、frontmatter 字段和正文中搜索，支持多关键词（空格分隔，全部匹配）。返回标题、文件路径、类型标签和修改时间。',
@@ -142,6 +179,11 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
             required: ['fileName'],
         },
     },
+];
+
+/** 浏览器工具（browser 工具集，需要 Chrome 扩展连接） */
+const BROWSER_TOOLS: vscode.LanguageModelChatTool[] = [
+    // ─── 网络工具 ─────────────────────────────────────────────
     {
         name: 'web_search',
         description: '通过 Chrome 浏览器进行网络搜索，返回搜索结果页面的文本内容。需要已连接 Chrome 扩展。',
@@ -318,6 +360,10 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
             required: ['tabId', 'key'],
         },
     },
+];
+
+// CHAT_TOOLS 续：笔记关联管理工具（所有角色基础工具集）
+const ISSUE_RELATION_TOOLS: vscode.LanguageModelChatTool[] = [
     // ─── 笔记关联管理工具 ─────────────────────────────────────
     {
         name: 'link_issue',
@@ -354,7 +400,308 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
             required: ['fileName'],
         },
     },
+    {
+        name: 'move_issue_node',
+        description: '将笔记节点移动到指定父节点下的指定位置（精确控制顺序）。可用于调整兄弟节点排列顺序，或将节点迁移到不同父节点。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileName: { type: 'string', description: '要移动的笔记文件名' },
+                parentFileName: { type: 'string', description: '目标父笔记文件名。留空则移到根级。' },
+                index: { type: 'number', description: '在目标父节点子列表中的插入位置（从 0 开始）。默认 0（最前）。超出范围时自动调整到末尾。' },
+            },
+            required: ['fileName'],
+        },
+    },
+    {
+        name: 'sort_issue_children',
+        description: '对指定节点的子列表（或根级节点列表）按标题、修改时间或创建时间排序。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                parentFileName: { type: 'string', description: '父笔记文件名。留空则排序根级节点列表。' },
+                by: {
+                    type: 'string',
+                    enum: ['title', 'mtime', 'ctime'],
+                    description: '排序字段：title（标题字母序）、mtime（修改时间）、ctime（创建时间）。默认 title。',
+                },
+                order: {
+                    type: 'string',
+                    enum: ['asc', 'desc'],
+                    description: '排序方向：asc（升序，默认）、desc（降序）',
+                },
+                recursive: { type: 'boolean', description: '是否递归排序所有子孙节点。默认 false（仅排序直接子节点）。' },
+            },
+        },
+    },
+    {
+        name: 'delete_issue',
+        description: '删除指定的 issueMarkdown 笔记文件，并自动从 issueTree 中解除关联（移除 issueNode）。不可撤销。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileName: { type: 'string', description: '要删除的笔记文件名（如 20240115-103045.md 或 IssueDir/20240115-103045.md）' },
+                removeChildren: { type: 'boolean', description: '是否同时递归删除该节点的所有子孙笔记文件。默认 false（子节点保留，移到根级）。' },
+            },
+            required: ['fileName'],
+        },
+    },
+    {
+        name: 'batch_delete_issues',
+        description: '批量删除多个 issueMarkdown 笔记文件，并自动从 issueTree 中解除所有关联。不可撤销。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fileNames: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的笔记文件名列表（支持 IssueDir/ 前缀格式）',
+                },
+            },
+            required: ['fileNames'],
+        },
+    },
 ];
+
+// ─── 能力工具定义（按需注入） ─────────────────────────────────
+
+/** 记忆工具（memory_enabled 时注入） */
+const MEMORY_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'read_memory',
+        description: '读取本角色的持久记忆，包含积累的知识、历史任务摘要和反思。对话开始时应首先调用此工具。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'write_memory',
+        description: '更新本角色的持久记忆。在任务完成后调用，记录本次任务经验、新了解等。内容为 Markdown 格式，会替换现有记忆。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                content: {
+                    type: 'string',
+                    description: '新的记忆内容（Markdown 格式）',
+                },
+            },
+            required: ['content'],
+        },
+    },
+];
+
+/** 委派工具（delegation_enabled 时注入） */
+const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'list_chat_roles',
+        description: '列出当前所有可用的聊天角色，含名称、系统提示词摘要。用于决定委派给谁。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'delegate_to_role',
+        description: '将子任务委派给指定角色。同步模式（默认）等待角色完成后返回结果；异步模式立即返回 convoId，角色在后台执行，可用 get_delegation_status 轮询结果。网络类耗时任务推荐用异步模式。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: {
+                    type: 'string',
+                    description: '目标角色的名称或 ID（文件名去掉 .md）',
+                },
+                task: {
+                    type: 'string',
+                    description: '委派给该角色的具体任务描述，越详细越好',
+                },
+                async: {
+                    type: 'boolean',
+                    description: '是否异步执行。true = 立即返回 convoId，角色在后台处理；false（默认）= 同步等待角色完成',
+                },
+            },
+            required: ['roleNameOrId', 'task'],
+        },
+    },
+    {
+        name: 'get_delegation_status',
+        description: '查询异步委派的执行状态和结果。用于跟进之前以 async:true 发起的委派任务。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                convoId: {
+                    type: 'string',
+                    description: '委派时返回的对话 ID（如 20240115-103045）',
+                },
+            },
+            required: ['convoId'],
+        },
+    },
+];
+
+/** 角色管理工具（role_management_enabled 时注入） */
+const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'list_available_tools',
+        description: '列出当前可用的内置工具包（tool_sets）和已注册的 MCP server（mcp_servers）及其工具，供创建或配置角色时参考。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'create_chat_role',
+        description: '创建一个新的聊天角色。调用前必须先调用 list_available_tools，了解可用的内置工具包和 MCP server，再按角色职责按需配置 toolSets 和 mcpServers。创建后可立即用 delegate_to_role 委派任务（需要委派能力）。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: '角色名称（如"法律顾问"、"数学专家"）' },
+                systemPrompt: { type: 'string', description: '角色的系统提示词，详细描述其职责、能力和行为准则' },
+                avatar: {
+                    type: 'string',
+                    description: 'VS Code ThemeIcon 名称，如 scale、beaker、code、book、shield、person、globe、lightbulb 等',
+                },
+                modelFamily: {
+                    type: 'string',
+                    description: '指定使用的 AI 模型。不填则使用全局默认。',
+                },
+                toolSets: {
+                    type: 'array',
+                    items: { type: 'string', enum: ['memory', 'delegation', 'role_management', 'browser'] },
+                    description: '为新角色启用的工具包列表，如 ["memory", "delegation"]，默认为空',
+                },
+                mcpServers: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要注入的 MCP server 名称列表，如 ["memory", "fetch"]。请先调用 list_available_tools 确认实际可用的 server 名称，再按角色职责按需选择。避免使用 "*"（引入全部），会导致 token 上下文爆炸。默认为空',
+                },
+            },
+            required: ['name', 'systemPrompt'],
+        },
+    },
+    {
+        name: 'update_role_config',
+        description: '根据实际表现更新指定角色的系统提示词，优化其行为。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: { type: 'string', description: '要更新的角色名称或 ID' },
+                newSystemPrompt: { type: 'string', description: '新的系统提示词（完整替换）' },
+                reason: { type: 'string', description: '更新原因（可选，用于记录）' },
+            },
+            required: ['roleNameOrId', 'newSystemPrompt'],
+        },
+    },
+    {
+        name: 'evaluate_role',
+        description: '记录对某个角色的绩效评估。结果会写入本角色的记忆文件（需要同时启用记忆能力）。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: { type: 'string', description: '角色名称或 ID' },
+                outcome: {
+                    type: 'string',
+                    enum: ['success', 'partial', 'failed'],
+                    description: 'success=完成良好, partial=部分完成, failed=未完成或质量差',
+                },
+                notes: { type: 'string', description: '详细评价：做得好的地方、不足之处、改进建议' },
+            },
+            required: ['roleNameOrId', 'outcome', 'notes'],
+        },
+    },
+    {
+        name: 'read_role_execution_logs',
+        description: '读取指定角色的执行日志，统计工具实际调用情况、成功率、token 消耗，并与角色配置对比，找出冗余或缺失的工具配置。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                roleNameOrId: { type: 'string', description: '角色名称或 ID' },
+                maxConversations: { type: 'number', description: '分析最近 N 个对话的日志，默认 5' },
+            },
+            required: ['roleNameOrId'],
+        },
+    },
+];
+
+/** 聊天角色可用的基础工具集（笔记管理 + 关联管理） */
+export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
+    ...BASE_ISSUE_TOOLS,
+    ...ISSUE_RELATION_TOOLS,
+];
+
+/** 内置工具包注册表，新增工具包只需在此添加一条记录 */
+const TOOL_SET_REGISTRY: Record<string, vscode.LanguageModelChatTool[]> = {
+    memory:          MEMORY_TOOLS,
+    delegation:      DELEGATION_TOOLS,
+    role_management: ROLE_MANAGEMENT_TOOLS,
+    browser:         BROWSER_TOOLS,
+};
+
+/**
+ * 根据角色的工具集配置，组装该角色可用的完整工具集。
+ * - toolSets: 内置工具包名称列表
+ * - mcpServers / extraTools / excludedTools: 从 vscode.lm.tools 筛选 MCP 工具
+ */
+export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatTool[] {
+    const tools = [...CHAT_TOOLS];
+
+    // 内置工具包
+    for (const name of role.toolSets) {
+        const bundle = TOOL_SET_REGISTRY[name];
+        if (bundle) {
+            tools.push(...bundle);
+        } else {
+            logger.warn(`[ChatTools] 未知工具包: "${name}"，已跳过`);
+        }
+    }
+
+    // ─── MCP 工具注入 ────────────────────────────────────────
+    const hasMcpConfig =
+        (role.mcpServers && role.mcpServers.length > 0) ||
+        (role.extraTools && role.extraTools.length > 0) ||
+        (role.excludedTools && role.excludedTools.length > 0);
+
+    if (hasMcpConfig) {
+        const allVscodeLmTools = vscode.lm.tools;
+        const mcpToolNames = new Set<string>();
+
+        // 收集来自指定 MCP server 的所有工具（"*" 表示引入全部）
+        if (role.mcpServers && role.mcpServers.length > 0) {
+            const includeAll = role.mcpServers.includes('*');
+            for (const t of allVscodeLmTools) {
+                // VSCode MCP 工具名格式为 "mcp_<serverName>_<toolName>"，用 startsWith 匹配
+                if (includeAll || role.mcpServers.some(s =>
+                    t.name.startsWith(`mcp_${s}_`) || t.name.startsWith(`${s}_`)
+                )) {
+                    mcpToolNames.add(t.name);
+                }
+            }
+        }
+
+        // 额外引入的具体工具
+        if (role.extraTools) {
+            for (const name of role.extraTools) { mcpToolNames.add(name); }
+        }
+
+        // 排除的工具
+        if (role.excludedTools) {
+            for (const name of role.excludedTools) { mcpToolNames.delete(name); }
+        }
+
+        // 将筛选出的 MCP 工具转换为 LanguageModelChatTool 格式后追加
+        for (const t of allVscodeLmTools) {
+            if (!mcpToolNames.has(t.name)) { continue; }
+            tools.push({
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema as vscode.LanguageModelChatTool['inputSchema'],
+            });
+        }
+    }
+
+    return tools;
+}
+
+// ─── 工具执行上下文 ─────────────────────────────────────────────
+
+/** 工具执行时需要的角色上下文 */
+export interface ToolExecContext {
+    /** 当前角色信息（用于记忆/委派等能力工具） */
+    role?: ChatRoleInfo;
+    /** 中止信号 */
+    signal?: AbortSignal;
+}
 
 // ─── 工具执行 ─────────────────────────────────────────────────
 
@@ -364,9 +711,14 @@ export interface ToolCallResult {
 }
 
 /**
- * 执行指定工具并返回结果文本
+ * 执行指定工具并返回结果文本。
+ * 能力工具（记忆/委派/角色管理）需要传入 context 提供角色信息。
  */
-export async function executeChatTool(toolName: string, input: Record<string, unknown>): Promise<ToolCallResult> {
+export async function executeChatTool(
+    toolName: string,
+    input: Record<string, unknown>,
+    context?: ToolExecContext,
+): Promise<ToolCallResult> {
     try {
         switch (toolName) {
             case 'search_issues':
@@ -413,8 +765,62 @@ export async function executeChatTool(toolName: string, input: Record<string, un
                 return await executeUnlinkIssue(input);
             case 'get_issue_relations':
                 return await executeGetIssueRelations(input);
-            default:
-                return { success: false, content: `未知工具: ${toolName}` };
+            case 'move_issue_node':
+                return await executeMoveIssueNode(input);
+            case 'sort_issue_children':
+                return await executeSortIssueChildren(input);
+            case 'delete_issue':
+                return await executeDeleteIssue(input);
+            case 'batch_delete_issues':
+                return await executeBatchDeleteIssues(input);
+            // ─── 能力工具：记忆 ─────────────────────────────────
+            case 'read_memory':
+                return await executeReadMemory(context);
+            case 'write_memory':
+                return await executeWriteMemory(input, context);
+            // ─── 能力工具：委派 ─────────────────────────────────
+            case 'list_chat_roles':
+                return await executeListChatRoles(context);
+            case 'delegate_to_role':
+                return await executeDelegateToRole(input, context);
+            case 'get_delegation_status':
+                return await executeGetDelegationStatus(input);
+            // ─── 能力工具：角色管理 ─────────────────────────────
+            case 'list_available_tools':
+                return executeListAvailableTools();
+            case 'create_chat_role':
+                return await executeCreateChatRole(input);
+            case 'update_role_config':
+                return await executeUpdateRoleConfig(input);
+            case 'evaluate_role':
+                return await executeEvaluateRole(input, context);
+            case 'read_role_execution_logs':
+                return await executeReadRoleExecutionLogs(input);
+            default: {
+                // 尝试通过 vscode.lm.invokeTool 调用 MCP 工具
+                const vscodeTool = vscode.lm.tools.find(t => t.name === toolName);
+                if (!vscodeTool) {
+                    return { success: false, content: `未知工具: ${toolName}` };
+                }
+                const tokenSource = new vscode.CancellationTokenSource();
+                if (context?.signal) {
+                    context.signal.addEventListener('abort', () => tokenSource.cancel());
+                }
+                try {
+                    const result = await vscode.lm.invokeTool(
+                        toolName,
+                        { input, toolInvocationToken: undefined as never },
+                        tokenSource.token,
+                    );
+                    // result 是 LanguageModelToolResult，content 为 LanguageModelTextPart[] | LanguageModelPromptTsxPart[]
+                    const text = result.content
+                        .map(p => (p instanceof vscode.LanguageModelTextPart ? p.value : '[non-text]'))
+                        .join('');
+                    return { success: true, content: text };
+                } finally {
+                    tokenSource.dispose();
+                }
+            }
         }
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -545,14 +951,14 @@ function formatAge(mtime: number): string {
 }
 
 async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
-    if (!fileName) {
-        return { success: false, content: '请提供文件名' };
-    }
-
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: '问题目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供文件名' };
     }
 
     const filePath = path.join(issueDir, fileName);
@@ -660,27 +1066,39 @@ async function executeCreateIssueTree(input: Record<string, unknown>): Promise<T
 
     // 2. 构建树结构：先创建根节点到 tree 中
     const rootUri = createdUris[rootIndex];
-    const rootNodes = await createIssueNodes([rootUri]);
+    const rootIssueNodes = await createIssueNodes([rootUri]);
 
-    if (rootNodes && rootNodes.length > 0) {
-        const rootNodeId = rootNodes[0].id;
+    if (rootIssueNodes && rootIssueNodes.length > 0) {
+        const rootNodeId = rootIssueNodes[0].id;
 
-        // 递归添加子节点
+        // 递归添加子节点（按 children 索引数组）
         const addChildren = async (parentIdx: number, parentId: string) => {
             const nodeSpec = nodes[parentIdx];
             if (!nodeSpec.children || nodeSpec.children.length === 0) { return; }
 
             for (const childIdx of nodeSpec.children) {
                 if (childIdx >= 0 && childIdx < createdUris.length && childIdx !== parentIdx) {
-                    const childNodes = await createIssueNodes([createdUris[childIdx]], parentId);
-                    if (childNodes && childNodes.length > 0) {
-                        await addChildren(childIdx, childNodes[0].id);
+                    const childIssueNodes = await createIssueNodes([createdUris[childIdx]], parentId);
+                    if (childIssueNodes && childIssueNodes.length > 0) {
+                        await addChildren(childIdx, childIssueNodes[0].id);
                     }
                 }
             }
         };
 
-        await addChildren(rootIndex, rootNodeId);
+        const rootSpec = nodes[rootIndex];
+        if (!rootSpec.children || rootSpec.children.length === 0) {
+            // 根节点没有显式 children 时，将所有其他节点作为根的直接子节点
+            const otherIndices = nodes.map((_, i) => i).filter(i => i !== rootIndex);
+            for (const childIdx of otherIndices) {
+                const childIssueNodes = await createIssueNodes([createdUris[childIdx]], rootNodeId);
+                if (childIssueNodes && childIssueNodes.length > 0) {
+                    await addChildren(childIdx, childIssueNodes[0].id);
+                }
+            }
+        } else {
+            await addChildren(rootIndex, rootNodeId);
+        }
     }
 
     // 刷新视图
@@ -730,14 +1148,14 @@ async function executeListIssueTree(input: Record<string, unknown>): Promise<Too
 }
 
 async function executeUpdateIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
-    if (!fileName) {
-        return { success: false, content: '请提供文件名' };
-    }
-
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: '问题目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供文件名' };
     }
 
     const filePath = path.join(issueDir, fileName);
@@ -1283,17 +1701,151 @@ async function executePressKey(input: Record<string, unknown>): Promise<ToolCall
 
 // ─── 笔记关联管理实现 ─────────────────────────────────────────
 
-async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const childFileName = String(input.childFileName || '').trim();
-    const parentFileName = String(input.parentFileName || '').trim();
-
-    if (!childFileName) {
-        return { success: false, content: '请提供子笔记文件名（childFileName）' };
+async function executeMoveIssueNode(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return { success: false, content: 'issue 目录未配置' };
     }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    const parentFileName = input.parentFileName ? normalizeFileName(String(input.parentFileName).trim(), issueDir) : '';
+    const index = typeof input.index === 'number' ? Math.floor(input.index) : 0;
+
+    if (!fileName) {
+        return { success: false, content: '请提供文件名（fileName）' };
+    }
+
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+    try {
+        await vscode.workspace.fs.stat(uri);
+    } catch {
+        return { success: false, content: `笔记文件不存在: ${fileName}` };
+    }
+
+    // 确保节点在树中
+    let node = await getSingleIssueNodeByUri(uri);
+    if (!node) {
+        const created = await createIssueNodes([uri]);
+        if (!created?.length) {
+            return { success: false, content: `无法在树中创建节点: ${fileName}` };
+        }
+        node = created[0];
+    }
+
+    // 确定目标父节点 ID
+    let parentNodeId: string | null = null;
+    if (parentFileName) {
+        const parentUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), parentFileName);
+        const parentNode = await getSingleIssueNodeByUri(parentUri);
+        if (!parentNode) {
+            const created = await createIssueNodes([parentUri]);
+            if (!created?.length) {
+                return { success: false, content: `无法在树中找到或创建父节点: ${parentFileName}` };
+            }
+            parentNodeId = created[0].id;
+        } else {
+            parentNodeId = parentNode.id;
+        }
+    }
+
+    const treeData = await readTree();
+
+    // 计算目标列表长度，将超出范围的 index 夹住
+    const targetList = parentNodeId
+        ? (findNodeById(treeData.rootNodes, parentNodeId)?.node.children ?? [])
+        : treeData.rootNodes;
+    // 移除源节点后列表会缩短 1（若在同一列表），保守地限制到 targetList.length
+    const safeIndex = Math.max(0, Math.min(index, targetList.length));
+
+    moveNode(treeData, node.id, parentNodeId, safeIndex);
+    await writeTree(treeData);
+
+    const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
+    return {
+        success: true,
+        content: `✅ 已将 ${issueLink(fileName, fileName)} 移动到 ${target} 第 ${safeIndex} 位`,
+    };
+}
+
+async function executeSortIssueChildren(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const by = (['title', 'mtime', 'ctime'].includes(String(input.by)) ? String(input.by) : 'title') as 'title' | 'mtime' | 'ctime';
+    const order = input.order === 'desc' ? 'desc' : 'asc';
+    const recursive = input.recursive === true;
 
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const parentFileName = input.parentFileName ? normalizeFileName(String(input.parentFileName).trim(), issueDir) : '';
+
+    const treeData = await readTree();
+    const flatTree = await getFlatTree();
+
+    type AnyNode = { id: string; children: AnyNode[] };
+
+    const getSortKey = (node: AnyNode): string | number => {
+        const flat = flatTree.find(f => f.id === node.id);
+        if (by === 'title') { return flat?.title?.toLowerCase() ?? ''; }
+        if (by === 'mtime') { return flat?.mtime ?? 0; }
+        return flat?.ctime ?? 0;
+    };
+
+    const sortNodes = (nodes: AnyNode[]) => {
+        nodes.sort((a, b) => {
+            const ka = getSortKey(a);
+            const kb = getSortKey(b);
+            if (typeof ka === 'string' && typeof kb === 'string') {
+                return order === 'asc' ? ka.localeCompare(kb, 'zh') : kb.localeCompare(ka, 'zh');
+            }
+            const diff = (ka as number) - (kb as number);
+            return order === 'asc' ? diff : -diff;
+        });
+        if (recursive) {
+            for (const node of nodes) {
+                if (node.children?.length > 0) {
+                    sortNodes(node.children);
+                }
+            }
+        }
+    };
+
+    if (!parentFileName) {
+        sortNodes(treeData.rootNodes as unknown as AnyNode[]);
+    } else {
+        const parentUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), parentFileName);
+        const parentNode = await getSingleIssueNodeByUri(parentUri);
+        if (!parentNode) {
+            return { success: false, content: `未在树中找到父节点: ${parentFileName}` };
+        }
+        const found = findNodeById(treeData.rootNodes, parentNode.id);
+        if (!found) {
+            return { success: false, content: `树中未找到节点: ${parentFileName}` };
+        }
+        sortNodes(found.node.children as unknown as AnyNode[]);
+    }
+
+    await writeTree(treeData);
+
+    const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
+    const byLabel: Record<string, string> = { title: '标题', mtime: '修改时间', ctime: '创建时间' };
+    return {
+        success: true,
+        content: `✅ 已对 ${target} 的子节点按「${byLabel[by]}」${order === 'asc' ? '升序' : '降序'} 排序${recursive ? '（含所有子孙节点）' : ''}`,
+    };
+}
+
+async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) {
+        return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const childFileName = normalizeFileName(String(input.childFileName || '').trim(), issueDir);
+    const parentFileName = normalizeFileName(String(input.parentFileName || '').trim(), issueDir);
+
+    if (!childFileName) {
+        return { success: false, content: '请提供子笔记文件名（childFileName）' };
     }
 
     const childUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), childFileName);
@@ -1350,16 +1902,16 @@ async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCal
 }
 
 async function executeUnlinkIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
     const removeFromTree = input.removeFromTree === true;
-
-    if (!fileName) {
-        return { success: false, content: '请提供笔记文件名（fileName）' };
-    }
 
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供笔记文件名（fileName）' };
     }
 
     const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
@@ -1392,15 +1944,14 @@ async function executeUnlinkIssue(input: Record<string, unknown>): Promise<ToolC
 }
 
 async function executeGetIssueRelations(input: Record<string, unknown>): Promise<ToolCallResult> {
-    const fileName = String(input.fileName || '').trim();
-
-    if (!fileName) {
-        return { success: false, content: '请提供笔记文件名（fileName）' };
-    }
-
     const issueDir = getIssueDir();
     if (!issueDir) {
         return { success: false, content: 'issue 目录未配置' };
+    }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) {
+        return { success: false, content: '请提供笔记文件名（fileName）' };
     }
 
     const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
@@ -1468,4 +2019,596 @@ async function executeGetIssueRelations(input: Record<string, unknown>): Promise
     }
 
     return { success: true, content: lines.join('\n') };
+}
+
+// ─── 笔记删除实现 ────────────────────────────────────────────
+
+/**
+ * 递归收集节点及其所有子孙的文件路径。
+ */
+function collectSubtreeFilePaths(node: IssueNode, out: Set<string>): void {
+    out.add(node.resourceUri.fsPath);
+    for (const child of node.children ?? []) {
+        collectSubtreeFilePaths(child, out);
+    }
+}
+
+async function executeDeleteIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: 'issue 目录未配置' }; }
+
+    const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
+    if (!fileName) { return { success: false, content: '请提供文件名（fileName）' }; }
+
+    const removeChildren = input.removeChildren === true;
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+
+    // 确认文件存在
+    try { await vscode.workspace.fs.stat(uri); } catch {
+        return { success: false, content: `文件不存在: ${fileName}` };
+    }
+
+    const filesToDelete = new Set<string>([uri.fsPath]);
+    const treeData = await readTree();
+    const nodes = await getIssueNodesByUri(uri);
+
+    // 从树中处理节点
+    for (const node of nodes) {
+        if (removeChildren) {
+            // 收集子树所有文件，一并删除
+            collectSubtreeFilePaths(node, filesToDelete);
+        } else {
+            // 子节点提升：将直接子节点移到根级
+            for (const child of node.children ?? []) {
+                moveNode(treeData, child.id, null, treeData.rootNodes.length);
+            }
+        }
+        removeNode(treeData, node.id);
+    }
+
+    if (nodes.length > 0) { await writeTree(treeData); }
+
+    // 删除文件
+    const failed: string[] = [];
+    for (const fp of filesToDelete) {
+        try { await vscode.workspace.fs.delete(vscode.Uri.file(fp)); }
+        catch { failed.push(path.basename(fp)); }
+    }
+
+    if (failed.length > 0) {
+        return { success: false, content: `部分文件删除失败: ${failed.join(', ')}` };
+    }
+
+    const childCount = filesToDelete.size - 1;
+    const extra = childCount > 0 ? `，连同 ${childCount} 个子孙笔记` : '';
+    return { success: true, content: `✅ 已删除 ${issueLink(fileName, fileName)}${extra}，并解除树关联` };
+}
+
+async function executeBatchDeleteIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: 'issue 目录未配置' }; }
+
+    const raw = Array.isArray(input.fileNames) ? input.fileNames : [];
+    const fileNames = raw.map((n: unknown) => normalizeFileName(String(n).trim(), issueDir)).filter(Boolean);
+    if (fileNames.length === 0) { return { success: false, content: '请提供至少一个文件名（fileNames）' }; }
+
+    const treeData = await readTree();
+    const filesToDelete = new Set<string>();
+    const notFound: string[] = [];
+
+    for (const fileName of fileNames) {
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), fileName);
+        try { await vscode.workspace.fs.stat(uri); } catch {
+            notFound.push(fileName);
+            continue;
+        }
+        filesToDelete.add(uri.fsPath);
+        const nodes = await getIssueNodesByUri(uri);
+        for (const node of nodes) { removeNode(treeData, node.id); }
+    }
+
+    if (filesToDelete.size > 0) { await writeTree(treeData); }
+
+    const failed: string[] = [];
+    for (const fp of filesToDelete) {
+        try { await vscode.workspace.fs.delete(vscode.Uri.file(fp)); }
+        catch { failed.push(path.basename(fp)); }
+    }
+
+    const lines: string[] = [];
+    if (filesToDelete.size - failed.length > 0) {
+        lines.push(`✅ 已删除 ${filesToDelete.size - failed.length} 个笔记并解除树关联`);
+    }
+    if (notFound.length > 0) { lines.push(`⚠️ 文件不存在（已跳过）: ${notFound.join(', ')}`); }
+    if (failed.length > 0) { lines.push(`❌ 删除失败: ${failed.join(', ')}`); }
+
+    return { success: failed.length === 0, content: lines.join('\n') };
+}
+
+// ─── 能力工具实现：记忆 ──────────────────────────────────────
+
+/** 查找或创建角色的记忆文件，返回 URI */
+async function findOrCreateMemoryFile(roleId: string): Promise<vscode.Uri | null> {
+    const all = await getAllIssueMarkdowns({});
+    for (const md of all) {
+        if (md.frontmatter?.role_memory === true
+            && md.frontmatter?.role_memory_owner_id === roleId) {
+            return md.uri;
+        }
+    }
+    // 不存在 → 创建
+    const fm: Partial<FrontmatterData> & RoleMemoryFrontmatter = {
+        role_memory: true,
+        role_memory_owner_id: roleId,
+    } as Partial<FrontmatterData> & RoleMemoryFrontmatter;
+    const body = `# 角色记忆\n\n（暂无，将在对话中逐步积累）\n`;
+    const uri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
+    if (uri) {
+        logger.info(`[ChatTools] 已创建角色 ${roleId} 的记忆文件: ${uri.fsPath}`);
+        // 挂在角色的树节点下
+        const role = await getChatRoleById(roleId);
+        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
+        await createIssueNodes([uri], roleNode?.id);
+    }
+    return uri ?? null;
+}
+
+async function executeReadMemory(context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.role?.toolSets.includes('memory') || !context.role.id) {
+        return { success: false, content: '当前角色未启用记忆能力' };
+    }
+    const memUri = await findOrCreateMemoryFile(context.role.id);
+    if (!memUri) { return { success: false, content: '记忆文件不存在且创建失败' }; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(memUri)).toString('utf8');
+        const { body } = extractFrontmatterAndBody(raw);
+        return { success: true, content: `**[角色记忆]**\n\n${body.trim() || '（记忆为空）'}` };
+    } catch (e) {
+        logger.error('[ChatTools] 读取记忆失败', e);
+        return { success: false, content: '读取记忆失败' };
+    }
+}
+
+async function executeWriteMemory(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.role?.toolSets.includes('memory') || !context.role.id) {
+        return { success: false, content: '当前角色未启用记忆能力' };
+    }
+    const content = String(input.content || '').trim();
+    if (!content) { return { success: false, content: '请提供记忆内容' }; }
+    const memUri = await findOrCreateMemoryFile(context.role.id);
+    if (!memUri) { return { success: false, content: '记忆文件不存在且创建失败' }; }
+    try {
+        const ok = await updateIssueMarkdownBody(memUri, content);
+        return ok
+            ? { success: true, content: '✅ 记忆已更新' }
+            : { success: false, content: '记忆更新失败' };
+    } catch (e) {
+        logger.error('[ChatTools] 写入记忆失败', e);
+        return { success: false, content: '记忆写入失败' };
+    }
+}
+
+// ─── 能力工具实现：委派 ──────────────────────────────────────
+
+async function executeListChatRoles(context?: ToolExecContext): Promise<ToolCallResult> {
+    const roles = await getAllChatRoles();
+    // 排除自身
+    const filtered = context?.role ? roles.filter(r => r.id !== context.role!.id) : roles;
+    if (filtered.length === 0) {
+        return { success: true, content: '当前没有其他可用角色。可以用 create_chat_role 创建新角色。' };
+    }
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
+    const lines = filtered.map(r => {
+        const promptPreview = r.systemPrompt
+            ? r.systemPrompt.slice(0, 60) + (r.systemPrompt.length > 60 ? '…' : '')
+            : '（无提示词）';
+        const model = r.modelFamily ? r.modelFamily : `${globalDefault}（全局默认）`;
+        const capStr = r.toolSets.length > 0 ? ` · 工具集: ${r.toolSets.join('/')}` : '';
+        return `- **${r.name}** (ID: \`${r.id}\`) · 模型: ${model}${capStr}\n  ${promptPreview}`;
+    });
+    return { success: true, content: `可用角色（共 ${filtered.length} 个）：\n\n${lines.join('\n\n')}` };
+}
+
+/** 按名称或 ID 查找角色 */
+async function findRole(nameOrId: string): Promise<ChatRoleInfo | undefined> {
+    const roles = await getAllChatRoles();
+    const lower = nameOrId.toLowerCase();
+    return roles.find(r =>
+        r.id === nameOrId
+        || r.name === nameOrId
+        || r.name.toLowerCase() === lower,
+    );
+}
+
+async function executeDelegateToRole(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.role?.toolSets.includes('delegation')) {
+        return { success: false, content: '当前角色未启用委派能力' };
+    }
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const task = String(input.task || '').trim();
+    const isAsync = input.async === true;
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+    if (!task) { return { success: false, content: '请提供委派任务描述' }; }
+
+    // 递归深度保护（异步委派不占深度）
+    if (!isAsync && _delegationDepth >= MAX_DELEGATION_DEPTH) {
+        return { success: false, content: `委派深度超限（最大 ${MAX_DELEGATION_DEPTH} 层），请简化任务链` };
+    }
+
+    const role = await findRole(roleNameOrId);
+    if (!role) {
+        return { success: false, content: `找不到角色「${roleNameOrId}」，请先用 list_chat_roles 查看可用角色。` };
+    }
+
+    // 创建真实对话文件
+    const taskPreview = task.length > 30 ? task.slice(0, 30) + '…' : task;
+    const convoTitle = `[委派] ${taskPreview}`;
+    const convoUri = await createConversation(role.id, convoTitle);
+    if (!convoUri) {
+        return { success: false, content: '创建委派对话文件失败' };
+    }
+    const convoId = path.basename(convoUri.fsPath, '.md');
+    logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '同步'}`);
+
+    // 写入用户消息 + queued 标记
+    await appendUserMessageQueued(convoUri, task);
+
+    // 触发执行
+    await RoleTimerManager.getInstance().triggerConversation(convoUri);
+
+    // ── 异步模式：立即返回 convoId，不等待结果 ──
+    if (isAsync) {
+        return {
+            success: true,
+            content: `✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
+        };
+    }
+
+    // ── 同步模式：等待执行完成 ──
+    _delegationDepth++;
+    try {
+        const reply = await waitForDelegationResult(convoUri, role.name, context.signal);
+        logger.info(`[ChatTools] 委派结束 → 角色「${role.name}」| 回复长度: ${reply.length}`);
+        void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+
+        return {
+            success: true,
+            content: `**[${role.name} 的回复]** (对话: ${convoId})\n\n${reply}\n\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
+        };
+    } finally {
+        _delegationDepth--;
+    }
+}
+
+async function executeGetDelegationStatus(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const convoId = String(input.convoId || '').trim().replace(/\.md$/, '');
+    if (!convoId) { return { success: false, content: '请提供委派对话 ID（convoId）' }; }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: 'issue 目录未配置' }; }
+
+    const convoUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), `${convoId}.md`);
+    try { await vscode.workspace.fs.stat(convoUri); } catch {
+        return { success: false, content: `找不到委派对话文件: ${convoId}` };
+    }
+
+    const marker = await readStateMarker(convoUri);
+
+    // 无 marker = 执行成功（RoleTimerManager 成功后会移除标记）
+    if (!marker) {
+        const messages = await parseConversationMessages(convoUri);
+        const last = messages.filter(m => m.role === 'assistant').pop();
+        const reply = last?.content?.trim() || '（角色未返回任何内容）';
+        return {
+            success: true,
+            content: `✅ **委派已完成** | 对话: [${convoId}](IssueDir/${convoId}.md)\n\n${reply}`,
+        };
+    }
+
+    switch (marker.status) {
+        case 'queued':
+            return { success: true, content: `⏳ **等待执行中** | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        case 'executing':
+            return { success: true, content: `🔄 **执行中** | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        case 'retrying': {
+            const retryAt = marker.retryAt
+                ? new Date(marker.retryAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : '未知';
+            return { success: true, content: `⚠️ **重试中（第 ${marker.retryCount} 次）** | 预计 ${retryAt} 重试 | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        }
+        case 'error':
+            return { success: false, content: `❌ **委派失败** | ${marker.message || '未知错误'} | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+        default:
+            return { success: true, content: `❓ 未知状态 | 对话: [${convoId}](IssueDir/${convoId}.md)` };
+    }
+}
+
+/** 等待委派对话被 RoleTimerManager 处理完成 */
+function waitForDelegationResult(
+    convoUri: vscode.Uri,
+    roleName: string,
+    signal?: AbortSignal,
+): Promise<string> {
+    return new Promise<string>(resolve => {
+        const timerManager = RoleTimerManager.getInstance();
+        const cleanup = () => {
+            disposable.dispose();
+            clearTimeout(timeout);
+            signal?.removeEventListener('abort', onAbort);
+        };
+        const disposable = timerManager.onDidChange(async (e) => {
+            if (e.uri.fsPath !== convoUri.fsPath) { return; }
+            if (e.success) {
+                cleanup();
+                const messages = await parseConversationMessages(convoUri);
+                const last = messages.filter(m => m.role === 'assistant').pop();
+                resolve(last?.content?.trim() || '（角色未返回任何内容）');
+            } else {
+                const marker = await readStateMarker(convoUri);
+                if (marker?.status === 'retrying') {
+                    logger.info(`[ChatTools] 委派给「${roleName}」重试中（${marker.retryCount}次）`);
+                    return;
+                }
+                cleanup();
+                const errMsg = marker?.message || '未知错误';
+                resolve(`委派给「${roleName}」时出错: ${errMsg}`);
+            }
+        });
+        const timeout = setTimeout(() => {
+            cleanup();
+            resolve(`委派给「${roleName}」超时，请查看对话文件了解进度`);
+        }, 120_000);
+        const onAbort = () => { cleanup(); resolve('（已取消）'); };
+        signal?.addEventListener('abort', onAbort);
+    });
+}
+
+// ─── 能力工具实现：角色管理 ──────────────────────────────────
+
+function executeListAvailableTools(): ToolCallResult {
+    const BUILT_IN = [
+        { id: 'memory',          tools: 'read_memory、write_memory',                          desc: '持久记忆，适合长期任务角色' },
+        { id: 'delegation',      tools: 'delegate_to_role、list_chat_roles',                  desc: '委派能力，适合中枢调度角色' },
+        { id: 'role_management', tools: 'list_available_tools、create_chat_role、update_role_config 等', desc: '角色管理，仅管理型角色需要' },
+        { id: 'browser',         tools: 'web_search、fetch_url、list_tabs、click_element 等', desc: 'Chrome 浏览器工具，需要扩展连接' },
+    ];
+
+    const builtInSection = [
+        '## 内置工具包（tool_sets）',
+        ...BUILT_IN.map(s => `- ${s.id}: ${s.tools} — ${s.desc}`),
+    ].join('\n');
+
+    // 从 vscode.lm.tools 解析 MCP server
+    const serverToolsMap = new Map<string, string[]>();
+    for (const tool of vscode.lm.tools) {
+        const match = tool.name.match(/^mcp_([^_]+)_(.+)$/);
+        if (match) {
+            const server = match[1];
+            if (!serverToolsMap.has(server)) { serverToolsMap.set(server, []); }
+            serverToolsMap.get(server)!.push(match[2]);
+        }
+    }
+
+    let mcpSection: string;
+    if (serverToolsMap.size === 0) {
+        mcpSection = '## 已注册 MCP Server（mcp_servers）\n（当前未注册任何 MCP 工具）';
+    } else {
+        const lines = [...serverToolsMap.entries()].map(([server, tools]) =>
+            `- ${server} (${tools.length} 个工具): ${tools.join('、')}`
+        );
+        mcpSection = ['## 已注册 MCP Server（mcp_servers）', '> 按角色职责按需选择 server，避免使用 "*"（会将全部工具注入上下文，消耗大量 token）', ...lines].join('\n');
+    }
+
+    return { success: true, content: `${builtInSection}\n\n${mcpSection}` };
+}
+
+async function executeCreateChatRole(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const name = String(input.name || '').trim();
+    const systemPrompt = String(input.systemPrompt || '').trim();
+    const avatar = String(input.avatar || 'hubot').trim();
+    const modelFamily = input.modelFamily ? String(input.modelFamily).trim() : undefined;
+    const toolSets: string[] = Array.isArray(input.toolSets)
+        ? (input.toolSets as unknown[]).map(String)
+        : [];
+    const mcpServers: string[] = Array.isArray(input.mcpServers)
+        ? (input.mcpServers as unknown[]).map(String)
+        : [];
+
+    if (!name) { return { success: false, content: '请提供角色名称' }; }
+    if (!systemPrompt) { return { success: false, content: '请提供系统提示词' }; }
+
+    const roleId = await dataCreateChatRole(name, systemPrompt, avatar, modelFamily, toolSets, mcpServers);
+    if (!roleId) {
+        return { success: false, content: '创建角色失败' };
+    }
+    void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+
+    const capStr = toolSets.length > 0 ? `，工具集：${toolSets.join('/')}` : '';
+    const mcpStr = mcpServers.length > 0 ? `，MCP：${mcpServers.join('/')}` : '';
+    const modelNote = modelFamily ? `，模型：${modelFamily}` : '';
+    return {
+        success: true,
+        content: `✅ 已创建角色「${name}」(ID: \`${roleId}\`${modelNote}${capStr}${mcpStr})。`,
+    };
+}
+
+async function executeUpdateRoleConfig(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const newSystemPrompt = String(input.newSystemPrompt || '').trim();
+    const reason = input.reason ? String(input.reason) : undefined;
+
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+    if (!newSystemPrompt) { return { success: false, content: '请提供新的系统提示词' }; }
+
+    const role = await findRole(roleNameOrId);
+    if (!role) { return { success: false, content: `未找到角色「${roleNameOrId}」` }; }
+
+    try {
+        const ok = await updateIssueMarkdownFrontmatter(role.uri, {
+            chat_role_system_prompt: newSystemPrompt,
+        } as Partial<FrontmatterData>);
+        if (!ok) { return { success: false, content: '更新失败' }; }
+        void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+        const reasonStr = reason ? `\n更新原因：${reason}` : '';
+        return { success: true, content: `✅ 已更新角色「${role.name}」的系统提示词${reasonStr}` };
+    } catch (e) {
+        logger.error('[ChatTools] 更新角色配置失败', e);
+        return { success: false, content: '更新角色配置失败' };
+    }
+}
+
+async function executeEvaluateRole(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const outcome = String(input.outcome || 'partial') as 'success' | 'partial' | 'failed';
+    const notes = String(input.notes || '').trim();
+
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+    if (!notes) { return { success: false, content: '请提供评估说明' }; }
+
+    const outcomeLabel = outcome === 'success' ? '✅ 良好' : outcome === 'partial' ? '⚠️ 部分完成' : '❌ 未完成';
+
+    // 如果当前角色有记忆能力，将评估写入记忆
+    if (context?.role?.toolSets.includes('memory') && context.role.id) {
+        const memUri = await findOrCreateMemoryFile(context.role.id);
+        if (memUri) {
+            try {
+                const raw = Buffer.from(await vscode.workspace.fs.readFile(memUri)).toString('utf8');
+                const { body } = extractFrontmatterAndBody(raw);
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const entry = `\n### ${roleNameOrId} — ${timestamp} ${outcomeLabel}\n${notes}\n`;
+                let newBody: string;
+                if (body.includes('## 角色绩效')) {
+                    newBody = body.replace('## 角色绩效', `## 角色绩效${entry}`);
+                } else {
+                    newBody = body + `\n## 角色绩效${entry}`;
+                }
+                await updateIssueMarkdownBody(memUri, newBody);
+            } catch (e) {
+                logger.error('[ChatTools] 写入评估到记忆失败', e);
+            }
+        }
+    }
+
+    return { success: true, content: `✅ 已记录角色「${roleNameOrId}」的绩效评估：${outcomeLabel}` };
+}
+
+async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const roleNameOrId = String(input.roleNameOrId || '').trim();
+    const maxConversations = typeof input.maxConversations === 'number' ? Math.max(1, input.maxConversations) : 5;
+
+    if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
+
+    const role = await findRole(roleNameOrId);
+    if (!role) { return { success: false, content: `未找到角色: ${roleNameOrId}` }; }
+
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: '未找到 issueDir' }; }
+
+    const conversations = await getConversationsForRole(role.id);
+    const recentConvos = conversations.sort((a, b) => b.mtime - a.mtime).slice(0, maxConversations);
+
+    if (recentConvos.length === 0) {
+        return { success: true, content: `角色「${role.name}」没有对话记录。` };
+    }
+
+    // ─── 聚合统计 ────────────────────────────────────────────
+    const toolCallCounts: Record<string, number> = {};
+    let totalRuns = 0;
+    let successRuns = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    const recentErrors: string[] = [];
+    let analyzedLogs = 0;
+
+    for (const convo of recentConvos) {
+        if (!convo.logId) { continue; }
+        const logUri = vscode.Uri.file(path.join(issueDir, `${convo.logId}.md`));
+        try {
+            const raw = Buffer.from(await vscode.workspace.fs.readFile(logUri)).toString('utf8');
+            analyzedLogs++;
+
+            // Run 数量
+            const runMatches = [...raw.matchAll(/## Run #(\d+)/g)];
+            totalRuns += runMatches.length;
+
+            // 成功数
+            const successMatches = raw.match(/→.*?success/g);
+            successRuns += successMatches?.length ?? 0;
+
+            // 工具调用：格式为 "N. `tool_name` (Nms)"
+            for (const m of raw.matchAll(/\d+\. `([^`]+)` \(\d+ms\)/g)) {
+                const t = m[1];
+                toolCallCounts[t] = (toolCallCounts[t] ?? 0) + 1;
+            }
+
+            // Token 消耗
+            for (const m of raw.matchAll(/input (\d+) \+ output (\d+)/g)) {
+                totalInputTokens += parseInt(m[1], 10);
+                totalOutputTokens += parseInt(m[2], 10);
+            }
+
+            // 错误信息
+            for (const m of raw.matchAll(/\*\*错误详情\*\*: (.+)/g)) {
+                recentErrors.push(m[1]);
+            }
+        } catch {
+            // 日志文件不可读，跳过
+        }
+    }
+
+    if (analyzedLogs === 0) {
+        return { success: true, content: `角色「${role.name}」有 ${recentConvos.length} 个对话，但均无执行日志。` };
+    }
+
+    // ─── 与配置对比 ──────────────────────────────────────────
+    const configuredTools = getToolsForRole(role).map(t => t.name);
+    const usedTools = Object.keys(toolCallCounts);
+    const neverUsed = configuredTools.filter(t => !usedTools.includes(t));
+
+    // ─── 组装报告 ────────────────────────────────────────────
+    let report = `## 角色「${role.name}」执行日志分析\n\n`;
+    report += `**分析范围**: 最近 ${recentConvos.length} 个对话 / ${analyzedLogs} 份日志 / ${totalRuns} 次执行\n\n`;
+
+    report += `### 当前配置\n`;
+    report += `- 工具集 (tool_sets): ${role.toolSets.length > 0 ? role.toolSets.join(', ') : '（无）'}\n`;
+    report += `- MCP servers: ${role.mcpServers?.length ? role.mcpServers.join(', ') : '（无）'}\n`;
+    report += `- 配置工具总数: **${configuredTools.length}**\n\n`;
+
+    if (totalRuns > 0) {
+        const successRate = Math.round(successRuns / totalRuns * 100);
+        const totalTokens = totalInputTokens + totalOutputTokens;
+        report += `### 执行指标\n`;
+        report += `- 成功率: ${successRuns}/${totalRuns} (**${successRate}%**)\n`;
+        report += `- 累计 token: input ${totalInputTokens} + output ${totalOutputTokens} = **${totalTokens}**\n`;
+        report += `- 平均 token/次: ${Math.round(totalTokens / totalRuns)}\n\n`;
+
+        const totalCalls = Object.values(toolCallCounts).reduce((a, b) => a + b, 0);
+        if (usedTools.length > 0) {
+            report += `### 实际工具调用（共 ${totalCalls} 次）\n`;
+            for (const [tool, count] of Object.entries(toolCallCounts).sort((a, b) => b[1] - a[1])) {
+                const pct = Math.round(count / totalCalls * 100);
+                report += `- \`${tool}\`: ${count} 次 (${pct}%)\n`;
+            }
+            report += '\n';
+        } else {
+            report += `### 实际工具调用\n无任何工具调用记录。\n\n`;
+        }
+
+        if (neverUsed.length > 0) {
+            report += `### ⚠️ 配置但从未调用的工具（${neverUsed.length}/${configuredTools.length}）\n`;
+            report += `> 这些工具占用了 LLM 上下文 token，但从未被使用，可考虑移除：\n\n`;
+            for (const t of neverUsed) { report += `- \`${t}\`\n`; }
+            report += '\n';
+        }
+
+        if (recentErrors.length > 0) {
+            const uniqueErrors = [...new Set(recentErrors)].slice(0, 5);
+            report += `### 近期错误（共 ${recentErrors.length} 次）\n`;
+            for (const e of uniqueErrors) { report += `- ${e}\n`; }
+            report += '\n';
+        }
+    }
+
+    return { success: true, content: report };
 }

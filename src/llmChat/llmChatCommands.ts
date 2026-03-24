@@ -17,9 +17,9 @@ import {
     appendUserMessageQueued,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
-import { ChatRoleNode, ChatConversationNode, ChatGroupNode, PersonalAssistantNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
-import { PersonalAssistantService } from './PersonalAssistantService';
+import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
 import { Logger } from '../core/utils/Logger';
+import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
 const logger = Logger.getInstance();
 
@@ -138,7 +138,48 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[] }[] = [
+                {
+                    label: '$(rocket) 个人助理',
+                    description: '中枢调度、记忆进化、团队委派',
+                    avatar: 'rocket',
+                    toolSets: ['memory', 'delegation', 'role_management'],
+                    systemPrompt: `你是用户的专属个人助理，拥有记忆、学习和团队管理能力。
+
+## 工作流程
+收到用户任务时，按以下步骤处理：
+1. **获取记忆** — 对话开始时使用 read_memory 了解用户背景和历史任务
+2. **分析需求** — 思考任务性质，判断需要哪些专业能力
+3. **制定计划** — 向用户简述你的处理方案（几句话即可）
+4. **执行任务**：
+   - 简单问答 → 直接回复
+   - 需要专业能力 → 用 delegate_to_role 委派给合适角色
+   - 没有合适角色 → 先用 create_chat_role 创建专家角色，再委派
+5. **汇总汇报** — 整合所有信息，清晰告知用户结果和关键信息
+6. **更新记忆** — 用 write_memory 记录本次任务经验、角色表现
+
+## 可用工具
+**记忆管理**
+- read_memory：读取你的持久记忆（对话开始时调用）
+- write_memory：更新记忆（任务结束后调用）
+
+**团队管理**
+- list_chat_roles：列出当前所有可用专业角色
+- delegate_to_role：委派任务给指定角色，获取专业回复
+- create_chat_role：创建新的专业角色（当现有角色无法胜任时）
+- update_role_config：根据实际表现优化角色的系统提示词
+- evaluate_role：记录角色绩效评估
+
+**笔记工具**
+- search_issues / read_issue / create_issue / create_issue_tree / update_issue / list_issue_tree
+- link_issue / unlink_issue / get_issue_relations
+
+## 核心原则
+- **充分委派**：优先发挥各专业角色的专长，不要什么都自己做
+- **保持记忆**：每次任务后更新记忆，让自己持续进化
+- **持续优化**：根据角色表现，主动改进角色配置或创建更好的角色
+- **清晰汇报**：向用户说明任务由谁完成、结论是什么、有什么建议`,
+                },
                 {
                     label: '$(code) 编程助手',
                     description: '代码编写、调试、架构设计',
@@ -200,6 +241,32 @@ export function registerLLMChatCommands(
                     systemPrompt: '你是一位资深面试教练，了解各行业面试流程。帮助用户准备面试，提供模拟问答、简历优化建议、自我介绍指导和薪资谈判策略。反馈具体且有建设性。',
                 },
                 {
+                    label: '$(type-hierarchy) Issue 树管理员',
+                    description: '关联/解除关联节点、整理树结构',
+                    avatar: 'type-hierarchy',
+                    systemPrompt: `你是一位 Issue 树管理专员，专注于维护和整理 issue 笔记的树状层级结构。你拥有以下工具：
+- list_issue_tree：查看当前树的全貌
+- search_issues：按关键词搜索笔记
+- read_issue：读取笔记内容
+- link_issue：关联笔记节点（建立父子关系）
+- unlink_issue：解除关联（移到根级或从树中移除）
+- move_issue_node：将节点移动到指定父节点下的精确位置（可控制顺序）
+- sort_issue_children：对某节点的子列表排序（按标题/修改时间/创建时间）
+- get_issue_relations：查询节点的父子祖先关系
+
+工作方式：
+1. 先用 list_issue_tree 了解当前树结构
+2. 根据用户指令，分析哪些节点需要调整
+3. 使用上述工具调整结构，每次操作后可再次查看树确认效果
+4. 汇报整理结果，说明做了哪些改动
+
+整理原则：
+- 相关联的笔记归属于同一父节点下
+- 层级不宜过深（建议不超过 4 层）
+- 兄弟节点按重要性或时间顺序排列
+- 孤立的根级笔记若有明显归属，应关联到合适父节点下`,
+                },
+                {
                     label: '$(search) 深度研究员',
                     description: '深度研究命题、生成研究报告',
                     avatar: 'search',
@@ -246,12 +313,95 @@ export function registerLLMChatCommands(
 - 第二阶段完成后，务必使用 create_issue_tree 将报告持久化为笔记层级结构
 - 研究报告力求专业、深入、有洞见，而非表面罗列`,
                 },
+                {
+                    label: '$(settings-gear) 角色分析师',
+                    description: '测试、分析、迭代优化角色配置，识别冗余工具，提升 token 效率',
+                    avatar: 'settings-gear',
+                    toolSets: ['role_management', 'delegation'],
+                    systemPrompt: `你是一位专职角色配置分析师，通过「测试 → 分析 → 假设 → 修改 → 再测试」的迭代循环评估并优化 LLM 角色配置。
+
+## 合法的 tool_sets 值
+- \`memory\` — 持久记忆（read_memory / write_memory），适合长期任务角色
+- \`delegation\` — 委派能力（delegate_to_role / list_chat_roles），适合中枢调度角色
+- \`role_management\` — 角色管理（create/update/evaluate/read_logs），仅管理型角色需要
+- \`browser\` — Chrome 浏览器工具（web_search / fetch_url / list_tabs / click_element 等），需要网络或浏览器操作的角色
+
+## 分析维度
+1. **工具集匹配度** — tool_sets 与角色职责是否相符
+2. **MCP 配置** — mcp_servers 是否精确，"*" 会导致工具上下文爆炸
+3. **实际使用情况** — 配置了但从未调用的工具（通过执行日志统计）
+4. **system prompt 一致性** — 提示词描述的能力是否与工具集对齐
+
+## 工作流程
+
+【第一阶段：初步诊断】（需用户确认后才进入第二阶段）
+1. \`search_issues\` 找到目标角色，\`read_issue\` 读取 frontmatter + system prompt
+2. \`read_role_execution_logs\` 获取工具调用频率、成功率、token 消耗
+3. 整理诊断报告，制定 2-4 条测试用例（每条说明测试目的和预期行为）
+4. 询问用户："以上诊断和测试计划是否合适？确认后开始测试。"
+
+【第二阶段：实验测试】（用户确认后执行）
+1. 确认目标角色当前无进行中对话，避免并发干扰
+2. 用 \`delegate_to_role\` 逐条执行测试用例，记录每条实际响应
+3. 对比实际响应 vs 预期行为，找出差距
+4. 形成假设："问题根因是 X，修改 Y 应能改善"
+5. 展示修改方案（frontmatter 片段 + system prompt 改动），等用户确认
+
+【第三阶段：修改与验证】（用户确认后执行）
+1. \`update_role_config\` 应用修改
+2. 重新执行同一批测试用例，对比前后结果
+3. 输出 before/after 对比报告
+
+【迭代原则】
+- 默认最多 **3 轮**，每轮必须经用户确认才继续
+- 终止条件：① 用户满意 ② 达到最大轮次 ③ 连续两轮结果无显著差异
+- 每次修改必须有明确假设，不做无根据的改动
+
+## 报告格式
+- 📋 **配置摘要**：tool_sets / mcp_servers / 工具总数
+- 📊 **使用数据**：成功率 / 平均 token / 工具调用频率排行
+- ⚠️ **问题清单**：每条问题 + 具体改法
+- 🧪 **测试计划**：用例列表（目的 + 预期行为）
+- ✅ **建议配置**：优化后的 frontmatter 片段`,
+                },
+                {
+                    label: '$(cloud) 网络助手',
+                    description: '专职网络搜索与页面抓取，供其他角色异步委派使用',
+                    avatar: 'cloud',
+                    toolSets: ['browser'],
+                    systemPrompt: `你是一位专职网络助手，负责执行网络搜索与页面内容抓取任务。你只拥有网络工具和笔记工具，所有网络相关任务都由其他角色委派给你。
+
+## 可用工具
+- web_search：通过 Chrome 浏览器搜索关键词，返回结果摘要
+- fetch_url：抓取指定 URL 的页面文本内容
+- create_issue：将网络结果整理成笔记（结果较长时使用）
+- update_issue：更新已有笔记内容
+- search_issues：检索已有笔记，避免重复抓取
+
+> 如果角色文件的 mcp_servers 字段中配置了 MCP 服务（如 brave-search、puppeteer 等），
+> 请**优先使用 MCP 工具**完成网络任务，仅在 MCP 不可用时降级使用上述 Chrome 工具。
+
+## 工作原则
+1. **优先检索已有笔记**：用 search_issues 确认是否已有相关内容，避免重复工作
+2. **聚焦任务边界**：只做委派方要求的事，不自行扩展研究范围
+3. **处理失败**：网络请求失败时最多重试 2 次，换关键词或换 URL；仍失败则如实报告
+4. **结构化输出**：结果清晰分段，包含来源 URL
+5. **长内容存笔记**：内容超过 500 字时，用 create_issue 保存，回复中附上笔记链接
+
+## 回复格式
+完成任务后，回复结构：
+1. 📋 **任务摘要**：简述执行了什么
+2. 📄 **主要结果**：关键信息（含来源）
+3. 🔗 **笔记链接**（如有）：保存的详细内容
+4. ⚠️ **失败说明**（如有）：哪些请求失败及原因`,
+                },
             ];
 
             interface PresetItem extends vscode.QuickPickItem {
                 isCustom?: boolean;
                 avatar?: string;
                 systemPrompt?: string;
+                toolSets?: string[];
             }
 
             const items: PresetItem[] = [
@@ -260,6 +410,7 @@ export function registerLLMChatCommands(
                     description: p.description,
                     avatar: p.avatar,
                     systemPrompt: p.systemPrompt,
+                    toolSets: p.toolSets,
                 })),
                 { label: '$(add) 自定义角色…', description: '手动输入名称和提示词', isCustom: true, kind: vscode.QuickPickItemKind.Separator } as PresetItem,
                 { label: '$(add) 自定义角色…', description: '完全自定义名称、提示词和图标', isCustom: true },
@@ -317,7 +468,7 @@ export function registerLLMChatCommands(
             const modelFamily = await pickModelFamily();
             if (modelFamily === undefined) { return; }  // 用户按了 ESC
 
-            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined);
+            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, pick.toolSets);
             if (roleId) {
                 roleProvider.refresh();
                 vscode.window.showInformationMessage(`已创建聊天角色: ${name}`);
@@ -383,19 +534,7 @@ export function registerLLMChatCommands(
 
     // ─── 新建对话（从角色/群组右键菜单或命令面板） ────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.newConversation', async (node?: string | ChatRoleNode | ChatConversationNode | ChatGroupNode | PersonalAssistantNode) => {
-            // 个人助手节点：新建一条与助手的对话
-            if (node instanceof PersonalAssistantNode) {
-                const uri = await createConversation(node.role.id, '与执行官的对话');
-                if (!uri) {
-                    vscode.window.showErrorMessage('创建对话失败');
-                    return;
-                }
-                await openConversation(node.role.id, uri);
-                roleProvider.refresh();
-                return;
-            }
-
+        vscode.commands.registerCommand('issueManager.llmChat.newConversation', async (node?: string | ChatRoleNode | ChatConversationNode | ChatGroupNode) => {
             if (node instanceof ChatGroupNode) {
                 const uri = await createGroupConversation(node.group.id);
                 if (!uri) {
@@ -522,32 +661,10 @@ export function registerLLMChatCommands(
         }),
     );
 
-    // ─── 打开个人助手 ─────────────────────────────────────────
+    // ─── 打开个人助手（已废弃，保留命令注册避免报错） ─────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.openPersonalAssistant', async (node?: PersonalAssistantNode) => {
-            const paService = PersonalAssistantService.getInstance();
-            const roleId = paService.assistantRoleId;
-            if (!roleId) {
-                vscode.window.showWarningMessage('个人助手尚未初始化，请稍后重试');
-                return;
-            }
-
-            // 打开最近的对话，或新建一个
-            const convos = await getConversationsForRole(roleId);
-            let convoUri: vscode.Uri;
-            if (convos.length > 0) {
-                convoUri = convos[0].uri;
-            } else {
-                const uri = await createConversation(roleId, '与执行官的对话');
-                if (!uri) {
-                    vscode.window.showErrorMessage('创建对话失败');
-                    return;
-                }
-                convoUri = uri;
-                roleProvider.refresh();
-            }
-
-            await openConversation(roleId, convoUri);
+        vscode.commands.registerCommand('issueManager.llmChat.openPersonalAssistant', () => {
+            vscode.window.showInformationMessage('个人助手已统一为普通角色，请直接在角色列表中操作。');
         }),
     );
 
@@ -597,7 +714,7 @@ export function registerLLMChatCommands(
 
     // ─── 编辑角色（右键菜单） ────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.editRole', async (node?: ChatRoleNode | PersonalAssistantNode) => {
+        vscode.commands.registerCommand('issueManager.llmChat.editRole', async (node?: ChatRoleNode) => {
             if (!node) { return; }
             await vscode.window.showTextDocument(node.role.uri, { preview: false });
         }),
@@ -629,6 +746,136 @@ export function registerLLMChatCommands(
                 logger.error('删除对话失败', e);
                 vscode.window.showErrorMessage('删除对话失败');
             }
+        }),
+    );
+
+    // ─── 交互式配置角色工具集（tool_sets + MCP） ────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.configureTools', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+
+            // 读取 frontmatter，确认是角色文件
+            const contentBytes = await vscode.workspace.fs.readFile(targetUri);
+            const { frontmatter } = extractFrontmatterAndBody(Buffer.from(contentBytes).toString('utf-8'));
+            if (!frontmatter?.chat_role) {
+                vscode.window.showWarningMessage('当前文件不是聊天角色文件');
+                return;
+            }
+
+            const currentToolSets: string[] = Array.isArray(frontmatter.tool_sets)      ? (frontmatter.tool_sets      as string[]) : [];
+            const currentServers:  string[] = Array.isArray(frontmatter.mcp_servers)     ? (frontmatter.mcp_servers     as string[]) : [];
+            const currentExtra:    string[] = Array.isArray(frontmatter.extra_tools)     ? (frontmatter.extra_tools     as string[]) : [];
+            const currentExcluded: string[] = Array.isArray(frontmatter.excluded_tools)  ? (frontmatter.excluded_tools  as string[]) : [];
+
+            // ── Step 1: 选择 tool_sets（内置工具包） ─────────────
+            const BUILT_IN_SETS: Array<{ id: string; description: string; detail: string }> = [
+                { id: 'memory',          description: '持久记忆',     detail: 'read_memory、write_memory — 适合需要跨对话记忆的角色' },
+                { id: 'delegation',      description: '委派能力',     detail: 'delegate_to_role、list_chat_roles — 适合中枢调度角色' },
+                { id: 'role_management', description: '角色管理',     detail: 'create/update/evaluate_role、read_role_execution_logs — 仅管理型角色需要' },
+                { id: 'browser',         description: 'Chrome 浏览器', detail: 'web_search、fetch_url、list_tabs、click_element 等 — 需要网络或浏览器操作' },
+            ];
+            const toolSetItems = BUILT_IN_SETS.map(s => ({
+                label: s.id,
+                description: s.description,
+                detail: s.detail,
+                picked: currentToolSets.includes(s.id),
+            }));
+            const selectedSets = await vscode.window.showQuickPick(toolSetItems, {
+                canPickMany: true,
+                title: '配置 tool_sets（第 1 步 / 共 4 步）',
+                placeHolder: '勾选要启用的内置工具包（留空则仅使用基础笔记工具）',
+            });
+            if (selectedSets === undefined) { return; }
+            const newToolSets = selectedSets.map(i => i.label);
+
+            // ── Step 2: 选择 mcp_servers ──────────────────────────
+            const serverToolsMap = new Map<string, string[]>();
+            for (const tool of vscode.lm.tools) {
+                const match = tool.name.match(/^mcp_([^_]+)_(.+)$/);
+                if (match) {
+                    const server = match[1];
+                    if (!serverToolsMap.has(server)) { serverToolsMap.set(server, []); }
+                    serverToolsMap.get(server)!.push(tool.name);
+                }
+            }
+            type ServerItem = vscode.QuickPickItem & { serverId: string };
+            const serverItems: ServerItem[] = serverToolsMap.size > 0 ? [
+                { label: '*', serverId: '*', description: '引入全部已注册 MCP 工具', picked: currentServers.includes('*') },
+                { label: '', kind: vscode.QuickPickItemKind.Separator, serverId: '' },
+                ...[...serverToolsMap.entries()].map(([server, tools]): ServerItem => ({
+                    label: server,
+                    serverId: server,
+                    description: `${tools.length} 个工具`,
+                    detail: tools.slice(0, 4).map(t => t.replace(`mcp_${server}_`, '')).join('、') +
+                        (tools.length > 4 ? ` … +${tools.length - 4}` : ''),
+                    picked: currentServers.includes(server),
+                })),
+            ] : [
+                { label: '（未检测到已注册的 MCP 工具）', serverId: '', description: '可跳过此步' },
+            ];
+            const selectedServers = await vscode.window.showQuickPick(serverItems, {
+                canPickMany: true,
+                title: '配置 mcp_servers（第 2 步 / 共 4 步）',
+                placeHolder: '勾选要注入的 MCP server，留空则不使用 MCP 工具',
+            });
+            if (selectedServers === undefined) { return; }
+            const newServers = selectedServers
+                .filter(i => i.kind !== vscode.QuickPickItemKind.Separator && i.serverId)
+                .map(i => i.serverId);
+            const includeAll = newServers.includes('*');
+
+            // ── Step 3: extra_tools（非所选 server 的额外单个工具） ──
+            let newExtra: string[] = [];
+            if (!includeAll && serverToolsMap.size > 0) {
+                const coveredServers = new Set(newServers);
+                const extraItems = [...serverToolsMap.entries()]
+                    .filter(([s]) => !coveredServers.has(s))
+                    .flatMap(([, tools]) => tools)
+                    .map(name => ({ label: name, picked: currentExtra.includes(name) }));
+                if (extraItems.length > 0) {
+                    const sel = await vscode.window.showQuickPick(extraItems, {
+                        canPickMany: true,
+                        title: '配置 extra_tools（第 3 步 / 共 4 步）',
+                        placeHolder: '从未选中的 server 中单独引入某些工具（留空跳过）',
+                    });
+                    if (sel === undefined) { return; }
+                    newExtra = sel.map(i => i.label);
+                }
+            }
+
+            // ── Step 4: excluded_tools（从所选 server 中排除） ──────
+            let newExcluded: string[] = [];
+            if (!includeAll && newServers.length > 0) {
+                const coveredTools = newServers.flatMap(s => serverToolsMap.get(s) ?? []);
+                if (coveredTools.length > 0) {
+                    const sel = await vscode.window.showQuickPick(
+                        coveredTools.map(name => ({ label: name, picked: currentExcluded.includes(name) })),
+                        {
+                            canPickMany: true,
+                            title: '配置 excluded_tools（第 4 步 / 共 4 步）',
+                            placeHolder: '从已选中的 server 中排除某些工具（留空跳过）',
+                        },
+                    );
+                    if (sel === undefined) { return; }
+                    newExcluded = sel.map(i => i.label);
+                }
+            }
+
+            // 写入 frontmatter
+            const updates: Record<string, unknown> = {
+                tool_sets: newToolSets,
+                mcp_servers: newServers,
+            };
+            if (newExtra.length > 0)    { updates['extra_tools']    = newExtra; }
+            if (newExcluded.length > 0) { updates['excluded_tools'] = newExcluded; }
+            await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+
+            vscode.window.showInformationMessage(
+                `已更新工具配置 — tool_sets: [${newToolSets.join(', ')}]  mcp_servers: [${newServers.join(', ')}]` +
+                (newExtra.length    ? `  extra: ${newExtra.length} 个`       : '') +
+                (newExcluded.length ? `  excluded: ${newExcluded.length} 个` : ''),
+            );
         }),
     );
 
