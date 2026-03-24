@@ -16,6 +16,7 @@ import {
     getAllIssueMarkdowns,
     getIssueMarkdown,
     getIssueMarkdownContent,
+    getIssueMarkdownsByType,
     createIssueMarkdown,
     extractFrontmatterAndBody,
     updateIssueMarkdownFrontmatter,
@@ -48,6 +49,8 @@ import {
     appendUserMessageQueued,
     parseConversationMessages,
     getConversationsForRole,
+    getRoleSystemPrompt,
+    updateRoleSystemPrompt,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { readStateMarker } from './convStateMarker';
@@ -57,11 +60,16 @@ const MAX_DELEGATION_DEPTH = 5;
 /** 当前委派深度（递归计数器，进程级） */
 let _delegationDepth = 0;
 
+/** 单次顶层任务链中，委派（含追问）的总调用次数上限 */
+const MAX_DELEGATION_TOTAL_CALLS = 20;
+/** 当前任务链的总调用计数器（_delegationDepth 归零时重置） */
+let _delegationTotalCalls = 0;
+
 const logger = Logger.getInstance();
 
 /** 生成 issueMarkdown 链接，使用约定前缀 IssueDir/，消费方按需替换为真实路径 */
 function issueLink(title: string, fileName: string): string {
-    return `[${title}](IssueDir/${fileName})`;
+    return `[\`${title}\`](IssueDir/${fileName})`;
 }
 
 /**
@@ -87,12 +95,17 @@ function normalizeFileName(name: string, issueDir?: string): string {
 const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     {
         name: 'search_issues',
-        description: '搜索 issueMarkdown 笔记。支持在标题、frontmatter 字段和正文中搜索，支持多关键词（空格分隔，全部匹配）。返回标题、文件路径、类型标签和修改时间。',
+        description: '搜索 issueMarkdown 笔记。支持多关键词（空格分隔，全部匹配）、按类型过滤、按范围搜索。返回标题、类型标签、修改时间和关键词匹配的上下文片段。',
         inputSchema: {
             type: 'object',
             properties: {
                 query: { type: 'string', description: '搜索关键词（多个词用空格分隔，全部匹配）' },
                 limit: { type: 'number', description: '最多返回条数，默认 20' },
+                type: {
+                    type: 'string',
+                    enum: ['note', 'role', 'conversation', 'log', 'tool_call', 'group', 'memory', 'chrome_chat'],
+                    description: '按文件类型过滤（可选）：note=普通笔记、role=角色、conversation=对话、log=执行日志、tool_call=工具调用、group=群组、memory=记忆、chrome_chat=浏览器对话',
+                },
                 scope: {
                     type: 'string',
                     enum: ['all', 'title', 'body'],
@@ -104,18 +117,20 @@ const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'read_issue',
-        description: '读取指定 issueMarkdown 笔记的完整内容，包括 frontmatter 元数据和正文。通过文件名（如 20240115-103045.md）定位。',
+        description: '读取指定 issueMarkdown 笔记的内容。支持分页读取大文件：通过 offset 和 maxChars 控制读取范围。返回值包含总长度和剩余字符数，据此判断是否需要继续读取。对于大文件，建议边读边处理（读一段、处理、写入），而非一次性读取全部内容。',
         inputSchema: {
             type: 'object',
             properties: {
                 fileName: { type: 'string', description: 'issue 文件名（如 20240115-103045.md）' },
+                offset: { type: 'number', description: '起始字符位置（默认 0，即从头开始）' },
+                maxChars: { type: 'number', description: '本次最多读取的字符数（默认 15000）' },
             },
             required: ['fileName'],
         },
     },
     {
         name: 'create_issue',
-        description: '创建一个新的 issueMarkdown 笔记文件。可以指定标题、描述和正文内容。返回创建的文件名。',
+        description: '创建一个新的 issueMarkdown 笔记文件。可以指定标题、描述和正文内容。创建成功后必须在回复中向用户提供文档链接（格式：[`标题`](IssueDir/文件名)）。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -167,14 +182,15 @@ const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'update_issue',
-        description: '更新已有 issueMarkdown 笔记的标题、描述或正文内容。',
+        description: '更新已有 issueMarkdown 笔记的标题、描述或正文内容。body 默认替换整个正文；设置 append=true 可追加到正文末尾（适合分块写入）。',
         inputSchema: {
             type: 'object',
             properties: {
                 fileName: { type: 'string', description: 'issue 文件名（如 20240115-103045.md）' },
                 title: { type: 'string', description: '新标题（可选）' },
                 description: { type: 'string', description: '新描述（可选）' },
-                body: { type: 'string', description: '新的 Markdown 正文（可选，会替换整个正文）' },
+                body: { type: 'string', description: '新的 Markdown 正文（可选，默认替换整个正文）' },
+                append: { type: 'boolean', description: '为 true 时将 body 追加到现有正文末尾而非替换（默认 false）' },
             },
             required: ['fileName'],
         },
@@ -497,7 +513,7 @@ const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'delegate_to_role',
-        description: '将子任务委派给指定角色。同步模式（默认）等待角色完成后返回结果；异步模式立即返回 convoId，角色在后台执行，可用 get_delegation_status 轮询结果。网络类耗时任务推荐用异步模式。',
+        description: '将子任务委派给指定角色（单轮）。同步模式（默认）等待角色完成后返回结果；异步模式立即返回 convoId。注意：这只是发起第一轮对话。如果任务需要多轮交互（如需要反馈、修正、确认），请在收到回复后评估结果，再用 continue_delegation 追问，循环直到满意为止。典型多轮委派流程：delegate_to_role → 评估回复 → continue_delegation → 评估 → ... → 完成。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -518,8 +534,30 @@ const DELEGATION_TOOLS: vscode.LanguageModelChatTool[] = [
         },
     },
     {
+        name: 'continue_delegation',
+        description: '对已完成的委派对话进行多轮追问（必须配合 delegate_to_role 使用）。对话必须已完成（有 assistant 回复且无执行中状态）才能追问。每次追问相当于在同一对话中追加一条 user 消息并等待角色回复，角色可看到完整历史上下文。可多次调用形成多轮对话，直到任务完成。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                convoId: {
+                    type: 'string',
+                    description: '委派对话 ID（delegate_to_role 返回的 convoId）',
+                },
+                message: {
+                    type: 'string',
+                    description: '追问内容，基于上一轮回复的补充问题或进一步指令',
+                },
+                async: {
+                    type: 'boolean',
+                    description: '是否异步执行。true = 立即返回，角色在后台处理；false（默认）= 同步等待回复',
+                },
+            },
+            required: ['convoId', 'message'],
+        },
+    },
+    {
         name: 'get_delegation_status',
-        description: '查询异步委派的执行状态和结果。用于跟进之前以 async:true 发起的委派任务。',
+        description: '查询异步委派的执行状态和结果。用于跟进之前以 async:true 发起的委派任务或 continue_delegation 的异步追问。',
         inputSchema: {
             type: 'object',
             properties: {
@@ -614,10 +652,55 @@ const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
     },
 ];
 
-/** 聊天角色可用的基础工具集（笔记管理 + 关联管理） */
+// ─── 对话级 Todo 工具（所有角色基础工具集） ─────────────────────
+const TODO_TOOLS: vscode.LanguageModelChatTool[] = [
+    {
+        name: 'read_todos',
+        description: '读取当前对话的 todo 列表。返回 JSON 数组，每项含 id、content（任务描述）、status（pending/in_progress/done）。建议在处理复杂任务前先读取，了解已有计划。',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'write_todos',
+        description: '整体写入当前对话的 todo 列表（覆盖已有列表）。适合初始规划或大幅调整任务列表。每个 todo 需含 content 和 status 字段，id 自动分配。建议在收到复杂任务时先拆分为 todo 列表再逐项执行。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                todos: {
+                    type: 'array',
+                    description: 'todo 项数组',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            content: { type: 'string', description: '任务描述' },
+                            status: { type: 'string', enum: ['pending', 'in_progress', 'done'], description: '状态，默认 pending' },
+                        },
+                        required: ['content'],
+                    },
+                },
+            },
+            required: ['todos'],
+        },
+    },
+    {
+        name: 'update_todo',
+        description: '更新当前对话 todo 列表中的单个 todo 项。可修改状态或内容。完成一个子任务后应立即调用此工具将对应 todo 标记为 done。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'number', description: 'todo 的 id（从 read_todos 获取）' },
+                status: { type: 'string', enum: ['pending', 'in_progress', 'done'], description: '新状态' },
+                content: { type: 'string', description: '新的任务描述（可选，不传则不修改）' },
+            },
+            required: ['id'],
+        },
+    },
+];
+
+/** 聊天角色可用的基础工具集（笔记管理 + 关联管理 + todo） */
 export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
     ...BASE_ISSUE_TOOLS,
     ...ISSUE_RELATION_TOOLS,
+    ...TODO_TOOLS,
 ];
 
 /** 内置工具包注册表，新增工具包只需在此添加一条记录 */
@@ -699,8 +782,15 @@ export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatToo
 export interface ToolExecContext {
     /** 当前角色信息（用于记忆/委派等能力工具） */
     role?: ChatRoleInfo;
+    /** 当前对话文件 URI（用于对话级工具如 todo） */
+    conversationUri?: import('vscode').Uri;
     /** 中止信号 */
     signal?: AbortSignal;
+    /**
+     * 心跳回调：长时间运行的工具（如同步委派等待）应定期调用此函数，
+     * 通知调用方（RoleTimerManager）工具仍在活跃中，避免空闲超时误判。
+     */
+    onHeartbeat?: () => void;
 }
 
 // ─── 工具执行 ─────────────────────────────────────────────────
@@ -773,6 +863,13 @@ export async function executeChatTool(
                 return await executeDeleteIssue(input);
             case 'batch_delete_issues':
                 return await executeBatchDeleteIssues(input);
+            // ─── 基础工具：对话级 todo ───────────────────────────
+            case 'read_todos':
+                return await executeReadTodos(context);
+            case 'write_todos':
+                return await executeWriteTodos(input, context);
+            case 'update_todo':
+                return await executeUpdateTodo(input, context);
             // ─── 能力工具：记忆 ─────────────────────────────────
             case 'read_memory':
                 return await executeReadMemory(context);
@@ -783,6 +880,8 @@ export async function executeChatTool(
                 return await executeListChatRoles(context);
             case 'delegate_to_role':
                 return await executeDelegateToRole(input, context);
+            case 'continue_delegation':
+                return await executeContinueDelegation(input, context);
             case 'get_delegation_status':
                 return await executeGetDelegationStatus(input);
             // ─── 能力工具：角色管理 ─────────────────────────────
@@ -831,10 +930,48 @@ export async function executeChatTool(
 
 // ─── 各工具实现 ───────────────────────────────────────────────
 
+/** type 参数值 → frontmatter 类型索引键的映射 */
+const TYPE_FILTER_MAP: Record<string, string> = {
+    role: 'chat_role',
+    conversation: 'chat_conversation',
+    log: 'chat_execution_log',
+    tool_call: 'chat_tool_call',
+    group: 'chat_group',
+    memory: 'role_memory',
+    chrome_chat: 'chrome_chat',
+};
+
+/** 从 frontmatter 提取文件类型的显示标签 */
+function getTypeTag(fm: Record<string, unknown> | null): string {
+    if (!fm) { return '笔记'; }
+    if (fm.chat_role) { return '角色'; }
+    if (fm.chat_conversation) { return '对话'; }
+    if (fm.chat_execution_log) { return '日志'; }
+    if (fm.chat_tool_call) { return '工具调用'; }
+    if (fm.chat_group) { return '群组'; }
+    if (fm.role_memory) { return '记忆'; }
+    if (fm.chrome_chat) { return '浏览器对话'; }
+    return '笔记';
+}
+
+/** 提取关键词周围的上下文片段（前后各取一部分） */
+function extractSnippet(text: string, keyword: string, contextChars = 40): string | null {
+    const lower = text.toLowerCase();
+    const idx = lower.indexOf(keyword.toLowerCase());
+    if (idx === -1) { return null; }
+    const start = Math.max(0, idx - contextChars);
+    const end = Math.min(text.length, idx + keyword.length + contextChars);
+    let snippet = text.slice(start, end).replace(/\n+/g, ' ').trim();
+    if (start > 0) { snippet = '…' + snippet; }
+    if (end < text.length) { snippet += '…'; }
+    return snippet;
+}
+
 async function executeSearchIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
     const queryRaw = String(input.query || '').trim();
     const limit = typeof input.limit === 'number' ? input.limit : 20;
     const scope = String(input.scope || 'all');
+    const typeFilter = input.type ? String(input.type) : undefined;
 
     if (!queryRaw) {
         return { success: false, content: '请提供搜索关键词' };
@@ -843,29 +980,44 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
     // 多关键词：空格分隔，全部匹配
     const keywords = queryRaw.toLowerCase().split(/\s+/).filter(Boolean);
 
-    const allIssues = await getAllIssueMarkdowns({});
+    // 按类型过滤候选集
+    let candidates: Awaited<ReturnType<typeof getAllIssueMarkdowns>>;
+    if (typeFilter === 'note') {
+        // "note" = 排除所有已知系统类型的普通笔记
+        const allIssues = await getAllIssueMarkdowns({});
+        const systemTypeKeys = Object.values(TYPE_FILTER_MAP);
+        candidates = allIssues.filter(issue => {
+            const fm = issue.frontmatter as Record<string, unknown> | null;
+            if (!fm) { return true; }
+            return !systemTypeKeys.some(key => fm[key] === true);
+        });
+    } else if (typeFilter && TYPE_FILTER_MAP[typeFilter]) {
+        candidates = getIssueMarkdownsByType(TYPE_FILTER_MAP[typeFilter] as any);
+    } else {
+        candidates = await getAllIssueMarkdowns({});
+    }
 
-    // 评分搜索：标题匹配权重高，frontmatter 次之，正文最低
-    const scored: { issue: typeof allIssues[number]; score: number; bodyContent?: string }[] = [];
+    // 评分搜索
+    const scored: { issue: typeof candidates[number]; score: number; snippet?: string }[] = [];
 
-    for (const issue of allIssues) {
+    for (const issue of candidates) {
         const titleLower = issue.title.toLowerCase();
         const fmStr = issue.frontmatter ? JSON.stringify(issue.frontmatter).toLowerCase() : '';
 
         let score = 0;
         let allMatched = true;
+        let snippet: string | undefined;
 
         for (const kw of keywords) {
-            const inTitle = titleLower.includes(kw);
-            const inFm = fmStr.includes(kw);
+            const titleCount = countOccurrences(titleLower, kw);
+            const fmCount = countOccurrences(fmStr, kw);
 
-            if (inTitle) {
-                score += 10;
-            } else if (inFm) {
-                score += 5;
+            if (titleCount > 0) {
+                score += 10 + Math.min(titleCount - 1, 3) * 2; // 出现越多分越高，上限 +6
+            } else if (fmCount > 0) {
+                score += 5 + Math.min(fmCount - 1, 3);
             } else if (scope !== 'title') {
-                // 需要搜正文时延迟读取
-                score = -1; // 标记待检查
+                score = -1; // 标记需要查正文
                 break;
             } else {
                 allMatched = false;
@@ -879,7 +1031,7 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
             continue;
         }
 
-        // 需要检查正文（scope !== 'title' 且有关键词未在标题/fm 中命中）
+        // 需要检查正文
         if (score === -1 && scope !== 'title') {
             try {
                 const bodyContent = await getIssueMarkdownContent(issue.uri);
@@ -888,18 +1040,23 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
                 let bodyAllMatched = true;
 
                 for (const kw of keywords) {
-                    const inTitle = titleLower.includes(kw);
-                    const inFm = fmStr.includes(kw);
-                    const inBody = bodyLower.includes(kw);
+                    const titleCount = countOccurrences(titleLower, kw);
+                    const fmCount = countOccurrences(fmStr, kw);
+                    const bodyCount = countOccurrences(bodyLower, kw);
 
-                    if (inTitle) { bodyScore += 10; }
-                    else if (inFm) { bodyScore += 5; }
-                    else if (inBody) { bodyScore += 1; }
-                    else { bodyAllMatched = false; break; }
+                    if (titleCount > 0) { bodyScore += 10 + Math.min(titleCount - 1, 3) * 2; }
+                    else if (fmCount > 0) { bodyScore += 5 + Math.min(fmCount - 1, 3); }
+                    else if (bodyCount > 0) {
+                        bodyScore += 1 + Math.min(bodyCount - 1, 3); // 正文出现次数也加权
+                        // 提取第一个命中关键词的上下文片段
+                        if (!snippet) {
+                            snippet = extractSnippet(bodyContent, kw) ?? undefined;
+                        }
+                    } else { bodyAllMatched = false; break; }
                 }
 
                 if (bodyAllMatched && bodyScore > 0) {
-                    scored.push({ issue, score: bodyScore });
+                    scored.push({ issue, score: bodyScore, snippet });
                 }
             } catch { /* 读取失败跳过 */ }
         }
@@ -911,31 +1068,39 @@ async function executeSearchIssues(input: Record<string, unknown>): Promise<Tool
     const matches = scored.slice(0, limit);
 
     if (matches.length === 0) {
-        return { success: true, content: `未找到匹配「${queryRaw}」的笔记。` };
+        const typeHint = typeFilter ? `（类型: ${typeFilter}）` : '';
+        return { success: true, content: `未找到匹配「${queryRaw}」的笔记${typeHint}。` };
     }
 
     const lines = matches.map((m, i) => {
         const fileName = path.basename(m.issue.uri.fsPath);
         const fm = m.issue.frontmatter as Record<string, unknown> | null;
-        // 类型标签：从 frontmatter 中提取有意义的类型标记
-        const tags: string[] = [];
-        if (fm?.chat_role) { tags.push('角色'); }
-        else if (fm?.chat_conversation) { tags.push('对话'); }
-        else if (fm?.chat_execution_log) { tags.push('日志'); }
-        else if (fm?.chat_tool_call) { tags.push('工具调用'); }
-        else if (fm?.chat_group) { tags.push('群组'); }
-        else if (fm?.assistant_memory) { tags.push('记忆'); }
-
-        const tagStr = tags.length > 0 ? ` \`${tags.join('/')}\`` : '';
+        const tag = getTypeTag(fm);
         const age = formatAge(m.issue.mtime);
-
-        return `${i + 1}. ${issueLink(m.issue.title, fileName)}${tagStr} (${age})`;
+        let line = `${i + 1}. ${issueLink(m.issue.title, fileName)} \`${tag}\` (${age})`;
+        if (m.snippet) {
+            line += `\n   > ${m.snippet}`;
+        }
+        return line;
     });
 
+    const typeHint = typeFilter ? ` (类型: ${typeFilter})` : '';
     return {
         success: true,
-        content: `找到 ${matches.length} 条匹配结果：\n${lines.join('\n')}`,
+        content: `找到 ${matches.length} 条匹配结果${typeHint}：\n${lines.join('\n')}`,
     };
+}
+
+/** 计算子串出现次数 */
+function countOccurrences(text: string, sub: string): number {
+    if (!sub) { return 0; }
+    let count = 0;
+    let pos = 0;
+    while ((pos = text.indexOf(sub, pos)) !== -1) {
+        count++;
+        pos += sub.length;
+    }
+    return count;
 }
 
 /** 将时间戳格式化为相对时间描述 */
@@ -971,15 +1136,40 @@ async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCal
     const contentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
     const content = Buffer.from(contentBytes).toString('utf8');
 
-    // 截断过长内容
-    const maxLen = 8000;
-    const truncated = content.length > maxLen
-        ? content.slice(0, maxLen) + `\n\n... (内容过长，已截断，共 ${content.length} 字符)`
-        : content;
+    const offset = Math.max(0, Number(input.offset) || 0);
+    const maxChars = Math.max(1, Number(input.maxChars) || 15000);
+    const totalLength = content.length;
+
+    // 如果文件小于等于 maxChars 且 offset 为 0，直接返回全部内容
+    if (offset === 0 && totalLength <= maxChars) {
+        return {
+            success: true,
+            content: `📖 ${issueLink(issue.title, fileName)} (${totalLength} 字符)\n\n${content}`,
+        };
+    }
+
+    // 分页读取
+    if (offset >= totalLength) {
+        return { success: false, content: `offset(${offset}) 超出文件长度(${totalLength})` };
+    }
+
+    const slice = content.slice(offset, offset + maxChars);
+    const end = offset + slice.length;
+    const remaining = totalLength - end;
+
+    let header = `📖 ${issueLink(issue.title, fileName)}\n`;
+    header += `总长度: ${totalLength} 字符 | 本次: ${offset}-${end} | 剩余: ${remaining} 字符`;
+    if (remaining > 0) {
+        header += `\n如需继续读取，调用 read_issue("${fileName}", offset=${end})`;
+        // 首次读取大文件时提示 LLM 边读边处理，节省工具轮次
+        if (offset === 0) {
+            header += `\n⚠️ 文件较大，建议先处理当前内容再读取下一段，避免工具轮次耗尽。`;
+        }
+    }
 
     return {
         success: true,
-        content: `📖 ${issueLink(issue.title, fileName)}\n\n${truncated}`,
+        content: `${header}\n\n---\n${slice}`,
     };
 }
 
@@ -1014,7 +1204,7 @@ async function executeCreateIssue(input: Record<string, unknown>): Promise<ToolC
 
     return {
         success: true,
-        content: `✅ 已创建 ${issueLink(title, fileName)}`,
+        content: `✅ 已创建 ${issueLink(title, fileName)}\n> 请在回复中向用户提供上述文档链接。`,
     };
 }
 
@@ -1185,7 +1375,14 @@ async function executeUpdateIssue(input: Record<string, unknown>): Promise<ToolC
     }
 
     if (input.body) {
-        const newBody = String(input.body);
+        let newBody = String(input.body);
+        if (input.append) {
+            // 追加模式：读取现有正文，拼接新内容
+            const contentBytes = await vscode.workspace.fs.readFile(uri);
+            const raw = Buffer.from(contentBytes).toString('utf8');
+            const { body: existingBody } = extractFrontmatterAndBody(raw);
+            newBody = existingBody + newBody;
+        }
         const ok = await updateIssueMarkdownBody(uri, newBody);
         if (!ok) {
             return { success: false, content: '更新正文失败' };
@@ -2125,6 +2322,103 @@ async function executeBatchDeleteIssues(input: Record<string, unknown>): Promise
     return { success: failed.length === 0, content: lines.join('\n') };
 }
 
+// ─── 基础工具实现：对话级 todo ────────────────────────────────
+
+interface TodoItem {
+    id: number;
+    content: string;
+    status: 'pending' | 'in_progress' | 'done';
+}
+
+/** 从对话文件 frontmatter 读取 chat_todos 字段 */
+async function readTodosFromConversation(uri: vscode.Uri): Promise<TodoItem[]> {
+    const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    const { frontmatter } = extractFrontmatterAndBody(raw);
+    const fm = frontmatter as Record<string, unknown> | null;
+    const todos = fm?.chat_todos;
+    if (!Array.isArray(todos)) { return []; }
+    return todos.map((t: Record<string, unknown>, i: number) => ({
+        id: typeof t.id === 'number' ? t.id : i + 1,
+        content: String(t.content ?? ''),
+        status: (['pending', 'in_progress', 'done'].includes(String(t.status)) ? String(t.status) : 'pending') as TodoItem['status'],
+    }));
+}
+
+/** 将 todo 列表写回对话文件 frontmatter */
+async function writeTodosToConversation(uri: vscode.Uri, todos: TodoItem[]): Promise<void> {
+    // 转为纯对象数组用于 YAML 序列化
+    const payload = todos.map(t => ({ id: t.id, content: t.content, status: t.status }));
+    await updateIssueMarkdownFrontmatter(uri, { chat_todos: payload } as unknown as FrontmatterData);
+}
+
+async function executeReadTodos(context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.conversationUri) {
+        return { success: false, content: '无法获取当前对话文件' };
+    }
+    try {
+        const todos = await readTodosFromConversation(context.conversationUri);
+        if (todos.length === 0) {
+            return { success: true, content: '当前对话暂无 todo 项。可使用 write_todos 创建任务列表。' };
+        }
+        return { success: true, content: JSON.stringify(todos, null, 2) };
+    } catch (e) {
+        return { success: false, content: `读取 todo 失败: ${e}` };
+    }
+}
+
+async function executeWriteTodos(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.conversationUri) {
+        return { success: false, content: '无法获取当前对话文件' };
+    }
+    const rawTodos = input.todos;
+    if (!Array.isArray(rawTodos)) {
+        return { success: false, content: '参数 todos 必须是数组' };
+    }
+    const todos: TodoItem[] = rawTodos.map((t: Record<string, unknown>, i: number) => ({
+        id: i + 1,
+        content: String(t.content ?? ''),
+        status: (['pending', 'in_progress', 'done'].includes(String(t.status)) ? String(t.status) : 'pending') as TodoItem['status'],
+    }));
+    try {
+        await writeTodosToConversation(context.conversationUri, todos);
+        const summary = todos.map(t => {
+            const icon = t.status === 'done' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬚';
+            return `${icon} ${t.id}. ${t.content}`;
+        }).join('\n');
+        return { success: true, content: `已写入 ${todos.length} 个 todo 项：\n${summary}` };
+    } catch (e) {
+        return { success: false, content: `写入 todo 失败: ${e}` };
+    }
+}
+
+async function executeUpdateTodo(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.conversationUri) {
+        return { success: false, content: '无法获取当前对话文件' };
+    }
+    const id = Number(input.id);
+    if (!id || isNaN(id)) {
+        return { success: false, content: '请提供有效的 todo id（数字）' };
+    }
+    try {
+        const todos = await readTodosFromConversation(context.conversationUri);
+        const target = todos.find(t => t.id === id);
+        if (!target) {
+            return { success: false, content: `找不到 id=${id} 的 todo 项。当前 id 列表: ${todos.map(t => t.id).join(', ') || '（空）'}` };
+        }
+        if (input.status && ['pending', 'in_progress', 'done'].includes(String(input.status))) {
+            target.status = String(input.status) as TodoItem['status'];
+        }
+        if (typeof input.content === 'string' && input.content.trim()) {
+            target.content = input.content.trim();
+        }
+        await writeTodosToConversation(context.conversationUri, todos);
+        const icon = target.status === 'done' ? '✅' : target.status === 'in_progress' ? '🔄' : '⬚';
+        return { success: true, content: `已更新: ${icon} ${target.id}. ${target.content} [${target.status}]` };
+    } catch (e) {
+        return { success: false, content: `更新 todo 失败: ${e}` };
+    }
+}
+
 // ─── 能力工具实现：记忆 ──────────────────────────────────────
 
 /** 查找或创建角色的记忆文件，返回 URI */
@@ -2192,20 +2486,25 @@ async function executeWriteMemory(input: Record<string, unknown>, context?: Tool
 
 async function executeListChatRoles(context?: ToolExecContext): Promise<ToolCallResult> {
     const roles = await getAllChatRoles();
-    // 排除自身
-    const filtered = context?.role ? roles.filter(r => r.id !== context.role!.id) : roles;
+    // 排除自身、排除 disabled 角色
+    const filtered = roles.filter(r =>
+        r.id !== context?.role?.id && r.roleStatus !== 'disabled',
+    );
     if (filtered.length === 0) {
         return { success: true, content: '当前没有其他可用角色。可以用 create_chat_role 创建新角色。' };
     }
     const config = vscode.workspace.getConfiguration('issueManager');
     const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
-    const lines = filtered.map(r => {
-        const promptPreview = r.systemPrompt
-            ? r.systemPrompt.slice(0, 60) + (r.systemPrompt.length > 60 ? '…' : '')
+    const prompts = await Promise.all(filtered.map(r => getRoleSystemPrompt(r.uri)));
+    const lines = filtered.map((r, i) => {
+        const prompt = prompts[i];
+        const promptPreview = prompt
+            ? prompt.slice(0, 60) + (prompt.length > 60 ? '…' : '')
             : '（无提示词）';
         const model = r.modelFamily ? r.modelFamily : `${globalDefault}（全局默认）`;
         const capStr = r.toolSets.length > 0 ? ` · 工具集: ${r.toolSets.join('/')}` : '';
-        return `- **${r.name}** (ID: \`${r.id}\`) · 模型: ${model}${capStr}\n  ${promptPreview}`;
+        const statusTag = r.roleStatus === 'testing' ? ' ⚠️ 调试中' : '';
+        return `- **${r.name}**${statusTag} (ID: \`${r.id}\`) · 模型: ${model}${capStr}\n  ${promptPreview}`;
     });
     return { success: true, content: `可用角色（共 ${filtered.length} 个）：\n\n${lines.join('\n\n')}` };
 }
@@ -2221,6 +2520,19 @@ async function findRole(nameOrId: string): Promise<ChatRoleInfo | undefined> {
     );
 }
 
+/** 读取委派对话的 chat_log_id，返回追溯链接文本（无日志时返回空字符串） */
+async function getDelegationLogTrace(convoUri: vscode.Uri, convoId: string): Promise<string> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(convoUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const logId = (frontmatter as Record<string, unknown> | null)?.chat_log_id as string | undefined;
+        if (logId) {
+            return `\n> 📋 执行日志 [${logId}](IssueDir/${logId}.md)（对话 ${convoId} 的完整执行记录）`;
+        }
+    } catch { /* ignore */ }
+    return '';
+}
+
 async function executeDelegateToRole(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
     if (!context?.role?.toolSets.includes('delegation')) {
         return { success: false, content: '当前角色未启用委派能力' };
@@ -2231,6 +2543,11 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
     if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
     if (!task) { return { success: false, content: '请提供委派任务描述' }; }
 
+    // 总调用次数保护
+    if (_delegationTotalCalls >= MAX_DELEGATION_TOTAL_CALLS) {
+        return { success: false, content: `委派总调用次数超限（最大 ${MAX_DELEGATION_TOTAL_CALLS} 次），请简化任务链` };
+    }
+
     // 递归深度保护（异步委派不占深度）
     if (!isAsync && _delegationDepth >= MAX_DELEGATION_DEPTH) {
         return { success: false, content: `委派深度超限（最大 ${MAX_DELEGATION_DEPTH} 层），请简化任务链` };
@@ -2240,14 +2557,22 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
     if (!role) {
         return { success: false, content: `找不到角色「${roleNameOrId}」，请先用 list_chat_roles 查看可用角色。` };
     }
+    if (role.roleStatus === 'disabled') {
+        return { success: false, content: `角色「${role.name}」已被禁用（role_status: disabled），无法接受委派。请选择其他角色。` };
+    }
+    const delegationWarning = role.roleStatus === 'testing'
+        ? `⚠️ 注意：角色「${role.name}」处于调试状态，执行结果可能不稳定。\n\n`
+        : '';
 
-    // 创建真实对话文件
+    // 创建真实对话文件（委派对话默认自主模式）
     const taskPreview = task.length > 30 ? task.slice(0, 30) + '…' : task;
     const convoTitle = `[委派] ${taskPreview}`;
     const convoUri = await createConversation(role.id, convoTitle);
     if (!convoUri) {
         return { success: false, content: '创建委派对话文件失败' };
     }
+    // 委派对话自动启用自主模式
+    await updateIssueMarkdownFrontmatter(convoUri, { chat_autonomous: true } as Partial<FrontmatterData>);
     const convoId = path.basename(convoUri.fsPath, '.md');
     logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '同步'}`);
 
@@ -2261,23 +2586,127 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
     if (isAsync) {
         return {
             success: true,
-            content: `✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `${delegationWarning}✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
         };
     }
 
     // ── 同步模式：等待执行完成 ──
     _delegationDepth++;
+    _delegationTotalCalls++;
     try {
-        const reply = await waitForDelegationResult(convoUri, role.name, context.signal);
+        const reply = await waitForDelegationResult(convoUri, role.name, context.signal, context.onHeartbeat);
         logger.info(`[ChatTools] 委派结束 → 角色「${role.name}」| 回复长度: ${reply.length}`);
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
 
+        // 读取委派对话的执行日志 ID，用于跨对话追溯
+        const logTraceInfo = await getDelegationLogTrace(convoUri, convoId);
+
         return {
             success: true,
-            content: `**[${role.name} 的回复]** (对话: ${convoId})\n\n${reply}\n\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `${delegationWarning}**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
         };
     } finally {
         _delegationDepth--;
+        // 顶层委派完成时重置总调用计数器
+        if (_delegationDepth === 0) { _delegationTotalCalls = 0; }
+    }
+}
+
+async function executeContinueDelegation(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    if (!context?.role?.toolSets.includes('delegation')) {
+        return { success: false, content: '当前角色未启用委派能力' };
+    }
+
+    const convoId = String(input.convoId || '').trim().replace(/\.md$/, '');
+    const message = String(input.message || '').trim();
+    const isAsync = input.async === true;
+    if (!convoId) { return { success: false, content: '请提供委派对话 ID（convoId）' }; }
+    if (!message) { return { success: false, content: '请提供追问内容' }; }
+
+    // 总调用次数保护
+    if (_delegationTotalCalls >= MAX_DELEGATION_TOTAL_CALLS) {
+        return { success: false, content: `委派总调用次数超限（最大 ${MAX_DELEGATION_TOTAL_CALLS} 次），请简化任务链` };
+    }
+
+    // 递归深度保护（异步追问不占深度）
+    if (!isAsync && _delegationDepth >= MAX_DELEGATION_DEPTH) {
+        return { success: false, content: `委派深度超限（最大 ${MAX_DELEGATION_DEPTH} 层），请简化任务链` };
+    }
+
+    // 解析对话文件
+    const issueDir = getIssueDir();
+    if (!issueDir) { return { success: false, content: 'issue 目录未配置' }; }
+
+    const convoUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), `${convoId}.md`);
+    try { await vscode.workspace.fs.stat(convoUri); } catch {
+        return { success: false, content: `找不到委派对话文件: ${convoId}` };
+    }
+
+    // ── 前置检查 ──
+
+    // 检查并发锁：对话不能正在执行中
+    const timerManager = RoleTimerManager.getInstance();
+    if (timerManager.isExecuting(convoUri)) {
+        return { success: false, content: '该对话正在执行中，请等待完成后再追问' };
+    }
+
+    // 检查状态标记：对话不能有 queued/executing/retrying 标记
+    const marker = await readStateMarker(convoUri);
+    if (marker && marker.status !== 'error') {
+        return { success: false, content: `该对话当前状态为 ${marker.status}，无法追加消息。请等待当前轮次完成。` };
+    }
+
+    // 检查最后一条消息必须是 assistant（确认上轮已完成）
+    const messages = await parseConversationMessages(convoUri);
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') {
+        return { success: false, content: '上一轮对话尚未收到回复，无法追问。请先等待或用 get_delegation_status 检查状态。' };
+    }
+
+    // 从对话文件获取角色信息
+    const convoContent = Buffer.from(await vscode.workspace.fs.readFile(convoUri)).toString('utf8');
+    const roleIdMatch = /^chat_role_id:\s*(.+)$/m.exec(convoContent);
+    const roleId = roleIdMatch?.[1]?.trim();
+    if (!roleId) {
+        return { success: false, content: '无法从对话文件中获取角色 ID' };
+    }
+    const role = await getChatRoleById(roleId);
+    const roleName = role?.name ?? roleId;
+
+    logger.info(`[ChatTools] 追问委派 → 角色「${roleName}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '同步'}`);
+
+    // 写入追问消息 + queued 标记
+    await appendUserMessageQueued(convoUri, message);
+
+    // 触发执行
+    await timerManager.triggerConversation(convoUri);
+
+    // ── 异步模式 ──
+    if (isAsync) {
+        _delegationTotalCalls++;
+        return {
+            success: true,
+            content: `✅ 已异步追问「${roleName}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
+        };
+    }
+
+    // ── 同步模式 ──
+    _delegationDepth++;
+    _delegationTotalCalls++;
+    try {
+        const reply = await waitForDelegationResult(convoUri, roleName, context.signal, context.onHeartbeat);
+        logger.info(`[ChatTools] 追问完成 → 角色「${roleName}」| 对话 ${convoId} | 回复长度: ${reply.length}`);
+        void vscode.commands.executeCommand('issueManager.llmChat.refresh');
+
+        const logTraceInfo = await getDelegationLogTrace(convoUri, convoId);
+
+        return {
+            success: true,
+            content: `**[${roleName} 的追问回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续追问，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。如果任务已完成，无需再调用。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
+        };
+    } finally {
+        _delegationDepth--;
+        if (_delegationDepth === 0) { _delegationTotalCalls = 0; }
     }
 }
 
@@ -2329,12 +2758,20 @@ function waitForDelegationResult(
     convoUri: vscode.Uri,
     roleName: string,
     signal?: AbortSignal,
+    onHeartbeat?: () => void,
 ): Promise<string> {
     return new Promise<string>(resolve => {
         const timerManager = RoleTimerManager.getInstance();
+
+        // 心跳定时器：每 10s 通知调用方工具仍在活跃，防止空闲超时误判
+        const heartbeatId = onHeartbeat
+            ? setInterval(() => onHeartbeat(), 10_000)
+            : undefined;
+
         const cleanup = () => {
             disposable.dispose();
             clearTimeout(timeout);
+            if (heartbeatId !== undefined) { clearInterval(heartbeatId); }
             signal?.removeEventListener('abort', onAbort);
         };
         const disposable = timerManager.onDidChange(async (e) => {
@@ -2368,8 +2805,9 @@ function waitForDelegationResult(
 
 function executeListAvailableTools(): ToolCallResult {
     const BUILT_IN = [
+        { id: '(基础)',          tools: 'read_todos、write_todos、update_todo',               desc: '对话级 todo 管理，所有角色默认可用，无需配置' },
         { id: 'memory',          tools: 'read_memory、write_memory',                          desc: '持久记忆，适合长期任务角色' },
-        { id: 'delegation',      tools: 'delegate_to_role、list_chat_roles',                  desc: '委派能力，适合中枢调度角色' },
+        { id: 'delegation',      tools: 'delegate_to_role、continue_delegation、list_chat_roles、get_delegation_status', desc: '委派能力（delegate_to_role 发起 → continue_delegation 多轮追问直到完成），适合中枢调度角色' },
         { id: 'role_management', tools: 'list_available_tools、create_chat_role、update_role_config 等', desc: '角色管理，仅管理型角色需要' },
         { id: 'browser',         tools: 'web_search、fetch_url、list_tabs、click_element 等', desc: 'Chrome 浏览器工具，需要扩展连接' },
     ];
@@ -2445,9 +2883,7 @@ async function executeUpdateRoleConfig(input: Record<string, unknown>): Promise<
     if (!role) { return { success: false, content: `未找到角色「${roleNameOrId}」` }; }
 
     try {
-        const ok = await updateIssueMarkdownFrontmatter(role.uri, {
-            chat_role_system_prompt: newSystemPrompt,
-        } as Partial<FrontmatterData>);
+        const ok = await updateRoleSystemPrompt(role.uri, newSystemPrompt);
         if (!ok) { return { success: false, content: '更新失败' }; }
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
         const reasonStr = reason ? `\n更新原因：${reason}` : '';
@@ -2519,6 +2955,8 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     const recentErrors: string[] = [];
+    /** 失败原因分类计数 */
+    const failureCategories: Record<string, number> = {};
     let analyzedLogs = 0;
 
     for (const convo of recentConvos) {
@@ -2532,14 +2970,24 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
             const runMatches = [...raw.matchAll(/## Run #(\d+)/g)];
             totalRuns += runMatches.length;
 
-            // 成功数
-            const successMatches = raw.match(/→.*?success/g);
+            // 成功数：匹配 "✅ **成功**"
+            const successMatches = raw.match(/✅ \*\*成功\*\*/g);
             successRuns += successMatches?.length ?? 0;
 
-            // 工具调用：格式为 "N. `tool_name` (Nms)"
-            for (const m of raw.matchAll(/\d+\. `([^`]+)` \(\d+ms\)/g)) {
+            // 工具调用：匹配 backtick 包裹的工具名 + 括号内的耗时
+            // 覆盖多种日志格式：
+            //   Timer:  ✅ [`tool_name`](link) (1.2s)  或  ✅ `tool_name` (250ms)
+            //   Direct: 🔧 `tool_name` (250ms) → result
+            //   委派:   📥✅ **委派结果** [`delegate_to_role`](link) (3.2s)
+            for (const m of raw.matchAll(/`([^`]+)`[^\n]*?\((\d+(?:\.\d+)?(?:ms|s))\)/g)) {
                 const t = m[1];
-                toolCallCounts[t] = (toolCallCounts[t] ?? 0) + 1;
+                // 排除非工具调用行（如 LLM 轮次摘要中的工具名列表）
+                // 工具调用行包含状态图标 ✅❌🔧📥 或 ⏳
+                const lineStart = raw.lastIndexOf('\n', m.index!) + 1;
+                const linePrefix = raw.slice(lineStart, m.index!);
+                if (/[✅❌🔧📥]/.test(linePrefix)) {
+                    toolCallCounts[t] = (toolCallCounts[t] ?? 0) + 1;
+                }
             }
 
             // Token 消耗
@@ -2548,9 +2996,22 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
                 totalOutputTokens += parseInt(m[2], 10);
             }
 
-            // 错误信息
-            for (const m of raw.matchAll(/\*\*错误详情\*\*: (.+)/g)) {
-                recentErrors.push(m[1]);
+            // 错误信息：匹配 "❌ **失败...** | 耗时 ... | 错误详情"
+            for (const m of raw.matchAll(/❌ \*\*失败[^|]*\|[^|]*\| (.+)/g)) {
+                const errMsg = m[1];
+                recentErrors.push(errMsg);
+                // 归类失败原因
+                const cat = /空响应/.test(errMsg) ? '空响应'
+                    : /超时|timeout/i.test(errMsg) ? '超时'
+                    : /abort|中止/i.test(errMsg) ? '用户中止'
+                    : '其他错误';
+                failureCategories[cat] = (failureCategories[cat] ?? 0) + 1;
+            }
+
+            // 空闲超时（单独的日志格式）
+            const idleTimeouts = raw.match(/⏰ \*\*空闲超时\*\*/g);
+            if (idleTimeouts) {
+                failureCategories['空闲超时'] = (failureCategories['空闲超时'] ?? 0) + idleTimeouts.length;
             }
         } catch {
             // 日志文件不可读，跳过
@@ -2566,6 +3027,13 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
     const usedTools = Object.keys(toolCallCounts);
     const neverUsed = configuredTools.filter(t => !usedTools.includes(t));
 
+    // ─── 读取 system prompt 长度 ─────────────────────────────
+    let promptLength = 0;
+    try {
+        const fullPrompt = await getRoleSystemPrompt(role.uri);
+        promptLength = fullPrompt.length;
+    } catch { /* 读取失败不影响报告 */ }
+
     // ─── 组装报告 ────────────────────────────────────────────
     let report = `## 角色「${role.name}」执行日志分析\n\n`;
     report += `**分析范围**: 最近 ${recentConvos.length} 个对话 / ${analyzedLogs} 份日志 / ${totalRuns} 次执行\n\n`;
@@ -2573,7 +3041,11 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
     report += `### 当前配置\n`;
     report += `- 工具集 (tool_sets): ${role.toolSets.length > 0 ? role.toolSets.join(', ') : '（无）'}\n`;
     report += `- MCP servers: ${role.mcpServers?.length ? role.mcpServers.join(', ') : '（无）'}\n`;
-    report += `- 配置工具总数: **${configuredTools.length}**\n\n`;
+    report += `- 配置工具总数: **${configuredTools.length}**\n`;
+    if (promptLength > 0) {
+        report += `- System prompt 长度: ${promptLength} 字（需查看全文请调用 read_issue）\n`;
+    }
+    report += '\n';
 
     if (totalRuns > 0) {
         const successRate = Math.round(successRuns / totalRuns * 100);
@@ -2596,15 +3068,41 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
         }
 
         if (neverUsed.length > 0) {
+            // 按来源分组：内置工具 vs MCP 工具，避免冗长的逐个列举
+            const neverUsedBuiltin = neverUsed.filter(t => !t.startsWith('mcp_'));
+            const neverUsedMcp = neverUsed.filter(t => t.startsWith('mcp_'));
             report += `### ⚠️ 配置但从未调用的工具（${neverUsed.length}/${configuredTools.length}）\n`;
-            report += `> 这些工具占用了 LLM 上下文 token，但从未被使用，可考虑移除：\n\n`;
-            for (const t of neverUsed) { report += `- \`${t}\`\n`; }
+            report += `> 这些工具占用了 LLM 上下文 token，但从未被使用，可考虑移除。\n\n`;
+            if (neverUsedBuiltin.length > 0) {
+                report += `**内置工具** (${neverUsedBuiltin.length})：${neverUsedBuiltin.map(t => `\`${t}\``).join(', ')}\n`;
+            }
+            if (neverUsedMcp.length > 0) {
+                // MCP 工具按 server 前缀分组汇总，不逐个列出
+                const mcpGroups: Record<string, number> = {};
+                for (const t of neverUsedMcp) {
+                    const parts = t.split('_');
+                    const server = parts.length >= 3 ? `${parts[0]}_${parts[1]}` : t;
+                    mcpGroups[server] = (mcpGroups[server] ?? 0) + 1;
+                }
+                const groupSummary = Object.entries(mcpGroups).map(([s, n]) => `${s} (${n})`).join(', ');
+                report += `**MCP 工具** (${neverUsedMcp.length})：${groupSummary}\n`;
+            }
+            report += '\n';
+        }
+
+        // 失败原因分布
+        const failureCats = Object.entries(failureCategories);
+        if (failureCats.length > 0) {
+            report += `### 失败原因分布\n`;
+            for (const [cat, count] of failureCats.sort((a, b) => b[1] - a[1])) {
+                report += `- ${cat}: ${count} 次\n`;
+            }
             report += '\n';
         }
 
         if (recentErrors.length > 0) {
-            const uniqueErrors = [...new Set(recentErrors)].slice(0, 5);
-            report += `### 近期错误（共 ${recentErrors.length} 次）\n`;
+            const uniqueErrors = [...new Set(recentErrors)].slice(0, 3);
+            report += `### 近期错误样例（取 ${uniqueErrors.length} 条去重）\n`;
             for (const e of uniqueErrors) { report += `- ${e}\n`; }
             report += '\n';
         }

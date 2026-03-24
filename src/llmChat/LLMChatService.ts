@@ -20,6 +20,7 @@ import {
     getOrCreateExecutionLog,
     startLogRun,
     appendLogLine,
+    getRoleSystemPrompt,
 } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatGroupInfo } from './types';
 import { CHAT_TOOLS, executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
@@ -177,7 +178,7 @@ export class LLMChatService {
             const inputTokens = await estimateTokens(messages);
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
             const outputTokens = await estimateTokens([outputMsg]);
-            void updateConversationTokenUsed(uri, inputTokens + outputTokens);
+            void updateConversationTokenUsed(uri, inputTokens + outputTokens, convoConfig?.maxTokens ?? this._activeRole?.maxTokens);
 
             if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
             return assistantReply;
@@ -288,7 +289,7 @@ export class LLMChatService {
             const inputTokens = await estimateTokens(messages);
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
             const outputTokens = await estimateTokens([outputMsg]);
-            void updateConversationTokenUsed(uri, inputTokens + outputTokens);
+            void updateConversationTokenUsed(uri, inputTokens + outputTokens, convoConfig?.maxTokens ?? this._activeRole?.maxTokens);
 
             // 日志：助手回复摘要
             if (logUri && assistantReply) {
@@ -375,9 +376,13 @@ export class LLMChatService {
         options?: { signal?: AbortSignal },
     ): Promise<CoordinatorPlan> {
         const members = this._activeGroupMembers;
-        const memberDescriptions = members.map(m =>
-            `- 「${m.name}」(${m.avatar}): ${m.systemPrompt?.slice(0, 80) || '无特定职责'}`,
-        ).join('\n');
+        const memberPrompts = await Promise.all(
+            members.map(async m => {
+                const prompt = await getRoleSystemPrompt(m.uri);
+                return `- 「${m.name}」(${m.avatar}): ${prompt?.slice(0, 80) || '无特定职责'}`;
+            }),
+        );
+        const memberDescriptions = memberPrompts.join('\n');
 
         // 获取最近几条历史消息作为上下文
         const history = await parseGroupConversationMessages(uri);
@@ -633,8 +638,11 @@ ${userMessage}
 
         // 系统指令 + 工具说明
         let systemContent = '';
-        if (this._activeRole?.systemPrompt) {
-            systemContent = `[系统指令] ${this._activeRole.systemPrompt}`;
+        if (this._activeRole) {
+            const prompt = await getRoleSystemPrompt(this._activeRole.uri);
+            if (prompt) {
+                systemContent = `[系统指令] ${prompt}`;
+            }
         }
 
         // 根据角色工具集动态追加工具说明
@@ -656,35 +664,57 @@ ${userMessage}
                 + '- evaluate_role: 记录角色绩效评估\n';
         }
 
-        // VS Code 侧聊天上下文：笔记管理为主，浏览器工具需 Chrome 扩展连接
+        // 笔记工具（所有角色都有）
         systemContent += '\n\n[笔记工具] 你可以管理用户的 issueMarkdown 笔记：\n'
             + '- search_issues: 搜索笔记\n'
             + '- read_issue: 读取笔记内容\n'
             + '- create_issue: 创建单个独立笔记（无层级关系）\n'
             + '- **create_issue_tree**: 创建层级结构的笔记树（推荐！可一次创建多个有父子关系的笔记节点）\n'
             + '- list_issue_tree: 查看笔记树结构\n'
-            + '- update_issue: 更新已有笔记\n\n'
-            + '[浏览器工具]（需要已连接 Chrome 扩展）：\n'
-            + '- web_search: 通过 Chrome 浏览器进行网络搜索\n'
-            + '- fetch_url: 通过 Chrome 浏览器访问指定 URL 获取页面文本内容\n'
-            + '- open_tab: 在 Chrome 中打开新标签页到指定 URL\n'
-            + '- get_tab_content: 获取指定标签页的页面文本内容\n'
-            + '- activate_tab: 切换到指定标签页\n'
-            + '- list_tabs: 列出 Chrome 所有打开的标签页\n'
-            + '- organize_tabs: 将标签页按分组整理\n'
-            + '- close_tabs: 关闭指定标签页\n\n'
-            + '[页面交互工具]（需要已连接 Chrome 扩展）：\n'
-            + '- get_page_elements: 获取页面上的可交互元素（输入框、按钮、链接等）\n'
-            + '- click_element: 点击页面元素（按钮、链接等）\n'
-            + '- fill_input: 填写表单输入框\n'
-            + '- select_option: 选择下拉框选项\n'
-            + '- press_key: 模拟键盘按键\n\n'
-            + '[使用指引]\n'
+            + '- update_issue: 更新已有笔记\n';
+
+        // 浏览器工具说明仅在角色启用了 browser 工具集时注入，避免上下文膨胀
+        if (toolSets.includes('browser')) {
+            systemContent += '\n[浏览器工具]（需要已连接 Chrome 扩展）：\n'
+                + '- web_search: 通过 Chrome 浏览器进行网络搜索\n'
+                + '- fetch_url: 通过 Chrome 浏览器访问指定 URL 获取页面文本内容\n'
+                + '- open_tab: 在 Chrome 中打开新标签页到指定 URL\n'
+                + '- get_tab_content: 获取指定标签页的页面文本内容\n'
+                + '- activate_tab: 切换到指定标签页\n'
+                + '- list_tabs: 列出 Chrome 所有打开的标签页\n'
+                + '- organize_tabs: 将标签页按分组整理\n'
+                + '- close_tabs: 关闭指定标签页\n\n'
+                + '[页面交互工具]（需要已连接 Chrome 扩展）：\n'
+                + '- get_page_elements: 获取页面上的可交互元素（输入框、按钮、链接等）\n'
+                + '- click_element: 点击页面元素（按钮、链接等）\n'
+                + '- fill_input: 填写表单输入框\n'
+                + '- select_option: 选择下拉框选项\n'
+                + '- press_key: 模拟键盘按键\n';
+        }
+
+        // 使用指引（根据实际可用工具裁剪）
+        systemContent += '\n[使用指引]\n'
             + '- 创建笔记时，优先使用 create_issue_tree 来创建有层级关系的笔记树。\n'
-            + '- 检索或整理已有笔记时使用 search_issues/read_issue。\n'
-            + '- 查找外部资料时使用 web_search/fetch_url。\n'
-            + '- 整理标签页时，先 list_tabs 获取所有标签，再用 organize_tabs 分组。\n'
-            + '- 填写表单：先 get_page_elements 了解结构 → fill_input 填入 → click_element 提交。';
+            + '- 检索或整理已有笔记时使用 search_issues/read_issue。\n';
+        if (toolSets.includes('browser')) {
+            systemContent += '- 查找外部资料时使用 web_search/fetch_url。\n'
+                + '- 整理标签页时，先 list_tabs 获取所有标签，再用 organize_tabs 分组。\n'
+                + '- 填写表单：先 get_page_elements 了解结构 → fill_input 填入 → click_element 提交。\n';
+        }
+
+        // ─── 执行模式注入 ─────────────────────────────────────
+        // 优先级：对话 > 角色，均未设置时默认 false（交互模式）
+        const convoConfig = await getConversationConfig(uri);
+        const autonomous = convoConfig?.autonomous ?? this._activeRole?.autonomous ?? false;
+        if (autonomous) {
+            systemContent += '\n[执行模式: 自主] 当前为自主执行模式。'
+                + '你应该独立思考、主动调用工具完成任务，不要等待用户确认。'
+                + '遇到不明确的地方自行做出合理决策，完成后在回复中说明你的决策和理由。';
+        } else {
+            systemContent += '\n[执行模式: 交互] 当前为交互对话模式。'
+                + '执行破坏性操作（修改角色配置、删除笔记、大规模变更）前应征求用户确认。'
+                + '常规的信息查询、笔记创建、分析建议等可直接执行。';
+        }
         msgs.push(vscode.LanguageModelChatMessage.User(systemContent));
 
         const history = await parseConversationMessages(uri);
@@ -707,10 +737,11 @@ ${userMessage}
     ): Promise<vscode.LanguageModelChatMessage[]> {
         const msgs: vscode.LanguageModelChatMessage[] = [];
 
-        // 该成员的 system prompt
-        if (member.systemPrompt) {
+        // 该成员的 system prompt（从文件 body 按需读取）
+        const memberPrompt = await getRoleSystemPrompt(member.uri);
+        if (memberPrompt) {
             msgs.push(vscode.LanguageModelChatMessage.User(
-                `[系统指令] ${member.systemPrompt}`,
+                `[系统指令] ${memberPrompt}`,
             ));
         }
 

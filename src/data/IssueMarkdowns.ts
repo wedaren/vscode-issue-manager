@@ -382,12 +382,14 @@ export async function getIssueMarkdown(
             vtime: cached?.vtime ?? mtime, // 保留已有的 vtime 或使用 mtime
         };
         _issueMarkdownCache.set(key, entry);
+        updateTypeIndex(key, frontmatter);
         scheduleOnDidUpdate();
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
 
         return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime, vtime: entry.vtime };
     } catch (err) {
         _issueMarkdownCache.delete(key);
+        removeFromTypeIndex(key);
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         return null;
     }
@@ -405,13 +407,17 @@ export async function getAllIssueMarkdowns(
     const issueDir = getIssueDir();
     if (!issueDir) return [];
 
-    // 仅获取 issueDir 根目录下的 Markdown 文件（非递归）
+    // ── 热路径：缓存就绪后直接从内存返回，零文件 I/O ──
+    if (_cacheReady) {
+        return getAllFromCache(issueDir, sortBy);
+    }
+
+    // ── 冷路径：首次加载（缓存尚未就绪），走 findFiles 全扫描 ──
     const files = await vscode.workspace.findFiles(
         new vscode.RelativePattern(issueDir, "*.md"),
         "**/.issueManager/**"
     );
 
-    // 并行加载所有文件的元信息，单个文件出错时忽略
     const entries = await Promise.all(
         files.map(async f => {
             try {
@@ -424,10 +430,41 @@ export async function getAllIssueMarkdowns(
 
     const issues = entries.filter((e): e is IssueMarkdown => !!e);
 
+    return sortIssueMarkdowns(issues, sortBy);
+}
+
+/** 从内存缓存构建 IssueMarkdown 列表（零 I/O，O(N) 遍历 + O(N log N) 排序） */
+function getAllFromCache(issueDir: string, sortBy: "mtime" | "ctime" | "vtime"): IssueMarkdown[] {
+    const issueDirNorm = path.normalize(issueDir);
+    const results: IssueMarkdown[] = [];
+
+    for (const [fsPath, cached] of _issueMarkdownCache) {
+        // 仅保留 issueDir 根目录下的 .md 文件（非子目录）
+        if (!fsPath.endsWith('.md')) { continue; }
+        if (path.normalize(path.dirname(fsPath)) !== issueDirNorm) { continue; }
+
+        const uri = vscode.Uri.file(fsPath);
+        const fileName = path.basename(fsPath);
+        const ctime = getTimestampFromFileName(fileName) || cached.mtime;
+        results.push({
+            title: cached.title ?? path.basename(fsPath, '.md'),
+            uri,
+            frontmatter: (cached.frontmatter ?? null) as FrontmatterData | null,
+            mtime: cached.mtime,
+            ctime,
+            vtime: cached.vtime ?? cached.mtime,
+        });
+    }
+
+    return sortIssueMarkdowns(results, sortBy);
+}
+
+/** 按指定字段降序排序 */
+function sortIssueMarkdowns(issues: IssueMarkdown[], sortBy: "mtime" | "ctime" | "vtime"): IssueMarkdown[] {
     return issues.sort((a, b) => {
         if (sortBy === "ctime") return b.ctime - a.ctime;
         if (sortBy === "vtime") return (b.vtime ?? b.mtime) - (a.vtime ?? a.mtime);
-        return b.mtime - a.mtime; 
+        return b.mtime - a.mtime;
     });
 }
 
@@ -435,18 +472,127 @@ export async function getAllIssueMarkdowns(
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
 const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], cacheStorage.IssueMarkdownCacheEntry>();
 
+// ─── frontmatter 类型倒排索引 ────────────────────────────────────
+//
+// 按 frontmatter 中的布尔标记字段分类索引，如 "chat_role"、"chat_conversation" 等。
+// 查询 O(K)（K = 该类型文件数），无需 findFiles 全目录扫描。
+//
+// 索引键 = frontmatter 中值为 true 的字段名（如 "chat_role"）
+// 索引值 = 该类型所有文件的 fsPath 集合
+
+/** frontmatter 类型 → 文件路径集合 */
+const _typeIndex = new Map<string, Set<string>>();
+
+/** 需要被索引的 frontmatter 布尔标记字段 */
+const INDEXED_TYPE_KEYS = [
+    'chat_role',
+    'chat_conversation',
+    'chat_group',
+    'chat_group_conversation',
+    'chat_execution_log',
+    'chat_tool_call',
+    'chrome_chat',
+    'role_memory',
+] as const;
+
+type IndexedTypeKey = typeof INDEXED_TYPE_KEYS[number];
+
+/** 更新某个文件在类型索引中的条目（先清旧、再加新） */
+function updateTypeIndex(fsPath: string, frontmatter: Record<string, unknown> | null | undefined): void {
+    // 先从所有类型集合中移除该路径
+    for (const typeKey of INDEXED_TYPE_KEYS) {
+        _typeIndex.get(typeKey)?.delete(fsPath);
+    }
+    // 按当前 frontmatter 重新加入
+    if (frontmatter) {
+        for (const typeKey of INDEXED_TYPE_KEYS) {
+            if (frontmatter[typeKey] === true) {
+                let set = _typeIndex.get(typeKey);
+                if (!set) { set = new Set(); _typeIndex.set(typeKey, set); }
+                set.add(fsPath);
+            }
+        }
+    }
+}
+
+/** 从类型索引中移除某个文件（文件被删除时调用） */
+function removeFromTypeIndex(fsPath: string): void {
+    for (const typeKey of INDEXED_TYPE_KEYS) {
+        _typeIndex.get(typeKey)?.delete(fsPath);
+    }
+}
+
+/**
+ * 按 frontmatter 类型查询文件列表（从索引中获取，O(K) 复杂度）。
+ *
+ * 返回的 IssueMarkdown 直接从内存缓存重建，不触发文件 I/O。
+ * 注意：如果缓存条目的 mtime 已过期，此处不做验证（由后续的
+ * getIssueMarkdown 调用负责刷新），确保查询始终 O(K)。
+ */
+export function getIssueMarkdownsByType(typeKey: IndexedTypeKey): IssueMarkdown[] {
+    const pathSet = _typeIndex.get(typeKey);
+    if (!pathSet || pathSet.size === 0) { return []; }
+
+    const results: IssueMarkdown[] = [];
+    for (const fsPath of pathSet) {
+        const cached = _issueMarkdownCache.get(fsPath);
+        if (!cached) { continue; } // 索引残留（理论上不应出现）
+        const uri = vscode.Uri.file(fsPath);
+        const fileName = path.basename(fsPath);
+        const ctime = getTimestampFromFileName(fileName) || cached.mtime;
+        results.push({
+            title: cached.title ?? path.basename(fsPath, '.md'),
+            uri,
+            frontmatter: (cached.frontmatter ?? null) as FrontmatterData | null,
+            mtime: cached.mtime,
+            ctime,
+            vtime: cached.vtime ?? cached.mtime,
+        });
+    }
+    return results.sort((a, b) => b.mtime - a.mtime);
+}
+
+/**
+ * 从缓存中按 fsPath 移除条目并同步清理类型索引。
+ * 用于文件删除场景。
+ */
+export function removeIssueMarkdownFromCache(uriOrPath: vscode.Uri | string): void {
+    const fsPath = typeof uriOrPath === 'string' ? uriOrPath : uriOrPath.fsPath;
+    _issueMarkdownCache.delete(fsPath);
+    removeFromTypeIndex(fsPath);
+    cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+}
+
 // 尝试加载磁盘缓存（不阻塞启动流程）
+// whenCacheReady 在缓存加载 + 索引重建完成后 resolve，
+// 消费方可 await 此 promise 确保首次查询有数据。
+let _resolveCacheReady!: () => void;
+export const whenCacheReady: Promise<void> = new Promise(r => { _resolveCacheReady = r; });
+let _cacheReady = false;
+
+/** 缓存是否已从磁盘加载完毕（同步查询） */
+export function isCacheReady(): boolean { return _cacheReady; }
+
 void (async () => {
-    const obj = await cacheStorage.load();
-    if (!obj) {
-        return;
+    try {
+        const obj = await cacheStorage.load();
+        if (obj) {
+            for (const [k, v] of Object.entries(obj)) {
+                const entry = v as cacheStorage.IssueMarkdownCacheEntry;
+                _issueMarkdownCache.set(k, entry);
+                updateTypeIndex(k, entry.frontmatter);
+            }
+            Logger.getInstance().debug("[IssueMarkdowns] loaded cache from storage", {
+                size: _issueMarkdownCache.size,
+                typeIndex: Object.fromEntries(
+                    [..._typeIndex.entries()].map(([k, v]) => [k, v.size]),
+                ),
+            });
+        }
+    } finally {
+        _cacheReady = true;
+        _resolveCacheReady();
     }
-    for (const [k, v] of Object.entries(obj)) {
-        _issueMarkdownCache.set(k, v as cacheStorage.IssueMarkdownCacheEntry);
-    }
-    Logger.getInstance().debug("[IssueMarkdowns] loaded cache from storage", {
-        size: _issueMarkdownCache.size,
-    });
 })();
 
 /**

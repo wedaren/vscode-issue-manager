@@ -300,6 +300,25 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "在聊天视图中定位",
+        group: "导航",
+        hint: "reveal llm chat role conversation log",
+        description: "在聊天视图中高亮当前角色、对话或执行日志文件",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_role || !!frontmatter?.chat_conversation || !!frontmatter?.chat_execution_log;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.revealInView', vscode.window.activeTextEditor?.document?.uri);
+        },
+    },
+    {
         label: "在最近视图中查看",
         group: "导航",
         hint: "recent",
@@ -344,10 +363,10 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
-        label: "配置工具集",
+        label: "配置角色",
         group: "管理",
-        hint: "tools configure",
-        description: "交互式配置当前角色的 tool_sets / mcp_servers / extra_tools / excluded_tools",
+        hint: "role model tools status configure",
+        description: "交互式配置角色模型、工具集或委派状态",
         require: async ctx => {
             if (!ctx.uri) { return false; }
             try {
@@ -359,7 +378,26 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
             }
         },
         execute: async () => {
-            await vscode.commands.executeCommand('issueManager.llmChat.configureTools', vscode.window.activeTextEditor?.document?.uri);
+            await vscode.commands.executeCommand('issueManager.llmChat.configureRole', vscode.window.activeTextEditor?.document?.uri);
+        },
+    },
+    {
+        label: "配置对话模型",
+        group: "管理",
+        hint: "model tokens conversation",
+        description: "交互式配置当前对话的模型和 max_tokens",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_conversation;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.configureModel', vscode.window.activeTextEditor?.document?.uri);
         },
     },
     {

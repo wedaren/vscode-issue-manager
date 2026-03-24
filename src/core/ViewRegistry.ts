@@ -469,7 +469,7 @@ export class ViewRegistry {
         this.context.subscriptions.push(llmChatRoleProvider);
 
         // 注册聊天相关命令
-        registerLLMChatCommands(this.context, llmChatRoleProvider);
+        registerLLMChatCommands(this.context, llmChatRoleProvider, llmChatRoleView);
 
         // 启动角色定时器管理器
         const timerManager = RoleTimerManager.getInstance();

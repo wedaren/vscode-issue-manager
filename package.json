@@ -711,7 +711,7 @@
         "command": "issueManager.llmChat.newConversation",
         "title": "新建对话",
         "category": "Issue Manager",
-        "icon": "$(comment-discussion)"
+        "icon": "$(add)"
       },
       {
         "command": "issueManager.llmChat.openConversation",
@@ -1092,7 +1092,7 @@
         {
           "command": "issueManager.llmChat.editRole",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
-          "group": "inline@4"
+          "group": "9_edit"
         },
         {
           "command": "issueManager.llmChat.newConversation",

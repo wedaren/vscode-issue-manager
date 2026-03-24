@@ -17,7 +17,7 @@ import {
     appendUserMessageQueued,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
-import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider } from './LLMChatRoleProvider';
+import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
 import { Logger } from '../core/utils/Logger';
 import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
@@ -34,6 +34,7 @@ const DISPLAY_MODE_CTX_KEY = 'issueManager.llmChat.displayMode';
 export function registerLLMChatCommands(
     context: vscode.ExtensionContext,
     roleProvider: LLMChatRoleProvider,
+    llmChatView: vscode.TreeView<LLMChatViewNode>,
 ): void {
     const chatService = LLMChatService.getInstance();
 
@@ -138,7 +139,7 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[] }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[]; modelFamily?: string }[] = [
                 {
                     label: '$(rocket) 个人助理',
                     description: '中枢调度、记忆进化、团队委派',
@@ -318,7 +319,26 @@ export function registerLLMChatCommands(
                     description: '测试、分析、迭代优化角色配置，识别冗余工具，提升 token 效率',
                     avatar: 'settings-gear',
                     toolSets: ['role_management', 'delegation'],
+                    modelFamily: 'gpt-5.4',
                     systemPrompt: `你是一位专职角色配置分析师，通过「测试 → 分析 → 假设 → 修改 → 再测试」的迭代循环评估并优化 LLM 角色配置。
+
+⚠️ **反幻觉铁律 — 违反即失败**
+1. **所有数据必须来自工具调用**。严禁凭空编造统计数字、成功率、token 消耗等任何数值。
+2. 在输出「使用数据」或「配置摘要」之前，你必须已经成功调用了 \`read_issue\` 和 \`read_role_execution_logs\`。如果工具调用失败或无数据，必须如实说明「暂无数据」，不得用假数据填充。
+3. 建议的配置修改只能使用系统中实际存在的 frontmatter 字段（见下方合法字段列表），严禁发明不存在的字段。
+4. 如果不确定某功能是否存在，直接告知用户你不确定，不要编造。
+
+## 合法的 frontmatter 字段
+角色文件支持的字段（ChatRoleFrontmatter）：
+- \`tool_sets\`: string[] — 合法值: \`memory\`, \`delegation\`, \`role_management\`, \`browser\`
+- \`mcp_servers\`: string[] — MCP server 名称列表，"*" 引入全部（慎用）
+- \`extra_tools\`: string[] — 额外引入的具体工具名
+- \`excluded_tools\`: string[] — 排除的具体工具名
+- \`chat_role_model_family\`: string — 指定模型
+- \`chat_role_max_tokens\`: number — token 预算
+- \`timer_enabled\`, \`timer_interval\`, \`timer_max_concurrent\`, \`timer_timeout\`, \`timer_max_retries\`, \`timer_retry_delay\` — 定时器配置
+除以上字段外，不要建议任何其他 frontmatter 字段。
+注意：自主模式（chat_autonomous）是对话级配置，不是角色级配置。
 
 ## 合法的 tool_sets 值
 - \`memory\` — 持久记忆（read_memory / write_memory），适合长期任务角色
@@ -335,17 +355,16 @@ export function registerLLMChatCommands(
 ## 工作流程
 
 【第一阶段：初步诊断】（需用户确认后才进入第二阶段）
-1. \`search_issues\` 找到目标角色，\`read_issue\` 读取 frontmatter + system prompt
-2. \`read_role_execution_logs\` 获取工具调用频率、成功率、token 消耗
-3. 整理诊断报告，制定 2-4 条测试用例（每条说明测试目的和预期行为）
-4. 询问用户："以上诊断和测试计划是否合适？确认后开始测试。"
+1. **必须先调用工具获取数据**：
+   - \`search_issues\` 找到目标角色 → \`read_issue\` 读取 frontmatter + system prompt
+   - \`read_role_execution_logs\` 获取工具调用频率、成功率、token 消耗
+2. 基于工具返回的真实数据整理诊断报告，制定 2-4 条测试用例
+3. 询问用户确认
 
 【第二阶段：实验测试】（用户确认后执行）
-1. 确认目标角色当前无进行中对话，避免并发干扰
-2. 用 \`delegate_to_role\` 逐条执行测试用例，记录每条实际响应
-3. 对比实际响应 vs 预期行为，找出差距
-4. 形成假设："问题根因是 X，修改 Y 应能改善"
-5. 展示修改方案（frontmatter 片段 + system prompt 改动），等用户确认
+1. 用 \`delegate_to_role\` 逐条执行测试用例，记录每条实际响应
+2. 对比实际响应 vs 预期行为，找出差距
+3. 形成假设，展示修改方案（仅使用合法 frontmatter 字段），等用户确认
 
 【第三阶段：修改与验证】（用户确认后执行）
 1. \`update_role_config\` 应用修改
@@ -358,11 +377,11 @@ export function registerLLMChatCommands(
 - 每次修改必须有明确假设，不做无根据的改动
 
 ## 报告格式
-- 📋 **配置摘要**：tool_sets / mcp_servers / 工具总数
-- 📊 **使用数据**：成功率 / 平均 token / 工具调用频率排行
-- ⚠️ **问题清单**：每条问题 + 具体改法
+- 📋 **配置摘要**：tool_sets / mcp_servers / 工具总数（来自 read_issue 的真实数据）
+- 📊 **使用数据**：成功率 / 平均 token / 工具调用频率排行（来自 read_role_execution_logs 的真实数据）
+- ⚠️ **问题清单**：每条问题 + 具体改法（仅使用合法字段）
 - 🧪 **测试计划**：用例列表（目的 + 预期行为）
-- ✅ **建议配置**：优化后的 frontmatter 片段`,
+- ✅ **建议配置**：优化后的 frontmatter 片段（仅包含合法字段）`,
                 },
                 {
                     label: '$(cloud) 网络助手',
@@ -402,6 +421,7 @@ export function registerLLMChatCommands(
                 avatar?: string;
                 systemPrompt?: string;
                 toolSets?: string[];
+                modelFamily?: string;
             }
 
             const items: PresetItem[] = [
@@ -411,6 +431,7 @@ export function registerLLMChatCommands(
                     avatar: p.avatar,
                     systemPrompt: p.systemPrompt,
                     toolSets: p.toolSets,
+                    modelFamily: p.modelFamily,
                 })),
                 { label: '$(add) 自定义角色…', description: '手动输入名称和提示词', isCustom: true, kind: vscode.QuickPickItemKind.Separator } as PresetItem,
                 { label: '$(add) 自定义角色…', description: '完全自定义名称、提示词和图标', isCustom: true },
@@ -464,8 +485,8 @@ export function registerLLMChatCommands(
                 avatar = pick.avatar || 'hubot';
             }
 
-            // 选择模型（预设和自定义都走这一步）
-            const modelFamily = await pickModelFamily();
+            // 选择模型（预设和自定义都走这一步；预设可提供推荐模型）
+            const modelFamily = await pickModelFamily(pick.modelFamily);
             if (modelFamily === undefined) { return; }  // 用户按了 ESC
 
             const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, pick.toolSets);
@@ -495,7 +516,7 @@ export function registerLLMChatCommands(
             const memberPicks = await vscode.window.showQuickPick(
                 allRoles.map(r => ({
                     label: `$(${r.avatar}) ${r.name}`,
-                    description: r.systemPrompt?.slice(0, 30) || '',
+                    description: r.toolSets.length > 0 ? r.toolSets.join('/') : '',
                     roleId: r.id,
                 })),
                 {
@@ -568,6 +589,12 @@ export function registerLLMChatCommands(
 
             await openConversation(roleId, uri);
             roleProvider.refresh();
+
+            // 刷新完成后在聊天视图中高亮新建的对话节点
+            const revealNode = await roleProvider.findNodeByUri(uri);
+            if (revealNode) {
+                try { await llmChatView.reveal(revealNode, { select: true, focus: false, expand: false }); } catch { /* ignore */ }
+            }
         }),
     );
 
@@ -675,6 +702,24 @@ export function registerLLMChatCommands(
         }),
     );
 
+    // ─── 在聊天视图中定位当前文件 ────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.revealInView', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+            const node = await roleProvider.findNodeByUri(targetUri);
+            if (!node) {
+                vscode.window.showWarningMessage('当前文件不在聊天视图中（不是角色、对话或执行日志文件）');
+                return;
+            }
+            try {
+                await llmChatView.reveal(node, { select: true, focus: true, expand: true });
+            } catch (e) {
+                logger.warn('[LLMChat] revealInView 失败', e);
+            }
+        }),
+    );
+
     // ─── 发送消息到队列（定时器模式） ──────────────────────────
     // 用户在对话文件中完成输入后，执行此命令将消息写入文件并标记 queued。
     // 定时器会在下一个 tick 或立即触发处理。
@@ -745,6 +790,70 @@ export function registerLLMChatCommands(
             } catch (e) {
                 logger.error('删除对话失败', e);
                 vscode.window.showErrorMessage('删除对话失败');
+            }
+        }),
+    );
+
+    // ─── 统一角色配置入口（模型 / 工具集 / 委派状态） ────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.configureRole', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+
+            const contentBytes = await vscode.workspace.fs.readFile(targetUri);
+            const { frontmatter } = extractFrontmatterAndBody(Buffer.from(contentBytes).toString('utf-8'));
+            if (!frontmatter?.chat_role) {
+                vscode.window.showWarningMessage('当前文件不是聊天角色文件');
+                return;
+            }
+
+            const currentStatus = String((frontmatter as Record<string, unknown>)['role_status'] || 'ready');
+            const currentAutonomous = (frontmatter as Record<string, unknown>)['chat_autonomous'];
+            const autonomousLabel = currentAutonomous === true ? '自主' : currentAutonomous === false ? '交互' : '未设置（继承交互默认）';
+            const category = await vscode.window.showQuickPick([
+                { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
+                { label: '$(tools) 工具集',           description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
+                { label: '$(shield) 委派状态',         description: `当前: ${currentStatus}`, id: 'status' },
+                { label: '$(robot) 自主模式',          description: `当前: ${autonomousLabel}`, id: 'autonomous' },
+            ], { title: '配置角色', placeHolder: '选择要配置的项目' });
+            if (!category) { return; }
+
+            if (category.id === 'model') {
+                await vscode.commands.executeCommand('issueManager.llmChat.configureModel', targetUri);
+            } else if (category.id === 'tools') {
+                await vscode.commands.executeCommand('issueManager.llmChat.configureTools', targetUri);
+            } else if (category.id === 'status') {
+                // ── 委派状态 ──────────────────────────────────────
+                const statusItems = [
+                    { label: '✅ ready',    description: '可正常接受委派（默认）',              value: 'ready',    picked: currentStatus === 'ready' },
+                    { label: '⚠️ testing',  description: '调试中，委派时显示警告',              value: 'testing',  picked: currentStatus === 'testing' },
+                    { label: '🚫 disabled', description: '禁止接受委派，不在可用角色列表中显示', value: 'disabled', picked: currentStatus === 'disabled' },
+                ];
+                const sel = await vscode.window.showQuickPick(statusItems, {
+                    title: '配置委派状态',
+                    placeHolder: `当前: ${currentStatus}`,
+                });
+                if (sel === undefined) { return; }
+                await updateIssueMarkdownFrontmatter(targetUri, { role_status: sel.value } as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                vscode.window.showInformationMessage(`已更新委派状态 → ${sel.value}`);
+            } else {
+                // ── 自主模式 ──────────────────────────────────────
+                const autonomousItems = [
+                    { label: '🤖 自主执行',  description: '角色默认以自主模式运行，独立完成任务不等待确认', value: true,      picked: currentAutonomous === true },
+                    { label: '💬 交互确认',  description: '角色默认以交互模式运行，破坏性操作前征求确认',   value: false,     picked: currentAutonomous === false },
+                    { label: '⬜ 继承默认',  description: '不在角色级设置，由对话级或系统默认决定',         value: undefined, picked: currentAutonomous === undefined || currentAutonomous === null },
+                ];
+                const sel = await vscode.window.showQuickPick(autonomousItems as vscode.QuickPickItem[], {
+                    title: '配置角色自主模式',
+                    placeHolder: `当前: ${autonomousLabel}`,
+                });
+                if (sel === undefined) { return; }
+                const picked = autonomousItems.find(i => i.label === (sel as typeof autonomousItems[0]).label);
+                const updates: Record<string, unknown> = picked?.value === undefined
+                    ? { chat_autonomous: null }   // null → updateIssueMarkdownFrontmatter 会删除该字段
+                    : { chat_autonomous: picked.value };
+                await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                vscode.window.showInformationMessage(`已更新角色自主模式 → ${picked?.label ?? sel.label}`);
             }
         }),
     );
@@ -879,28 +988,137 @@ export function registerLLMChatCommands(
         }),
     );
 
+    // ─── 交互式配置角色模型与 token 预算 ────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.configureModel', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+
+            const contentBytes = await vscode.workspace.fs.readFile(targetUri);
+            const { frontmatter } = extractFrontmatterAndBody(Buffer.from(contentBytes).toString('utf-8'));
+            const isRole = !!frontmatter?.chat_role;
+            const isConvo = !!frontmatter?.chat_conversation;
+            if (!isRole && !isConvo) {
+                vscode.window.showWarningMessage('当前文件不是聊天角色或对话文件');
+                return;
+            }
+
+            // 角色用 chat_role_model_family / chat_role_max_tokens
+            // 对话用 chat_model_family / chat_max_tokens（覆盖角色配置）
+            const modelKey   = isRole ? 'chat_role_model_family' : 'chat_model_family';
+            const tokensKey  = isRole ? 'chat_role_max_tokens'   : 'chat_max_tokens';
+            const fileLabel  = isRole ? '角色' : '对话';
+
+            const currentModel  = String((frontmatter as Record<string, unknown>)[modelKey]  ?? '');
+            const currentTokens = Number((frontmatter as Record<string, unknown>)[tokensKey] ?? 0);
+
+            // ── Step 1: 选择模型（动态从 VS Code Copilot API 获取）──────
+            const allModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+            // 按 family 去重，保留 maxInputTokens 最大的那个
+            const familyMap = new Map<string, vscode.LanguageModelChat>();
+            for (const m of allModels) {
+                const existing = familyMap.get(m.family);
+                if (!existing || m.maxInputTokens > existing.maxInputTokens) {
+                    familyMap.set(m.family, m);
+                }
+            }
+            const dynamicModelItems: Array<vscode.QuickPickItem & { value: string; maxInput: number }> = [
+                { label: '$(globe) 继承上级默认', description: isRole ? '使用扩展设置中的默认模型' : '使用角色配置的模型', value: '', maxInput: 0 },
+                { label: '', kind: vscode.QuickPickItemKind.Separator, value: '', maxInput: 0 },
+                ...[...familyMap.values()].map(m => ({
+                    label: `$(sparkle) ${m.family}`,
+                    description: `最大输入 ${(m.maxInputTokens / 1000).toFixed(0)}k tokens`,
+                    value: m.family,
+                    maxInput: m.maxInputTokens,
+                    picked: m.family === currentModel,
+                })),
+            ];
+            const selectedModel = await vscode.window.showQuickPick(dynamicModelItems, {
+                title: `配置${fileLabel}模型（第 1 步 / 共 2 步）`,
+                placeHolder: `当前：${currentModel || '继承上级默认'}`,
+            });
+            if (selectedModel === undefined) { return; }
+            const newModel = selectedModel.value;
+
+            // ── Step 2: 设置 max tokens ───────────────────────────
+            const totalSteps = isConvo ? 3 : 2;
+            const suggested = currentTokens || (newModel ? 8192 : 0);
+            const tokenInput = await vscode.window.showInputBox({
+                title: `配置 ${tokensKey}（第 2 步 / 共 ${totalSteps} 步）`,
+                prompt: '单次 LLM 请求最大 token 预算，0 表示继承上级默认',
+                value: String(suggested || currentTokens || 0),
+                placeHolder: '例如：8192',
+                validateInput: v => (v === '' || /^\d+$/.test(v) ? null : '请输入非负整数'),
+            });
+            if (tokenInput === undefined) { return; }
+            const newTokens = parseInt(tokenInput || '0', 10);
+
+            const updates: Record<string, unknown> = { [modelKey]: newModel || undefined };
+            if (newTokens > 0) { updates[tokensKey] = newTokens; }
+
+            // ── Step 3（仅对话）: 自主模式 ────────────────────────
+            if (isConvo) {
+                const currentAuto = (frontmatter as Record<string, unknown>)['chat_autonomous'];
+                const autoItems = [
+                    { label: '🤖 自主执行', description: '独立完成任务，不等待用户确认', value: true,      picked: currentAuto === true },
+                    { label: '💬 交互确认', description: '破坏性操作前征求用户确认',     value: false,     picked: currentAuto === false },
+                    { label: '⬜ 继承角色', description: '由角色级设置或系统默认决定',   value: undefined, picked: currentAuto === undefined || currentAuto === null },
+                ];
+                const autoSel = await vscode.window.showQuickPick(autoItems as vscode.QuickPickItem[], {
+                    title: `配置对话自主模式（第 3 步 / 共 ${totalSteps} 步）`,
+                    placeHolder: `当前: ${currentAuto === true ? '自主执行' : currentAuto === false ? '交互确认' : '继承角色'}`,
+                });
+                if (autoSel === undefined) { return; }
+                const picked = autoItems.find(i => i.label === (autoSel as typeof autoItems[0]).label);
+                updates['chat_autonomous'] = picked?.value === undefined ? null : picked.value;
+            }
+
+            await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+
+            vscode.window.showInformationMessage(
+                `已更新${fileLabel}模型配置 — 模型：${newModel || '继承上级默认'}  max_tokens：${newTokens || '继承上级默认'}`,
+            );
+        }),
+    );
+
     logger.info('      ✓ LLM 聊天命令已注册');
 }
 
 // ─── 工具函数 ─────────────────────────────────────────────────
 
-/** 可用模型列表（供 QuickPick 使用） */
-const MODEL_ITEMS: Array<vscode.QuickPickItem & { value: string }> = [
-    { label: '$(sparkle) gpt-5-mini',        description: '快速、轻量，日常任务首选（默认）',        value: 'gpt-5-mini' },
-    { label: '$(rocket) gpt-4o',             description: '均衡能力，适合复杂推理',                  value: 'gpt-4o' },
-    { label: '$(star) gpt-4.1',              description: '旗舰模型，深度分析、长文本',               value: 'gpt-4.1' },
-    { label: '$(pulse) gpt-4.1-mini',        description: '4.1 系列轻量版，速度与质量兼顾',           value: 'gpt-4.1-mini' },
-    { label: '$(brain) o3-mini',             description: '推理模型，擅长逻辑和数学',                  value: 'o3-mini' },
-    { label: '$(comment) claude-3.5-sonnet', description: 'Anthropic 旗舰，优秀的代码与分析',         value: 'claude-3.5-sonnet' },
-];
-
 /**
- * 弹出模型选择 QuickPick。
+ * 弹出模型选择 QuickPick（动态从 VS Code Copilot API 获取可用模型）。
+ * @param presetModelFamily 预设推荐的模型 family，有值时自动预选
  * @returns 选中的 modelFamily 字符串；空字符串表示使用全局默认；undefined 表示用户取消。
  */
-async function pickModelFamily(): Promise<string | undefined> {
+async function pickModelFamily(presetModelFamily?: string): Promise<string | undefined> {
     const config = vscode.workspace.getConfiguration('issueManager');
     const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
+
+    const allModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    const familyMap = new Map<string, vscode.LanguageModelChat>();
+    for (const m of allModels) {
+        const existing = familyMap.get(m.family);
+        if (!existing || m.maxInputTokens > existing.maxInputTokens) {
+            familyMap.set(m.family, m);
+        }
+    }
+
+    const modelItems: Array<vscode.QuickPickItem & { value: string }> = [...familyMap.values()].map(m => ({
+        label: `$(sparkle) ${m.family}`,
+        description: `最大输入 ${(m.maxInputTokens / 1000).toFixed(0)}k tokens`
+            + (m.family === presetModelFamily ? '（预设推荐）' : ''),
+        value: m.family,
+    }));
+
+    // 预设推荐的模型排到最前面
+    if (presetModelFamily) {
+        const idx = modelItems.findIndex(i => i.value === presetModelFamily);
+        if (idx > 0) {
+            const [item] = modelItems.splice(idx, 1);
+            modelItems.unshift(item);
+        }
+    }
 
     const items: Array<vscode.QuickPickItem & { value: string }> = [
         {
@@ -908,11 +1126,13 @@ async function pickModelFamily(): Promise<string | undefined> {
             description: '跟随 issueManager.llm.modelFamily 设置',
             value: '',
         },
-        ...MODEL_ITEMS,
+        ...modelItems,
     ];
 
     const pick = await vscode.window.showQuickPick(items, {
-        placeHolder: '选择此角色使用的 AI 模型（可随时通过编辑角色文件修改）',
+        placeHolder: presetModelFamily
+            ? `推荐模型: ${presetModelFamily}（可选择其他）`
+            : '选择此角色使用的 AI 模型（可随时通过编辑角色文件修改）',
     });
 
     if (!pick) { return undefined; }   // 用户按 ESC → 取消整个创建流程

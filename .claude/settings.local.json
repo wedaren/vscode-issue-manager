@@ -31,7 +31,9 @@
       "Bash(done)",
       "Bash(git add:*)",
       "Bash(grep -n \"vscode.lm.tools\\\\|vscode.lm.invokeTool\" src/**/*.ts)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(grep -n \"角色分析师\\\\|role_analyst\\\\|analyst\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/*.ts)",
+      "Bash(xargs ls:*)"
     ]
   }
 }

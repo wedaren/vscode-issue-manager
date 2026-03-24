@@ -6,10 +6,11 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import {
-    getAllIssueMarkdowns,
+    getIssueMarkdownsByType,
     extractFrontmatterAndBody,
     createIssueMarkdown,
     updateIssueMarkdownFrontmatter,
+    updateIssueMarkdownBody,
 } from '../data/IssueMarkdowns';
 import type { FrontmatterData } from '../data/IssueMarkdowns';
 import { createIssueNodes, getSingleIssueNodeByUri } from '../data/issueTreeManager';
@@ -31,8 +32,9 @@ import type {
     ChatToolCallFrontmatter,
     ExecutionRunRecord,
     ExecutionToolCall,
+    RecentActivityEntry,
 } from './types';
-import { stripMarker } from './convStateMarker';
+import { stripMarker, parseStateMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
 
 const logger = Logger.getInstance();
@@ -46,23 +48,19 @@ function toFiniteNumber(v: unknown): number | undefined {
 
 // ─── 角色相关 ───────────────────────────────────────────────
 
-/** 从所有 issueMarkdown 中筛选出聊天角色 */
-export async function getAllChatRoles(): Promise<ChatRoleInfo[]> {
-    const all = await getAllIssueMarkdowns();
+/** 从类型索引中获取所有聊天角色（O(K)，K=角色数，无 findFiles） */
+export function getAllChatRoles(): ChatRoleInfo[] {
+    const all = getIssueMarkdownsByType('chat_role');
     const roles: ChatRoleInfo[] = [];
     for (const md of all) {
-        if (!md.frontmatter || md.frontmatter.chat_role !== true) {
-            continue;
-        }
+        if (!md.frontmatter || md.frontmatter.chat_role !== true) { continue; }
         const fm = md.frontmatter as unknown as ChatRoleFrontmatter & FrontmatterData;
         roles.push({
             id: extractId(md.uri),
             name: fm.chat_role_name || md.title || '未命名角色',
             avatar: fm.chat_role_avatar || 'hubot',
-            systemPrompt: fm.chat_role_system_prompt || '',
             modelFamily: fm.chat_role_model_family,
             uri: md.uri,
-            // ─── 定时器配置（YAML 解析可能产生字符串，统一转为 number） ──
             timerEnabled: fm.timer_enabled === true,
             timerInterval: toFiniteNumber(fm.timer_interval),
             timerMaxConcurrent: toFiniteNumber(fm.timer_max_concurrent),
@@ -74,15 +72,63 @@ export async function getAllChatRoles(): Promise<ChatRoleInfo[]> {
             mcpServers: Array.isArray(fm.mcp_servers) ? (fm.mcp_servers as unknown[]).map(String) : undefined,
             extraTools: Array.isArray(fm.extra_tools) ? (fm.extra_tools as unknown[]).map(String) : undefined,
             excludedTools: Array.isArray(fm.excluded_tools) ? (fm.excluded_tools as unknown[]).map(String) : undefined,
+            roleStatus: fm.role_status as 'ready' | 'testing' | 'disabled' | undefined,
+            autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
         });
     }
     return roles;
 }
 
 /** 根据 ID 获取单个角色 */
-export async function getChatRoleById(roleId: string): Promise<ChatRoleInfo | undefined> {
-    const roles = await getAllChatRoles();
+export function getChatRoleById(roleId: string): ChatRoleInfo | undefined {
+    const roles = getAllChatRoles();
     return roles.find(r => r.id === roleId);
+}
+
+/**
+ * 从角色文件的 markdown body 中读取系统提示词（懒加载，按需调用）。
+ * body 格式约定：第一行为 `# 角色名`，其后内容即为 system prompt。
+ * 向后兼容：若 body 为空但 frontmatter 中仍有 chat_role_system_prompt，则回退读取。
+ */
+export async function getRoleSystemPrompt(uri: vscode.Uri): Promise<string> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+        const { frontmatter, body } = extractFrontmatterAndBody(raw);
+
+        // 去掉第一行 # 标题
+        const stripped = body.replace(/^#\s+.*\n?/, '').trim();
+        if (stripped) { return stripped; }
+
+        // 向后兼容：旧文件的 system prompt 可能还在 frontmatter 中
+        const fm = frontmatter as Record<string, unknown> | null;
+        if (fm?.chat_role_system_prompt && typeof fm.chat_role_system_prompt === 'string') {
+            return fm.chat_role_system_prompt;
+        }
+        return '';
+    } catch (e) {
+        logger.warn('[llmChatDataManager] 读取角色 system prompt 失败', e);
+        return '';
+    }
+}
+
+/**
+ * 更新角色文件的系统提示词（写入 markdown body，保留 frontmatter 不变）。
+ */
+export async function updateRoleSystemPrompt(uri: vscode.Uri, newPrompt: string): Promise<boolean> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const fm = frontmatter as Record<string, unknown> | null;
+        const roleName = (fm?.chat_role_name as string) || '未命名角色';
+
+        const newBody = newPrompt
+            ? `# ${roleName}\n\n${newPrompt}\n`
+            : `# ${roleName}\n`;
+        return await updateIssueMarkdownBody(uri, newBody);
+    } catch (e) {
+        logger.error('[llmChatDataManager] 更新角色 system prompt 失败', e);
+        return false;
+    }
 }
 
 /** 创建新的聊天角色文件，返回角色 ID */
@@ -99,7 +145,6 @@ export async function createChatRole(
         chat_role: true,
         chat_role_name: name,
         chat_role_avatar: avatar || 'hubot',
-        chat_role_system_prompt: systemPrompt,
         chat_role_model_family: modelFamily || defaultModelFamily,
         // ─── 定时器配置（默认关闭，按需开启） ────────────────
         timer_enabled: false,
@@ -113,7 +158,9 @@ export async function createChatRole(
         mcp_servers: mcpServers ?? [],
     } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[] };
 
-    const body = `# ${name}\n`;
+    const body = systemPrompt
+        ? `# ${name}\n\n${systemPrompt}\n`
+        : `# ${name}\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
     if (!uri) {
         return null;
@@ -124,18 +171,14 @@ export async function createChatRole(
 
 // ─── 对话相关 ───────────────────────────────────────────────
 
-/** 获取某角色下的所有对话 */
-export async function getConversationsForRole(roleId: string): Promise<ChatConversationInfo[]> {
-    const all = await getAllIssueMarkdowns();
+/** 获取某角色下的所有对话（从类型索引查询，O(K)） */
+export function getConversationsForRole(roleId: string): ChatConversationInfo[] {
+    const all = getIssueMarkdownsByType('chat_conversation');
     const convos: ChatConversationInfo[] = [];
     for (const md of all) {
-        if (!md.frontmatter || md.frontmatter.chat_conversation !== true) {
-            continue;
-        }
+        if (!md.frontmatter || md.frontmatter.chat_conversation !== true) { continue; }
         const fm = md.frontmatter as unknown as ChatConversationFrontmatter & FrontmatterData;
-        if (fm.chat_role_id !== roleId) {
-            continue;
-        }
+        if (fm.chat_role_id !== roleId) { continue; }
         convos.push({
             id: extractId(md.uri),
             roleId: fm.chat_role_id,
@@ -148,14 +191,13 @@ export async function getConversationsForRole(roleId: string): Promise<ChatConve
             logId: fm.chat_log_id,
         });
     }
-    // 按最后修改时间降序
     convos.sort((a, b) => b.mtime - a.mtime);
     return convos;
 }
 
 /** 创建新的对话文件 */
 export async function createConversation(roleId: string, title?: string): Promise<vscode.Uri | null> {
-    const role = await getChatRoleById(roleId);
+    const role = getChatRoleById(roleId);
     const roleName = role?.name || '未知角色';
     const convoTitle = title || `与 ${roleName} 的对话`;
 
@@ -171,9 +213,10 @@ export async function createConversation(roleId: string, title?: string): Promis
         chat_model_family: defaultModelFamily,
         chat_max_tokens: role?.maxTokens ?? 0,
         chat_token_used: 0,
+        chat_autonomous: false,
     };
 
-    const body = `# ${convoTitle}\n\n`;
+    const body = `# ${convoTitle}\n\n<!-- llm:ready -->\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
     if (uri) {
         // 挂在角色的树节点下
@@ -237,7 +280,13 @@ export async function appendUserMessageQueued(
             await vscode.workspace.fs.readFile(uri),
         ).toString('utf8');
 
-        // 清除旧状态标记
+        // 防御性检查：如果文件已有 executing/queued 标记，说明上一轮尚未完成，拒绝写入
+        const existingMarker = parseStateMarker(raw);
+        if (existingMarker && (existingMarker.status === 'executing' || existingMarker.status === 'queued')) {
+            throw new Error(`对话当前状态为 ${existingMarker.status}，无法追加新消息。请等待当前轮次完成。`);
+        }
+
+        // 清除旧状态标记（如 error/retrying）
         const stripped = stripMarker(raw);
         const dateStr = formatTimestamp(Date.now());
         const block = `\n## User (${dateStr})\n\n${content}\n\n<!-- llm:queued -->\n`;
@@ -256,11 +305,14 @@ export async function appendUserMessageQueued(
 export async function updateConversationTokenUsed(
     uri: vscode.Uri,
     tokenUsed: number,
+    maxTokens?: number,
 ): Promise<void> {
     try {
-        await updateIssueMarkdownFrontmatter(uri, {
-            chat_token_used: tokenUsed,
-        } as Partial<FrontmatterData>);
+        const updates: Partial<FrontmatterData> = { chat_token_used: tokenUsed };
+        if (maxTokens && maxTokens > 0) {
+            updates.chat_token_used_pct = Math.round((tokenUsed / maxTokens) * 100);
+        }
+        await updateIssueMarkdownFrontmatter(uri, updates);
     } catch (e) {
         logger.error('updateConversationTokenUsed 失败', e);
     }
@@ -295,6 +347,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
     modelFamily?: string;
     maxTokens?: number;
     tokenUsed?: number;
+    autonomous?: boolean;
 } | null> {
     try {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
@@ -305,6 +358,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
             modelFamily: fm.chat_model_family as string | undefined,
             maxTokens: fm.chat_max_tokens as number | undefined,
             tokenUsed: fm.chat_token_used as number | undefined,
+            autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
         };
     } catch {
         return null;
@@ -313,14 +367,12 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
 
 // ─── 群组相关 ───────────────────────────────────────────────
 
-/** 获取所有群组 */
-export async function getAllChatGroups(): Promise<ChatGroupInfo[]> {
-    const all = await getAllIssueMarkdowns();
+/** 获取所有群组（从类型索引查询，O(K)） */
+export function getAllChatGroups(): ChatGroupInfo[] {
+    const all = getIssueMarkdownsByType('chat_group');
     const groups: ChatGroupInfo[] = [];
     for (const md of all) {
-        if (!md.frontmatter || md.frontmatter.chat_group !== true) {
-            continue;
-        }
+        if (!md.frontmatter || md.frontmatter.chat_group !== true) { continue; }
         const fm = md.frontmatter as unknown as ChatGroupFrontmatter & FrontmatterData;
         groups.push({
             id: extractId(md.uri),
@@ -334,8 +386,8 @@ export async function getAllChatGroups(): Promise<ChatGroupInfo[]> {
 }
 
 /** 根据 ID 获取群组 */
-export async function getChatGroupById(groupId: string): Promise<ChatGroupInfo | undefined> {
-    const groups = await getAllChatGroups();
+export function getChatGroupById(groupId: string): ChatGroupInfo | undefined {
+    const groups = getAllChatGroups();
     return groups.find(g => g.id === groupId);
 }
 
@@ -358,21 +410,17 @@ export async function createChatGroup(
     return extractId(uri);
 }
 
-/** 获取群组下的所有对话 */
-export async function getConversationsForGroup(groupId: string): Promise<ChatConversationInfo[]> {
-    const all = await getAllIssueMarkdowns();
+/** 获取群组下的所有对话（从类型索引查询，O(K)） */
+export function getConversationsForGroup(groupId: string): ChatConversationInfo[] {
+    const all = getIssueMarkdownsByType('chat_group_conversation');
     const convos: ChatConversationInfo[] = [];
     for (const md of all) {
-        if (!md.frontmatter || md.frontmatter.chat_group_conversation !== true) {
-            continue;
-        }
+        if (!md.frontmatter || md.frontmatter.chat_group_conversation !== true) { continue; }
         const fm = md.frontmatter as unknown as ChatGroupConversationFrontmatter & FrontmatterData;
-        if (fm.chat_group_id !== groupId) {
-            continue;
-        }
+        if (fm.chat_group_id !== groupId) { continue; }
         convos.push({
             id: extractId(md.uri),
-            roleId: groupId, // 复用 roleId 字段存放 groupId
+            roleId: groupId,
             title: fm.chat_title || md.title || '未命名对话',
             uri: md.uri,
             mtime: md.mtime,
@@ -384,7 +432,7 @@ export async function getConversationsForGroup(groupId: string): Promise<ChatCon
 
 /** 创建群组对话 */
 export async function createGroupConversation(groupId: string, title?: string): Promise<vscode.Uri | null> {
-    const group = await getChatGroupById(groupId);
+    const group = getChatGroupById(groupId);
     const groupName = group?.name || '未知群组';
     const convoTitle = title || `${groupName} 的讨论`;
 
@@ -667,6 +715,96 @@ export async function getExecutionLogInfo(conversationUri: vscode.Uri): Promise<
     }
 }
 
+/**
+ * 聚合所有执行日志，返回最近 N 条 Run 条目（跨对话）。
+ * 用于「最近活动」视图。
+ */
+export async function getRecentActivityEntries(limit = 30): Promise<RecentActivityEntry[]> {
+    const allLogs = getIssueMarkdownsByType('chat_execution_log');
+    const entries: RecentActivityEntry[] = [];
+
+    for (const md of allLogs) {
+        if (!md.frontmatter || md.frontmatter.chat_execution_log !== true) { continue; }
+        const fm = md.frontmatter as unknown as ChatExecutionLogFrontmatter;
+        const conversationId = fm.chat_conversation_id;
+
+        let raw: string;
+        try {
+            raw = Buffer.from(await vscode.workspace.fs.readFile(md.uri)).toString('utf8');
+        } catch { continue; }
+
+        // 按 Run header 拆分（streaming 格式: ## Run #N (YYYY-MM-DD HH:mm:ss)，无 icon/summary）
+        const runHeaderRe = /## Run #(\d+) \((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)/g;
+        let match: RegExpExecArray | null;
+        const runPositions: { runNumber: number; timestamp: number; startIdx: number }[] = [];
+
+        while ((match = runHeaderRe.exec(raw)) !== null) {
+            const ts = new Date(match[2].replace(' ', 'T')).getTime();
+            runPositions.push({
+                runNumber: Number(match[1]),
+                timestamp: ts,
+                startIdx: match.index,
+            });
+        }
+
+        // 解析每个 run section 的上下文和结果
+        for (let i = 0; i < runPositions.length; i++) {
+            const h = runPositions[i];
+            const nextStart = i + 1 < runPositions.length ? runPositions[i + 1].startIdx : raw.length;
+            const section = raw.slice(h.startIdx, nextStart);
+
+            // 上下文来自 startLogRun 写的首行: 📋 **开始执行** | 触发: X | 角色: Y | 模型: Z
+            const ctxMatch = /📋 \*\*开始执行\*\* \| (.+)/.exec(section);
+            let roleName: string | undefined;
+            let modelFamily: string | undefined;
+            let trigger: string | undefined;
+            if (ctxMatch) {
+                const parts = ctxMatch[1];
+                const r = /角色: ([^|]+)/.exec(parts);
+                const m = /模型: ([^|]+)/.exec(parts);
+                const t = /触发: ([^|]+)/.exec(parts);
+                roleName = r?.[1]?.trim();
+                modelFamily = m?.[1]?.trim();
+                trigger = t?.[1]?.trim();
+            }
+
+            // 成功/失败从 appendLogLine 写的结果行提取
+            const hasSuccess = /✅ \*\*成功\*\*/.test(section);
+            const hasFailure = /❌ \*\*失败/.test(section);
+            const success = hasSuccess && !hasFailure;
+
+            // 生成摘要
+            let summary: string;
+            if (hasSuccess) {
+                const sm = /✅ \*\*成功\*\* \| (.+)/.exec(section);
+                summary = sm ? `成功 | ${sm[1].trim()}` : '成功';
+            } else if (hasFailure) {
+                const fm2 = /❌ \*\*失败[^*]*\*\* \| (.+)/.exec(section);
+                summary = fm2 ? `失败 | ${fm2[1].trim()}` : '失败';
+            } else {
+                // 可能仍在执行中
+                summary = '执行中…';
+            }
+
+            entries.push({
+                runNumber: h.runNumber,
+                timestamp: h.timestamp,
+                conversationId,
+                logUri: md.uri,
+                roleName,
+                modelFamily,
+                trigger,
+                success,
+                summary,
+            });
+        }
+    }
+
+    // 按时间倒序，取前 N 条
+    entries.sort((a, b) => b.timestamp - a.timestamp);
+    return entries.slice(0, limit);
+}
+
 /** 格式化单条执行记录为 markdown */
 function formatRunRecord(record: ExecutionRunRecord): string {
     const ts = formatTimestamp(record.startedAt);
@@ -907,14 +1045,12 @@ function chromeChatUri(id: string): vscode.Uri | null {
     return vscode.Uri.file(path.join(dir, `${id}.md`));
 }
 
-/** 获取所有 Chrome 面板聊天对话（按 mtime 降序） */
-export async function getAllChromeChatConversations(): Promise<ChromeChatInfo[]> {
-    const all = await getAllIssueMarkdowns();
+/** 获取所有 Chrome 面板聊天对话（从类型索引查询，O(K)） */
+export function getAllChromeChatConversations(): ChromeChatInfo[] {
+    const all = getIssueMarkdownsByType('chrome_chat');
     const convos: ChromeChatInfo[] = [];
     for (const md of all) {
-        if (!md.frontmatter || (md.frontmatter as any).chrome_chat !== true) {
-            continue;
-        }
+        if (!md.frontmatter || (md.frontmatter as any).chrome_chat !== true) { continue; }
         const fm = md.frontmatter as unknown as ChromeChatFrontmatter & FrontmatterData;
         convos.push({
             id: extractId(md.uri),

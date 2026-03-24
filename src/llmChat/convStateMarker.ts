@@ -3,17 +3,19 @@
  *
  * 在对话文件末尾通过 HTML 注释标记当前处理状态：
  *
- *   <!-- llm:queued -->
- *   <!-- llm:executing startedAt="2026-03-10 14:21:00" retryCount="0" -->
- *   <!-- llm:retrying retryAt="2026-03-10 14:22:00" retryCount="1" -->
- *   <!-- llm:error message="timeout" -->
+ *   <!-- llm:ready -->                                                  等待用户输入
+ *   <!-- llm:queued -->                                                 用户已提交，等待处理
+ *   <!-- llm:executing startedAt="2026-03-10 14:21:00" retryCount="0" --> 执行中
+ *   <!-- llm:retrying retryAt="2026-03-10 14:22:00" retryCount="1" -->  等待重试
+ *   <!-- llm:error message="timeout" -->                                执行失败
  *
  * HTML 注释在 Markdown 渲染中不可见，不影响正常阅读。
  * 标记始终位于文件末尾，每次只存在一个。
+ * stripMarker() 会移除所有 llm:xxx 标记（包括 ready）。
  */
 import * as vscode from 'vscode';
 
-export type ConvStatus = 'queued' | 'executing' | 'retrying' | 'error';
+export type ConvStatus = 'ready' | 'queued' | 'executing' | 'retrying' | 'error';
 
 export interface ConvStateMarker {
     status: ConvStatus;
