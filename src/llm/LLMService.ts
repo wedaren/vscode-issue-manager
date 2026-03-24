@@ -176,6 +176,131 @@ export class LLMService {
         return { text: full, modelFamily };
     }
 
+    /**
+     * 带工具调用的流式请求。
+     * 当 LLM 请求调用工具时，自动执行工具并将结果反馈给 LLM 继续生成。
+     * 循环直到 LLM 不再调用工具为止。
+     */
+    public static async streamWithTools(
+        messages: vscode.LanguageModelChatMessage[],
+        tools: vscode.LanguageModelChatTool[],
+        onChunk: (chunk: string) => void,
+        onToolCall: (toolName: string, input: Record<string, unknown>) => Promise<string>,
+        options?: {
+            signal?: AbortSignal;
+            modelFamily?: string;
+            /** 工具调用状态回调（用于 UI 显示） */
+            onToolStatus?: (status: { toolName: string; phase: 'calling' | 'done'; result?: string }) => void;
+            /** 最大工具调用轮次（防止无限循环） */
+            maxToolRounds?: number;
+        },
+    ): Promise<{ text: string; modelFamily?: string } | null> {
+        const logger = Logger.getInstance();
+        const startMs = Date.now();
+        const maxRounds = options?.maxToolRounds ?? 10;
+
+        logger.info(`[LLM.streamWithTools] 开始 | 工具数=${tools.length} | 消息数=${messages.length}`);
+
+        if (options?.signal?.aborted) {
+            throw new Error('请求已取消');
+        }
+
+        const model = await LLMService.selectModel(options);
+        if (!model) {
+            vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
+            return null;
+        }
+
+        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        const cts = new vscode.CancellationTokenSource();
+        let onAbort: (() => void) | undefined;
+        if (options?.signal) {
+            onAbort = () => cts.cancel();
+            try { options.signal.addEventListener('abort', onAbort); } catch { onAbort = undefined; }
+        }
+
+        // 使用工作副本的消息列表，在工具调用循环中追加
+        const workingMessages = [...messages];
+        let fullText = '';
+        let round = 0;
+
+        try {
+            while (round < maxRounds) {
+                if (cts.token.isCancellationRequested) { throw new Error('请求已取消'); }
+
+                round++;
+                logger.info(`[LLM.streamWithTools] 第 ${round} 轮请求`);
+
+                const resp = await model.sendRequest(workingMessages, { tools }, cts.token);
+
+                // 收集本轮的文本和工具调用
+                let roundText = '';
+                const toolCalls: vscode.LanguageModelToolCallPart[] = [];
+
+                for await (const part of resp.stream) {
+                    if (cts.token.isCancellationRequested) { throw new Error('请求已取消'); }
+
+                    if (part instanceof vscode.LanguageModelTextPart) {
+                        roundText += part.value;
+                        try { onChunk(part.value); } catch { /* 忽略回调错误 */ }
+                    } else if (part instanceof vscode.LanguageModelToolCallPart) {
+                        toolCalls.push(part);
+                    }
+                }
+
+                fullText += roundText;
+
+                // 如果没有工具调用，表示 LLM 完成了回复
+                if (toolCalls.length === 0) {
+                    break;
+                }
+
+                // 处理工具调用
+                // 1. 将本轮助手回复（包含文本和工具调用）添加到消息列表
+                const assistantParts: Array<vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart> = [];
+                if (roundText) {
+                    assistantParts.push(new vscode.LanguageModelTextPart(roundText));
+                }
+                assistantParts.push(...toolCalls);
+                workingMessages.push(vscode.LanguageModelChatMessage.Assistant(assistantParts));
+
+                // 2. 执行每个工具调用并收集结果
+                const toolResultParts: vscode.LanguageModelToolResultPart[] = [];
+                for (const tc of toolCalls) {
+                    logger.info(`[LLM.streamWithTools] 调用工具: ${tc.name}`, tc.input);
+                    options?.onToolStatus?.({ toolName: tc.name, phase: 'calling' });
+
+                    try {
+                        const result = await onToolCall(tc.name, tc.input as Record<string, unknown>);
+                        toolResultParts.push(
+                            new vscode.LanguageModelToolResultPart(tc.callId, [new vscode.LanguageModelTextPart(result)]),
+                        );
+                        options?.onToolStatus?.({ toolName: tc.name, phase: 'done', result });
+                    } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        toolResultParts.push(
+                            new vscode.LanguageModelToolResultPart(tc.callId, [new vscode.LanguageModelTextPart(`工具执行失败: ${errMsg}`)]),
+                        );
+                        options?.onToolStatus?.({ toolName: tc.name, phase: 'done', result: `失败: ${errMsg}` });
+                    }
+                }
+
+                // 3. 将工具结果作为 User 消息追加
+                workingMessages.push(vscode.LanguageModelChatMessage.User(toolResultParts));
+            }
+        } finally {
+            try {
+                if (options?.signal && onAbort) {
+                    options.signal.removeEventListener('abort', onAbort);
+                }
+            } catch { /* ignore */ }
+            cts.dispose();
+        }
+
+        logger.info(`[LLM.streamWithTools] 完成 | 轮次=${round} | 响应长度=${fullText.length}字 | 耗时=${Date.now() - startMs}ms`);
+        return { text: fullText, modelFamily };
+    }
+
     private static async selectModel(options?: {
         signal?: AbortSignal;
         modelFamily?: string; // 外部传入的指定模型 family，优先级高于 VS Code 配置

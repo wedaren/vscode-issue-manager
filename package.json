@@ -694,6 +694,89 @@
         "command": "issueManager.organizeEditorGroupsWithLLM",
         "title": "LLM 智能整理编辑器组",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "issueManager.llmChat.createRole",
+        "title": "新建聊天角色",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.llmChat.newConversation",
+        "title": "新建对话",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.openConversation",
+        "title": "打开对话",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.llmChat.sendMessage",
+        "title": "发送消息到 LLM",
+        "category": "Issue Manager",
+        "icon": "$(send)"
+      },
+      {
+        "command": "issueManager.llmChat.refresh",
+        "title": "刷新聊天角色视图",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.llmChat.editRole",
+        "title": "编辑角色",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.llmChat.openChat",
+        "title": "打开聊天",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.setDisplayMode.bubble",
+        "title": "切换到气泡模式",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.setDisplayMode.editor",
+        "title": "切换到编辑器模式",
+        "category": "Issue Manager",
+        "icon": "$(file)"
+      },
+      {
+        "command": "issueManager.llmChat.openConversation",
+        "title": "打开对话",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.deleteConversation",
+        "title": "删除对话",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.llmChat.createGroup",
+        "title": "新建群组",
+        "category": "Issue Manager",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "issueManager.llmChat.openGroupConversation",
+        "title": "打开群组对话",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.editGroup",
+        "title": "编辑群组",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
       }
     ],
     "submenus": [
@@ -941,6 +1024,26 @@
           "command": "issueManager.deepResearch.refresh",
           "when": "view == issueManager.views.deepResearch",
           "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.organizeEditorGroupsWithLLM",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.llmChat.createRole",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.llmChat.createGroup",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.llmChat.refresh",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@3"
         }
       ],
       "editor/title": [
@@ -962,14 +1065,44 @@
         {
           "command": "issueManager.setRecentSort.vtime",
           "group": "1_sort@3"
-        },
-        {
-          "command": "issueManager.organizeEditorGroupsWithLLM",
-          "when": "view == issueManager.views.editorGroups",
-          "group": "navigation@1"
         }
       ],
       "view/item/context": [
+        {
+          "command": "issueManager.llmChat.setDisplayMode.bubble",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole' && issueManager.llmChat.displayMode == 'editor'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.setDisplayMode.editor",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole' && issueManager.llmChat.displayMode != 'editor'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.llmChat.newConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.llmChat.editRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@4"
+        },
+        {
+          "command": "issueManager.llmChat.newConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatGroup'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.editGroup",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatGroup'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.llmChat.deleteConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatConversation'",
+          "group": "inline@1"
+        },
         {
           "command": "issueManager.editorGroup.rename",
           "when": "view == issueManager.views.editorGroups && viewItem =~ /^editorGroup/",
@@ -1859,6 +1992,11 @@
           "id": "issueManager.views.editorGroups",
           "name": "编辑器组",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.llmChat",
+          "name": "LLM 聊天",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -1911,6 +2049,16 @@
       {
         "view": "issueManager.views.logicalTree",
         "contents": "当前文件没有 issue_root 字段。\n[为当前文件创建根节点](command:issueManager.logicalTree.createRoot)\n\n逻辑层级树基于当前活动文件的 Frontmatter 字段构建，显示该文件所属的完整层级结构。",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.llmChat",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.llmChat",
+        "contents": "还没有聊天角色，创建一个来开始对话吧。\n[新建聊天角色](command:issueManager.llmChat.createRole)",
         "when": "issueManager.isDirConfigured"
       }
     ]

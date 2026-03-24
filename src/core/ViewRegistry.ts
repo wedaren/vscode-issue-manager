@@ -25,6 +25,9 @@ import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
 import { EditorGroupTreeProvider, type EditorGroupViewNode } from '../views/EditorGroupTreeProvider';
+import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRoleProvider';
+import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
+import { RoleTimerManager } from '../llmChat/RoleTimerManager';
 
 /**
  * 视图注册管理器
@@ -110,11 +113,14 @@ export class ViewRegistry {
         // 注册编辑器组管理视图
         const { editorGroupProvider, editorGroupView } = this.registerEditorGroupView();
 
+        // 注册 LLM 聊天角色视图
+        const { llmChatRoleProvider, llmChatRoleView } = this.registerLLMChatViews();
+
         // 注册相关问题视图
         this.registerRelatedView();
         // 注册回顾视图
         this.registerReviewView();
-        
+
         // 注册RSS虚拟文件提供器
         this.registerRSSVirtualFileProvider();
 
@@ -147,6 +153,8 @@ export class ViewRegistry {
             gitBranchView,
             editorGroupProvider,
             editorGroupView,
+            llmChatRoleProvider,
+            llmChatRoleView,
         };
     }
 
@@ -441,5 +449,33 @@ export class ViewRegistry {
         commandHandler.registerCommands(this.context);
         
         return { markerManager, markerTreeProvider, markerView };
+    }
+
+    /**
+     * 注册 LLM 聊天角色视图和底部聊天输入面板
+     */
+    private registerLLMChatViews(): {
+        llmChatRoleProvider: LLMChatRoleProvider;
+        llmChatRoleView: vscode.TreeView<LLMChatViewNode>;
+    } {
+        // 侧边栏树视图：聊天角色列表
+        const llmChatRoleProvider = new LLMChatRoleProvider(this.context);
+        const llmChatRoleView = vscode.window.createTreeView<LLMChatViewNode>('issueManager.views.llmChat', {
+            treeDataProvider: llmChatRoleProvider,
+            showCollapseAll: true,
+        });
+
+        this.context.subscriptions.push(llmChatRoleView);
+        this.context.subscriptions.push(llmChatRoleProvider);
+
+        // 注册聊天相关命令
+        registerLLMChatCommands(this.context, llmChatRoleProvider);
+
+        // 启动角色定时器管理器
+        const timerManager = RoleTimerManager.getInstance();
+        void timerManager.start();
+        this.context.subscriptions.push(timerManager);
+
+        return { llmChatRoleProvider, llmChatRoleView };
     }
 }

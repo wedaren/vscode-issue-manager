@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install -D chokidar-cli)",
+      "Bash(npx vue-tsc --noEmit --project chrome-extension-wxt/tsconfig.json)",
+      "Bash(npx vue-tsc --noEmit)"
+    ]
+  }
+}

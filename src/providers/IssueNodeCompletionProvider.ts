@@ -86,8 +86,8 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
 
             // 转换为补全项
             const items = await Promise.all(
-                filteredNodes.map((node, index) => 
-                    this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index+2)
+                filteredNodes.map((node, index) =>
+                    this.createCompletionItem(node, document, filterResult.hasTrigger, insertMode, focusedData, index+4)
                 )
             );
             // 获取当前行文本
@@ -95,46 +95,56 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             // 获取光标之前的文本
             const prefix = lineText.slice(0, position.character);
 
-            // 在数组前插入两条常驻项：前台创建 & 后台创建（调用现有 selectOrCreateIssue QuickPick）
+            const lineStart = new vscode.Position(position.line, 0);
+            const replacingRange = new vscode.Range(lineStart, position);
+            const insertingAtLineStart = new vscode.Range(lineStart, lineStart);
+
+            // ─── 固定项 1：## User (当前时间戳) ────────────────────
+            const now = new Date();
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+            const userMsgItem = new vscode.CompletionItem(`## User (${dateStr})`, vscode.CompletionItemKind.Snippet);
+            userMsgItem.detail = '插入用户消息块（当前时间戳）';
+            userMsgItem.documentation = new vscode.MarkdownString('插入 `## User (timestamp)` 块，光标定位到内容区域，写完后追加 `<!-- llm:queued -->` 并保存即可触发 LLM。');
+            userMsgItem.insertText = new vscode.SnippetString(`## User (${dateStr})\n\n$0`);
+            userMsgItem.sortText = '\u0000';
+            userMsgItem.preselect = true;
+            userMsgItem.filterText = `## User ${prefix ?? ''}`;
+            userMsgItem.range = { inserting: insertingAtLineStart, replacing: replacingRange };
+
+            // ─── 固定项 2：<!-- llm:queued --> ─────────────────────
+            const queuedItem = new vscode.CompletionItem('<!-- llm:queued -->', vscode.CompletionItemKind.Snippet);
+            queuedItem.detail = '标记对话等待 LLM 处理';
+            queuedItem.documentation = new vscode.MarkdownString('追加此标记后保存文件（`Cmd+S`），将立即触发 LLM 处理当前对话。');
+            queuedItem.insertText = new vscode.SnippetString('<!-- llm:queued -->');
+            queuedItem.sortText = '\u0001';
+            queuedItem.filterText = `<!-- llm ${prefix ?? ''}`;
+            queuedItem.range = { inserting: insertingAtLineStart, replacing: replacingRange };
+
+            // ─── 固定项 3/4：新建问题 ───────────────────────────────
             const createItem = new vscode.CompletionItem('新建问题', vscode.CompletionItemKind.Keyword);
             createItem.detail = `快速新建问题:${prefix ?? ''}`;
             createItem.insertText = prefix  ?? '';
             createItem.keepWhitespace = true;
-            createItem.sortText = '\u0000';
+            createItem.sortText = '\u0002';
             createItem.preselect = true;
             createItem.filterText = prefix ?? '';
-            // 直接调用专门的 completion 命令（避免弹出 QuickPick）
             createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [inferredParentId, prefix ?? undefined, false, insertMode, false] };
 
             const createBackground = new vscode.CompletionItem('新建问题（后台）', vscode.CompletionItemKind.Keyword);
             createBackground.detail = `后台创建并由 AI 填充（不打开）:${prefix ?? ''}`;
             createBackground.insertText = prefix  ?? '';
             createBackground.keepWhitespace = true;
-            createBackground.sortText = '\u0001';
+            createBackground.sortText = '\u0003';
             createBackground.preselect = true;
             createBackground.filterText = prefix ?? '';
-            // 这里也复用 selectOrCreateIssue，QuickPick 会根据用户选择走后台路径；保留未来可直接调用后台命令的空间
-            // 直接在后台创建，不弹出 QuickPick
             createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [inferredParentId, prefix ?? undefined, true, insertMode, false] };
 
-            // 说明：
-            // - 我们需要两个目标同时满足：确保这两项（“新建问题” / “新建问题（后台）”）在补全列表中被识别为匹配项以便靠前显示，
-            //   同时尽量避免直接删除用户已输入的有效文本。为此采取了下面的折衷：
-            //   * 把 replacing 范围扩大为从行首到当前位置，这样编辑器在计算匹配/权重时能把当前行的内容考虑在内，
-            //     有助于提高这些固定项的相关性评分（避免被其他按关键字匹配的候选压到后面）。
-            //   * 把 inserting 设置为行首的零长度范围，表明插入点在行首位置（在 replace 模式下会用 replacing 覆盖），
-            //     但我们实际把补全的插入动作交给绑定的 `command` 来执行（`createIssueFromCompletion`），在命令中会在下一行插入内容。
-            // - 代价与注意事项：接受补全时编辑器会首先以 `insertText`（此处我们通常设置为触发关键字或空字符串）替换从行首到光标的文本，
-            //   随后补全的 `command` 会运行并在下一行插入新内容。如果你希望“完全不修改当前行”，应把 `insertText = ''` 并由 `command` 负责把关键字写回，
-            //   或改走 QuickPick 流程来避免补全机制的替换/排序影响。当前实现是为了兼顾匹配优先级与插入可控性。
-            const lineStart = new vscode.Position(position.line, 0);
-            const replacingRange = new vscode.Range(lineStart, position);
-            const insertingAtLineStart = new vscode.Range(lineStart, lineStart);
             createItem.range = { inserting: insertingAtLineStart, replacing: replacingRange };
             createBackground.range = { inserting: insertingAtLineStart, replacing: replacingRange };
 
             // 返回 CompletionList 并设置 isIncomplete=true，确保用户继续输入时会重新构建 items
-            return new vscode.CompletionList([createItem, createBackground, ...items], true);
+            return new vscode.CompletionList([userMsgItem, queuedItem, createItem, createBackground, ...items], true);
         } catch (error) {
             console.error('补全提供器错误:', error);
             return undefined;
