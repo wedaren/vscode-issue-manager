@@ -493,6 +493,8 @@ const INDEXED_TYPE_KEYS = [
     'chat_tool_call',
     'chrome_chat',
     'role_memory',
+    'role_auto_memory',
+    'chat_plan',
 ] as const;
 
 type IndexedTypeKey = typeof INDEXED_TYPE_KEYS[number];

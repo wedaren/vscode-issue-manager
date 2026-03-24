@@ -19,23 +19,32 @@ import {
     getAllChatRoles,
     getChatRoleById,
     getConversationsForRole,
-    parseConversationMessages,
     getConversationConfig,
     updateConversationTokenUsed,
+    updateConversationTitle,
+    getPendingContinuation,
+    clearPendingContinuation,
+    getAutoQueueCount,
+    setAutoQueueCount,
+    appendUserMessageQueued,
     estimateTokens,
     getOrCreateExecutionLog,
     startLogRun,
     appendLogLine,
     createToolCallNode,
-    getRoleSystemPrompt,
 } from './llmChatDataManager';
 import { executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
+import { buildConversationMessages } from './messageBuilder';
 import {
     readStateMarker,
     writeStateMarker,
     stripMarker,
 } from './convStateMarker';
 import type { ChatRoleInfo } from './types';
+import { PostResponseHookRunner } from './hooks/PostResponseHookRunner';
+import { titleGeneratorHook } from './hooks/titleGeneratorHook';
+import { memoryExtractorHook } from './hooks/memoryExtractorHook';
+import { intentAnchorHook } from './hooks/intentAnchorHook';
 
 const logger = Logger.getInstance();
 
@@ -58,8 +67,13 @@ export class RoleTimerManager implements vscode.Disposable {
 
     private readonly _disposables: vscode.Disposable[] = [];
     private _watcherDebounce: ReturnType<typeof setTimeout> | undefined;
+    private readonly _hookRunner = new PostResponseHookRunner();
 
-    private constructor() {}
+    private constructor() {
+        this._hookRunner.register('titleGenerator', titleGeneratorHook);
+        this._hookRunner.register('intentAnchor', intentAnchorHook);
+        this._hookRunner.register('memoryExtractor', memoryExtractorHook);
+    }
 
     static getInstance(): RoleTimerManager {
         if (!RoleTimerManager._instance) {
@@ -301,7 +315,11 @@ export class RoleTimerManager implements vscode.Disposable {
                 onHeartbeat: () => { execLastActivityAt = Date.now(); },
             };
 
-            const messages = await this.buildMessages(uri, role, trigger);
+            const messages = await buildConversationMessages(uri, role);
+            // [systemMsg, userMsg] = 首轮对话，无历史 assistant 消息
+            const isFirstResponse = messages.length === 2;
+            // 提取首条用户消息文本，供 hook 使用（避免 hook 内重复读文件）
+            const firstUserText = isFirstResponse ? extractMessageText(messages[1]) : '';
             inputTokens = await estimateTokens(messages);
 
             // 日志：token 预估
@@ -528,6 +546,20 @@ export class RoleTimerManager implements vscode.Disposable {
             }
             await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
 
+            // 触发 post-response hooks（fire-and-forget，不阻塞主流程）
+            // messages 末尾始终是当前用户消息
+            const lastUserText = extractMessageText(messages[messages.length - 1]);
+            this._hookRunner.fire({
+                uri,
+                conversationId: path.basename(uri.fsPath, '.md'),
+                role,
+                isFirstResponse,
+                firstUserText,
+                lastUserText,
+                assistantText: result.text.trim(),
+                notifyChange: (p) => this._onDidChange.fire(p),
+            });
+
             const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
             outputTokens = await estimateTokens([outputMsg]);
             await updateConversationTokenUsed(uri, inputTokens + outputTokens, effectiveMaxTokens);
@@ -541,6 +573,21 @@ export class RoleTimerManager implements vscode.Disposable {
             // 日志：成功
             const dur = fmtDuration(Date.now() - startedAt);
             if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${dur} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
+
+            // ─── 续写提升：将 queue_continuation 暂存的消息转为 queued ──
+            // run 成功结束后，状态标记已被清除，可以安全追加消息
+            const pendingMsg = await getPendingContinuation(uri);
+            if (pendingMsg) {
+                await clearPendingContinuation(uri);
+                try {
+                    await appendUserMessageQueued(uri, pendingMsg);
+                    const newCount = await getAutoQueueCount(uri) + 1;
+                    await setAutoQueueCount(uri, newCount);
+                    logger.info(`[RoleTimerManager] 已提升续写消息（累计第 ${newCount} 次）: ${filePath}`);
+                } catch (promoteErr) {
+                    logger.error('[RoleTimerManager] 续写消息提升失败', promoteErr);
+                }
+            }
 
             logger.info(`[RoleTimerManager] 对话处理成功: ${filePath}`);
             this._onDidChange.fire({ uri, roleId: role.id, success: true });
@@ -574,6 +621,9 @@ export class RoleTimerManager implements vscode.Disposable {
                 if (logUri) { void appendLogLine(logUri, `⚠️ **失败 → 重试 (${nextRetry}/${maxRetries})** | ${Math.round(delay / 1000)}s 后重试（${retryAtStr}）| 耗时 ${dur} | ${errMsg}`); }
                 logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
             }
+
+            // run 失败时清空待续写消息，避免错误状态下死循环
+            await clearPendingContinuation(uri).catch(() => {});
 
             this._onDidChange.fire({ uri, roleId: role.id, success: false });
         } finally {
@@ -635,107 +685,6 @@ export class RoleTimerManager implements vscode.Disposable {
         await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
     }
 
-    /**
-     * 构造发送给 LLM 的消息列表（包含系统提示词和对话历史）。
-     *
-     * 当历史消息的预估 token 超过 maxTokens 的 70% 时，启用滑动窗口截断：
-     * 保留第 1 轮（原始任务）+ 最近 N 轮，中间部分压缩为摘要行。
-     */
-    private async buildMessages(uri: vscode.Uri, role: ChatRoleInfo, trigger?: 'timer' | 'direct' | 'save'): Promise<vscode.LanguageModelChatMessage[]> {
-        const prompt = await getRoleSystemPrompt(role.uri);
-        let systemText = prompt
-            ? `[系统指令] ${prompt}`
-            : '[系统指令] 你是一个智能助手，请根据对话上下文给出有帮助的回复。';
-
-        // ─── 执行模式注入 ─────────────────────────────────────
-        // 优先级：对话 > 角色，均未设置时默认 false（交互模式）
-        const convoConfigForMode = await getConversationConfig(uri);
-        const autonomous = convoConfigForMode?.autonomous ?? role.autonomous ?? false;
-        if (autonomous) {
-            systemText += '\n\n[执行模式: 自主] 当前为自主执行模式，用户不在场。'
-                + '你应该独立思考、主动调用工具完成任务，不要等待用户确认。'
-                + '遇到不明确的地方自行做出合理决策，完成后在回复中说明你的决策和理由。';
-        } else {
-            systemText += '\n\n[执行模式: 交互] 当前为交互对话模式，用户在场。'
-                + '执行破坏性操作（修改角色配置、删除笔记、大规模变更）前应征求用户确认。'
-                + '常规的信息查询、笔记创建、分析建议等可直接执行。';
-        }
-        const systemMsg = vscode.LanguageModelChatMessage.User(systemText);
-
-        const history = await parseConversationMessages(uri);
-
-        // 将消息按轮次分组（一组 = user + assistant）
-        const rounds: Array<{ user: typeof history[0]; assistant?: typeof history[0] }> = [];
-        for (let i = 0; i < history.length; i++) {
-            const m = history[i];
-            if (m.role === 'user') {
-                const next = history[i + 1];
-                if (next?.role === 'assistant') {
-                    rounds.push({ user: m, assistant: next });
-                    i++; // 跳过 assistant
-                } else {
-                    rounds.push({ user: m }); // 末尾 user（待回复）
-                }
-            }
-            // 跳过孤立的 assistant 消息（不应出现，但防御性处理）
-        }
-
-        const convoConfig = await getConversationConfig(uri);
-        const maxTokens = convoConfig?.maxTokens ?? role.maxTokens;
-
-        // 无 token 预算限制 或 轮次 ≤ 3 时，不截断
-        if (!maxTokens || rounds.length <= 3) {
-            return [systemMsg, ...this.roundsToMessages(rounds)];
-        }
-
-        // 预估全量 token
-        const fullMsgs = [systemMsg, ...this.roundsToMessages(rounds)];
-        const fullTokens = await estimateTokens(fullMsgs);
-        const threshold = maxTokens * 0.7;
-
-        if (fullTokens <= threshold) {
-            return fullMsgs;
-        }
-
-        // 截断：保留第 1 轮 + 最近 N 轮，逐步增加 N 直到接近阈值
-        // 从保留最后 1 轮开始，逐步加到刚好不超过阈值
-        const firstRound = rounds[0];
-        let bestN = 1;
-
-        for (let n = 1; n < rounds.length; n++) {
-            const tail = rounds.slice(-n);
-            const candidate = [systemMsg, ...this.roundsToMessages([firstRound]),
-                vscode.LanguageModelChatMessage.User(`[...已省略 ${rounds.length - 1 - n} 轮对话...]`),
-                ...this.roundsToMessages(tail)];
-            const est = await estimateTokens(candidate);
-            if (est > threshold) { break; }
-            bestN = n;
-        }
-
-        const kept = rounds.slice(-bestN);
-        const omitted = rounds.length - 1 - bestN;
-        const msgs = [systemMsg, ...this.roundsToMessages([firstRound])];
-        if (omitted > 0) {
-            msgs.push(vscode.LanguageModelChatMessage.User(`[...已省略 ${omitted} 轮对话...]`));
-        }
-        msgs.push(...this.roundsToMessages(kept));
-
-        logger.info(`[RoleTimerManager] 滑动窗口截断: 全量 ${rounds.length} 轮 (${fullTokens} tokens) → 保留 ${1 + bestN} 轮, 省略 ${omitted} 轮`);
-        return msgs;
-    }
-
-    /** 将轮次数组转为 LanguageModelChatMessage 数组 */
-    private roundsToMessages(rounds: Array<{ user: { content: string }; assistant?: { content: string } }>): vscode.LanguageModelChatMessage[] {
-        const msgs: vscode.LanguageModelChatMessage[] = [];
-        for (const r of rounds) {
-            msgs.push(vscode.LanguageModelChatMessage.User(r.user.content));
-            if (r.assistant) {
-                msgs.push(vscode.LanguageModelChatMessage.Assistant(r.assistant.content));
-            }
-        }
-        return msgs;
-    }
-
     /** 从对话文件 frontmatter 中提取 chat_role_id */
     private async getRoleIdFromFile(uri: vscode.Uri): Promise<string | undefined> {
         try {
@@ -776,6 +725,16 @@ function fmtDuration(ms: number): string {
  * - 结果过大但文件写入失败：截断并附注
  */
 const INLINE_MAX_CHARS = 16000;
+
+/** 从 LanguageModelChatMessage 中提取纯文本内容 */
+function extractMessageText(msg: vscode.LanguageModelChatMessage): string {
+    if (msg.content instanceof Array) {
+        return msg.content
+            .map((p: unknown) => (p && typeof p === 'object' && 'value' in p) ? String((p as { value: unknown }).value ?? '') : '')
+            .join('');
+    }
+    return String((msg as unknown as { content: unknown }).content ?? '');
+}
 
 function buildToolResultForLlm(content: string, fileName: string | null): string {
     if (content.length <= INLINE_MAX_CHARS) {

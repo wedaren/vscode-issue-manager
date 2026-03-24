@@ -18,6 +18,7 @@ import {
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
+import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
 import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
 
@@ -139,7 +140,7 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[]; modelFamily?: string }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[]; modelFamily?: string; timerEnabled?: boolean; timerInterval?: number; autonomous?: boolean }[] = [
                 {
                     label: '$(rocket) 个人助理',
                     description: '中枢调度、记忆进化、团队委派',
@@ -198,6 +199,54 @@ export function registerLLMChatCommands(
                     description: '文案、文章、邮件撰写',
                     avatar: 'pencil',
                     systemPrompt: '你是一位优秀的写作助手，擅长撰写各类文案、文章、邮件和报告。根据用户需求调整文风，注重逻辑清晰、表达准确、语言优美。',
+                },
+                {
+                    label: '$(list-ordered) 长篇创作助手',
+                    description: '自主分批完成长篇写作，无需用户持续推动',
+                    avatar: 'list-ordered',
+                    toolSets: ['planning', 'memory'],
+                    timerEnabled: true,
+                    timerInterval: 15000,
+                    autonomous: true,
+                    systemPrompt: `你是一位专注长篇内容创作的助手，擅长将大型写作任务分解为有序步骤并自主完成，无需用户持续推动。
+
+## 工作流程
+
+收到写作任务时，按以下步骤处理：
+1. **读取记忆** — 用 read_memory 了解是否有进行中的任务或相关背景
+2. **创建计划** — 用 create_plan 将写作任务拆解为章节/段落级步骤（每步目标 2000-5000 字）
+3. **按步骤执行**：
+   - 用 create_issue 创建目标笔记文件（若尚未创建）
+   - 按当前步骤写出完整内容，用 update_issue 追加到笔记
+   - 完成后立即调用 check_step 标记该步骤完成
+   - 调用 update_progress_note 记录已写字数和当前状态
+4. **自主续写**（自主模式）— 每步完成后调用 queue_continuation，继续执行下一步，直到计划全部完成
+5. **完成汇报** — 所有步骤完成后，向用户汇报总字数和笔记位置，并调用 write_memory 记录任务情况
+
+## 写作原则
+- **每步必须实际写出内容**，不要只描述"我将要写..."
+- **每次调用尽量多写**，充分利用输出 token 上限
+- **自主模式下遇到模糊之处自行决策**，完成后说明选择理由，不要中途询问
+- **保持连贯**：每步开始前用 read_issue 查看上文，确保风格和内容一致
+
+## 可用工具
+
+**规划工具**（核心工作流）
+- create_plan：将写作任务分解为步骤列表
+- read_plan：查看当前计划与进度
+- check_step：完成一步后立即标记（stepIndex 从 1 开始）
+- add_step：执行中发现遗漏步骤时追加
+- update_progress_note：记录已写字数、当前章节、下一步计划
+- queue_continuation：自主模式下计划未完成时触发下一次执行
+
+**记忆工具**
+- read_memory：了解用户写作偏好、风格要求、历史任务
+- write_memory：任务完成后记录经验与用户偏好
+
+**笔记工具**
+- create_issue：创建写作文档
+- read_issue：读取已有内容，确保连贯
+- update_issue：向文档追加写作内容（每次尽量多写）`,
                 },
                 {
                     label: '$(mortar-board) 学习导师',
@@ -273,7 +322,6 @@ export function registerLLMChatCommands(
                     avatar: 'search',
                     systemPrompt: `你是一位深度研究员，专注于对任意命题进行系统性深度研究。你拥有以下能力：
 - 笔记系统工具：检索已有笔记、创建新笔记、构建层级结构的研究报告
-- 网络搜索工具：通过 Chrome 浏览器进行网络搜索和网页内容抓取
 
 你的工作分两个阶段：
 
@@ -330,7 +378,7 @@ export function registerLLMChatCommands(
 
 ## 合法的 frontmatter 字段
 角色文件支持的字段（ChatRoleFrontmatter）：
-- \`tool_sets\`: string[] — 合法值: \`memory\`, \`delegation\`, \`role_management\`, \`browser\`
+- \`tool_sets\`: string[] — 合法值: \`memory\`, \`delegation\`, \`planning\`, \`role_management\`
 - \`mcp_servers\`: string[] — MCP server 名称列表，"*" 引入全部（慎用）
 - \`extra_tools\`: string[] — 额外引入的具体工具名
 - \`excluded_tools\`: string[] — 排除的具体工具名
@@ -343,9 +391,8 @@ export function registerLLMChatCommands(
 ## 合法的 tool_sets 值
 - \`memory\` — 持久记忆（read_memory / write_memory），适合长期任务角色
 - \`delegation\` — 委派能力（delegate_to_role / list_chat_roles），适合中枢调度角色
+- \`planning\` — 执行计划（create_plan / read_plan / check_step / add_step / update_progress_note），适合多步骤长任务角色，将任务分解为有序步骤并持久化进度
 - \`role_management\` — 角色管理（create/update/evaluate/read_logs），仅管理型角色需要
-- \`browser\` — Chrome 浏览器工具（web_search / fetch_url / list_tabs / click_element 等），需要网络或浏览器操作的角色
-
 ## 分析维度
 1. **工具集匹配度** — tool_sets 与角色职责是否相符
 2. **MCP 配置** — mcp_servers 是否精确，"*" 会导致工具上下文爆炸
@@ -383,37 +430,6 @@ export function registerLLMChatCommands(
 - 🧪 **测试计划**：用例列表（目的 + 预期行为）
 - ✅ **建议配置**：优化后的 frontmatter 片段（仅包含合法字段）`,
                 },
-                {
-                    label: '$(cloud) 网络助手',
-                    description: '专职网络搜索与页面抓取，供其他角色异步委派使用',
-                    avatar: 'cloud',
-                    toolSets: ['browser'],
-                    systemPrompt: `你是一位专职网络助手，负责执行网络搜索与页面内容抓取任务。你只拥有网络工具和笔记工具，所有网络相关任务都由其他角色委派给你。
-
-## 可用工具
-- web_search：通过 Chrome 浏览器搜索关键词，返回结果摘要
-- fetch_url：抓取指定 URL 的页面文本内容
-- create_issue：将网络结果整理成笔记（结果较长时使用）
-- update_issue：更新已有笔记内容
-- search_issues：检索已有笔记，避免重复抓取
-
-> 如果角色文件的 mcp_servers 字段中配置了 MCP 服务（如 brave-search、puppeteer 等），
-> 请**优先使用 MCP 工具**完成网络任务，仅在 MCP 不可用时降级使用上述 Chrome 工具。
-
-## 工作原则
-1. **优先检索已有笔记**：用 search_issues 确认是否已有相关内容，避免重复工作
-2. **聚焦任务边界**：只做委派方要求的事，不自行扩展研究范围
-3. **处理失败**：网络请求失败时最多重试 2 次，换关键词或换 URL；仍失败则如实报告
-4. **结构化输出**：结果清晰分段，包含来源 URL
-5. **长内容存笔记**：内容超过 500 字时，用 create_issue 保存，回复中附上笔记链接
-
-## 回复格式
-完成任务后，回复结构：
-1. 📋 **任务摘要**：简述执行了什么
-2. 📄 **主要结果**：关键信息（含来源）
-3. 🔗 **笔记链接**（如有）：保存的详细内容
-4. ⚠️ **失败说明**（如有）：哪些请求失败及原因`,
-                },
             ];
 
             interface PresetItem extends vscode.QuickPickItem {
@@ -422,6 +438,9 @@ export function registerLLMChatCommands(
                 systemPrompt?: string;
                 toolSets?: string[];
                 modelFamily?: string;
+                timerEnabled?: boolean;
+                timerInterval?: number;
+                autonomous?: boolean;
             }
 
             const items: PresetItem[] = [
@@ -432,6 +451,9 @@ export function registerLLMChatCommands(
                     systemPrompt: p.systemPrompt,
                     toolSets: p.toolSets,
                     modelFamily: p.modelFamily,
+                    timerEnabled: p.timerEnabled,
+                    timerInterval: p.timerInterval,
+                    autonomous: p.autonomous,
                 })),
                 { label: '$(add) 自定义角色…', description: '手动输入名称和提示词', isCustom: true, kind: vscode.QuickPickItemKind.Separator } as PresetItem,
                 { label: '$(add) 自定义角色…', description: '完全自定义名称、提示词和图标', isCustom: true },
@@ -489,7 +511,11 @@ export function registerLLMChatCommands(
             const modelFamily = await pickModelFamily(pick.modelFamily);
             if (modelFamily === undefined) { return; }  // 用户按了 ESC
 
-            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, pick.toolSets);
+            const roleId = await createChatRole(name, systemPrompt, avatar, modelFamily || undefined, pick.toolSets, undefined, {
+                timerEnabled: pick.timerEnabled,
+                timerInterval: pick.timerInterval,
+                autonomous: pick.autonomous,
+            });
             if (roleId) {
                 roleProvider.refresh();
                 vscode.window.showInformationMessage(`已创建聊天角色: ${name}`);
@@ -881,8 +907,8 @@ export function registerLLMChatCommands(
             const BUILT_IN_SETS: Array<{ id: string; description: string; detail: string }> = [
                 { id: 'memory',          description: '持久记忆',     detail: 'read_memory、write_memory — 适合需要跨对话记忆的角色' },
                 { id: 'delegation',      description: '委派能力',     detail: 'delegate_to_role、list_chat_roles — 适合中枢调度角色' },
+                { id: 'planning',        description: '执行计划',     detail: 'create_plan、check_step、add_step 等 — 适合多步骤长任务角色，持久化任务进度' },
                 { id: 'role_management', description: '角色管理',     detail: 'create/update/evaluate_role、read_role_execution_logs — 仅管理型角色需要' },
-                { id: 'browser',         description: 'Chrome 浏览器', detail: 'web_search、fetch_url、list_tabs、click_element 等 — 需要网络或浏览器操作' },
             ];
             const toolSetItems = BUILT_IN_SETS.map(s => ({
                 label: s.id,
@@ -1077,6 +1103,20 @@ export function registerLLMChatCommands(
 
             vscode.window.showInformationMessage(
                 `已更新${fileLabel}模型配置 — 模型：${newModel || '继承上级默认'}  max_tokens：${newTokens || '继承上级默认'}`,
+            );
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.generateDiagnosticReport', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+            if (!targetUri) {
+                vscode.window.showErrorMessage('请先打开一个对话文件');
+                return;
+            }
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: '正在生成对话诊断报告…', cancellable: false },
+                () => generateDiagnosticReport(targetUri),
             );
         }),
     );

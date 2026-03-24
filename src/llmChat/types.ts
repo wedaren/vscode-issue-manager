@@ -32,7 +32,7 @@ export interface ChatRoleFrontmatter {
     // ─── 工具集配置 ───────────────────────────────────────────
     /**
      * 内置工具包列表，合法值：
-     * "memory" | "delegation" | "role_management" | "browser"
+     * "memory" | "delegation" | "role_management"
      */
     tool_sets?: string[];
     /** 允许使用的 MCP server 名称列表（取其全部工具）；"*" 表示引入所有已注册的 MCP 工具 */
@@ -57,12 +57,37 @@ export interface ChatRoleFrontmatter {
 
 // ─── 角色记忆相关 ─────────────────────────────────────────────
 
-/** 角色记忆文件的 frontmatter */
+/** 角色记忆文件的 frontmatter（LLM 主动写入，自由格式） */
 export interface RoleMemoryFrontmatter {
     /** 标记为角色记忆文件 */
     role_memory: true;
     /** 关联的角色 ID */
     role_memory_owner_id: string;
+}
+
+/**
+ * 自动提取记忆文件的 frontmatter（hook 自动写入，结构化格式）。
+ * 与 role_memory 完全独立，LLM 只读不写此文件。
+ */
+export interface RoleAutoMemoryFrontmatter {
+    /** 标记为自动提取记忆文件 */
+    role_auto_memory: true;
+    /** 关联的角色 ID */
+    role_auto_memory_owner_id: string;
+}
+
+// ─── 执行计划相关 ─────────────────────────────────────────────
+
+/** 执行计划文件的 frontmatter（LLM 通过 planning 工具集管理） */
+export interface ChatPlanFrontmatter {
+    /** 标记为执行计划文件 */
+    chat_plan: true;
+    /** 关联的对话 ID */
+    chat_plan_conversation_id: string;
+    /** 计划标题 */
+    chat_plan_title: string;
+    /** 计划状态 */
+    chat_plan_status: 'in_progress' | 'completed' | 'abandoned';
 }
 
 /** 聊天消息 */
@@ -95,6 +120,29 @@ export interface ChatConversationFrontmatter {
      * 优先级：对话 > 角色。
      */
     chat_autonomous?: boolean;
+    /**
+     * 意图锚点：首次回复后由 hook 自动提取并写入，注入到 system prompt 最前。
+     * 防止长对话中目标漂移。可由用户手动修改以更正意图描述。
+     */
+    chat_intent?: string;
+    /**
+     * 关联的执行计划文件 ID（LLM 调用 create_plan 后自动写入）。
+     * 计划内容在每次 buildMessages() 时注入到 system prompt。
+     */
+    chat_plan_id?: string;
+    /**
+     * 当前对话中 queue_continuation 的累计调用次数。
+     * 由 queue_continuation handler 自增，达到上限时拒绝继续排队。
+     * 用户可手动清零（设为 0）以恢复自动续写能力。
+     */
+    chat_auto_queue_count?: number;
+    /**
+     * 待提升的续写消息（两阶段提交）。
+     * queue_continuation 在 run 执行中无法直接追加消息（executing 状态限制），
+     * 故先暂存于此字段。run 成功结束后由 RoleTimerManager 提升为 queued 消息，
+     * run 失败时清空（避免错误状态下死循环）。
+     */
+    chat_pending_continuation?: string;
 }
 
 /** 运行时聊天角色信息（从 issueMarkdown 解析而来） */
@@ -159,6 +207,8 @@ export interface ChatConversationInfo {
     logId?: string;
     /** 对话级自主模式 */
     autonomous?: boolean;
+    /** 意图锚点（首次回复后自动提取，防止目标漂移） */
+    intent?: string;
 }
 
 // ─── 群组相关 ───────────────────────────────────────────────

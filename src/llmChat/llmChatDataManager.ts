@@ -33,6 +33,8 @@ import type {
     ExecutionRunRecord,
     ExecutionToolCall,
     RecentActivityEntry,
+    RoleAutoMemoryFrontmatter,
+    ChatPlanFrontmatter,
 } from './types';
 import { stripMarker, parseStateMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
@@ -139,6 +141,11 @@ export async function createChatRole(
     modelFamily?: string,
     toolSets?: string[],
     mcpServers?: string[],
+    options?: {
+        timerEnabled?: boolean;
+        timerInterval?: number;
+        autonomous?: boolean;
+    },
 ): Promise<string | null> {
     const defaultModelFamily = vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily') || 'gpt-5-mini';
     const fm: Partial<FrontmatterData> & ChatRoleFrontmatter = {
@@ -147,8 +154,8 @@ export async function createChatRole(
         chat_role_avatar: avatar || 'hubot',
         chat_role_model_family: modelFamily || defaultModelFamily,
         // ─── 定时器配置（默认关闭，按需开启） ────────────────
-        timer_enabled: false,
-        timer_interval: 30000,
+        timer_enabled: options?.timerEnabled ?? false,
+        timer_interval: options?.timerInterval ?? 30000,
         timer_max_concurrent: 2,
         timer_timeout: 180000,
         timer_max_retries: 3,
@@ -156,6 +163,7 @@ export async function createChatRole(
         // ─── 工具集配置（占位，按需填写） ────────────────────
         tool_sets: toolSets ?? [],
         mcp_servers: mcpServers ?? [],
+        ...(options?.autonomous !== undefined ? { chat_autonomous: options.autonomous } : {}),
     } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[] };
 
     const body = systemPrompt
@@ -213,7 +221,6 @@ export async function createConversation(roleId: string, title?: string): Promis
         chat_model_family: defaultModelFamily,
         chat_max_tokens: role?.maxTokens ?? 0,
         chat_token_used: 0,
-        chat_autonomous: false,
     };
 
     const body = `# ${convoTitle}\n\n<!-- llm:ready -->\n`;
@@ -298,6 +305,147 @@ export async function appendUserMessageQueued(
     }
 }
 
+/** 更新对话文件的 chat_title frontmatter 字段 */
+export async function updateConversationTitle(uri: vscode.Uri, newTitle: string): Promise<void> {
+    await updateIssueMarkdownFrontmatter(uri, { chat_title: newTitle } as any);
+}
+
+// ─── 自动提取记忆（Auto Memory）───────────────────────────────
+// hook 自动写入，LLM 只读不写。与 role_memory（LLM 主动管理）完全隔离。
+
+const AUTO_MEMORY_MAX_ENTRIES = 100;
+
+/** 查找或创建角色的自动提取记忆文件，返回 URI */
+async function findOrCreateAutoMemoryFile(roleId: string): Promise<vscode.Uri | null> {
+    const all = getIssueMarkdownsByType('role_auto_memory');
+    for (const md of all) {
+        if (md.frontmatter?.role_auto_memory_owner_id === roleId) {
+            return md.uri;
+        }
+    }
+    const fm: Partial<FrontmatterData> & RoleAutoMemoryFrontmatter = {
+        role_auto_memory: true,
+        role_auto_memory_owner_id: roleId,
+    } as Partial<FrontmatterData> & RoleAutoMemoryFrontmatter;
+    const body = '# 自动提取记忆\n\n';
+    const uri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
+    if (uri) {
+        const role = getChatRoleById(roleId);
+        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
+        await createIssueNodes([uri], roleNode?.id);
+    }
+    return uri ?? null;
+}
+
+/**
+ * 向角色的自动提取记忆文件追加条目。
+ * 按日期分节（## YYYY-MM-DD），超过 MAX_ENTRIES 时删除最旧条目。
+ */
+export async function appendAutoMemoryEntries(
+    roleId: string,
+    entries: string[],
+    conversationId: string,
+): Promise<void> {
+    if (entries.length === 0) { return; }
+
+    const uri = await findOrCreateAutoMemoryFile(roleId);
+    if (!uri) { return; }
+
+    const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+
+    const today = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const dateStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const entryLines = entries.map(e => `- [对话 ${conversationId}] ${e}`);
+
+    // 重新构建 body：找到今日 section 追加，或新建 section
+    const fmBlock = raw.slice(0, raw.indexOf('\n---\n', 4) + 5); // frontmatter block
+    const bodyMatch = /^---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S]*)$/.exec(raw);
+    let body = bodyMatch ? bodyMatch[1] : '# 自动提取记忆\n\n';
+
+    const todaySectionRe = new RegExp(`(## ${dateStr}\\r?\\n)([\\s\\S]*?)(?=\\n## |$)`);
+    if (todaySectionRe.test(body)) {
+        body = body.replace(todaySectionRe, (_, header, content) =>
+            `${header}${content.trimEnd()}\n${entryLines.join('\n')}\n`,
+        );
+    } else {
+        body = body.trimEnd() + `\n\n## ${dateStr}\n\n${entryLines.join('\n')}\n`;
+    }
+
+    // 超限：删除最旧的条目行（以 "- [对话" 开头），保留结构
+    const allEntryLines = body.match(/^- \[对话 .+$/gm) ?? [];
+    if (allEntryLines.length > AUTO_MEMORY_MAX_ENTRIES) {
+        const excess = allEntryLines.length - AUTO_MEMORY_MAX_ENTRIES;
+        let removed = 0;
+        body = body.replace(/^- \[对话 .+$\n?/gm, (line) => {
+            if (removed < excess) { removed++; return ''; }
+            return line;
+        });
+        // 清理因删除产生的空 section（只剩标题行的 ## 节）
+        body = body.replace(/^## \d{4}-\d{2}-\d{2}\n+(?=## |\s*$)/gm, '');
+    }
+
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(fmBlock + body, 'utf8'));
+}
+
+/**
+ * 读取角色自动提取记忆，用于注入 system prompt。
+ * 从最新条目开始取，直到累计字符数达到 maxChars（默认 3000）。
+ */
+export async function readAutoMemoryForInjection(
+    roleId: string,
+    maxChars = 3000,
+): Promise<string> {
+    const all = getIssueMarkdownsByType('role_auto_memory');
+    const md = all.find(m => m.frontmatter?.role_auto_memory_owner_id === roleId);
+    if (!md) { return ''; }
+
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(md.uri)).toString('utf8');
+        const { body } = extractFrontmatterAndBody(raw);
+
+        // 提取所有条目行（带所属日期），逆序后按预算截取
+        const sections: Array<{ date: string; line: string }> = [];
+        let currentDate = '';
+        for (const line of body.split('\n')) {
+            const dateMatch = /^## (\d{4}-\d{2}-\d{2})$/.exec(line);
+            if (dateMatch) { currentDate = dateMatch[1]; continue; }
+            if (line.startsWith('- [对话') && currentDate) {
+                sections.push({ date: currentDate, line });
+            }
+        }
+
+        // 最新在后 → 逆序取
+        sections.reverse();
+        const kept: Array<{ date: string; line: string }> = [];
+        let total = 0;
+        for (const s of sections) {
+            const len = s.line.length + 1;
+            if (total + len > maxChars) { break; }
+            kept.push(s);
+            total += len;
+        }
+
+        if (kept.length === 0) { return ''; }
+
+        // 还原为按日期分组的格式（正序输出）
+        kept.reverse();
+        const grouped = new Map<string, string[]>();
+        for (const s of kept) {
+            if (!grouped.has(s.date)) { grouped.set(s.date, []); }
+            grouped.get(s.date)!.push(s.line);
+        }
+        const lines: string[] = ['[自动提取记忆]'];
+        for (const [date, entries] of grouped) {
+            lines.push(`\n${date}`);
+            lines.push(...entries);
+        }
+        return lines.join('\n');
+    } catch {
+        return '';
+    }
+}
+
 /**
  * 更新对话文件 frontmatter 中的 token 使用量。
  * 请求前/后各调用一次以跟踪 token 消耗。
@@ -348,6 +496,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
     maxTokens?: number;
     tokenUsed?: number;
     autonomous?: boolean;
+    intent?: string;
 } | null> {
     try {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
@@ -359,9 +508,279 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
             maxTokens: fm.chat_max_tokens as number | undefined,
             tokenUsed: fm.chat_token_used as number | undefined,
             autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
+            intent: typeof fm.chat_intent === 'string' ? fm.chat_intent : undefined,
         };
     } catch {
         return null;
+    }
+}
+
+/** 写入或更新对话的意图锚点（chat_intent frontmatter 字段） */
+export async function updateConversationIntent(uri: vscode.Uri, intent: string): Promise<void> {
+    await updateIssueMarkdownFrontmatter(uri, { chat_intent: intent } as any);
+}
+
+// ─── 执行计划（Planning）──────────────────────────────────────
+// chat_plan 文件绑定单个对话，LLM 通过 planning 工具集创建/读取/更新。
+// 每次 buildMessages() 注入当前计划状态，辅助 LLM 跨 run 维持进度。
+
+/** 解析计划 body，提取进度说明与步骤列表 */
+function parsePlanBody(body: string): { note: string; steps: { text: string; done: boolean }[] } {
+    const noteMatch = /## 进度说明\n+([\s\S]*?)(?=\n## |\s*$)/.exec(body);
+    const note = noteMatch?.[1]?.trim() ?? '';
+
+    const stepsMatch = /## 步骤\n+([\s\S]*)/.exec(body);
+    const stepsRaw = stepsMatch?.[1] ?? '';
+    const steps = stepsRaw
+        .split('\n')
+        .filter(l => /^- \[[ x]\]/.test(l))
+        .map(l => ({
+            done: l.startsWith('- [x]'),
+            text: l.replace(/^- \[[ x]\]\s*/, '').replace(/\s*←\s*\*\*当前\*\*\s*$/, '').trim(),
+        }));
+    return { note, steps };
+}
+
+/** 序列化计划为 body markdown，自动为第一个未完成步骤标记「← **当前**」 */
+function serializePlanBody(note: string, steps: { text: string; done: boolean }[]): string {
+    const firstPendingIdx = steps.findIndex(s => !s.done);
+    const stepsStr = steps.map((s, i) => {
+        const check = s.done ? '[x]' : '[ ]';
+        const current = !s.done && i === firstPendingIdx ? '  ← **当前**' : '';
+        return `- ${check} ${s.text}${current}`;
+    }).join('\n');
+    return `## 进度说明\n\n${note || '（暂无说明）'}\n\n## 步骤\n\n${stepsStr}\n`;
+}
+
+/** 从对话 frontmatter 获取关联计划文件 URI，不存在返回 null */
+async function getPlanUri(conversationUri: vscode.Uri): Promise<vscode.Uri | null> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(conversationUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const planId = (frontmatter as Record<string, unknown>)?.chat_plan_id as string | undefined;
+        if (!planId) { return null; }
+        const dir = getIssueDir();
+        if (!dir) { return null; }
+        return vscode.Uri.file(path.join(dir, `${planId}.md`));
+    } catch {
+        return null;
+    }
+}
+
+/** 创建计划文件并链接到对话（已有计划时返回 null） */
+export async function createPlanFile(
+    conversationUri: vscode.Uri,
+    title: string,
+    steps: string[],
+): Promise<{ uri: vscode.Uri; content: string } | null> {
+    // 已有计划则拒绝重复创建
+    const existing = await getPlanUri(conversationUri);
+    if (existing) { return null; }
+
+    const convoId = path.basename(conversationUri.fsPath, '.md');
+    const fm: Partial<FrontmatterData> & ChatPlanFrontmatter = {
+        chat_plan: true,
+        chat_plan_conversation_id: convoId,
+        chat_plan_title: title,
+        chat_plan_status: 'in_progress',
+    } as Partial<FrontmatterData> & ChatPlanFrontmatter;
+
+    const initialSteps = steps.map(s => ({ text: s.trim(), done: false }));
+    const body = serializePlanBody('', initialSteps);
+
+    const planUri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
+    if (!planUri) { return null; }
+
+    const planId = path.basename(planUri.fsPath, '.md');
+    await updateIssueMarkdownFrontmatter(conversationUri, { chat_plan_id: planId } as any);
+
+    const convoNode = await getSingleIssueNodeByUri(conversationUri);
+    if (convoNode) {
+        await createIssueNodes([planUri], convoNode.id);
+    }
+
+    return { uri: planUri, content: body };
+}
+
+/** 读取计划文件，返回 body 字符串（供工具直接展示）；无计划返回 null */
+export async function readPlanContent(conversationUri: vscode.Uri): Promise<string | null> {
+    const planUri = await getPlanUri(conversationUri);
+    if (!planUri) { return null; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(planUri)).toString('utf8');
+        const { frontmatter, body } = extractFrontmatterAndBody(raw);
+        const fm = frontmatter as Record<string, unknown>;
+        const title = fm?.chat_plan_title as string ?? '（未命名计划）';
+        const status = fm?.chat_plan_status as string ?? 'in_progress';
+        const { note, steps } = parsePlanBody(body);
+        const doneCount = steps.filter(s => s.done).length;
+        return `**${title}**（${status === 'completed' ? '✅ 已完成' : '进行中'}，${doneCount}/${steps.length} 步）\n\n${serializePlanBody(note, steps)}`;
+    } catch {
+        return null;
+    }
+}
+
+/** 读取计划供 context 注入（简洁格式，不展示 markdown 语法） */
+/** 读取对话的自动续写计数（来自 frontmatter chat_auto_queue_count） */
+export async function getAutoQueueCount(conversationUri: vscode.Uri): Promise<number> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(conversationUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const count = (frontmatter as Record<string, unknown>)?.chat_auto_queue_count;
+        return typeof count === 'number' && count >= 0 ? count : 0;
+    } catch {
+        return 0;
+    }
+}
+
+/** 更新对话的自动续写计数 */
+export async function setAutoQueueCount(conversationUri: vscode.Uri, count: number): Promise<void> {
+    await updateIssueMarkdownFrontmatter(conversationUri, { chat_auto_queue_count: count } as any);
+}
+
+// ─── 续写两阶段提交 ───────────────────────────────────────────
+// queue_continuation 工具在 run 执行中无法直接写入（executing 状态限制），
+// 故先暂存消息到 chat_pending_continuation frontmatter 字段，
+// run 结束后由 RoleTimerManager 统一提升为 queued 消息。
+
+/** 暂存待续写消息（由 queue_continuation 工具调用） */
+export async function setPendingContinuation(conversationUri: vscode.Uri, message: string): Promise<void> {
+    await updateIssueMarkdownFrontmatter(conversationUri, { chat_pending_continuation: message } as any);
+}
+
+/** 读取待续写消息，不存在时返回 null */
+export async function getPendingContinuation(conversationUri: vscode.Uri): Promise<string | null> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(conversationUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        const msg = (frontmatter as Record<string, unknown>)?.chat_pending_continuation;
+        return typeof msg === 'string' && msg.trim() ? msg.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
+/** 清空待续写消息 */
+export async function clearPendingContinuation(conversationUri: vscode.Uri): Promise<void> {
+    await updateIssueMarkdownFrontmatter(conversationUri, { chat_pending_continuation: null } as any);
+}
+
+/**
+ * 读取计划供 context 注入。
+ * autonomous=true 时在末尾追加执行规范，引导 LLM 在计划未完成时调用 queue_continuation。
+ */
+export async function readPlanForInjection(conversationUri: vscode.Uri, autonomous?: boolean): Promise<string> {
+    const planUri = await getPlanUri(conversationUri);
+    if (!planUri) { return ''; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(planUri)).toString('utf8');
+        const { frontmatter, body } = extractFrontmatterAndBody(raw);
+        const fm = frontmatter as Record<string, unknown>;
+        const title = fm?.chat_plan_title as string ?? '（未命名计划）';
+        const status = fm?.chat_plan_status as string ?? 'in_progress';
+        if (status === 'abandoned') { return ''; }
+
+        const { note, steps } = parsePlanBody(body);
+        const doneCount = steps.filter(s => s.done).length;
+        const firstPendingIdx = steps.findIndex(s => !s.done);
+
+        const stepsStr = steps.map((s, i) => {
+            if (s.done) { return `✅ ${i + 1}. ${s.text}`; }
+            if (i === firstPendingIdx) { return `▶ ${i + 1}. ${s.text}（当前）`; }
+            return `□ ${i + 1}. ${s.text}`;
+        }).join('\n');
+
+        const parts = [`[执行计划] ${title}  进度: ${doneCount}/${steps.length} 步完成`];
+        if (note && note !== '（暂无说明）') { parts.push(`进度说明: ${note}`); }
+        parts.push('', stepsStr);
+
+        // 自主模式 + 计划未完成时，注入执行规范，引导 LLM 正确使用 queue_continuation
+        if (autonomous && status !== 'completed') {
+            parts.push('', '[规划执行规范] 每完成一步立即调用 check_step 标记。计划未完成时，每次 run 结束前调用 queue_continuation 触发下一次执行（消息描述下一步具体行动）。计划全部完成后停止 queue，向用户汇报最终结果。');
+        }
+
+        return parts.join('\n');
+    } catch {
+        return '';
+    }
+}
+
+/** 标记步骤完成/未完成（stepIndex 从 1 开始） */
+export async function checkPlanStep(
+    conversationUri: vscode.Uri,
+    stepIndex: number,
+    done: boolean,
+): Promise<{ success: boolean; message: string }> {
+    const planUri = await getPlanUri(conversationUri);
+    if (!planUri) { return { success: false, message: '当前对话没有关联的执行计划' }; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(planUri)).toString('utf8');
+        const { body } = extractFrontmatterAndBody(raw);
+        const { note, steps } = parsePlanBody(body);
+
+        const idx = stepIndex - 1;
+        if (idx < 0 || idx >= steps.length) {
+            return { success: false, message: `步骤序号 ${stepIndex} 超出范围（共 ${steps.length} 步）` };
+        }
+        steps[idx].done = done;
+
+        const ok = await updateIssueMarkdownBody(planUri, serializePlanBody(note, steps));
+        if (ok && steps.every(s => s.done)) {
+            await updateIssueMarkdownFrontmatter(planUri, { chat_plan_status: 'completed' } as any);
+        }
+        const doneCount = steps.filter(s => s.done).length;
+        return {
+            success: ok,
+            message: ok
+                ? `✅ 步骤 ${stepIndex} 已标记为${done ? '完成' : '未完成'}（${doneCount}/${steps.length}）`
+                : '更新失败',
+        };
+    } catch (e) {
+        logger.error('[PlanTools] checkPlanStep 失败', e);
+        return { success: false, message: '更新步骤失败' };
+    }
+}
+
+/** 追加新步骤到计划末尾 */
+export async function addPlanStep(
+    conversationUri: vscode.Uri,
+    step: string,
+): Promise<{ success: boolean; message: string }> {
+    const planUri = await getPlanUri(conversationUri);
+    if (!planUri) { return { success: false, message: '当前对话没有关联的执行计划' }; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(planUri)).toString('utf8');
+        const { body } = extractFrontmatterAndBody(raw);
+        const { note, steps } = parsePlanBody(body);
+
+        steps.push({ text: step.trim(), done: false });
+        const ok = await updateIssueMarkdownBody(planUri, serializePlanBody(note, steps));
+        return {
+            success: ok,
+            message: ok ? `✅ 已追加步骤 ${steps.length}: ${step}` : '追加失败',
+        };
+    } catch (e) {
+        logger.error('[PlanTools] addPlanStep 失败', e);
+        return { success: false, message: '追加步骤失败' };
+    }
+}
+
+/** 更新进度说明 */
+export async function updatePlanProgressNote(
+    conversationUri: vscode.Uri,
+    note: string,
+): Promise<{ success: boolean; message: string }> {
+    const planUri = await getPlanUri(conversationUri);
+    if (!planUri) { return { success: false, message: '当前对话没有关联的执行计划' }; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(planUri)).toString('utf8');
+        const { body } = extractFrontmatterAndBody(raw);
+        const { steps } = parsePlanBody(body);
+        const ok = await updateIssueMarkdownBody(planUri, serializePlanBody(note.trim(), steps));
+        return { success: ok, message: ok ? '✅ 进度说明已更新' : '更新失败' };
+    } catch (e) {
+        logger.error('[PlanTools] updatePlanProgressNote 失败', e);
+        return { success: false, message: '更新进度说明失败' };
     }
 }
 
