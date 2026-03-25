@@ -420,6 +420,15 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "发送到角色对话",
+        group: "LLM",
+        hint: "ask role chat send llm 对话 角色 发送",
+        description: "将笔记内容发送给角色，或在已有对话中追问（Cmd+Enter）",
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.askRole');
+        },
+    },
+    {
         label: "删除当前问题",
         group: "管理",
         hint: "delete",

@@ -69,6 +69,11 @@ export class RoleTimerManager implements vscode.Disposable {
     private _watcherDebounce: ReturnType<typeof setTimeout> | undefined;
     private readonly _hookRunner = new PostResponseHookRunner();
 
+    /** 是否生成执行日志和工具调用文件（默认开启） */
+    private _verboseLogging = true;
+    get verboseLogging(): boolean { return this._verboseLogging; }
+    set verboseLogging(value: boolean) { this._verboseLogging = value; }
+
     private constructor() {
         this._hookRunner.register('titleGenerator', titleGeneratorHook);
         this._hookRunner.register('intentAnchor', intentAnchorHook);
@@ -259,9 +264,11 @@ export class RoleTimerManager implements vscode.Disposable {
         const timeout = role.timerTimeout ?? 60_000;
         const ac = new AbortController();
 
-        // ── 日志先行：获取日志 URI 并写入 Run 标题 ──
+        // ── 日志先行：获取日志 URI 并写入 Run 标题（可通过 verboseLogging 关闭）──
         let logUri: vscode.Uri | null = null;
-        try { logUri = await getOrCreateExecutionLog(uri); } catch { /* 忽略 */ }
+        if (this._verboseLogging) {
+            try { logUri = await getOrCreateExecutionLog(uri); } catch { /* 忽略 */ }
+        }
 
         const convoConfig = await getConversationConfig(uri);
         const effectiveModelFamily = convoConfig?.modelFamily || role.modelFamily;

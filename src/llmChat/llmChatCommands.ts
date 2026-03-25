@@ -17,6 +17,7 @@ import {
     appendUserMessageQueued,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
+import { parseStateMarker, stripMarker } from './convStateMarker';
 import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
 import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
@@ -721,6 +722,25 @@ export function registerLLMChatCommands(
         }),
     );
 
+    // ─── 切换执行日志生成 ────────────────────────────────────
+    // 持久化到 globalState，图标随状态切换
+    const VERBOSE_LOG_KEY = 'llmChat.verboseLogging';
+    const VERBOSE_LOG_CTX = 'issueManager.llmChat.verboseLogging';
+    const initVerbose = context.globalState.get<boolean>(VERBOSE_LOG_KEY) ?? true;
+    RoleTimerManager.getInstance().verboseLogging = initVerbose;
+    void vscode.commands.executeCommand('setContext', VERBOSE_LOG_CTX, initVerbose);
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.toggleVerboseLogging', async () => {
+            const mgr = RoleTimerManager.getInstance();
+            const next = !mgr.verboseLogging;
+            mgr.verboseLogging = next;
+            await context.globalState.update(VERBOSE_LOG_KEY, next);
+            void vscode.commands.executeCommand('setContext', VERBOSE_LOG_CTX, next);
+            vscode.window.showInformationMessage(`执行日志生成已${next ? '开启' : '关闭'}`);
+        }),
+    );
+
     // ─── 刷新聊天角色视图 ────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.refresh', () => {
@@ -1107,6 +1127,39 @@ export function registerLLMChatCommands(
         }),
     );
 
+    // ─── 发送到角色对话（Cmd+Enter 快捷键入口） ──────────────
+    // 两种模式：
+    // 1. 普通 IssueMarkdown → 弹 QuickPick 选角色 → 原地升级为对话 → queued
+    // 2. 已有对话文件 → 直接将新增内容作为追问发送 → queued
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.askRole', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || !editor.document.fileName.endsWith('.md')) {
+                vscode.window.showWarningMessage('请在 Markdown 文件中使用此命令');
+                return;
+            }
+
+            const uri = editor.document.uri;
+            // 确保文件已保存
+            if (editor.document.isDirty) {
+                await editor.document.save();
+            }
+
+            // 读取编辑器当前文本（save 后磁盘与编辑器一致）
+            const text = editor.document.getText();
+            const { frontmatter, body } = extractFrontmatterAndBody(text);
+
+            // ── 模式判断：已有对话 vs 普通笔记 ─────────────────────
+            if (frontmatter?.chat_conversation) {
+                // === 已有对话：直接发送末尾新增内容 ===
+                await handleExistingConversation(uri, text);
+            } else {
+                // === 普通笔记：弹 QuickPick 选角色 → 原地升级 ===
+                await handleNoteUpgrade(uri, body, frontmatter, context);
+            }
+        }),
+    );
+
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.generateDiagnosticReport', async (uri?: vscode.Uri) => {
             const targetUri = uri ?? vscode.window.activeTextEditor?.document.uri;
@@ -1177,4 +1230,233 @@ async function pickModelFamily(presetModelFamily?: string): Promise<string | und
 
     if (!pick) { return undefined; }   // 用户按 ESC → 取消整个创建流程
     return pick.value;                 // '' = 用全局默认，其余为具体 family
+}
+
+// ─── askRole: 笔记升级为对话 / 已有对话追问 ─────────────────
+
+/** 从已有对话文件中提取末尾新增内容并追问 */
+async function handleExistingConversation(uri: vscode.Uri, raw: string): Promise<void> {
+    const { body } = extractFrontmatterAndBody(raw);
+
+    // 找到最后一条 ## 标记之后的用户新增内容
+    const lastHeadingIdx = body.lastIndexOf('\n## ');
+    const afterLastHeading = lastHeadingIdx >= 0 ? body.slice(lastHeadingIdx) : body;
+
+    // 检查当前状态：如果已经在执行中，拒绝操作
+    const marker = parseStateMarker(raw);
+    if (marker && (marker.status === 'executing' || marker.status === 'queued')) {
+        vscode.window.showWarningMessage(`对话正在${marker.status === 'executing' ? '执行中' : '排队中'}，请等待完成后再发送。`);
+        return;
+    }
+
+    // 提取末尾未被 ## 标题包裹的新内容（用户直接在文件末尾输入的追问）
+    // 如果最后一条是 Assistant 消息，则 Assistant 消息之后的内容就是新追问
+    // 如果最后一条是 User 消息，则可能是上轮未发送的追问，此时也直接发送
+    const cleanAfter = stripMarker(afterLastHeading).trim();
+
+    // 用正则匹配最后一条消息 header
+    const headerMatch = cleanAfter.match(/^## (User|Assistant) \(.+?\)\s*\n([\s\S]*)$/);
+    let userContent: string;
+
+    if (!headerMatch) {
+        // 没有标准 header — 整个末尾内容就是用户要发送的
+        userContent = stripMarker(body).trim();
+        // 从 body 中去掉 H1 标题
+        userContent = userContent.replace(/^#\s+.*\n?/, '').trim();
+    } else if (headerMatch[1] === 'Assistant') {
+        // 最后是 Assistant 消息 — 在其之后写的内容就是新追问
+        const afterAssistant = headerMatch[2].trim();
+        if (!afterAssistant) {
+            vscode.window.showWarningMessage('请在文件末尾输入你的追问内容后再发送。');
+            return;
+        }
+        userContent = afterAssistant;
+    } else {
+        // 最后是 User 消息且未发送 — 直接写 queued 标记触发即可
+        userContent = headerMatch[2].trim();
+        if (!userContent) {
+            vscode.window.showWarningMessage('最后一条用户消息为空，请输入内容后再发送。');
+            return;
+        }
+        const stripped = stripMarker(raw).trimEnd();
+        const newContent = stripped + '\n\n<!-- llm:queued -->\n';
+        await replaceEditorContent(uri, newContent);
+        await RoleTimerManager.getInstance().triggerConversation(uri);
+        vscode.window.showInformationMessage('消息已提交，等待 LLM 处理…');
+        return;
+    }
+
+    // 追加 User message + queued（通过编辑器 buffer，兼容自动保存）
+    try {
+        const stripped = stripMarker(raw).trimEnd();
+        const dateStr = formatTimestamp(Date.now());
+        const block = `\n\n## User (${dateStr})\n\n${userContent}\n\n<!-- llm:queued -->\n`;
+        await replaceEditorContent(uri, stripped + block);
+        await RoleTimerManager.getInstance().triggerConversation(uri);
+        vscode.window.showInformationMessage('消息已提交，等待 LLM 处理…');
+    } catch (e) {
+        vscode.window.showErrorMessage(`提交失败: ${e instanceof Error ? e.message : '未知错误'}`);
+    }
+}
+
+/**
+ * 弹出 QuickPick 选择角色，将普通 IssueMarkdown 原地升级为对话文件。
+ * body 内容包裹为第一条 User 消息，frontmatter 追加 chat_conversation 等字段。
+ */
+async function handleNoteUpgrade(
+    uri: vscode.Uri,
+    body: string,
+    origFm: Record<string, unknown> | null,
+    context: vscode.ExtensionContext,
+): Promise<void> {
+    // 获取所有角色并按 status 分组
+    const allRoles = getAllChatRoles();
+    if (allRoles.length === 0) {
+        const action = await vscode.window.showWarningMessage(
+            '还没有聊天角色，需要先创建一个。',
+            '创建角色',
+        );
+        if (action === '创建角色') {
+            await vscode.commands.executeCommand('issueManager.llmChat.createRole');
+        }
+        return;
+    }
+
+    const readyRoles = allRoles.filter(r => r.roleStatus !== 'disabled' && r.roleStatus !== 'testing');
+    const testingRoles = allRoles.filter(r => r.roleStatus === 'testing');
+
+    // 记住上次选择的角色
+    const lastRoleId = context.globalState.get<string>('llmChat.askRole.lastRoleId');
+
+    type RolePickItem = vscode.QuickPickItem & { roleId: string };
+    const items: RolePickItem[] = [];
+
+    for (const role of readyRoles) {
+        items.push({
+            label: `$(${role.avatar}) ${role.name}`,
+            description: role.toolSets.length > 0 ? role.toolSets.join(', ') : undefined,
+            roleId: role.id,
+            picked: role.id === lastRoleId,
+        });
+    }
+
+    if (testingRoles.length > 0) {
+        items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, roleId: '' });
+        for (const role of testingRoles) {
+            items.push({
+                label: `$(${role.avatar}) ${role.name}`,
+                description: '⚠️ 调试中',
+                roleId: role.id,
+                picked: role.id === lastRoleId,
+            });
+        }
+    }
+
+    // 如果只有一个 ready 角色，跳过选择
+    let selectedRoleId: string;
+    if (readyRoles.length === 1 && testingRoles.length === 0) {
+        selectedRoleId = readyRoles[0].id;
+    } else {
+        // 将上次选择的角色排到第一个（默认选中效果）
+        if (lastRoleId) {
+            const idx = items.findIndex(i => i.roleId === lastRoleId);
+            if (idx > 0) {
+                const [item] = items.splice(idx, 1);
+                items.unshift(item);
+            }
+        } else {
+            // 首次使用：优先选中名称含"个人助理"的角色
+            const paIdx = items.findIndex(i => i.label.includes('个人助理') || i.label.includes('个人助手'));
+            if (paIdx > 0) {
+                const [item] = items.splice(paIdx, 1);
+                items.unshift(item);
+            }
+        }
+
+        const pick = await vscode.window.showQuickPick(items, {
+            title: '选择对话角色',
+            placeHolder: '选择一个角色，将笔记内容作为提问发送',
+        });
+        if (!pick || !pick.roleId) { return; }
+        selectedRoleId = pick.roleId;
+    }
+
+    // 保存上次选择
+    await context.globalState.update('llmChat.askRole.lastRoleId', selectedRoleId);
+
+    const role = getChatRoleById(selectedRoleId);
+    if (!role) {
+        vscode.window.showErrorMessage('角色不存在');
+        return;
+    }
+
+    // ── 原地升级：追加 chat frontmatter + 包裹 body 为 User 消息 ──
+    const defaultModelFamily = role.modelFamily
+        || vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily')
+        || 'gpt-5-mini';
+
+    // 提取标题（用于对话元数据），整个 body 原样作为 User 消息
+    const title = (origFm?.issue_title as string)
+        || body.match(/^#\s+(.+)/)?.[1]
+        || '笔记对话';
+
+    // User 消息：去掉 H1 标题（已提升为对话标题），保留其余内容；
+    // 如果去掉标题后为空，则用标题本身作为问题
+    const bodyWithoutH1 = body.replace(/^#\s+.*\n?/, '').trim();
+    const userContent = bodyWithoutH1 || title;
+    if (!userContent) {
+        vscode.window.showWarningMessage('笔记内容为空，请先写入内容再发送。');
+        return;
+    }
+
+    const dateStr = formatTimestamp(Date.now());
+    const newBody = `# ${title}\n\n## User (${dateStr})\n\n${userContent}\n\n<!-- llm:queued -->\n`;
+
+    // 合并 frontmatter + body 为一次原子写入，避免多次写文件触发编辑器冲突
+    const mergedFm: Record<string, unknown> = {
+        ...(origFm ?? {}),
+        chat_conversation: true,
+        chat_role_id: selectedRoleId,
+        chat_title: title,
+        chat_model_family: defaultModelFamily,
+        chat_max_tokens: role.maxTokens ?? 0,
+        chat_token_used: 0,
+    };
+    const jsYaml = await import('js-yaml');
+    const fmYaml = jsYaml.dump(mergedFm, { flowLevel: -1, lineWidth: -1 }).trim();
+    const newContent = `---\n${fmYaml}\n---\n${newBody}`;
+
+    // 通过 WorkspaceEdit 修改编辑器 buffer（而非直接写磁盘），兼容自动保存
+    await replaceEditorContent(uri, newContent);
+
+    // 触发 LLM 处理
+    await RoleTimerManager.getInstance().triggerConversation(uri);
+    vscode.window.showInformationMessage(`已升级为与「${role.name}」的对话，等待 LLM 处理…`);
+}
+
+/** 格式化时间戳 */
+function formatTimestamp(ts: number): string {
+    const d = new Date(ts);
+    const p = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/**
+ * 写入文件内容并同步编辑器 buffer。
+ *
+ * 策略：先写磁盘（triggerConversation 需要读磁盘），再 revert 编辑器
+ * 使 buffer = 磁盘。revert 后 buffer 是 clean 状态，VS Code 会自动
+ * 跟踪后续磁盘变化（如 LLM 执行时的 token 更新），不会与自动保存冲突。
+ */
+async function replaceEditorContent(uri: vscode.Uri, newContent: string): Promise<void> {
+    // 1. 直接写磁盘
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(newContent, 'utf8'));
+
+    // 2. 让编辑器 revert 到磁盘内容（buffer = 磁盘，clean 状态）
+    const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === uri.fsPath);
+    if (doc) {
+        // 确保该文档是活跃编辑器（revert 命令只作用于活跃编辑器）
+        await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
+        await vscode.commands.executeCommand('workbench.action.files.revert');
+    }
 }

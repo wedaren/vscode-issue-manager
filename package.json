@@ -783,6 +783,18 @@
         "title": "编辑群组",
         "category": "Issue Manager",
         "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.llmChat.askRole",
+        "title": "发送到角色对话",
+        "category": "Issue Manager",
+        "icon": "$(send)"
+      },
+      {
+        "command": "issueManager.llmChat.toggleVerboseLogging",
+        "title": "切换执行日志生成",
+        "category": "Issue Manager",
+        "icon": "$(output)"
       }
     ],
     "submenus": [
@@ -1047,9 +1059,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "issueManager.llmChat.refresh",
+          "command": "issueManager.llmChat.toggleVerboseLogging",
           "when": "view == 'issueManager.views.llmChat'",
           "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.llmChat.refresh",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@4"
         }
       ],
       "editor/title": [
@@ -1619,6 +1636,12 @@
         "key": "ctrl+j ctrl+k",
         "mac": "cmd+j cmd+k",
         "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.llmChat.askRole",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "issueManager.isDirConfigured && editorLangId == 'markdown' && issueManager.editorIsIssueMarkdown"
       }
     ],
     "configuration": {
