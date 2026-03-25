@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npm install -D chokidar-cli)",
       "Bash(npx vue-tsc --noEmit --project chrome-extension-wxt/tsconfig.json)",
-      "Bash(npx vue-tsc --noEmit)"
+      "Bash(npx vue-tsc --noEmit)",
+      "Bash(npx tsc:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat"
     ]
   }
 }

@@ -45,6 +45,7 @@ import { PostResponseHookRunner } from './hooks/PostResponseHookRunner';
 import { titleGeneratorHook } from './hooks/titleGeneratorHook';
 import { memoryExtractorHook } from './hooks/memoryExtractorHook';
 import { intentAnchorHook } from './hooks/intentAnchorHook';
+import { insightCrystallizerHook } from './hooks/insightCrystallizerHook';
 
 const logger = Logger.getInstance();
 
@@ -78,6 +79,7 @@ export class RoleTimerManager implements vscode.Disposable {
         this._hookRunner.register('titleGenerator', titleGeneratorHook);
         this._hookRunner.register('intentAnchor', intentAnchorHook);
         this._hookRunner.register('memoryExtractor', memoryExtractorHook);
+        this._hookRunner.register('insightCrystallizer', insightCrystallizerHook);
     }
 
     static getInstance(): RoleTimerManager {
@@ -374,6 +376,9 @@ export class RoleTimerManager implements vscode.Disposable {
                 }
             }
 
+            // 状态栏：开始执行
+            vscode.window.setStatusBarMessage(`$(loading~spin) ${role.name} 思考中...`, 60000);
+
             let toolCallSeq = 0;
             let currentRound = 0;
             const roundReasonings = new Map<number, string>(); // round → 推理文本
@@ -499,6 +504,9 @@ export class RoleTimerManager implements vscode.Disposable {
                         if (info.roundText) {
                             roundReasonings.set(info.round, info.roundText.trim());
                         }
+                        // 状态栏反馈
+                        const toolList = info.toolNames.join(', ');
+                        vscode.window.setStatusBarMessage(`$(loading~spin) ${role.name}: ${toolList}...`, 30000);
                         if (!logUri) { return; }
                         const names = info.toolNames.map(n => `\`${n}\``).join(', ');
                         if (info.roundText) {
@@ -527,17 +535,18 @@ export class RoleTimerManager implements vscode.Disposable {
                 throw new Error(`LLM 返回空响应${hint}，可能原因：上下文过长 / 模型响应异常`);
             }
 
-            // 成功：移除标记并追加助手回复（附工具调用摘要）
-            let toolSummary: string | undefined;
-            if (toolCallSeq > 0 && logUri) {
-                const logId = path.basename(logUri.fsPath, '.md');
+            // 成功：移除标记并追加助手回复（思考过程 + 工具调用在前，回复文本在后）
+            let toolPrologue: string | undefined;
+            if (toolCallSeq > 0) {
                 const lines: string[] = [];
                 let lastRound = -1;
                 for (const item of toolCallItems) {
                     if (item.round !== lastRound) {
                         const reasoning = roundReasonings.get(item.round);
                         if (reasoning) {
-                            lines.push(`> 💭 ${reasoning.replace(/\n+/g, ' ')}`);
+                            // 截取思考文本，避免过长
+                            const thought = reasoning.replace(/\n+/g, ' ').slice(0, 200);
+                            lines.push(`> 💭 ${thought}`);
                         }
                         lastRound = item.round;
                     }
@@ -547,11 +556,15 @@ export class RoleTimerManager implements vscode.Disposable {
                         ? `[\`${item.name}\`](IssueDir/${item.fileName})`
                         : `\`${item.name}\``;
                     const delegSuffix = item.delegationHint ? ` ${item.delegationHint}` : '';
-                    lines.push(`> - \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})${delegSuffix}`);
+                    lines.push(`> 📎 \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})${delegSuffix}`);
                 }
-                toolSummary = `> Run #${runNumber} · [执行详情](IssueDir/${logId}.md)\n${lines.join('\n')}`;
+                if (logUri) {
+                    const logId = path.basename(logUri.fsPath, '.md');
+                    lines.push(`> [执行详情](IssueDir/${logId}.md)`);
+                }
+                toolPrologue = lines.join('\n');
             }
-            await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolSummary);
+            await this.removeMarkerAndAppendAssistant(uri, result.text.trim(), toolPrologue);
 
             // 触发 post-response hooks（fire-and-forget，不阻塞主流程）
             // messages 末尾始终是当前用户消息
@@ -596,6 +609,8 @@ export class RoleTimerManager implements vscode.Disposable {
                 }
             }
 
+            // 状态栏：完成
+            vscode.window.setStatusBarMessage(`$(check) ${role.name} 回复完成`, 3000);
             logger.info(`[RoleTimerManager] 对话处理成功: ${filePath}`);
             this._onDidChange.fire({ uri, roleId: role.id, success: true });
         } catch (e) {
@@ -683,11 +698,12 @@ export class RoleTimerManager implements vscode.Disposable {
     /**
      * 移除状态标记并追加助手消息 —— 单次文件写入，保证原子性。
      */
-    private async removeMarkerAndAppendAssistant(uri: vscode.Uri, content: string, toolSummary?: string): Promise<void> {
+    private async removeMarkerAndAppendAssistant(uri: vscode.Uri, content: string, toolPrologue?: string): Promise<void> {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
         const stripped = stripMarker(raw);
         const dateStr = formatTimestamp(Date.now());
-        const body = toolSummary ? `${content}\n\n${toolSummary}` : content;
+        // 思考过程 + 工具调用在前，回复文本在后
+        const body = toolPrologue ? `${toolPrologue}\n\n${content}` : content;
         const block = `\n## Assistant (${dateStr})\n\n${body}\n\n<!-- llm:ready -->\n`;
         await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
     }

@@ -76,6 +76,10 @@ export function getAllChatRoles(): ChatRoleInfo[] {
             excludedTools: Array.isArray(fm.excluded_tools) ? (fm.excluded_tools as unknown[]).map(String) : undefined,
             roleStatus: fm.role_status as 'ready' | 'testing' | 'disabled' | undefined,
             autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
+            contextStrategy: ['generous', 'focused', 'minimal'].includes(fm.context_strategy as string)
+                ? fm.context_strategy as 'generous' | 'focused' | 'minimal'
+                : undefined,
+            contextSources: Array.isArray(fm.context_sources) ? (fm.context_sources as unknown[]).map(String) : undefined,
         });
     }
     return roles;
@@ -145,6 +149,8 @@ export async function createChatRole(
         timerEnabled?: boolean;
         timerInterval?: number;
         autonomous?: boolean;
+        contextStrategy?: 'generous' | 'focused' | 'minimal';
+        contextSources?: string[];
     },
 ): Promise<string | null> {
     const defaultModelFamily = vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily') || 'gpt-5-mini';
@@ -164,6 +170,8 @@ export async function createChatRole(
         tool_sets: toolSets ?? [],
         mcp_servers: mcpServers ?? [],
         ...(options?.autonomous !== undefined ? { chat_autonomous: options.autonomous } : {}),
+        ...(options?.contextStrategy ? { context_strategy: options.contextStrategy } : {}),
+        ...(options?.contextSources?.length ? { context_sources: options.contextSources } : {}),
     } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[] };
 
     const body = systemPrompt

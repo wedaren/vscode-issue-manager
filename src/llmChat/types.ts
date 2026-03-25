@@ -53,6 +53,15 @@ export interface ChatRoleFrontmatter {
      * 对话级 chat_autonomous 可覆盖此设置，优先级：对话 > 角色。
      */
     chat_autonomous?: boolean;
+    /**
+     * 上下文管道策略：
+     * - 'generous' — 注入所有可用上下文（个人助理、思维伙伴）
+     * - 'focused' — 只注入 context_sources 声明的上下文（专业角色）
+     * - 'minimal' — 仅注入 mode + intent + datetime（定时器角色）
+     */
+    context_strategy?: 'generous' | 'focused' | 'minimal';
+    /** focused 策略下要注入的上下文来源列表 */
+    context_sources?: string[];
 }
 
 // ─── 角色记忆相关 ─────────────────────────────────────────────
@@ -183,6 +192,10 @@ export interface ChatRoleInfo {
     roleStatus?: 'ready' | 'testing' | 'disabled';
     /** 角色级自主模式默认值，undefined 等同于 false（交互模式） */
     autonomous?: boolean;
+    /** 上下文管道策略，undefined 等同于 'generous' */
+    contextStrategy?: 'generous' | 'focused' | 'minimal';
+    /** focused 策略下要注入的上下文来源列表 */
+    contextSources?: string[];
 }
 
 /** 运行时对话信息 */

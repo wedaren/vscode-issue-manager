@@ -239,6 +239,11 @@ export class LLMChatService {
             } catch { /* 日志写入失败不阻塞主流程 */ }
         }
 
+        // 工具调用跟踪（用于生成 inline 思考 + 工具摘要）
+        const toolCallItems: Array<{ name: string; time: Date; dur: number; success: boolean; round: number }> = [];
+        const roundReasonings = new Map<number, string>();
+        let toolCallSeq = 0;
+
         try {
             if (logUri) { void appendLogLine(logUri, '🚀 发起 LLM 请求...'); }
 
@@ -248,6 +253,7 @@ export class LLMChatService {
                 onChunk,
                 async (toolName, input) => {
                     const tcStart = Date.now();
+                    toolCallSeq++;
 
                     // 委派：记录意图
                     if (toolName === 'delegate_to_role' && logUri) {
@@ -268,12 +274,21 @@ export class LLMChatService {
                             void appendLogLine(logUri, `🔧 \`${toolName}\` (${fmtDuration(dur)}) → ${truncate(res.content, 80)}`);
                         }
                     }
+
+                    toolCallItems.push({ name: toolName, time: new Date(), dur, success: res.success, round: 0 });
                     return res.content;
                 },
                 {
                     signal,
                     modelFamily: effectiveModelFamily,
                     onToolStatus: options?.onToolStatus,
+                    onToolsDecided: (info) => {
+                        roundReasonings.set(info.round, info.roundText.trim());
+                        // 标记当前轮次到待记录的工具调用
+                        for (const item of toolCallItems) {
+                            if (item.round === 0) { item.round = info.round; }
+                        }
+                    },
                 },
             );
 
@@ -282,8 +297,34 @@ export class LLMChatService {
                 return null;
             }
 
+            // 构建 inline 思考 + 工具摘要（放在回复文本前面）
+            let toolPrologue = '';
+            if (toolCallSeq > 0) {
+                const lines: string[] = [];
+                let lastRound = -1;
+                for (const item of toolCallItems) {
+                    if (item.round !== lastRound) {
+                        const reasoning = roundReasonings.get(item.round);
+                        if (reasoning) {
+                            lines.push(`> 💭 ${reasoning.replace(/\n+/g, ' ').slice(0, 200)}`);
+                        }
+                        lastRound = item.round;
+                    }
+                    const t = `${item.time.getHours().toString().padStart(2, '0')}:${item.time.getMinutes().toString().padStart(2, '0')}:${item.time.getSeconds().toString().padStart(2, '0')}`;
+                    const icon = item.success ? '✅' : '❌';
+                    const nameStr = `\`${item.name}\``;
+                    lines.push(`> 📎 \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})`);
+                }
+                if (logUri) {
+                    const logId = logUri.fsPath.split('/').pop()?.replace('.md', '') || '';
+                    lines.push(`> [执行详情](IssueDir/${logId}.md)`);
+                }
+                toolPrologue = lines.join('\n') + '\n\n';
+            }
+
             const assistantReply = result.text.trim();
-            await appendMessageToConversation(uri, 'assistant', assistantReply);
+            const fullReply = toolPrologue ? toolPrologue + assistantReply : assistantReply;
+            await appendMessageToConversation(uri, 'assistant', fullReply);
             this._onDidSendMessage.fire({ uri, role: 'assistant', content: assistantReply });
 
             const inputTokens = await estimateTokens(messages);
