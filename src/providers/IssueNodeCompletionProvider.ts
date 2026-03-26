@@ -6,7 +6,8 @@ import { getAllIssueMarkdowns, IssueMarkdown } from '../data/IssueMarkdowns';
 
 /**
  * Issue 文件补全提供器
- * 从 getAllIssueMarkdowns 获取扁平 issue 列表
+ * 提供：1) 在行首插入 `<!-- llm:queued -->` 快速标记对话；
+ *       2) 从 Issue 列表插入相对链接或快速创建新 Issue（快捷命令）；
  */
 export class IssueNodeCompletionProvider implements vscode.CompletionItemProvider {
 
@@ -52,34 +53,23 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
 
             const insertMode = config.get<string>('insertMode', 'relativePath');
 
-            // ─── 固定项 1：## User (当前时间戳) ────────────────────
-            const now = new Date();
-            const pad = (n: number) => n.toString().padStart(2, '0');
-            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-            const userMsgItem = new vscode.CompletionItem(`## User (${dateStr})`, vscode.CompletionItemKind.Snippet);
-            userMsgItem.detail = '插入用户消息块（当前时间戳）';
-            userMsgItem.documentation = new vscode.MarkdownString('插入 `## User (timestamp)` 块，光标定位到内容区域，写完后追加 `<!-- llm:queued -->` 并保存即可触发 LLM。');
-            userMsgItem.insertText = new vscode.SnippetString(`## User (${dateStr})\n\n$0`);
-            userMsgItem.sortText = '\u0000';
-            userMsgItem.preselect = true;
-            userMsgItem.filterText = `## User ${prefix ?? ''}`;
-            userMsgItem.range = { inserting: insertingAtLineStart, replacing: replacingRange };
+            // 已移除原固定项：`## User (timestamp)`，编号及排序已调整
 
-            // ─── 固定项 2：<!-- llm:queued --> ─────────────────────
+            // ─── 固定项 1：<!-- llm:queued --> ─────────────────────
             const queuedItem = new vscode.CompletionItem('<!-- llm:queued -->', vscode.CompletionItemKind.Snippet);
             queuedItem.detail = '标记对话等待 LLM 处理';
             queuedItem.documentation = new vscode.MarkdownString('追加此标记后保存文件（`Cmd+S`），将立即触发 LLM 处理当前对话。');
             queuedItem.insertText = new vscode.SnippetString('<!-- llm:queued -->');
-            queuedItem.sortText = '\u0001';
+            queuedItem.sortText = '\u0000';
             queuedItem.filterText = `<!-- llm ${prefix ?? ''}`;
             queuedItem.range = { inserting: insertingAtLineStart, replacing: replacingRange };
 
-            // ─── 固定项 3/4：新建问题 ───────────────────────────────
+            // ─── 固定项 2/3：新建问题 ───────────────────────────────
             const createItem = new vscode.CompletionItem('新建问题', vscode.CompletionItemKind.Keyword);
             createItem.detail = `快速新建问题:${prefix ?? ''}`;
             createItem.insertText = prefix  ?? '';
             createItem.keepWhitespace = true;
-            createItem.sortText = '\u0002';
+            createItem.sortText = '\u0001';
             createItem.preselect = true;
             createItem.filterText = prefix ?? '';
             createItem.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题', arguments: [null, prefix ?? undefined, false, insertMode, false] };
@@ -88,7 +78,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             createBackground.detail = `后台创建并由 AI 填充（不打开）:${prefix ?? ''}`;
             createBackground.insertText = prefix  ?? '';
             createBackground.keepWhitespace = true;
-            createBackground.sortText = '\u0003';
+            createBackground.sortText = '\u0002';
             createBackground.preselect = true;
             createBackground.filterText = prefix ?? '';
             createBackground.command = { command: 'issueManager.createIssueFromCompletion', title: '快速新建问题（后台）', arguments: [null, prefix ?? undefined, true, insertMode, false] };
@@ -102,7 +92,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
                 const endsWithSpace = prefix.length > 0 && prefix.endsWith(' ');
 
                 if (isLineStart) {
-                    return new vscode.CompletionList([userMsgItem, queuedItem], false);
+                    return new vscode.CompletionList([queuedItem], false);
                 }
                 if (endsWithSpace) {
                     return new vscode.CompletionList([createItem, createBackground], false);
@@ -140,7 +130,7 @@ export class IssueNodeCompletionProvider implements vscode.CompletionItemProvide
             }
 
             const items = filtered.map((issue, index) =>
-                this.createCompletionItem(issue, index + 4, triggerRange)
+                this.createCompletionItem(issue, index + 3, triggerRange)
             );
 
             // 触发模式下只返回 issue 项，不混入固定项

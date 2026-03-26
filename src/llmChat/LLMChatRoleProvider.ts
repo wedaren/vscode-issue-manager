@@ -6,7 +6,7 @@
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { whenCacheReady } from '../data/IssueMarkdowns';
+import { whenCacheReady, onTitleUpdate } from '../data/IssueMarkdowns';
 import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentActivityEntries } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, RecentActivityEntry } from './types';
 
@@ -18,6 +18,7 @@ export class ChatRoleNode extends vscode.TreeItem {
         this.id = `role:${role.id}`;
         this.contextValue = 'chatRole';
         this.iconPath = new vscode.ThemeIcon(role.avatar || 'hubot');
+        this.resourceUri = role.uri;
 
         // 工具集徽章
         const capStr = role.toolSets.length > 0 ? role.toolSets.join('/') : '';
@@ -27,12 +28,8 @@ export class ChatRoleNode extends vscode.TreeItem {
             `**${role.name}**${capStr ? `\n\n工具集: ${role.toolSets.join(' · ')}` : ''}\n\n（系统提示词在文件正文中）`,
         );
 
-        // 点击打开角色文件（编辑 system prompt）
-        this.command = {
-            command: 'vscode.open',
-            title: '打开角色',
-            arguments: [role.uri],
-        };
+        // 不设置 command：点击节点展开/折叠对话列表，不切换当前编辑器
+        // 打开角色文件可通过右键菜单或内联操作
     }
 }
 
@@ -55,7 +52,7 @@ export class ChatConversationNode extends vscode.TreeItem {
         public readonly parentId: string,
         public readonly isGroup: boolean,
     ) {
-        // 有日志时可展开，否则为叶子节点
+        // 有日志时自动展开显示执行日志，否则为叶子节点
         super(
             conversation.title,
             conversation.logId
@@ -65,15 +62,12 @@ export class ChatConversationNode extends vscode.TreeItem {
         this.id = `convo:${conversation.id}`;
         this.contextValue = 'chatConversation';
         this.iconPath = new vscode.ThemeIcon('comment-discussion');
+        this.resourceUri = conversation.uri;
         this.description = formatRelativeTime(conversation.mtime);
         this.tooltip = conversation.title;
-        this.command = {
-            command: isGroup
-                ? 'issueManager.llmChat.openGroupConversation'
-                : 'issueManager.llmChat.openConversation',
-            title: '打开对话',
-            arguments: [parentId, conversation.uri],
-        };
+
+        // 不设置 command：点击展开/折叠子节点，不切换当前编辑器
+        // 打开对话可通过右键菜单或内联操作
     }
 }
 
@@ -120,7 +114,7 @@ export class RecentActivityRootNode extends vscode.TreeItem {
 export class RecentActivityItemNode extends vscode.TreeItem {
     constructor(public readonly entry: RecentActivityEntry) {
         super(
-            `${entry.success ? '✅' : '❌'} Run #${entry.runNumber}`,
+            `${entry.success ? '✓' : '❌'} Run #${entry.runNumber}`,
             vscode.TreeItemCollapsibleState.None,
         );
         this.contextValue = 'recentActivityItem';
@@ -149,11 +143,50 @@ export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNod
 export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewNode>, vscode.Disposable {
     private _onDidChangeTreeData = new vscode.EventEmitter<LLMChatViewNode | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-    constructor(private readonly context: vscode.ExtensionContext) {}
+    constructor(private readonly context: vscode.ExtensionContext) {
+        // 文件新增或标题变更时自动刷新视图
+        // onTitleUpdate 仅在标题实际变更或新文件入缓存时触发（已在 IssueMarkdowns 中守卫），
+        // 正文编辑不会触发，因此不会造成 AI 批量操作时的频繁刷新。
+        this.context.subscriptions.push(
+            onTitleUpdate(() => this.debouncedRefresh())
+        );
+    }
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
+    }
+
+    /**
+     * 绑定 TreeView 实例，注册选中自动预览。
+     * 点击节点时自然展开/折叠（因为没有 command），
+     * 同时通过 onDidChangeSelection 打开对应文件（preserveFocus 不抢焦点）。
+     */
+    bindTreeView(treeView: vscode.TreeView<LLMChatViewNode>): void {
+        this.context.subscriptions.push(
+            treeView.onDidChangeSelection(e => {
+                const node = e.selection[0];
+                if (!node) { return; }
+                let uri: vscode.Uri | undefined;
+                if (node instanceof ChatRoleNode) { uri = node.role.uri; }
+                else if (node instanceof ChatConversationNode) { uri = node.conversation.uri; }
+                else if (node instanceof ChatExecutionLogNode) { uri = node.logInfo.uri; }
+                else if (node instanceof RecentActivityItemNode) { uri = node.entry.logUri; }
+                if (uri) {
+                    void vscode.commands.executeCommand('vscode.open', uri, { preserveFocus: true, preview: true });
+                }
+            })
+        );
+    }
+
+    /** 防抖刷新，合并短时间内的多次缓存更新事件 */
+    private debouncedRefresh(): void {
+        if (this.refreshTimer) { clearTimeout(this.refreshTimer); }
+        this.refreshTimer = setTimeout(() => {
+            this.refreshTimer = null;
+            this.refresh();
+        }, 500);
     }
 
     async getChildren(element?: LLMChatViewNode): Promise<LLMChatViewNode[]> {
@@ -264,6 +297,10 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
     }
 
     dispose(): void {
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = null;
+        }
         this._onDidChangeTreeData.dispose();
     }
 }

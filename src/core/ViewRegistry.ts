@@ -468,6 +468,9 @@ export class ViewRegistry {
         this.context.subscriptions.push(llmChatRoleView);
         this.context.subscriptions.push(llmChatRoleProvider);
 
+        // 绑定 TreeView：选中节点时自动预览对应文件（不抢焦点）
+        llmChatRoleProvider.bindTreeView(llmChatRoleView);
+
         // 注册聊天相关命令
         registerLLMChatCommands(this.context, llmChatRoleProvider, llmChatRoleView);
 

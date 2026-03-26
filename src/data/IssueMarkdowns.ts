@@ -383,7 +383,10 @@ export async function getIssueMarkdown(
         };
         _issueMarkdownCache.set(key, entry);
         updateTypeIndex(key, frontmatter);
-        scheduleOnDidUpdate();
+        // 仅在标题实际变更时通知订阅者，避免正文编辑触发多余的视图刷新
+        if (!cached || cached.title !== title) {
+            scheduleOnDidUpdate();
+        }
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
 
         return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime, vtime: entry.vtime };
