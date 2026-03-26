@@ -2480,22 +2480,22 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
             const runMatches = [...raw.matchAll(/## Run #(\d+)/g)];
             totalRuns += runMatches.length;
 
-            // 成功数：匹配 "✅ **成功**"
-            const successMatches = raw.match(/✅ \*\*成功\*\*/g);
+            // 成功数：匹配 "✓ **成功**"
+            const successMatches = raw.match(/✓ \*\*成功\*\*/g);
             successRuns += successMatches?.length ?? 0;
 
             // 工具调用：匹配 backtick 包裹的工具名 + 括号内的耗时
             // 覆盖多种日志格式：
-            //   Timer:  ✅ [`tool_name`](link) (1.2s)  或  ✅ `tool_name` (250ms)
+            //   Timer:  ✓ [`tool_name`](link) (1.2s)  或  ✓ `tool_name` (250ms)
             //   Direct: 🔧 `tool_name` (250ms) → result
-            //   委派:   📥✅ **委派结果** [`delegate_to_role`](link) (3.2s)
+            //   委派:   📥✓ **委派结果** [`delegate_to_role`](link) (3.2s)
             for (const m of raw.matchAll(/`([^`]+)`[^\n]*?\((\d+(?:\.\d+)?(?:ms|s))\)/g)) {
                 const t = m[1];
                 // 排除非工具调用行（如 LLM 轮次摘要中的工具名列表）
-                // 工具调用行包含状态图标 ✅❌🔧📥 或 ⏳
+                // 工具调用行包含状态图标 ✓❌🔧📥 或 ⏳
                 const lineStart = raw.lastIndexOf('\n', m.index!) + 1;
                 const linePrefix = raw.slice(lineStart, m.index!);
-                if (/[✅❌🔧📥]/.test(linePrefix)) {
+                if (/[✓❌🔧📥]/.test(linePrefix)) {
                     toolCallCounts[t] = (toolCallCounts[t] ?? 0) + 1;
                 }
             }

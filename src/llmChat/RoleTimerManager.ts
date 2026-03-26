@@ -66,14 +66,21 @@ export class RoleTimerManager implements vscode.Disposable {
     private readonly _onDidChange = new vscode.EventEmitter<{ uri: vscode.Uri; roleId: string; success: boolean }>();
     readonly onDidChange = this._onDidChange.event;
 
+    /** 执行中数量变化事件（开始/结束时触发），供状态栏使用 */
+    private readonly _onExecutingCountChange = new vscode.EventEmitter<number>();
+    readonly onExecutingCountChange = this._onExecutingCountChange.event;
+
+    /** 当前正在执行的对话数量 */
+    get executingCount(): number { return this.executing.size; }
+
     private readonly _disposables: vscode.Disposable[] = [];
     private _watcherDebounce: ReturnType<typeof setTimeout> | undefined;
     private readonly _hookRunner = new PostResponseHookRunner();
 
-    /** 是否生成执行日志和工具调用文件（默认开启） */
-    private _verboseLogging = true;
-    get verboseLogging(): boolean { return this._verboseLogging; }
-    set verboseLogging(value: boolean) { this._verboseLogging = value; }
+    /** 全局调试开关：ON 时无视角色/对话配置，强制生成所有日志 */
+    private _debugLogAll = false;
+    get debugLogAll(): boolean { return this._debugLogAll; }
+    set debugLogAll(value: boolean) { this._debugLogAll = value; }
 
     private constructor() {
         this._hookRunner.register('titleGenerator', titleGeneratorHook);
@@ -250,6 +257,7 @@ export class RoleTimerManager implements vscode.Disposable {
     private async executeConversation(uri: vscode.Uri, role: ChatRoleInfo, trigger: 'timer' | 'save' = 'timer'): Promise<void> {
         const filePath = uri.fsPath;
         this.executing.add(filePath);
+        this._onExecutingCountChange.fire(this.executing.size);
 
         // 若用户在 <!-- llm:ready --> 后直接输入内容，自动补全 ## User (ts) 标头
         await this._normalizePendingInput(uri);
@@ -266,13 +274,14 @@ export class RoleTimerManager implements vscode.Disposable {
         const timeout = role.timerTimeout ?? 60_000;
         const ac = new AbortController();
 
-        // ── 日志先行：获取日志 URI 并写入 Run 标题（可通过 verboseLogging 关闭）──
+        const convoConfig = await getConversationConfig(uri);
+
+        // ── 日志生成开关：全局调试 ON 覆盖一切；否则 对话级 > 角色级 > 默认 false ──
+        const effectiveLogEnabled = this._debugLogAll || (convoConfig?.logEnabled ?? role.logEnabled ?? false);
         let logUri: vscode.Uri | null = null;
-        if (this._verboseLogging) {
+        if (effectiveLogEnabled) {
             try { logUri = await getOrCreateExecutionLog(uri); } catch { /* 忽略 */ }
         }
-
-        const convoConfig = await getConversationConfig(uri);
         const effectiveModelFamily = convoConfig?.modelFamily || role.modelFamily;
         const effectiveMaxTokens = convoConfig?.maxTokens ?? role.maxTokens;
 
@@ -454,7 +463,7 @@ export class RoleTimerManager implements vscode.Disposable {
                             ? `[\`${toolName}\`](IssueDir/${fileName})`
                             : `\`${toolName}\``;
 
-                        const statusIcon = res.success ? '✅' : '❌';
+                        const statusIcon = res.success ? '✓' : '❌';
                         if (isDelegation) {
                             void appendLogLine(logUri, `📥${statusIcon} **委派结果** ${toolLink} (${fmtDuration(dur)})`);
                         } else {
@@ -462,7 +471,7 @@ export class RoleTimerManager implements vscode.Disposable {
                         }
                     } else if (logUri) {
                         // runNumber 为 0（startLogRun 失败），仅写摘要
-                        const statusIcon = res.success ? '✅' : '❌';
+                        const statusIcon = res.success ? '✓' : '❌';
                         if (isDelegation) {
                             void appendLogLine(logUri, `📥${statusIcon} **委派结果** (${fmtDuration(dur)})`);
                         } else {
@@ -551,7 +560,7 @@ export class RoleTimerManager implements vscode.Disposable {
                         lastRound = item.round;
                     }
                     const t = fmtHms(item.time);
-                    const icon = item.success ? '✅' : '❌';
+                    const icon = item.success ? '✓' : '❌';
                     const nameStr = item.fileName
                         ? `[\`${item.name}\`](IssueDir/${item.fileName})`
                         : `\`${item.name}\``;
@@ -592,7 +601,7 @@ export class RoleTimerManager implements vscode.Disposable {
 
             // 日志：成功
             const dur = fmtDuration(Date.now() - startedAt);
-            if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${dur} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
+            if (logUri) { void appendLogLine(logUri, `✓ **成功** | 耗时 ${dur} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
 
             // ─── 续写提升：将 queue_continuation 暂存的消息转为 queued ──
             // run 成功结束后，状态标记已被清除，可以安全追加消息
@@ -650,6 +659,7 @@ export class RoleTimerManager implements vscode.Disposable {
             this._onDidChange.fire({ uri, roleId: role.id, success: false });
         } finally {
             this.executing.delete(filePath);
+            this._onExecutingCountChange.fire(this.executing.size);
         }
     }
 

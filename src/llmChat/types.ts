@@ -53,6 +53,8 @@ export interface ChatRoleFrontmatter {
      * 对话级 chat_autonomous 可覆盖此设置，优先级：对话 > 角色。
      */
     chat_autonomous?: boolean;
+    /** 角色级执行日志生成开关（默认 false = 不生成日志和工具调用文件）。对话级 chat_log_enabled 可覆盖。 */
+    chat_log_enabled?: boolean;
     /**
      * 上下文管道策略：
      * - 'generous' — 注入所有可用上下文（个人助理、思维伙伴）
@@ -129,6 +131,8 @@ export interface ChatConversationFrontmatter {
      * 优先级：对话 > 角色。
      */
     chat_autonomous?: boolean;
+    /** 对话级执行日志生成开关（覆盖角色配置）。true = 生成，false = 不生成，undefined = 继承角色。 */
+    chat_log_enabled?: boolean;
     /**
      * 意图锚点：首次回复后由 hook 自动提取并写入，注入到 system prompt 最前。
      * 防止长对话中目标漂移。可由用户手动修改以更正意图描述。
@@ -192,6 +196,8 @@ export interface ChatRoleInfo {
     roleStatus?: 'ready' | 'testing' | 'disabled';
     /** 角色级自主模式默认值，undefined 等同于 false（交互模式） */
     autonomous?: boolean;
+    /** 角色级日志生成开关，undefined 等同于 false */
+    logEnabled?: boolean;
     /** 上下文管道策略，undefined 等同于 'generous' */
     contextStrategy?: 'generous' | 'focused' | 'minimal';
     /** focused 策略下要注入的上下文来源列表 */
@@ -220,6 +226,8 @@ export interface ChatConversationInfo {
     logId?: string;
     /** 对话级自主模式 */
     autonomous?: boolean;
+    /** 对话级日志生成开关 */
+    logEnabled?: boolean;
     /** 意图锚点（首次回复后自动提取，防止目标漂移） */
     intent?: string;
 }

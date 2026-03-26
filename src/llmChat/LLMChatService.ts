@@ -180,7 +180,7 @@ export class LLMChatService {
             const outputTokens = await estimateTokens([outputMsg]);
             void updateConversationTokenUsed(uri, inputTokens + outputTokens, convoConfig?.maxTokens ?? this._activeRole?.maxTokens);
 
-            if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
+            if (logUri) { void appendLogLine(logUri, `✓ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
             return assistantReply;
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
@@ -311,7 +311,7 @@ export class LLMChatService {
                         lastRound = item.round;
                     }
                     const t = `${item.time.getHours().toString().padStart(2, '0')}:${item.time.getMinutes().toString().padStart(2, '0')}:${item.time.getSeconds().toString().padStart(2, '0')}`;
-                    const icon = item.success ? '✅' : '❌';
+                    const icon = item.success ? '✓' : '❌';
                     const nameStr = `\`${item.name}\``;
                     lines.push(`> 📎 \`${t}\` ${icon} ${nameStr} (${fmtDuration(item.dur)})`);
                 }
@@ -338,7 +338,7 @@ export class LLMChatService {
                 void appendLogLine(logUri, `💭 **助手回复**: ${truncate(preview, 200)}`);
             }
 
-            if (logUri) { void appendLogLine(logUri, `✅ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
+            if (logUri) { void appendLogLine(logUri, `✓ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
             return assistantReply;
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);

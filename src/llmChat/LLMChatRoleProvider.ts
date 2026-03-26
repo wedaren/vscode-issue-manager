@@ -6,9 +6,10 @@
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { whenCacheReady, onTitleUpdate } from '../data/IssueMarkdowns';
-import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentActivityEntries } from './llmChatDataManager';
+import { whenCacheReady, onTitleUpdate, isIssueMarkdownFile } from '../data/IssueMarkdowns';
+import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentActivityEntries, getToolCallsForLog, type ChatToolCallInfo } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, RecentActivityEntry } from './types';
+import { RoleTimerManager } from './RoleTimerManager';
 
 // ─── 节点类型 ────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ export class ChatConversationNode extends vscode.TreeItem {
         public readonly conversation: ChatConversationInfo,
         public readonly parentId: string,
         public readonly isGroup: boolean,
+        executing = false,
     ) {
         // 有日志时自动展开显示执行日志，否则为叶子节点
         super(
@@ -61,13 +63,16 @@ export class ChatConversationNode extends vscode.TreeItem {
         );
         this.id = `convo:${conversation.id}`;
         this.contextValue = 'chatConversation';
-        this.iconPath = new vscode.ThemeIcon('comment-discussion');
         this.resourceUri = conversation.uri;
-        this.description = formatRelativeTime(conversation.mtime);
         this.tooltip = conversation.title;
 
-        // 不设置 command：点击展开/折叠子节点，不切换当前编辑器
-        // 打开对话可通过右键菜单或内联操作
+        if (executing) {
+            this.iconPath = new vscode.ThemeIcon('sync~spin');
+            this.description = '执行中…';
+        } else {
+            this.iconPath = new vscode.ThemeIcon('comment-discussion');
+            this.description = formatRelativeTime(conversation.mtime);
+        }
     }
 }
 
@@ -80,7 +85,7 @@ export class ChatExecutionLogNode extends vscode.TreeItem {
         public readonly parentRoleOrGroupId?: string,
         public readonly parentIsGroup?: boolean,
     ) {
-        super('执行日志', vscode.TreeItemCollapsibleState.None);
+        super('执行日志', vscode.TreeItemCollapsibleState.Collapsed);
         this.id = `log:${logInfo.id}`;
         this.contextValue = 'chatExecutionLog';
         this.iconPath = new vscode.ThemeIcon('output');
@@ -136,7 +141,31 @@ export class RecentActivityItemNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | RecentActivityRootNode | RecentActivityItemNode;
+/** 工具调用节点（执行日志的子节点） */
+export class ChatToolCallNode extends vscode.TreeItem {
+    constructor(
+        public readonly toolCall: ChatToolCallInfo,
+        public readonly parentLogInfo?: ChatExecutionLogInfo,
+        public readonly parentConversation?: ChatConversationInfo,
+        public readonly parentRoleOrGroupId?: string,
+        public readonly parentIsGroup?: boolean,
+    ) {
+        super(
+            `#${toolCall.sequence} ${toolCall.toolName}`,
+            vscode.TreeItemCollapsibleState.None,
+        );
+        this.id = `toolcall:${toolCall.id}`;
+        this.contextValue = 'chatToolCall';
+        const durLabel = toolCall.duration >= 1000
+            ? `${(toolCall.duration / 1000).toFixed(1)}s`
+            : `${toolCall.duration}ms`;
+        this.iconPath = new vscode.ThemeIcon(toolCall.success ? 'pass' : 'error');
+        this.description = `Run #${toolCall.runNumber} · ${durLabel}`;
+        this.resourceUri = toolCall.uri;
+    }
+}
+
+export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatToolCallNode | RecentActivityRootNode | RecentActivityItemNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -147,10 +176,12 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
 
     constructor(private readonly context: vscode.ExtensionContext) {
         // 文件新增或标题变更时自动刷新视图
-        // onTitleUpdate 仅在标题实际变更或新文件入缓存时触发（已在 IssueMarkdowns 中守卫），
-        // 正文编辑不会触发，因此不会造成 AI 批量操作时的频繁刷新。
         this.context.subscriptions.push(
             onTitleUpdate(() => this.debouncedRefresh())
+        );
+        // 执行状态变化时刷新视图（更新对话节点的执行中图标）
+        this.context.subscriptions.push(
+            RoleTimerManager.getInstance().onExecutingCountChange(() => this.refresh())
         );
     }
 
@@ -164,6 +195,7 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
      * 同时通过 onDidChangeSelection 打开对应文件（preserveFocus 不抢焦点）。
      */
     bindTreeView(treeView: vscode.TreeView<LLMChatViewNode>): void {
+        // 选中节点 → 预览对应文件（不抢焦点）
         this.context.subscriptions.push(
             treeView.onDidChangeSelection(e => {
                 const node = e.selection[0];
@@ -172,10 +204,28 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
                 if (node instanceof ChatRoleNode) { uri = node.role.uri; }
                 else if (node instanceof ChatConversationNode) { uri = node.conversation.uri; }
                 else if (node instanceof ChatExecutionLogNode) { uri = node.logInfo.uri; }
+                else if (node instanceof ChatToolCallNode) { uri = node.toolCall.uri; }
                 else if (node instanceof RecentActivityItemNode) { uri = node.entry.logUri; }
                 if (uri) {
+                    // 文件已是当前活动编辑器时跳过，避免 reveal 回路
+                    const activeUri = vscode.window.activeTextEditor?.document.uri;
+                    if (activeUri?.fsPath === uri.fsPath) { return; }
                     void vscode.commands.executeCommand('vscode.open', uri, { preserveFocus: true, preview: true });
                 }
+            })
+        );
+
+        // 编辑器切换 → 自动在树视图中定位对应节点（仅视图可见时）
+        this.context.subscriptions.push(
+            vscode.window.onDidChangeActiveTextEditor(async editor => {
+                if (!editor || !treeView.visible) { return; }
+                if (!isIssueMarkdownFile(editor.document.uri)) { return; }
+                try {
+                    const node = await this.findNodeByUri(editor.document.uri);
+                    if (node) {
+                        await treeView.reveal(node, { select: true, focus: false, expand: true });
+                    }
+                } catch { /* 节点不在树中，忽略 */ }
             })
         );
     }
@@ -208,11 +258,13 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         }
         if (element instanceof ChatRoleNode) {
             const convos = await getConversationsForRole(element.role.id);
-            return convos.map(c => new ChatConversationNode(c, element.role.id, false));
+            const mgr = RoleTimerManager.getInstance();
+            return convos.map(c => new ChatConversationNode(c, element.role.id, false, mgr.isExecuting(c.uri)));
         }
         if (element instanceof ChatGroupNode) {
             const convos = await getConversationsForGroup(element.group.id);
-            return convos.map(c => new ChatConversationNode(c, element.group.id, true));
+            const mgr = RoleTimerManager.getInstance();
+            return convos.map(c => new ChatConversationNode(c, element.group.id, true, mgr.isExecuting(c.uri)));
         }
         if (element instanceof ChatConversationNode) {
             const logInfo = await getExecutionLogInfo(element.conversation.uri);
@@ -220,6 +272,13 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
                 return [new ChatExecutionLogNode(logInfo, element.conversation, element.parentId, element.isGroup)];
             }
             return [];
+        }
+        if (element instanceof ChatExecutionLogNode) {
+            const toolCalls = getToolCallsForLog(element.logInfo.id);
+            return toolCalls.map(tc => new ChatToolCallNode(
+                tc, element.logInfo, element.parentConversation,
+                element.parentRoleOrGroupId, element.parentIsGroup,
+            ));
         }
         return [];
     }
@@ -241,6 +300,14 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         if (element instanceof ChatExecutionLogNode) {
             if (element.parentConversation && element.parentRoleOrGroupId !== undefined) {
                 return new ChatConversationNode(element.parentConversation, element.parentRoleOrGroupId, element.parentIsGroup ?? false);
+            }
+        }
+        if (element instanceof ChatToolCallNode) {
+            if (element.parentLogInfo) {
+                return new ChatExecutionLogNode(
+                    element.parentLogInfo, element.parentConversation,
+                    element.parentRoleOrGroupId, element.parentIsGroup,
+                );
             }
         }
         if (element instanceof RecentActivityItemNode) {

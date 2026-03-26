@@ -71,16 +71,16 @@ function parseRunsFromLog(logRaw: string): RunSummary[] {
         const tokenMatch = /预估 input: \*\*(\d+)\*\* tokens/.exec(section);
         const inputTokens = tokenMatch?.[1] ?? '—';
 
-        const success = /✅ \*\*成功\*\*/.test(section);
+        const success = /✓ \*\*成功\*\*/.test(section);
 
-        const durMatch = /✅ \*\*成功\*\* \| 耗时 ([^\s|]+)/.exec(section);
+        const durMatch = /✓ \*\*成功\*\* \| 耗时 ([^\s|]+)/.exec(section);
         const durationStr = durMatch?.[1] ?? '—';
 
         const errMatch = /❌ \*\*失败[^:]*: (.+)/.exec(section);
         const errorMsg = errMatch?.[1]?.trim() ?? '';
 
-        // 工具调用行：✅/❌ `工具名` (耗时)
-        const toolLines = [...section.matchAll(/^- `\d{2}:\d{2}:\d{2}` [✅❌].+$/gm)]
+        // 工具调用行：✓/❌ `工具名` (耗时)
+        const toolLines = [...section.matchAll(/^- `\d{2}:\d{2}:\d{2}` [✓❌].+$/gm)]
             .map(x => x[0].trim());
 
         // 助手回复摘要
@@ -199,7 +199,7 @@ export async function generateDiagnosticReport(conversationUri: vscode.Uri): Pro
             lines.push('## 执行时间线');
             lines.push('');
             for (const run of runs) {
-                const icon = run.success ? '✅' : '❌';
+                const icon = run.success ? '✓' : '❌';
                 lines.push(`### Run #${run.runNumber} · ${run.timestamp} · ${icon} ${run.durationStr}`);
                 lines.push('');
                 lines.push(`- **触发**: ${run.trigger}  ·  **模型**: ${run.modelFamily}  ·  **输入 tokens**: ${run.inputTokens}`);

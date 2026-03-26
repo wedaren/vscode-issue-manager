@@ -76,6 +76,7 @@ export function getAllChatRoles(): ChatRoleInfo[] {
             excludedTools: Array.isArray(fm.excluded_tools) ? (fm.excluded_tools as unknown[]).map(String) : undefined,
             roleStatus: fm.role_status as 'ready' | 'testing' | 'disabled' | undefined,
             autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
+            logEnabled: typeof fm.chat_log_enabled === 'boolean' ? fm.chat_log_enabled : undefined,
             contextStrategy: ['generous', 'focused', 'minimal'].includes(fm.context_strategy as string)
                 ? fm.context_strategy as 'generous' | 'focused' | 'minimal'
                 : undefined,
@@ -205,6 +206,7 @@ export function getConversationsForRole(roleId: string): ChatConversationInfo[] 
             maxTokens: fm.chat_max_tokens,
             tokenUsed: fm.chat_token_used,
             logId: fm.chat_log_id,
+            logEnabled: typeof fm.chat_log_enabled === 'boolean' ? fm.chat_log_enabled : undefined,
         });
     }
     convos.sort((a, b) => b.mtime - a.mtime);
@@ -505,6 +507,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
     tokenUsed?: number;
     autonomous?: boolean;
     intent?: string;
+    logEnabled?: boolean;
 } | null> {
     try {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
@@ -517,6 +520,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
             tokenUsed: fm.chat_token_used as number | undefined,
             autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
             intent: typeof fm.chat_intent === 'string' ? fm.chat_intent : undefined,
+            logEnabled: typeof fm.chat_log_enabled === 'boolean' ? fm.chat_log_enabled : undefined,
         };
     } catch {
         return null;
@@ -1196,14 +1200,14 @@ export async function getRecentActivityEntries(limit = 30): Promise<RecentActivi
             }
 
             // 成功/失败从 appendLogLine 写的结果行提取
-            const hasSuccess = /✅ \*\*成功\*\*/.test(section);
+            const hasSuccess = /✓ \*\*成功\*\*/.test(section);
             const hasFailure = /❌ \*\*失败/.test(section);
             const success = hasSuccess && !hasFailure;
 
             // 生成摘要
             let summary: string;
             if (hasSuccess) {
-                const sm = /✅ \*\*成功\*\* \| (.+)/.exec(section);
+                const sm = /✓ \*\*成功\*\* \| (.+)/.exec(section);
                 summary = sm ? `成功 | ${sm[1].trim()}` : '成功';
             } else if (hasFailure) {
                 const fm2 = /❌ \*\*失败[^*]*\*\* \| (.+)/.exec(section);
@@ -1232,10 +1236,50 @@ export async function getRecentActivityEntries(limit = 30): Promise<RecentActivi
     return entries.slice(0, limit);
 }
 
+/** 工具调用节点运行时信息 */
+export interface ChatToolCallInfo {
+    id: string;
+    logId: string;
+    runNumber: number;
+    toolName: string;
+    success: boolean;
+    duration: number;
+    sequence: number;
+    uri: vscode.Uri;
+    mtime: number;
+}
+
+/** 获取某执行日志下的所有工具调用节点（从类型索引查询，零 I/O） */
+export function getToolCallsForLog(logId: string): ChatToolCallInfo[] {
+    const all = getIssueMarkdownsByType('chat_tool_call');
+    const calls: ChatToolCallInfo[] = [];
+    for (const md of all) {
+        if (!md.frontmatter) { continue; }
+        const fm = md.frontmatter as unknown as ChatToolCallFrontmatter & FrontmatterData;
+        if (fm.chat_tool_call !== true || fm.chat_log_id !== logId) { continue; }
+        calls.push({
+            id: extractId(md.uri),
+            logId: fm.chat_log_id,
+            runNumber: fm.run_number ?? 0,
+            toolName: fm.tool_name ?? 'unknown',
+            success: fm.tool_success !== false,
+            duration: fm.tool_duration ?? 0,
+            sequence: fm.call_sequence ?? 0,
+            uri: md.uri,
+            mtime: md.mtime,
+        });
+    }
+    // 按 Run 编号倒序，同 Run 内按调用序号正序
+    calls.sort((a, b) => a.runNumber !== b.runNumber
+        ? b.runNumber - a.runNumber
+        : a.sequence - b.sequence);
+    return calls;
+}
+
 /** 格式化单条执行记录为 markdown */
 function formatRunRecord(record: ExecutionRunRecord): string {
     const ts = formatTimestamp(record.startedAt);
-    const icon = record.success ? '✅' : '❌';
+    const icon = record.success ? '✓' : '❌';
     const totalTokens = record.inputTokens + record.outputTokens;
     const durationStr = record.duration >= 1000
         ? `${(record.duration / 1000).toFixed(1)}s`
@@ -1417,7 +1461,7 @@ export async function createToolCallNode(
         const logId = extractId(logUri);
         const ts = formatTimeHMS(new Date());
         const durLabel = durationMs >= 1000 ? `${(durationMs / 1000).toFixed(1)}s` : `${durationMs}ms`;
-        const statusIcon = meta.success === false ? '❌' : '✅';
+        const statusIcon = meta.success === false ? '❌' : '✓';
 
         let inputStr: string;
         try { inputStr = JSON.stringify(input, null, 2); } catch { inputStr = String(input); }

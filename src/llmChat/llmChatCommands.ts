@@ -592,24 +592,48 @@ export function registerLLMChatCommands(
         }),
     );
 
-    // ─── 切换执行日志生成 ────────────────────────────────────
-    // 持久化到 globalState，图标随状态切换
-    const VERBOSE_LOG_KEY = 'llmChat.verboseLogging';
-    const VERBOSE_LOG_CTX = 'issueManager.llmChat.verboseLogging';
-    const initVerbose = context.globalState.get<boolean>(VERBOSE_LOG_KEY) ?? true;
-    RoleTimerManager.getInstance().verboseLogging = initVerbose;
-    void vscode.commands.executeCommand('setContext', VERBOSE_LOG_CTX, initVerbose);
+    // ─── 全局调试日志开关 ──────────────────────────────────────
+    // ON 时无视角色/对话配置，强制所有对话生成执行日志
+    const DEBUG_LOG_KEY = 'llmChat.debugLogAll';
+    const DEBUG_LOG_CTX = 'issueManager.llmChat.debugLogAll';
+    const initDebug = context.globalState.get<boolean>(DEBUG_LOG_KEY) ?? false;
+    RoleTimerManager.getInstance().debugLogAll = initDebug;
+    void vscode.commands.executeCommand('setContext', DEBUG_LOG_CTX, initDebug);
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.toggleVerboseLogging', async () => {
-            const mgr = RoleTimerManager.getInstance();
-            const next = !mgr.verboseLogging;
-            mgr.verboseLogging = next;
-            await context.globalState.update(VERBOSE_LOG_KEY, next);
-            void vscode.commands.executeCommand('setContext', VERBOSE_LOG_CTX, next);
-            vscode.window.showInformationMessage(`执行日志生成已${next ? '开启' : '关闭'}`);
-        }),
+        vscode.commands.registerCommand('issueManager.llmChat.toggleDebugLog', () => toggleDebugLog()),
     );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.toggleDebugLogOff', () => toggleDebugLog()),
+    );
+
+    async function toggleDebugLog(): Promise<void> {
+        const mgr = RoleTimerManager.getInstance();
+        const next = !mgr.debugLogAll;
+        mgr.debugLogAll = next;
+        await context.globalState.update(DEBUG_LOG_KEY, next);
+        void vscode.commands.executeCommand('setContext', DEBUG_LOG_CTX, next);
+        vscode.window.showInformationMessage(`全局调试日志已${next ? '开启（所有对话强制生成日志）' : '关闭（按角色/对话配置）'}`);
+    }
+
+    // ─── LLM 执行状态栏指示器 ──────────────────────────────────
+    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+    statusBarItem.command = 'issueManager.views.llmChat.focus';
+    context.subscriptions.push(statusBarItem);
+
+    function updateStatusBar(count: number): void {
+        if (count > 0) {
+            statusBarItem.text = `$(sync~spin) ${count} 对话执行中`;
+            statusBarItem.tooltip = `${count} 个 LLM 对话正在执行，点击查看`;
+            statusBarItem.show();
+        } else {
+            statusBarItem.hide();
+        }
+    }
+
+    const mgr = RoleTimerManager.getInstance();
+    context.subscriptions.push(mgr.onExecutingCountChange(updateStatusBar));
+    updateStatusBar(mgr.executingCount);
 
     // ─── 刷新聊天角色视图 ────────────────────────────────────
     context.subscriptions.push(
@@ -726,11 +750,14 @@ export function registerLLMChatCommands(
             const currentStatus = String((frontmatter as Record<string, unknown>)['role_status'] || 'ready');
             const currentAutonomous = (frontmatter as Record<string, unknown>)['chat_autonomous'];
             const autonomousLabel = currentAutonomous === true ? '自主' : currentAutonomous === false ? '交互' : '未设置（继承交互默认）';
+            const currentLogEnabled = (frontmatter as Record<string, unknown>)['chat_log_enabled'];
+            const logLabel = currentLogEnabled === true ? '开启' : currentLogEnabled === false ? '关闭' : '未设置（默认关闭）';
             const category = await vscode.window.showQuickPick([
                 { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
                 { label: '$(tools) 工具集',           description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
                 { label: '$(shield) 委派状态',         description: `当前: ${currentStatus}`, id: 'status' },
                 { label: '$(robot) 自主模式',          description: `当前: ${autonomousLabel}`, id: 'autonomous' },
+                { label: '$(output) 执行日志',         description: `当前: ${logLabel}`, id: 'logEnabled' },
             ], { title: '配置角色', placeHolder: '选择要配置的项目' });
             if (!category) { return; }
 
@@ -752,6 +779,19 @@ export function registerLLMChatCommands(
                 if (sel === undefined) { return; }
                 await updateIssueMarkdownFrontmatter(targetUri, { role_status: sel.value } as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
                 vscode.window.showInformationMessage(`已更新委派状态 → ${sel.value}`);
+            } else if (category.id === 'logEnabled') {
+                // ── 执行日志 ──────────────────────────────────────
+                const logItems = [
+                    { label: '$(output) 开启',    description: '生成执行日志和工具调用详情文件', value: true,      picked: currentLogEnabled === true },
+                    { label: '$(circle-slash) 关闭', description: '不生成日志文件（默认）',       value: false,     picked: currentLogEnabled !== true },
+                ];
+                const sel = await vscode.window.showQuickPick(logItems, {
+                    title: '配置执行日志生成',
+                    placeHolder: `当前: ${logLabel}`,
+                });
+                if (sel === undefined) { return; }
+                await updateIssueMarkdownFrontmatter(targetUri, { chat_log_enabled: sel.value } as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                vscode.window.showInformationMessage(`已更新执行日志生成 → ${sel.label}`);
             } else {
                 // ── 自主模式 ──────────────────────────────────────
                 const autonomousItems = [
@@ -957,10 +997,9 @@ export function registerLLMChatCommands(
             const newModel = selectedModel.value;
 
             // ── Step 2: 设置 max tokens ───────────────────────────
-            const totalSteps = isConvo ? 3 : 2;
             const suggested = currentTokens || (newModel ? 8192 : 0);
             const tokenInput = await vscode.window.showInputBox({
-                title: `配置 ${tokensKey}（第 2 步 / 共 ${totalSteps} 步）`,
+                title: `配置 ${tokensKey}（第 2 步 / 共 2 步）`,
                 prompt: '单次 LLM 请求最大 token 预算，0 表示继承上级默认',
                 value: String(suggested || currentTokens || 0),
                 placeHolder: '例如：8192',
@@ -972,28 +1011,77 @@ export function registerLLMChatCommands(
             const updates: Record<string, unknown> = { [modelKey]: newModel || undefined };
             if (newTokens > 0) { updates[tokensKey] = newTokens; }
 
-            // ── Step 3（仅对话）: 自主模式 ────────────────────────
-            if (isConvo) {
-                const currentAuto = (frontmatter as Record<string, unknown>)['chat_autonomous'];
-                const autoItems = [
-                    { label: '🤖 自主执行', description: '独立完成任务，不等待用户确认', value: true,      picked: currentAuto === true },
-                    { label: '💬 交互确认', description: '破坏性操作前征求用户确认',     value: false,     picked: currentAuto === false },
-                    { label: '⬜ 继承角色', description: '由角色级设置或系统默认决定',   value: undefined, picked: currentAuto === undefined || currentAuto === null },
-                ];
-                const autoSel = await vscode.window.showQuickPick(autoItems as vscode.QuickPickItem[], {
-                    title: `配置对话自主模式（第 3 步 / 共 ${totalSteps} 步）`,
-                    placeHolder: `当前: ${currentAuto === true ? '自主执行' : currentAuto === false ? '交互确认' : '继承角色'}`,
-                });
-                if (autoSel === undefined) { return; }
-                const picked = autoItems.find(i => i.label === (autoSel as typeof autoItems[0]).label);
-                updates['chat_autonomous'] = picked?.value === undefined ? null : picked.value;
-            }
-
             await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
 
             vscode.window.showInformationMessage(
                 `已更新${fileLabel}模型配置 — 模型：${newModel || '继承上级默认'}  max_tokens：${newTokens || '继承上级默认'}`,
             );
+        }),
+    );
+
+    // ─── 交互式配置对话（菜单式，与 configureRole 一致） ─────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.configureConversation', async (uri?: vscode.Uri) => {
+            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+            if (!targetUri) { return; }
+
+            const contentBytes = await vscode.workspace.fs.readFile(targetUri);
+            const { frontmatter } = extractFrontmatterAndBody(Buffer.from(contentBytes).toString('utf-8'));
+            if (!frontmatter?.chat_conversation) {
+                vscode.window.showWarningMessage('当前文件不是对话文件');
+                return;
+            }
+
+            const fm = frontmatter as Record<string, unknown>;
+            const currentAuto = fm['chat_autonomous'];
+            const autoLabel = currentAuto === true ? '自主' : currentAuto === false ? '交互' : '继承角色';
+            const currentLog = fm['chat_log_enabled'];
+            const logLabel = currentLog === true ? '开启' : currentLog === false ? '关闭' : '继承角色';
+
+            const category = await vscode.window.showQuickPick([
+                { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
+                { label: '$(robot) 自主模式',          description: `当前: ${autoLabel}`, id: 'autonomous' },
+                { label: '$(output) 执行日志',         description: `当前: ${logLabel}`, id: 'logEnabled' },
+            ], { title: '配置对话', placeHolder: '选择要配置的项目' });
+            if (!category) { return; }
+
+            if (category.id === 'model') {
+                await vscode.commands.executeCommand('issueManager.llmChat.configureModel', targetUri);
+            } else if (category.id === 'autonomous') {
+                const autoItems = [
+                    { label: '🤖 自主执行', description: '独立完成任务，不等待用户确认', value: true,      picked: currentAuto === true },
+                    { label: '💬 交互确认', description: '破坏性操作前征求用户确认',     value: false,     picked: currentAuto === false },
+                    { label: '⬜ 继承角色', description: '由角色级设置或系统默认决定',   value: undefined, picked: currentAuto === undefined || currentAuto === null },
+                ];
+                const sel = await vscode.window.showQuickPick(autoItems as vscode.QuickPickItem[], {
+                    title: '配置对话自主模式',
+                    placeHolder: `当前: ${autoLabel}`,
+                });
+                if (sel === undefined) { return; }
+                const picked = autoItems.find(i => i.label === (sel as typeof autoItems[0]).label);
+                const updates: Record<string, unknown> = picked?.value === undefined
+                    ? { chat_autonomous: null }
+                    : { chat_autonomous: picked.value };
+                await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                vscode.window.showInformationMessage(`已更新对话自主模式 → ${picked?.label ?? sel.label}`);
+            } else {
+                const logItems = [
+                    { label: '$(output) 开启',       description: '生成执行日志和工具调用详情文件', value: true,      picked: currentLog === true },
+                    { label: '$(circle-slash) 关闭',  description: '不生成日志文件',               value: false,     picked: currentLog === false },
+                    { label: '⬜ 继承角色',            description: '由角色级设置决定（默认关闭）',  value: undefined, picked: currentLog === undefined || currentLog === null },
+                ];
+                const sel = await vscode.window.showQuickPick(logItems as vscode.QuickPickItem[], {
+                    title: '配置对话执行日志',
+                    placeHolder: `当前: ${logLabel}`,
+                });
+                if (sel === undefined) { return; }
+                const picked = logItems.find(i => i.label === (sel as typeof logItems[0]).label);
+                const updates: Record<string, unknown> = picked?.value === undefined
+                    ? { chat_log_enabled: null }
+                    : { chat_log_enabled: picked.value };
+                await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                vscode.window.showInformationMessage(`已更新对话执行日志 → ${picked?.label ?? sel.label}`);
+            }
         }),
     );
 
@@ -1108,10 +1196,6 @@ async function pickModelFamily(presetModelFamily?: string): Promise<string | und
 async function handleExistingConversation(uri: vscode.Uri, raw: string): Promise<void> {
     const { body } = extractFrontmatterAndBody(raw);
 
-    // 找到最后一条 ## 标记之后的用户新增内容
-    const lastHeadingIdx = body.lastIndexOf('\n## ');
-    const afterLastHeading = lastHeadingIdx >= 0 ? body.slice(lastHeadingIdx) : body;
-
     // 检查当前状态：如果已经在执行中，拒绝操作
     const marker = parseStateMarker(raw);
     if (marker && (marker.status === 'executing' || marker.status === 'queued')) {
@@ -1119,54 +1203,49 @@ async function handleExistingConversation(uri: vscode.Uri, raw: string): Promise
         return;
     }
 
-    // 提取末尾未被 ## 标题包裹的新内容（用户直接在文件末尾输入的追问）
-    // 如果最后一条是 Assistant 消息，则 Assistant 消息之后的内容就是新追问
-    // 如果最后一条是 User 消息，则可能是上轮未发送的追问，此时也直接发送
-    const cleanAfter = stripMarker(afterLastHeading).trim();
+    // ── 核心逻辑：基于最后一个 llm 标记的位置分割内容 ──
+    // 标记之前 = 已有对话内容（保留），标记之后 = 用户新输入
+    const markerRe = /<!--\s*llm:\w+[^>]*?-->/g;
+    let lastMarkerIdx = -1;
+    let lastMarkerEnd = -1;
+    let m: RegExpExecArray | null;
+    while ((m = markerRe.exec(raw)) !== null) {
+        lastMarkerIdx = m.index;
+        lastMarkerEnd = m.index + m[0].length;
+    }
 
-    // 用正则匹配最后一条消息 header
-    const headerMatch = cleanAfter.match(/^## (User|Assistant) \(.+?\)\s*\n([\s\S]*)$/);
-    let userContent: string;
+    const userContent = lastMarkerEnd > 0 ? raw.slice(lastMarkerEnd).trim() : '';
 
-    if (!headerMatch) {
-        // 没有标准 header — 整个末尾内容就是用户要发送的
-        userContent = stripMarker(body).trim();
-        // 从 body 中去掉 H1 标题
-        userContent = userContent.replace(/^#\s+.*\n?/, '').trim();
-    } else if (headerMatch[1] === 'Assistant') {
-        // 最后是 Assistant 消息 — 在其之后写的内容就是新追问
-        const afterAssistant = headerMatch[2].trim();
-        if (!afterAssistant) {
-            vscode.window.showWarningMessage('请在文件末尾输入你的追问内容后再发送。');
-            return;
+    if (userContent) {
+        // ── 有新内容：保留标记前的内容 + 包裹为 ## User 块 ──
+        try {
+            const baseContent = raw.slice(0, lastMarkerIdx).trimEnd();
+            const dateStr = formatTimestamp(Date.now());
+            const newContent = baseContent + `\n\n## User (${dateStr})\n\n${userContent}\n\n<!-- llm:queued -->\n`;
+            await replaceEditorContent(uri, newContent);
+            await RoleTimerManager.getInstance().triggerConversation(uri);
+            vscode.window.showInformationMessage('消息已提交，等待 LLM 处理…');
+        } catch (e) {
+            vscode.window.showErrorMessage(`提交失败: ${e instanceof Error ? e.message : '未知错误'}`);
         }
-        userContent = afterAssistant;
-    } else {
-        // 最后是 User 消息且未发送 — 直接写 queued 标记触发即可
-        userContent = headerMatch[2].trim();
-        if (!userContent) {
-            vscode.window.showWarningMessage('最后一条用户消息为空，请输入内容后再发送。');
-            return;
-        }
-        const stripped = stripMarker(raw).trimEnd();
-        const newContent = stripped + '\n\n<!-- llm:queued -->\n';
-        await replaceEditorContent(uri, newContent);
-        await RoleTimerManager.getInstance().triggerConversation(uri);
-        vscode.window.showInformationMessage('消息已提交，等待 LLM 处理…');
         return;
     }
 
-    // 追加 User message + queued（通过编辑器 buffer，兼容自动保存）
-    try {
-        const stripped = stripMarker(raw).trimEnd();
-        const dateStr = formatTimestamp(Date.now());
-        const block = `\n\n## User (${dateStr})\n\n${userContent}\n\n<!-- llm:queued -->\n`;
-        await replaceEditorContent(uri, stripped + block);
-        await RoleTimerManager.getInstance().triggerConversation(uri);
-        vscode.window.showInformationMessage('消息已提交，等待 LLM 处理…');
-    } catch (e) {
-        vscode.window.showErrorMessage(`提交失败: ${e instanceof Error ? e.message : '未知错误'}`);
+    // ── 无新内容：检查是否可以重发最后一条 User 消息 ──
+    const lastHeadingIdx = body.lastIndexOf('\n## ');
+    if (lastHeadingIdx >= 0) {
+        const afterHeading = stripMarker(body.slice(lastHeadingIdx)).trim();
+        const hm = afterHeading.match(/^## User \(.+?\)\s*\n([\s\S]*)$/);
+        if (hm && hm[1].trim()) {
+            const stripped = stripMarker(raw).trimEnd();
+            await replaceEditorContent(uri, stripped + '\n\n<!-- llm:queued -->\n');
+            await RoleTimerManager.getInstance().triggerConversation(uri);
+            vscode.window.showInformationMessage('消息已提交，等待 LLM 处理…');
+            return;
+        }
     }
+
+    vscode.window.showWarningMessage('请在文件末尾输入你的追问内容后再发送。');
 }
 
 /**

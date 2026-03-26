@@ -791,10 +791,22 @@
         "icon": "$(send)"
       },
       {
-        "command": "issueManager.llmChat.toggleVerboseLogging",
-        "title": "切换执行日志生成",
+        "command": "issueManager.llmChat.configureConversation",
+        "title": "配置对话",
         "category": "Issue Manager",
-        "icon": "$(output)"
+        "icon": "$(gear)"
+      },
+      {
+        "command": "issueManager.llmChat.toggleDebugLog",
+        "title": "开启全局调试日志",
+        "category": "Issue Manager",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "issueManager.llmChat.toggleDebugLogOff",
+        "title": "关闭全局调试日志（当前已开启）",
+        "category": "Issue Manager",
+        "icon": "$(record)"
       }
     ],
     "submenus": [
@@ -1059,8 +1071,13 @@
           "group": "navigation@2"
         },
         {
-          "command": "issueManager.llmChat.toggleVerboseLogging",
-          "when": "view == 'issueManager.views.llmChat'",
+          "command": "issueManager.llmChat.toggleDebugLog",
+          "when": "view == 'issueManager.views.llmChat' && !issueManager.llmChat.debugLogAll",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.llmChat.toggleDebugLogOff",
+          "when": "view == 'issueManager.views.llmChat' && issueManager.llmChat.debugLogAll",
           "group": "navigation@3"
         },
         {
