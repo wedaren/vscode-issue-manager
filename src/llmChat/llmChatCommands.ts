@@ -2,6 +2,7 @@
  * LLM 聊天相关命令注册
  */
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { LLMChatService } from './LLMChatService';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
 import {
@@ -15,6 +16,7 @@ import {
     getConversationsForGroup,
     createGroupConversation,
     appendUserMessageQueued,
+    getToolCallsForLog,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { parseStateMarker, stripMarker } from './convStateMarker';
@@ -22,6 +24,7 @@ import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProv
 import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
 import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+import { getIssueDir } from '../config';
 
 const logger = Logger.getInstance();
 
@@ -638,29 +641,55 @@ export function registerLLMChatCommands(
         })
     );
 
-    function updateStatusBar(count: number): void {
-        if (count > 0) {
-            statusBarItem.text = `$(sync~spin) ${count} 对话执行中`;
+    let statusBarTimer: ReturnType<typeof setInterval> | null = null;
+    let executingSince = 0; // 最早一个对话开始执行的时间戳
 
-            // 构建富文本 tooltip：列出每个执行中的对话，点击可 reveal
-            const paths = RoleTimerManager.getInstance().executingPaths;
-            const md = new vscode.MarkdownString(`**${count} 个对话执行中**\n\n`, true);
-            md.isTrusted = true;
-            for (const p of paths) {
-                const title = getIssueMarkdownTitleFromCache(p);
-                const args = encodeURIComponent(JSON.stringify(vscode.Uri.file(p)));
-                md.appendMarkdown(`- $(sync~spin) [${title}](command:issueManager.llmChat.revealInView?${args})\n`);
-            }
-            statusBarItem.tooltip = md;
-            statusBarItem.show();
-        } else {
+    function formatElapsed(ms: number): string {
+        const sec = Math.floor(ms / 1000);
+        if (sec < 60) { return `${sec}s`; }
+        const min = Math.floor(sec / 60);
+        return `${min}m${sec % 60}s`;
+    }
+
+    function renderStatusBar(): void {
+        const timerMgr = RoleTimerManager.getInstance();
+        const count = timerMgr.executingCount;
+        if (count <= 0) {
             statusBarItem.hide();
+            if (statusBarTimer) { clearInterval(statusBarTimer); statusBarTimer = null; }
+            return;
         }
+
+        const elapsed = executingSince > 0 ? formatElapsed(Date.now() - executingSince) : '';
+        statusBarItem.text = `$(sync~spin) ${count} 对话执行中` + (elapsed ? ` · ${elapsed}` : '');
+
+        // 构建富文本 tooltip：列出每个执行中的对话，点击可 reveal
+        const paths = timerMgr.executingPaths;
+        const md = new vscode.MarkdownString(`**${count} 个对话执行中**` + (elapsed ? ` · ${elapsed}` : '') + '\n\n', true);
+        md.isTrusted = true;
+        for (const p of paths) {
+            const title = getIssueMarkdownTitleFromCache(p);
+            const args = encodeURIComponent(JSON.stringify(vscode.Uri.file(p)));
+            md.appendMarkdown(`- $(sync~spin) [${title}](command:issueManager.llmChat.revealInView?${args})\n`);
+        }
+        statusBarItem.tooltip = md;
+        statusBarItem.show();
+    }
+
+    function onExecutingCountChange(count: number): void {
+        if (count > 0 && !statusBarTimer) {
+            executingSince = Date.now();
+            statusBarTimer = setInterval(renderStatusBar, 1000);
+        } else if (count <= 0) {
+            executingSince = 0;
+        }
+        renderStatusBar();
     }
 
     const mgr = RoleTimerManager.getInstance();
-    context.subscriptions.push(mgr.onExecutingCountChange(updateStatusBar));
-    updateStatusBar(mgr.executingCount);
+    context.subscriptions.push(mgr.onExecutingCountChange(onExecutingCountChange));
+    context.subscriptions.push({ dispose: () => { if (statusBarTimer) { clearInterval(statusBarTimer); } } });
+    onExecutingCountChange(mgr.executingCount);
 
     // ─── 刷新聊天角色视图 ────────────────────────────────────
     context.subscriptions.push(
@@ -740,19 +769,38 @@ export function registerLLMChatCommands(
         }),
     );
 
-    // ─── 删除对话 ──────────────────────────────────────────────
+    // ─── 删除对话（级联删除执行日志 + 工具调用文件） ──────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.deleteConversation', async (node?: ChatConversationNode) => {
             if (!node) { return; }
+            const { conversation } = node;
+            const logId = conversation.logId;
+            const toolCalls = logId ? getToolCallsForLog(logId) : [];
+            const relatedCount = (logId ? 1 : 0) + toolCalls.length;
+
+            const detail = relatedCount > 0
+                ? `将同时删除执行日志及 ${toolCalls.length} 个工具调用文件（共 ${relatedCount + 1} 个文件）`
+                : undefined;
             const confirm = await vscode.window.showWarningMessage(
-                `确定要删除对话「${node.conversation.title}」吗？`,
-                { modal: true },
+                `确定要删除对话「${conversation.title}」吗？`,
+                { modal: true, detail },
                 '删除',
             );
             if (confirm !== '删除') { return; }
 
             try {
-                await vscode.workspace.fs.delete(node.conversation.uri);
+                // 先删工具调用，再删日志，最后删对话
+                for (const tc of toolCalls) {
+                    try { await vscode.workspace.fs.delete(tc.uri); } catch { /* 忽略单个失败 */ }
+                }
+                if (logId) {
+                    const dir = getIssueDir();
+                    if (dir) {
+                        const logUri = vscode.Uri.file(path.join(dir, `${logId}.md`));
+                        try { await vscode.workspace.fs.delete(logUri); } catch { /* 忽略 */ }
+                    }
+                }
+                await vscode.workspace.fs.delete(conversation.uri);
                 roleProvider.refresh();
             } catch (e) {
                 logger.error('删除对话失败', e);

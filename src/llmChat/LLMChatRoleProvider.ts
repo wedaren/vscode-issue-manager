@@ -167,6 +167,7 @@ export class ChatToolCallNode extends vscode.TreeItem {
         this.iconPath = new vscode.ThemeIcon(toolCall.success ? 'pass' : 'error');
         this.description = `Run #${toolCall.runNumber} · ${durLabel}`;
         this.resourceUri = toolCall.uri;
+        this.command = { command: 'vscode.open', title: '打开工具调用详情', arguments: [toolCall.uri] };
     }
 }
 
