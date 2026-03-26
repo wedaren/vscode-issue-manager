@@ -21,7 +21,7 @@ import { parseStateMarker, stripMarker } from './convStateMarker';
 import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
 import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
-import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter } from '../data/IssueMarkdowns';
+import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 
 const logger = Logger.getInstance();
 
@@ -618,13 +618,40 @@ export function registerLLMChatCommands(
 
     // ─── LLM 执行状态栏指示器 ──────────────────────────────────
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-    statusBarItem.command = 'issueManager.views.llmChat.focus';
+    statusBarItem.command = 'issueManager.llmChat.revealExecuting';
     context.subscriptions.push(statusBarItem);
+
+    // 点击状态栏：1 个执行中 → reveal 到该对话；多个 → focus 视图
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.revealExecuting', async () => {
+            const paths = RoleTimerManager.getInstance().executingPaths;
+            if (paths.length === 1) {
+                const uri = vscode.Uri.file(paths[0]);
+                const node = await roleProvider.findNodeByUri(uri);
+                if (node) {
+                    await vscode.commands.executeCommand('issueManager.views.llmChat.focus');
+                    try { await llmChatView.reveal(node, { select: true, focus: false, expand: true }); } catch { /* ignore */ }
+                    return;
+                }
+            }
+            await vscode.commands.executeCommand('issueManager.views.llmChat.focus');
+        })
+    );
 
     function updateStatusBar(count: number): void {
         if (count > 0) {
             statusBarItem.text = `$(sync~spin) ${count} 对话执行中`;
-            statusBarItem.tooltip = `${count} 个 LLM 对话正在执行，点击查看`;
+
+            // 构建富文本 tooltip：列出每个执行中的对话，点击可 reveal
+            const paths = RoleTimerManager.getInstance().executingPaths;
+            const md = new vscode.MarkdownString(`**${count} 个对话执行中**\n\n`, true);
+            md.isTrusted = true;
+            for (const p of paths) {
+                const title = getIssueMarkdownTitleFromCache(p);
+                const args = encodeURIComponent(JSON.stringify(vscode.Uri.file(p)));
+                md.appendMarkdown(`- $(sync~spin) [${title}](command:issueManager.llmChat.revealInView?${args})\n`);
+            }
+            statusBarItem.tooltip = md;
             statusBarItem.show();
         } else {
             statusBarItem.hide();

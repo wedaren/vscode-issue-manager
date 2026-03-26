@@ -73,6 +73,9 @@ export class RoleTimerManager implements vscode.Disposable {
     /** 当前正在执行的对话数量 */
     get executingCount(): number { return this.executing.size; }
 
+    /** 当前正在执行的对话文件路径列表 */
+    get executingPaths(): string[] { return [...this.executing]; }
+
     private readonly _disposables: vscode.Disposable[] = [];
     private _watcherDebounce: ReturnType<typeof setTimeout> | undefined;
     private readonly _hookRunner = new PostResponseHookRunner();

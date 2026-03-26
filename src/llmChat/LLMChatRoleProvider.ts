@@ -29,8 +29,8 @@ export class ChatRoleNode extends vscode.TreeItem {
             `**${role.name}**${capStr ? `\n\n工具集: ${role.toolSets.join(' · ')}` : ''}\n\n（系统提示词在文件正文中）`,
         );
 
-        // 不设置 command：点击节点展开/折叠对话列表，不切换当前编辑器
-        // 打开角色文件可通过右键菜单或内联操作
+        // label 点击 → 展开 + 预览文件（不折叠）；只有 arrow 才折叠
+        this.command = { command: 'issueManager.llmChat.nodeExpandAndOpen', title: '展开', arguments: [role.uri] };
     }
 }
 
@@ -44,6 +44,8 @@ export class ChatGroupNode extends vscode.TreeItem {
         this.tooltip = new vscode.MarkdownString(
             `**${group.name}**\n\n成员: ${group.memberIds.length} 位`,
         );
+
+        this.command = { command: 'issueManager.llmChat.nodeExpandAndOpen', title: '展开' };
     }
 }
 
@@ -73,6 +75,9 @@ export class ChatConversationNode extends vscode.TreeItem {
             this.iconPath = new vscode.ThemeIcon('comment-discussion');
             this.description = formatRelativeTime(conversation.mtime);
         }
+
+        // label 点击 → 展开 + 预览文件（不折叠）
+        this.command = { command: 'issueManager.llmChat.nodeExpandAndOpen', title: '展开', arguments: [conversation.uri] };
     }
 }
 
@@ -195,23 +200,14 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
      * 同时通过 onDidChangeSelection 打开对应文件（preserveFocus 不抢焦点）。
      */
     bindTreeView(treeView: vscode.TreeView<LLMChatViewNode>): void {
-        // 选中节点 → 预览对应文件（不抢焦点）
+        // label 点击 → 展开节点 + 预览文件（不折叠，只有 arrow 折叠）
+        // 所有可展开节点（Role/Group/Conversation）通过此命令统一处理
         this.context.subscriptions.push(
-            treeView.onDidChangeSelection(e => {
-                const node = e.selection[0];
-                if (!node) { return; }
-                let uri: vscode.Uri | undefined;
-                if (node instanceof ChatRoleNode) { uri = node.role.uri; }
-                else if (node instanceof ChatConversationNode) { uri = node.conversation.uri; }
-                else if (node instanceof ChatExecutionLogNode) { uri = node.logInfo.uri; }
-                else if (node instanceof ChatToolCallNode) { uri = node.toolCall.uri; }
-                else if (node instanceof RecentActivityItemNode) { uri = node.entry.logUri; }
+            vscode.commands.registerCommand('issueManager.llmChat.nodeExpandAndOpen', (uri?: vscode.Uri) => {
                 if (uri) {
-                    // 文件已是当前活动编辑器时跳过，避免 reveal 回路
-                    const activeUri = vscode.window.activeTextEditor?.document.uri;
-                    if (activeUri?.fsPath === uri.fsPath) { return; }
                     void vscode.commands.executeCommand('vscode.open', uri, { preserveFocus: true, preview: true });
                 }
+                void vscode.commands.executeCommand('list.expand');
             })
         );
 

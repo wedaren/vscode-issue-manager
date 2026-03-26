@@ -33,7 +33,12 @@
       "Bash(grep -n \"vscode.lm.tools\\\\|vscode.lm.invokeTool\" src/**/*.ts)",
       "Bash(npm run:*)",
       "Bash(grep -n \"角色分析师\\\\|role_analyst\\\\|analyst\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/*.ts)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(find /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/chrome-extension-wxt -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.json \\\\\\))",
+      "Bash(grep -l \"from ''\\\\./chatTools''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/*.ts)",
+      "Bash(grep -E \"from ''\\\\./\\(chatTools|RoleTimerManager|LLMChatService\\)''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/chatTools.ts)",
+      "Bash(grep -E \"from ''\\\\./\\(chatTools|LLMChatService|llmChatDataManager\\)''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/RoleTimerManager.ts)",
+      "Bash(grep -E \"from ''\\\\./chatTools''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/chatTools.ts)"
     ]
   }
 }
