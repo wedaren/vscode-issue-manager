@@ -267,6 +267,24 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "关闭其他编辑组",
+        group: "文件",
+        hint: "close other groups",
+        description: "关闭除当前活动组之外的所有编辑组（会提示处理未保存文件）",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.editorGroup.closeOtherGroups");
+        },
+    },
+    {
+        label: "仅保留当前活动编辑器",
+        group: "文件",
+        hint: "keep only active",
+        description: "仅保留当前活动编辑器并关闭其它所有编辑器（会提示处理未保存文件）",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.editorGroup.keepOnlyActiveEditor");
+        },
+    },
+    {
         label: "LLM 智能整理编辑器组",
         group: "文件",
         hint: "llm organize group",

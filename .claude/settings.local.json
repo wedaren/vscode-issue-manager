@@ -38,7 +38,9 @@
       "Bash(grep -l \"from ''\\\\./chatTools''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/*.ts)",
       "Bash(grep -E \"from ''\\\\./\\(chatTools|RoleTimerManager|LLMChatService\\)''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/chatTools.ts)",
       "Bash(grep -E \"from ''\\\\./\\(chatTools|LLMChatService|llmChatDataManager\\)''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/RoleTimerManager.ts)",
-      "Bash(grep -E \"from ''\\\\./chatTools''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/chatTools.ts)"
+      "Bash(grep -E \"from ''\\\\./chatTools''\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat/chatTools.ts)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(git reset:*)"
     ]
   }
 }

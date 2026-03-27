@@ -423,6 +423,17 @@ export class ViewRegistry {
             vscode.commands.registerCommand('issueManager.editorGroup.refresh', () => editorGroupProvider.refresh()),
         );
 
+        // 注册编辑器组相关命令（关闭其他组 / 仅保留当前活动编辑器）
+        // 实现在 src/commands/editorGroupCommands.ts
+        try {
+            // 延迟加载以避免循环依赖
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { registerEditorGroupCommands } = require('../commands/editorGroupCommands');
+            registerEditorGroupCommands(this.context);
+        } catch (e) {
+            // ignore
+        }
+
         return { editorGroupProvider, editorGroupView };
     }
 

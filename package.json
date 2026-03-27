@@ -676,6 +676,16 @@
         "icon": "$(close)"
       },
       {
+        "command": "issueManager.editorGroup.closeOtherGroups",
+        "title": "关闭其他编辑组",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "issueManager.editorGroup.keepOnlyActiveEditor",
+        "title": "仅保留当前活动编辑器",
+        "icon": "$(circle-filled)"
+      },
+      {
         "command": "issueManager.editorGroup.closeTab",
         "title": "关闭标签页",
         "icon": "$(close)"
@@ -960,6 +970,16 @@
           "command": "issueManager.refreshAllViews",
           "when": "view == issueManager.views.overview",
           "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.editorGroup.closeOtherGroups",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.editorGroup.keepOnlyActiveEditor",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
         },
         {
           "command": "issueManager.autoDeleteOnDisassociate.enable",
