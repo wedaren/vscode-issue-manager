@@ -436,9 +436,6 @@ export class ChatHistoryPanel {
             update_issue: '更新笔记',
             web_search: '网络搜索',
             fetch_url: '抓取网页',
-            list_tabs: '列出标签页',
-            organize_tabs: '整理标签页',
-            close_tabs: '关闭标签页',
         };
 
         function scrollToBottom() {

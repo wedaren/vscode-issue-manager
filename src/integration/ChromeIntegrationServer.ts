@@ -676,21 +676,8 @@ export class ChromeIntegrationServer {
 
               const history: Array<{ role: string; content: string }> = Array.isArray(payload.history) ? payload.history : [];
 
-              // 构建系统提示（Chrome 面板上下文：浏览器工具直接可用，强调浏览器交互能力）
-              const systemContent = '[系统] 你是一个运行在 Chrome 浏览器侧边面板中的 AI 助手，可以直接控制用户的浏览器并与页面交互。\n\n'
-                + '[标签页管理]\n'
-                + '- open_tab: 打开新标签页到指定 URL（返回 tabId，标签页保持打开）\n'
-                + '- get_tab_content: 读取指定标签页的页面文本内容（需传入 tabId）\n'
-                + '- activate_tab: 切换到指定标签页（使其可见）\n'
-                + '- list_tabs: 列出所有打开的标签页（获取 tabId、标题、URL）\n'
-                + '- organize_tabs: 将标签页按分组整理\n'
-                + '- close_tabs: 关闭指定标签页\n\n'
-                + '[页面交互]\n'
-                + '- get_page_elements: 获取页面上的可交互元素（输入框、按钮、链接、下拉框等），返回 CSS 选择器\n'
-                + '- click_element: 点击页面元素（按钮、链接等），可用 CSS 选择器或文本定位\n'
-                + '- fill_input: 填写表单输入框，可用选择器/name/placeholder 定位\n'
-                + '- select_option: 选择下拉框选项\n'
-                + '- press_key: 模拟键盘按键（Enter 提交、Tab 切换等）\n\n'
+              // 构建系统提示（Chrome 面板上下文）
+              const systemContent = '[系统] 你是一个运行在 Chrome 浏览器侧边面板中的 AI 助手。\n\n'
                 + '[搜索与抓取]\n'
                 + '- web_search: 通过搜索引擎搜索并返回结果页面文本\n'
                 + '- fetch_url: 访问 URL 并提取页面文本内容\n\n'
@@ -702,13 +689,8 @@ export class ChromeIntegrationServer {
                 + '- list_issue_tree: 查看笔记树结构\n'
                 + '- update_issue: 更新已有笔记\n\n'
                 + '[使用指引]\n'
-                + '- 用户要求打开网页 → 使用 open_tab，URL 要完整（如 https://weibo.com）\n'
-                + '- 用户要求查看页面内容 → 先 list_tabs 找 tabId，再 get_tab_content\n'
-                + '- 用户要求填写表单/登录/输入验证码 → 先 get_page_elements 了解表单结构，再用 fill_input 填入，最后 click_element 点击提交\n'
-                + '- 用户要求点击某个按钮/链接 → 使用 click_element，可通过文本或选择器定位\n'
                 + '- 用户要求搜索某个话题 → 使用 web_search\n'
                 + '- 用户要求创建笔记 → 优先使用 create_issue_tree\n'
-                + '- 操作表单的典型流程: open_tab → get_page_elements → fill_input (多次) → click_element 提交\n'
                 + '- 请积极使用工具来完成用户的请求，不要仅仅用文字回复可以操作的事情。';
 
               const chatMessages: vscode.LanguageModelChatMessage[] = [
@@ -1004,17 +986,6 @@ function getToolInputSummary(name: string, input: Record<string, unknown>): stri
     case 'create_issue': return `创建: ${input.title || ''}`;
     case 'create_issue_tree': return `创建笔记树: ${(input.nodes as any[])?.length ?? 0} 个节点`;
     case 'update_issue': return `更新: ${input.filename || ''}`;
-    case 'list_tabs': return '获取标签页列表';
-    case 'organize_tabs': return `整理 ${(input.groups as any[])?.length ?? 0} 个分组`;
-    case 'close_tabs': return `关闭 ${(input.tabIds as any[])?.length ?? 0} 个标签`;
-    case 'open_tab': return `打开: ${input.url || ''}`;
-    case 'get_tab_content': return `读取标签 #${input.tabId ?? ''}`;
-    case 'activate_tab': return `切换到标签 #${input.tabId ?? ''}`;
-    case 'get_page_elements': return `获取元素 标签#${input.tabId ?? ''}${input.selector ? ` (${input.selector})` : ''}`;
-    case 'click_element': return `点击 ${input.selector || input.text || ''}`;
-    case 'fill_input': return `填写 ${input.selector || input.name || input.placeholder || ''} = "${String(input.value || '').slice(0, 20)}"`;
-    case 'select_option': return `选择 ${input.value || input.text || ''}`;
-    case 'press_key': return `按键 ${input.key || ''}`;
     default: return JSON.stringify(input).slice(0, 80);
   }
 }

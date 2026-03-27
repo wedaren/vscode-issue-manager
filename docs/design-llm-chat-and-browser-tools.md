@@ -65,13 +65,13 @@ ChromeIntegrationServer 构建消息 + 系统提示词
 LLMService.streamWithTools(messages, CHAT_TOOLS, onChunk, onToolCall)
        │
        ▼
-Model 返回 LanguageModelToolCallPart { name: 'open_tab', input: { url: 'https://weibo.com' } }
+Model 返回 LanguageModelToolCallPart { name: 'web_search', input: { query: '...' } }
        │
        ▼
-onToolCall('open_tab', { url: '...' })
+onToolCall('web_search', { query: '...' })
        │
        ▼
-chatTools.ts → executeOpenTab() → server.sendRequest('open-tab', ...)
+chatTools.ts → executeChatTool('web_search', ...)
        │
        ▼ WebSocket
 background.ts → handleOpenTab() → chrome.tabs.create({ url: '...' })
@@ -91,35 +91,16 @@ background.ts → handleOpenTab() → chrome.tabs.create({ url: '...' })
 
 ## 3. 工具清单
 
-### 3.1 标签页管理（6 个）
+> **注意**: 标签页管理（open_tab、list_tabs 等）和页面交互（click_element、fill_input 等）工具已在后续迭代中移除，浏览器操作能力不再作为内置工具提供。
 
-| 工具 | 描述 |
-|------|------|
-| `open_tab` | 打开新标签页到指定 URL |
-| `get_tab_content` | 读取标签页的文本内容 |
-| `activate_tab` | 切换到指定标签页 |
-| `list_tabs` | 列出所有打开的标签页 |
-| `organize_tabs` | 按分组整理标签页 |
-| `close_tabs` | 关闭指定标签页 |
-
-### 3.2 页面交互（5 个） — 本次新增
-
-| 工具 | 描述 | 关键能力 |
-|------|------|---------|
-| `get_page_elements` | 获取页面可交互元素 | 返回 CSS 选择器、类型、name、placeholder 等 |
-| `click_element` | 点击元素 | 支持 CSS 选择器 + 文本匹配双模式 |
-| `fill_input` | 填写表单输入框 | 兼容 React/Vue 受控组件（nativeInputValueSetter） |
-| `select_option` | 选择下拉框选项 | 支持 value 和文本匹配 |
-| `press_key` | 模拟键盘按键 | 支持 Enter、Tab、Escape 等 |
-
-### 3.3 搜索与抓取（2 个）
+### 3.1 搜索与抓取（2 个）
 
 | 工具 | 描述 |
 |------|------|
 | `web_search` | 网络搜索 |
 | `fetch_url` | 抓取指定 URL 内容 |
 
-### 3.4 笔记管理（6 个）
+### 3.2 笔记管理（6 个）
 
 | 工具 | 描述 |
 |------|------|
@@ -142,37 +123,15 @@ background.ts → handleOpenTab() → chrome.tabs.create({ url: '...' })
 
 **替代方案（未采用）**: Prompt-based function calling — 在提示词中描述 JSON 格式让模型文本输出工具调用。未采用因为原生 API 更可靠且不需要解析文本。
 
-### 4.2 Chrome 侧 fill_input 的框架兼容
-
-React/Vue 等框架使用受控组件，直接设置 `input.value` 不会触发状态更新。解决方案：
-
-```javascript
-const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-  Object.getPrototypeOf(el), 'value'
-)?.set;
-nativeInputValueSetter.call(el, value);
-el.dispatchEvent(new Event('input', { bubbles: true }));
-el.dispatchEvent(new Event('change', { bubbles: true }));
-```
-
-### 4.3 工具默认启用
+### 4.2 工具默认启用
 
 `toolsEnabled` 从默认 `false` 改为默认 `true`（`!== 'false'`），因为：
 - Chrome 面板的核心价值在于浏览器交互，工具调用是实现这一价值的关键
 - `streamWithTools` 在无工具调用时自动降级为纯文本响应，无额外开销
 - 用户仍可通过 UI 开关手动禁用
 
-### 4.4 系统提示词分离
-
-Chrome 面板和 VS Code 侧使用不同的系统提示词：
-- **Chrome 面板**: 强调浏览器控制和页面交互能力，工具使用引导具体到操作流程
-- **VS Code 侧**: 强调笔记管理能力，浏览器工具标注"需 Chrome 扩展连接"
-
 ## 5. 安全考虑
 
-- `get_page_elements` 限制返回最多 80 个元素，防止大页面导致消息过大
-- `fill_input` 使用 `CSS.escape()` 防止选择器注入
-- `chrome.scripting.executeScript` 仅在用户授权的标签页内执行
 - 所有工具执行均有超时机制（10-20s），防止长时间阻塞
 - 工具结果 preview 截断为 300 字符，防止 token 超限
 

@@ -111,10 +111,7 @@ const AGENT_SYSTEM_PROMPT = `你是一个专业的网络研究助手（Web Resea
 - create_issue: 创建单个独立笔记（不推荐，无层级关系）
 - **create_issue_tree**: 创建层级结构的笔记树（**强烈推荐**，自动建立父子关系）
 - list_issue_tree: 查看笔记树结构
-- update_issue: 更新已有笔记
-- list_tabs: 列出 Chrome 所有打开的标签页
-- organize_tabs: 将标签页按分组整理
-- close_tabs: 关闭指定标签页`;
+- update_issue: 更新已有笔记`;
 
 // ─── 服务 ─────────────────────────────────────────────────────
 
@@ -251,9 +248,6 @@ function getToolLabel(name: string): string {
         create_issue_tree: '创建笔记树',
         list_issue_tree: '笔记树结构',
         update_issue: '更新笔记',
-        list_tabs: '列出标签页',
-        organize_tabs: '整理标签页',
-        close_tabs: '关闭标签页',
     };
     return labels[name] || name;
 }
@@ -274,12 +268,6 @@ function getToolCallSummary(name: string, input: Record<string, unknown>): strin
             return `创建笔记树: ${(input.nodes as any[])?.length || 0} 个节点`;
         case 'update_issue':
             return `更新: ${input.filename || ''}`;
-        case 'list_tabs':
-            return '获取标签页列表';
-        case 'organize_tabs':
-            return `整理 ${(input.groups as any[])?.length || 0} 个分组`;
-        case 'close_tabs':
-            return `关闭 ${(input.tabIds as any[])?.length || 0} 个标签`;
         default:
             return JSON.stringify(input).slice(0, 100);
     }

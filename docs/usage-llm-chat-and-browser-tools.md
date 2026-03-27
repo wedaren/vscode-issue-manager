@@ -1,6 +1,8 @@
 # 使用说明：LLM Chat 与浏览器交互工具
 
 > 适用版本: 3.0.115+
+>
+> **⚠️ 注意**: 标签页管理工具（open_tab、list_tabs 等）和页面交互工具（get_page_elements、click_element、fill_input 等）已在后续迭代中移除。以下涉及浏览器操作的章节仅作历史参考。
 
 ## 1. 快速开始
 

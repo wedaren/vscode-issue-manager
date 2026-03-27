@@ -507,17 +507,6 @@ function genId(): string {
 
 /** 工具中文名映射 */
 const TOOL_LABELS: Record<string, string> = {
-  open_tab: '打开标签页',
-  get_tab_content: '读取页面内容',
-  activate_tab: '切换标签页',
-  list_tabs: '列出标签页',
-  organize_tabs: '整理标签页',
-  close_tabs: '关闭标签页',
-  get_page_elements: '获取页面元素',
-  click_element: '点击元素',
-  fill_input: '填写输入框',
-  select_option: '选择下拉项',
-  press_key: '模拟按键',
   web_search: '网络搜索',
   fetch_url: '抓取网页',
   search_issues: '检索笔记',
