@@ -97,12 +97,19 @@ export const memoryProvider: ContextProviderFn = async (ctx) => {
 const MAX_EDITOR_CHARS = 4000;
 const MAX_SELECTION_CHARS = 4000;
 
-/** 当前编辑器内容 — priority 60 */
+/** 当前编辑器内容 — priority 60（跳过对话文件，避免重复注入） */
 export const activeEditorProvider: ContextProviderFn = async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) { return null; }
 
     const doc = editor.document;
+
+    // 跳过对话文件 — 对话内容已通过聊天历史注入，不需要重复
+    if (doc.languageId === 'markdown') {
+        const head = doc.getText(new vscode.Range(0, 0, 10, 0));
+        if (/chat_conversation:\s*true/.test(head)) { return null; }
+    }
+
     const lang = doc.languageId;
     const fileName = doc.fileName.split('/').pop() || doc.fileName;
     let content = doc.getText();
@@ -139,7 +146,7 @@ export const selectionProvider: ContextProviderFn = async () => {
 
 const MAX_DIFF_CHARS = 4000;
 
-/** Git diff — priority 55 */
+/** Git diff — priority 40（大多数聊天场景不重要，可压缩） */
 export const gitDiffProvider: ContextProviderFn = async () => {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!cwd) { return null; }
@@ -159,7 +166,7 @@ export const gitDiffProvider: ContextProviderFn = async () => {
             detail = detail.slice(0, MAX_DIFF_CHARS) + '\n... (截断)';
         }
 
-        return makeItem('git_diff', `[Git 变更]\n\`\`\`diff\n${detail}\n\`\`\``, 55, {
+        return makeItem('git_diff', `[Git 变更]\n\`\`\`diff\n${detail}\n\`\`\``, 40, {
             compressible: true,
             compressedContent,
         });
@@ -278,35 +285,7 @@ export const childrenProvider: ContextProviderFn = async (ctx) => {
     return makeItem('children', `[子问题]\n${parts.join('\n')}`, 40, { compressible: true });
 };
 
-// ━━━ 最近对话 Provider ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/** 用户最近对话（跨角色） — priority 35 */
-export const recentActivityProvider: ContextProviderFn = async () => {
-    const allRoles = getAllChatRoles();
-    const allConvos: { title: string; roleName: string; mtime: number }[] = [];
-    for (const role of allRoles) {
-        for (const c of getConversationsForRole(role.id)) {
-            allConvos.push({ title: c.title, roleName: role.name, mtime: c.mtime });
-        }
-    }
-    allConvos.sort((a, b) => b.mtime - a.mtime);
-    const recent = allConvos.slice(0, 8);
-
-    if (recent.length === 0) { return null; }
-
-    const lines = recent.map(c => {
-        const d = new Date(c.mtime);
-        const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
-        return `- ${c.title} (${c.roleName}, ${dateStr})`;
-    });
-
-    return makeItem('recent_activity', `[最近对话]\n${lines.join('\n')}`, 35, {
-        compressible: true,
-        compressedContent: `[最近对话] ${recent.length} 个近期对话`,
-    });
-};
-
-// ━━━ 关联笔记 Provider ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━ 对话上下文 Provider（合并 相关过往 + 最近对话） ━━━━━━━━━
 
 /** 中文停用词（高频无意义词） */
 const STOP_WORDS = new Set([
@@ -318,18 +297,46 @@ const STOP_WORDS = new Set([
     '想', '觉得', '认为', '知道', '看', '说', '用', '做', '请', '帮',
 ]);
 
-/** 从消息中提取关键词 */
+/** 泛英文词（在 URL 中高频出现但缺乏区分度） */
+const GENERIC_ENGLISH = new Set([
+    'https', 'http', 'www', 'com', 'org', 'net', 'github', 'google', 'index',
+]);
+
+/**
+ * 从消息中提取关键词。
+ * URL 只取路径末段（如 VibeVoice），避免 https/github 等泛词污染匹配。
+ */
 function extractKeywords(message: string): string[] {
-    // 分词：按非字母/非中文字符切割，或按单个中文字符
+    // 1. 先提取 URL 并替换为路径末段关键词
+    const urls = message.match(/https?:\/\/[^\s)]+/gi) || [];
+    let cleaned = message;
+    for (const url of urls) {
+        cleaned = cleaned.replace(url, '');
+        // 取 URL 路径中有意义的末段（跳过空段和纯数字段）
+        try {
+            const pathname = new URL(url).pathname;
+            const segments = pathname.split('/').filter(s => s && !/^\d+$/.test(s));
+            // 取最后 1-2 段（通常是项目名/仓库名）
+            for (const seg of segments.slice(-2)) {
+                if (seg.length >= 3 && !GENERIC_ENGLISH.has(seg.toLowerCase())) {
+                    cleaned += ` ${seg}`;
+                }
+            }
+        } catch { /* invalid URL, ignore */ }
+    }
+
     const words: string[] = [];
 
-    // 提取中文词组（2-6 字连续中文）
-    const chineseMatches = message.match(/[\u4e00-\u9fff]{2,6}/g) || [];
+    // 2. 提取中文词组（2-6 字连续中文）
+    const chineseMatches = cleaned.match(/[\u4e00-\u9fff]{2,6}/g) || [];
     words.push(...chineseMatches);
 
-    // 提取英文单词（3+ 字母）
-    const englishMatches = message.match(/[a-zA-Z_]{3,}/gi) || [];
-    words.push(...englishMatches.map(w => w.toLowerCase()));
+    // 3. 提取英文单词（3+ 字母），过滤泛词
+    const englishMatches = cleaned.match(/[a-zA-Z_]{3,}/gi) || [];
+    for (const w of englishMatches) {
+        const lower = w.toLowerCase();
+        if (!GENERIC_ENGLISH.has(lower)) { words.push(lower); }
+    }
 
     // 去重 + 去停用词
     const seen = new Set<string>();
@@ -340,60 +347,117 @@ function extractKeywords(message: string): string[] {
     });
 }
 
-/** 与当前话题相关的过往对话 — priority 65 */
-export const relatedNotesProvider: ContextProviderFn = async (ctx) => {
-    const message = ctx.latestUserMessage;
-    if (!message || message.length < 5) { return null; }
+interface ConvoCandidate {
+    title: string;
+    roleName: string;
+    intent?: string;
+    mtime: number;
+    /** 关键词匹配分数，0 = 仅靠时间入选 */
+    relevanceScore: number;
+}
 
-    const keywords = extractKeywords(message);
-    if (keywords.length === 0) { return null; }
+/**
+ * 对话上下文 — priority 55
+ *
+ * 合并原 related_notes + recent_activity：
+ *   1. 按关键词匹配找话题相关的对话，排在前面
+ *   2. 按时间补充近期对话，填满配额
+ *   3. 全程去重，总共 cap 8 条
+ *
+ * 范围策略：
+ *   - generous: 跨角色（个人助理需要全局视野）
+ *   - focused:  仅当前角色的对话
+ */
+export const conversationContextProvider: ContextProviderFn = async (ctx) => {
+    const strategy = ctx.role.contextStrategy ?? 'generous';
+    const currentRoleId = ctx.role.id;
 
-    // 收集所有对话（带标题和意图）
+    // 收集候选对话
     const allRoles = getAllChatRoles();
-    const candidates: { title: string; roleName: string; intent?: string; score: number; mtime: number }[] = [];
+    const candidates: ConvoCandidate[] = [];
+
+    // 提取关键词用于相关性评分
+    const keywords = ctx.latestUserMessage?.length >= 5
+        ? extractKeywords(ctx.latestUserMessage)
+        : [];
 
     for (const role of allRoles) {
+        // focused 策略只看当前角色
+        if (strategy === 'focused' && role.id !== currentRoleId) { continue; }
+
         const convos = getConversationsForRole(role.id);
         for (const c of convos) {
             // 跳过当前对话
             if (c.uri.fsPath === ctx.conversationUri.fsPath) { continue; }
 
-            // 读取 intent（从 frontmatter）
-            const md = await getIssueMarkdown(c.uri);
-            const intent = md?.frontmatter?.chat_intent as string | undefined;
-            const searchText = `${c.title} ${intent || ''}`.toLowerCase();
-
             // 计算关键词匹配分数
-            let score = 0;
-            for (const kw of keywords) {
-                if (searchText.includes(kw.toLowerCase())) {
-                    score += kw.length; // 长词匹配权重更高
+            let relevanceScore = 0;
+            if (keywords.length > 0) {
+                const md = await getIssueMarkdown(c.uri);
+                const intent = md?.frontmatter?.chat_intent as string | undefined;
+                const searchText = `${c.title} ${intent || ''}`.toLowerCase();
+                for (const kw of keywords) {
+                    if (searchText.includes(kw.toLowerCase())) {
+                        relevanceScore += kw.length;
+                    }
                 }
             }
 
-            if (score > 0) {
-                candidates.push({ title: c.title, roleName: role.name, intent, score, mtime: c.mtime });
-            }
+            candidates.push({
+                title: c.title,
+                roleName: role.name,
+                intent: undefined, // lazy — 只在需要时再读
+                mtime: c.mtime,
+                relevanceScore,
+            });
         }
     }
 
     if (candidates.length === 0) { return null; }
 
-    // 按分数降序，取 top 5
-    candidates.sort((a, b) => b.score - a.score || b.mtime - a.mtime);
-    const top = candidates.slice(0, 5);
+    // 分两组：相关的 + 仅按时间的
+    const related = candidates.filter(c => c.relevanceScore > 0);
+    related.sort((a, b) => b.relevanceScore - a.relevanceScore || b.mtime - a.mtime);
 
-    const lines = top.map(c => {
+    const recency = candidates.slice().sort((a, b) => b.mtime - a.mtime);
+
+    // 合并去重：相关的在前，时间补位
+    const CAP = 8;
+    const result: ConvoCandidate[] = [];
+    const seen = new Set<string>();
+
+    for (const c of related) {
+        if (result.length >= CAP) { break; }
+        const key = `${c.title}|${c.roleName}`;
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        result.push(c);
+    }
+    for (const c of recency) {
+        if (result.length >= CAP) { break; }
+        const key = `${c.title}|${c.roleName}`;
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        result.push(c);
+    }
+
+    if (result.length === 0) { return null; }
+
+    const lines = result.map(c => {
         const d = new Date(c.mtime);
         const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
-        const intentHint = c.intent ? ` — ${c.intent}` : '';
-        return `- ${c.title}${intentHint} (${c.roleName}, ${dateStr})`;
+        const tag = c.relevanceScore > 0 ? ' ★' : '';
+        return `- ${c.title} (${c.roleName}, ${dateStr})${tag}`;
     });
 
-    return makeItem('related_notes',
-        `[相关过往]\n以下是与当前话题可能相关的过往对话，可以参考或主动提及：\n${lines.join('\n')}`,
-        65, { compressible: true },
-    );
+    const header = strategy === 'focused'
+        ? '[对话上下文]'
+        : '[对话上下文]\n以下是相关或近期的对话，可参考或主动提及：';
+
+    return makeItem('conversation_context', `${header}\n${lines.join('\n')}`, 55, {
+        compressible: true,
+        compressedContent: `[对话上下文] ${result.length} 个对话`,
+    });
 };
 
 // ━━━ Provider 注册表 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -412,8 +476,7 @@ export const allProviders: Record<ContextSourceId, ContextProviderFn> = {
     linked_files: linkedFilesProvider,
     terms: termsProvider,
     children: childrenProvider,
-    recent_activity: recentActivityProvider,
-    related_notes: relatedNotesProvider,
+    conversation_context: conversationContextProvider,
 };
 
 // ━━━ 工具函数 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

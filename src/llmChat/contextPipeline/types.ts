@@ -11,25 +11,24 @@
 
 /** 上下文来源 ID（与 provider 一一对应） */
 export type ContextSourceId =
-    | 'identity'       // 角色身份（system prompt body）
-    | 'intent'         // 意图锚点
-    | 'plan'           // 执行计划
-    | 'mode'           // 执行模式（自主/交互）
-    | 'memory'         // 自动提取记忆
-    | 'active_editor'  // 当前编辑器内容
-    | 'selection'      // 编辑器选中文本
-    | 'git_diff'       // Git 变更
-    | 'datetime'       // 当前时间
-    | 'linked_files'   // 关联文件
-    | 'terms'          // 术语表
-    | 'children'        // 子问题摘要
-    | 'recent_activity' // 用户最近的对话动态
-    | 'related_notes';  // 与当前话题相关的过往笔记/对话
+    | 'identity'              // 角色身份（system prompt body）
+    | 'intent'                // 意图锚点
+    | 'plan'                  // 执行计划
+    | 'mode'                  // 执行模式（自主/交互）
+    | 'memory'                // 自动提取记忆
+    | 'active_editor'         // 当前编辑器内容
+    | 'selection'             // 编辑器选中文本
+    | 'git_diff'              // Git 变更
+    | 'datetime'              // 当前时间
+    | 'linked_files'          // 关联文件
+    | 'terms'                 // 术语表
+    | 'children'              // 子问题摘要
+    | 'conversation_context'; // 对话上下文（相关 + 近期，合并去重）
 
 /** 所有可获取的 source（identity 由 assembler 处理，不在此列） */
 export const ALL_SOURCES: ContextSourceId[] = [
     'intent', 'plan', 'mode', 'memory', 'active_editor', 'selection',
-    'git_diff', 'datetime', 'linked_files', 'terms', 'children', 'recent_activity', 'related_notes',
+    'git_diff', 'datetime', 'linked_files', 'terms', 'children', 'conversation_context',
 ];
 
 /** 所有策略下始终注入的 source */

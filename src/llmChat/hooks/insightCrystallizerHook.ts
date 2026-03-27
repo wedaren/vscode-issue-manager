@@ -2,7 +2,7 @@
  * Post-response hook：洞见结晶
  *
  * 当对话产生有价值的新认知时，自动提取并写入对话的 frontmatter。
- * 这些洞见让 related_notes provider 能在未来的对话中关联到这次思考。
+ * 这些洞见让 conversation_context provider 能在未来的对话中关联到这次思考。
  *
  * 触发条件：非首轮回复（需要至少一个来回才可能产生洞见）
  * 提取内容：这次对话产生了什么新的理解、决策或结论
