@@ -21,8 +21,12 @@ export interface ChatRoleFrontmatter {
     timer_interval?: number;
     /** 同一角色最多并发处理的对话数，默认 2 */
     timer_max_concurrent?: number;
-    /** 单次 LLM 请求超时（ms），默认 60000 */
+    /** 空闲超时（ms），LLM 无响应多久后中断，默认 60000 */
     timer_timeout?: number;
+    /** 单次工具调用超时（ms），默认 60000。委派类工具自动放宽为此值 ×3 */
+    timer_tool_timeout?: number;
+    /** 总执行时间上限（ms），默认 600000（10分钟）。到时间无条件中断 */
+    timer_max_execution?: number;
     /** 最大重试次数，默认 3 */
     timer_max_retries?: number;
     /** 初始重试间隔（ms），指数退避，默认 5000 */
@@ -179,6 +183,8 @@ export interface ChatRoleInfo {
     timerInterval?: number;
     timerMaxConcurrent?: number;
     timerTimeout?: number;
+    timerToolTimeout?: number;
+    timerMaxExecution?: number;
     timerMaxRetries?: number;
     timerRetryDelay?: number;
     /** 角色级最大 token 预算 */

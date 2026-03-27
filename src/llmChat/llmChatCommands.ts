@@ -811,8 +811,10 @@ export function registerLLMChatCommands(
 
     // ─── 统一角色配置入口（模型 / 工具集 / 委派状态） ────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.configureRole', async (uri?: vscode.Uri) => {
-            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+        vscode.commands.registerCommand('issueManager.llmChat.configureRole', async (arg?: vscode.Uri | ChatRoleNode) => {
+            const targetUri = arg instanceof ChatRoleNode ? arg.role.uri
+                : arg instanceof vscode.Uri ? arg
+                : vscode.window.activeTextEditor?.document?.uri;
             if (!targetUri) { return; }
 
             const contentBytes = await vscode.workspace.fs.readFile(targetUri);
@@ -827,9 +829,17 @@ export function registerLLMChatCommands(
             const autonomousLabel = currentAutonomous === true ? '自主' : currentAutonomous === false ? '交互' : '未设置（继承交互默认）';
             const currentLogEnabled = (frontmatter as Record<string, unknown>)['chat_log_enabled'];
             const logLabel = currentLogEnabled === true ? '开启' : currentLogEnabled === false ? '关闭' : '未设置（默认关闭）';
+
+            const fm = frontmatter as Record<string, unknown>;
+            const idleT = Number(fm['timer_timeout']) || 60000;
+            const toolT = Number(fm['timer_tool_timeout']) || 60000;
+            const maxE = Number(fm['timer_max_execution']) || 600000;
+            const timeoutLabel = `空闲 ${idleT / 1000}s / 工具 ${toolT / 1000}s / 总上限 ${maxE / 1000}s`;
+
             const category = await vscode.window.showQuickPick([
                 { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
                 { label: '$(tools) 工具集',           description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
+                { label: '$(clock) 超时配置',          description: timeoutLabel, id: 'timeout' },
                 { label: '$(shield) 委派状态',         description: `当前: ${currentStatus}`, id: 'status' },
                 { label: '$(robot) 自主模式',          description: `当前: ${autonomousLabel}`, id: 'autonomous' },
                 { label: '$(output) 执行日志',         description: `当前: ${logLabel}`, id: 'logEnabled' },
@@ -840,6 +850,55 @@ export function registerLLMChatCommands(
                 await vscode.commands.executeCommand('issueManager.llmChat.configureModel', targetUri);
             } else if (category.id === 'tools') {
                 await vscode.commands.executeCommand('issueManager.llmChat.configureTools', targetUri);
+            } else if (category.id === 'timeout') {
+                // ── 超时配置（三层） ────────────────────────────────
+                const presets = [
+                    { label: '$(zap) 快速响应',     description: '空闲 30s / 工具 30s / 总 5min',  values: { timer_timeout: 30000, timer_tool_timeout: 30000, timer_max_execution: 300000 } },
+                    { label: '$(clock) 标准（默认）', description: '空闲 60s / 工具 60s / 总 10min', values: { timer_timeout: 60000, timer_tool_timeout: 60000, timer_max_execution: 600000 } },
+                    { label: '$(rocket) 复杂任务',   description: '空闲 120s / 工具 120s / 总 20min', values: { timer_timeout: 120000, timer_tool_timeout: 120000, timer_max_execution: 1200000 } },
+                    { label: '$(edit) 自定义',       description: '逐项输入超时值', values: null },
+                ];
+                const sel = await vscode.window.showQuickPick(presets, {
+                    title: '配置超时',
+                    placeHolder: `当前: ${timeoutLabel}`,
+                });
+                if (!sel) { return; }
+
+                let updates: Record<string, number>;
+                if (sel.values) {
+                    updates = sel.values;
+                } else {
+                    // 自定义模式：逐项输入
+                    const idleInput = await vscode.window.showInputBox({
+                        title: '空闲超时（秒）',
+                        prompt: 'LLM 无响应多久后中断',
+                        value: String(idleT / 1000),
+                        validateInput: v => isNaN(Number(v)) || Number(v) <= 0 ? '请输入正数' : undefined,
+                    });
+                    if (!idleInput) { return; }
+                    const toolInput = await vscode.window.showInputBox({
+                        title: '工具调用超时（秒）',
+                        prompt: '单次工具调用最长执行时间（委派类自动 ×3）',
+                        value: String(toolT / 1000),
+                        validateInput: v => isNaN(Number(v)) || Number(v) <= 0 ? '请输入正数' : undefined,
+                    });
+                    if (!toolInput) { return; }
+                    const maxInput = await vscode.window.showInputBox({
+                        title: '总执行上限（秒）',
+                        prompt: '整次执行的最长时间，到时间无条件中断',
+                        value: String(maxE / 1000),
+                        validateInput: v => isNaN(Number(v)) || Number(v) <= 0 ? '请输入正数' : undefined,
+                    });
+                    if (!maxInput) { return; }
+                    updates = {
+                        timer_timeout: Number(idleInput) * 1000,
+                        timer_tool_timeout: Number(toolInput) * 1000,
+                        timer_max_execution: Number(maxInput) * 1000,
+                    };
+                }
+                await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
+                const s = (ms: number) => `${ms / 1000}s`;
+                vscode.window.showInformationMessage(`已更新超时配置 → 空闲 ${s(updates.timer_timeout)} / 工具 ${s(updates.timer_tool_timeout)} / 总 ${s(updates.timer_max_execution)}`);
             } else if (category.id === 'status') {
                 // ── 委派状态 ──────────────────────────────────────
                 const statusItems = [
@@ -1096,8 +1155,10 @@ export function registerLLMChatCommands(
 
     // ─── 交互式配置对话（菜单式，与 configureRole 一致） ─────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.configureConversation', async (uri?: vscode.Uri) => {
-            const targetUri = uri ?? vscode.window.activeTextEditor?.document?.uri;
+        vscode.commands.registerCommand('issueManager.llmChat.configureConversation', async (arg?: vscode.Uri | ChatConversationNode) => {
+            const targetUri = arg instanceof ChatConversationNode ? arg.conversation.uri
+                : arg instanceof vscode.Uri ? arg
+                : vscode.window.activeTextEditor?.document?.uri;
             if (!targetUri) { return; }
 
             const contentBytes = await vscode.workspace.fs.readFile(targetUri);

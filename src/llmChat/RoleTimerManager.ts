@@ -274,7 +274,9 @@ export class RoleTimerManager implements vscode.Disposable {
 
         logger.info(`[RoleTimerManager] 开始处理对话: ${filePath}（尝试 #${retryCount + 1}）`);
 
-        const timeout = role.timerTimeout ?? 60_000;
+        const idleTimeout = role.timerTimeout ?? 60_000;          // Layer 2: 空闲超时
+        const toolTimeout = role.timerToolTimeout ?? 60_000;       // Layer 1: 单次工具调用超时
+        const maxExecution = role.timerMaxExecution ?? 600_000;    // Layer 3: 总执行时间上限（默认 10min）
         const ac = new AbortController();
 
         const convoConfig = await getConversationConfig(uri);
@@ -295,7 +297,7 @@ export class RoleTimerManager implements vscode.Disposable {
                     trigger,
                     roleName: role.name,
                     modelFamily: effectiveModelFamily,
-                    timeout,
+                    timeout: idleTimeout,
                     maxTokens: effectiveMaxTokens,
                     retryCount,
                 });
@@ -312,18 +314,31 @@ export class RoleTimerManager implements vscode.Disposable {
         let execLastActivityAt = Date.now(); // 最后一次活动时间戳
 
         try {
-            // 空闲超时：每 5s 检查一次距上次活动是否超过 timeout
+            // Layer 2 + 3: 空闲超时 + 总执行时间上限，每 5s 检查一次
             const idleCheckId = setInterval(() => {
-                const idleMs = Date.now() - execLastActivityAt;
-                if (idleMs >= timeout) {
+                const now = Date.now();
+                const idleMs = now - execLastActivityAt;
+                const totalMs = now - startedAt;
+                const totalSec = (totalMs / 1000).toFixed(1);
+
+                // Layer 3: 总执行时间硬上限
+                if (totalMs >= maxExecution) {
+                    clearInterval(idleCheckId);
+                    const detail = `阶段: ${execPhase} | 已完成 ${execToolCalls} 次工具调用 | 总耗时 ${totalSec}s`;
+                    if (logUri) { void appendLogLine(logUri, `⏰ **总执行超时** (${maxExecution / 1000}s 上限) | ${detail}`); }
+                    ac.abort(new Error(`总执行超时（${maxExecution / 1000}s 上限）| ${detail}`));
+                    return;
+                }
+
+                // Layer 2: 空闲超时
+                if (idleMs >= idleTimeout) {
                     clearInterval(idleCheckId);
                     const idleSec = (idleMs / 1000).toFixed(1);
-                    const totalSec = ((Date.now() - startedAt) / 1000).toFixed(1);
                     const detail = execToolCalls > 0
                         ? `阶段: ${execPhase} | 已完成 ${execToolCalls} 次工具调用 | 最后工具: ${execLastToolName} | 空闲 ${idleSec}s | 总耗时 ${totalSec}s`
                         : `阶段: ${execPhase} | 尚无工具调用 | 空闲 ${idleSec}s | 总耗时 ${totalSec}s`;
-                    if (logUri) { void appendLogLine(logUri, `⏰ **空闲超时** (${timeout / 1000}s 无活动) | ${detail}`); }
-                    ac.abort(new Error(`空闲超时（${timeout / 1000}s 无活动）| ${detail}`));
+                    if (logUri) { void appendLogLine(logUri, `⏰ **空闲超时** (${idleTimeout / 1000}s 无活动) | ${detail}`); }
+                    ac.abort(new Error(`空闲超时（${idleTimeout / 1000}s 无活动）| ${detail}`));
                 }
             }, 5_000);
 
@@ -366,12 +381,12 @@ export class RoleTimerManager implements vscode.Disposable {
                     return `### [${i}] ${roleLabel}\n\n${text}`;
                 }).join('\n\n---\n\n');
                 const toolNames = tools.map(t => t.name).join(', ');
-                const fullContent = `**模型**: ${effectiveModelFamily} | **工具**: ${toolNames} | **tokens**: ${inputTokens} | **超时**: ${timeout / 1000}s\n\n---\n\n${requestSnapshot}`;
+                const fullContent = `**模型**: ${effectiveModelFamily} | **工具**: ${toolNames} | **tokens**: ${inputTokens} | **空闲超时**: ${idleTimeout / 1000}s | **工具超时**: ${toolTimeout / 1000}s | **总上限**: ${maxExecution / 1000}s\n\n---\n\n${requestSnapshot}`;
 
                 if (runNumber > 0) {
                     let reqFileName: string | null = null;
                     try {
-                        reqFileName = await createToolCallNode(logUri, 'llm_request', { model: effectiveModelFamily, tools: toolNames, inputTokens, timeout }, fullContent, 0, {
+                        reqFileName = await createToolCallNode(logUri, 'llm_request', { model: effectiveModelFamily, tools: toolNames, inputTokens, idleTimeout, toolTimeout, maxExecution }, fullContent, 0, {
                             success: true,
                             description: 'LLM 请求快照',
                             sequence: 0,
@@ -438,14 +453,41 @@ export class RoleTimerManager implements vscode.Disposable {
                         }
                     }
 
-                    // 工具执行期间自动刷新空闲计时，防止慢工具被误杀
-                    // （委派工具已有自己的 onHeartbeat，但普通工具没有）
-                    const toolHeartbeatId = setInterval(() => { execLastActivityAt = Date.now(); }, 10_000);
+                    // Layer 1: 单次工具调用超时
+                    // 委派类工具（delegate_to_role / continue_delegation）放宽为 toolTimeout×3
+                    const isDelegationTool = isDelegation || toolName === 'continue_delegation';
+                    const thisToolTimeout = isDelegationTool ? toolTimeout * 3 : toolTimeout;
                     let res: Awaited<ReturnType<typeof executeChatTool>>;
+                    const toolTimeoutId = setTimeout(() => {
+                        // 工具超时不直接 abort 整个执行，而是标记超时让 LLM 知道
+                        execPhase = `工具 ${toolName} 超时（${thisToolTimeout / 1000}s）`;
+                    }, thisToolTimeout);
                     try {
-                        res = await executeChatTool(toolName, input, toolContext);
+                        res = await Promise.race([
+                            executeChatTool(toolName, input, toolContext),
+                            new Promise<never>((_, reject) => {
+                                setTimeout(() => {
+                                    reject(new Error(`工具 ${toolName} 执行超时（${thisToolTimeout / 1000}s）`));
+                                }, thisToolTimeout);
+                            }),
+                        ]);
+                    } catch (toolErr) {
+                        // 工具超时：返回错误给 LLM，让它决定下一步（而非中断整个执行）
+                        clearTimeout(toolTimeoutId);
+                        const dur = Date.now() - tcStart;
+                        if (logUri) {
+                            void appendLogLine(logUri, `⏰ \`${toolName}\` 超时 (${fmtDuration(dur)})`);
+                        }
+                        toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName: null, success: false, round: currentRound });
+                        execToolCalls = toolCallSeq;
+                        execLastToolName = toolName;
+                        execPhase = `等待 LLM 响应（工具 ${toolName} 超时后）`;
+                        execLastActivityAt = Date.now();
+                        return `[工具执行失败] ${toolName} 超时（${thisToolTimeout / 1000}s），请尝试其他方式或跳过此步骤。`;
                     } finally {
-                        clearInterval(toolHeartbeatId);
+                        clearTimeout(toolTimeoutId);
+                        // 工具完成后刷新空闲计时（合法活动）
+                        execLastActivityAt = Date.now();
                     }
                     const dur = Date.now() - tcStart;
 

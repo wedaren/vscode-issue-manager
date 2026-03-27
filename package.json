@@ -791,6 +791,12 @@
         "icon": "$(send)"
       },
       {
+        "command": "issueManager.llmChat.configureRole",
+        "title": "配置角色",
+        "category": "Issue Manager",
+        "icon": "$(gear)"
+      },
+      {
         "command": "issueManager.llmChat.configureConversation",
         "title": "配置对话",
         "category": "Issue Manager",
@@ -1124,6 +1130,11 @@
           "group": "inline@3"
         },
         {
+          "command": "issueManager.llmChat.configureRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@4"
+        },
+        {
           "command": "issueManager.llmChat.editRole",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
           "group": "9_edit"
@@ -1139,9 +1150,14 @@
           "group": "inline@2"
         },
         {
-          "command": "issueManager.llmChat.deleteConversation",
+          "command": "issueManager.llmChat.configureConversation",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatConversation'",
           "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.deleteConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatConversation'",
+          "group": "inline@2"
         },
         {
           "command": "issueManager.editorGroup.rename",
