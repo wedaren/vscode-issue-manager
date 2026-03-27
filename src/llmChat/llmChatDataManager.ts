@@ -33,6 +33,7 @@ import type {
     ExecutionRunRecord,
     ExecutionToolCall,
     RecentActivityEntry,
+    RecentConversationEntry,
     RoleAutoMemoryFrontmatter,
     ChatPlanFrontmatter,
 } from './types';
@@ -1152,7 +1153,7 @@ export async function getExecutionLogInfo(conversationUri: vscode.Uri): Promise<
 
 /**
  * 聚合所有执行日志，返回最近 N 条 Run 条目（跨对话）。
- * 用于「最近活动」视图。
+ * 用于「最近对话」视图中的 Run 子节点数据源。
  */
 export async function getRecentActivityEntries(limit = 30): Promise<RecentActivityEntry[]> {
     const allLogs = getIssueMarkdownsByType('chat_execution_log');
@@ -1238,6 +1239,55 @@ export async function getRecentActivityEntries(limit = 30): Promise<RecentActivi
     // 按时间倒序，取前 N 条
     entries.sort((a, b) => b.timestamp - a.timestamp);
     return entries.slice(0, limit);
+}
+
+/**
+ * 按对话聚合最近的执行记录，返回最近 N 个对话条目。
+ * 用于「最近对话」视图：对话为顶层节点，Run 为子节点。
+ */
+export async function getRecentConversationEntries(limit = 20): Promise<RecentConversationEntry[]> {
+    const allRuns = await getRecentActivityEntries(200); // 取足够多的 run 以覆盖对话
+
+    // 按 conversationId 分组
+    const grouped = new Map<string, RecentActivityEntry[]>();
+    for (const run of allRuns) {
+        const existing = grouped.get(run.conversationId);
+        if (existing) { existing.push(run); }
+        else { grouped.set(run.conversationId, [run]); }
+    }
+
+    // 构建对话索引（ID → { title, roleName, uri }）
+    const convoIndex = new Map<string, { title: string; roleName: string; uri: vscode.Uri }>();
+    for (const role of getAllChatRoles()) {
+        for (const c of getConversationsForRole(role.id)) {
+            convoIndex.set(c.id, { title: c.title, roleName: role.name, uri: c.uri });
+        }
+    }
+    for (const group of getAllChatGroups()) {
+        for (const c of getConversationsForGroup(group.id)) {
+            if (!convoIndex.has(c.id)) {
+                convoIndex.set(c.id, { title: c.title, roleName: group.name, uri: c.uri });
+            }
+        }
+    }
+
+    // 聚合
+    const conversations: RecentConversationEntry[] = [];
+    for (const [convoId, runs] of grouped) {
+        const info = convoIndex.get(convoId);
+        runs.sort((a, b) => b.timestamp - a.timestamp);
+        conversations.push({
+            conversationId: convoId,
+            title: info?.title ?? convoId,
+            roleName: info?.roleName ?? runs[0]?.roleName ?? '未知角色',
+            conversationUri: info?.uri,
+            latestTimestamp: runs[0].timestamp,
+            runs,
+        });
+    }
+
+    conversations.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+    return conversations.slice(0, limit);
 }
 
 /** 工具调用节点运行时信息 */

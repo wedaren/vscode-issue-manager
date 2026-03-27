@@ -7,8 +7,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { whenCacheReady, onTitleUpdate, isIssueMarkdownFile } from '../data/IssueMarkdowns';
-import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentActivityEntries, getToolCallsForLog, type ChatToolCallInfo } from './llmChatDataManager';
-import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, RecentActivityEntry } from './types';
+import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentConversationEntries, getToolCallsForLog, type ChatToolCallInfo } from './llmChatDataManager';
+import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, RecentActivityEntry, RecentConversationEntry } from './types';
 import { RoleTimerManager } from './RoleTimerManager';
 
 // ─── 节点类型 ────────────────────────────────────────────────
@@ -110,38 +110,68 @@ export class ChatExecutionLogNode extends vscode.TreeItem {
     }
 }
 
-/** 最近活动折叠根节点 */
-export class RecentActivityRootNode extends vscode.TreeItem {
+/** 最近对话折叠根节点 */
+export class RecentConversationRootNode extends vscode.TreeItem {
     constructor() {
-        super('最近活动', vscode.TreeItemCollapsibleState.Collapsed);
-        this.contextValue = 'recentActivityRoot';
+        super('最近对话', vscode.TreeItemCollapsibleState.Collapsed);
+        this.contextValue = 'recentConversationRoot';
         this.iconPath = new vscode.ThemeIcon('history');
         this.description = undefined;
     }
 }
 
-/** 单条最近活动条目 */
-export class RecentActivityItemNode extends vscode.TreeItem {
-    constructor(public readonly entry: RecentActivityEntry) {
+/** 单个对话条目（最近对话的子节点，可展开显示 Run 列表） */
+export class RecentConversationItemNode extends vscode.TreeItem {
+    constructor(public readonly entry: RecentConversationEntry) {
         super(
-            `${entry.success ? '✓' : '❌'} Run #${entry.runNumber}`,
+            entry.title,
+            entry.runs.length > 0
+                ? vscode.TreeItemCollapsibleState.Collapsed
+                : vscode.TreeItemCollapsibleState.None,
+        );
+        this.contextValue = 'recentConversationItem';
+        this.iconPath = new vscode.ThemeIcon('comment-discussion');
+        this.description = `${entry.roleName} · ${entry.runs.length} 次执行 · ${formatRelativeTime(entry.latestTimestamp)}`;
+        this.tooltip = new vscode.MarkdownString(
+            `**${entry.title}**\n\n`
+            + `- 角色: ${entry.roleName}\n`
+            + `- 执行次数: ${entry.runs.length}\n`
+            + `- 最近执行: ${formatRelativeTime(entry.latestTimestamp)}`,
+        );
+        if (entry.conversationUri) {
+            this.command = {
+                command: 'vscode.open',
+                title: '打开对话',
+                arguments: [entry.conversationUri],
+            };
+        }
+    }
+}
+
+/** 单次 Run 条目（对话的子节点） */
+export class RecentRunItemNode extends vscode.TreeItem {
+    constructor(
+        public readonly run: RecentActivityEntry,
+        public readonly parentConversation: RecentConversationEntry,
+    ) {
+        super(
+            `${run.success ? '✓' : '❌'} Run #${run.runNumber}`,
             vscode.TreeItemCollapsibleState.None,
         );
-        this.contextValue = 'recentActivityItem';
-        this.iconPath = new vscode.ThemeIcon(entry.success ? 'pass' : 'error');
-        this.description = `${entry.roleName ?? '未知角色'} · ${formatRelativeTime(entry.timestamp)}`;
+        this.contextValue = 'recentRunItem';
+        this.iconPath = new vscode.ThemeIcon(run.success ? 'pass' : 'error');
+        this.description = `${run.modelFamily ?? '未知模型'} · ${formatRelativeTime(run.timestamp)}`;
         this.tooltip = new vscode.MarkdownString(
-            `**Run #${entry.runNumber}**\n\n`
-            + `- 角色: ${entry.roleName ?? '未知'}\n`
-            + `- 模型: ${entry.modelFamily ?? '未知'}\n`
-            + `- 触发: ${entry.trigger ?? '未知'}\n`
-            + `- 对话: \`${entry.conversationId}\`\n`
-            + `- 结果: ${entry.summary}`,
+            `**Run #${run.runNumber}**\n\n`
+            + `- 角色: ${run.roleName ?? '未知'}\n`
+            + `- 模型: ${run.modelFamily ?? '未知'}\n`
+            + `- 触发: ${run.trigger ?? '未知'}\n`
+            + `- 结果: ${run.summary}`,
         );
         this.command = {
             command: 'vscode.open',
             title: '打开执行日志',
-            arguments: [entry.logUri],
+            arguments: [run.logUri],
         };
     }
 }
@@ -171,7 +201,7 @@ export class ChatToolCallNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatToolCallNode | RecentActivityRootNode | RecentActivityItemNode;
+export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -243,15 +273,18 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const [roles, groups] = [getAllChatRoles(), getAllChatGroups()];
 
             const nodes: LLMChatViewNode[] = [];
-            // 最近活动放在最顶部
-            nodes.push(new RecentActivityRootNode());
+            // 最近对话放在最顶部
+            nodes.push(new RecentConversationRootNode());
             nodes.push(...groups.map(g => new ChatGroupNode(g)));
             nodes.push(...roles.map(r => new ChatRoleNode(r)));
             return nodes;
         }
-        if (element instanceof RecentActivityRootNode) {
-            const entries = await getRecentActivityEntries(30);
-            return entries.map(e => new RecentActivityItemNode(e));
+        if (element instanceof RecentConversationRootNode) {
+            const conversations = await getRecentConversationEntries(20);
+            return conversations.map(c => new RecentConversationItemNode(c));
+        }
+        if (element instanceof RecentConversationItemNode) {
+            return element.entry.runs.map(r => new RecentRunItemNode(r, element.entry));
         }
         if (element instanceof ChatRoleNode) {
             const convos = await getConversationsForRole(element.role.id);
@@ -307,8 +340,11 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
                 );
             }
         }
-        if (element instanceof RecentActivityItemNode) {
-            return new RecentActivityRootNode();
+        if (element instanceof RecentRunItemNode) {
+            return new RecentConversationItemNode(element.parentConversation);
+        }
+        if (element instanceof RecentConversationItemNode) {
+            return new RecentConversationRootNode();
         }
         return undefined;
     }

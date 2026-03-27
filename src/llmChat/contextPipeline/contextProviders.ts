@@ -278,9 +278,9 @@ export const childrenProvider: ContextProviderFn = async (ctx) => {
     return makeItem('children', `[子问题]\n${parts.join('\n')}`, 40, { compressible: true });
 };
 
-// ━━━ 最近活动 Provider ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━ 最近对话 Provider ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** 用户最近活动（跨角色对话） — priority 35 */
+/** 用户最近对话（跨角色） — priority 35 */
 export const recentActivityProvider: ContextProviderFn = async () => {
     const allRoles = getAllChatRoles();
     const allConvos: { title: string; roleName: string; mtime: number }[] = [];
@@ -300,9 +300,9 @@ export const recentActivityProvider: ContextProviderFn = async () => {
         return `- ${c.title} (${c.roleName}, ${dateStr})`;
     });
 
-    return makeItem('recent_activity', `[最近活动]\n${lines.join('\n')}`, 35, {
+    return makeItem('recent_activity', `[最近对话]\n${lines.join('\n')}`, 35, {
         compressible: true,
-        compressedContent: `[最近活动] ${recent.length} 个近期对话`,
+        compressedContent: `[最近对话] ${recent.length} 个近期对话`,
     });
 };
 

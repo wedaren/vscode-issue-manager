@@ -1,4 +1,4 @@
-export { LLMChatRoleProvider, type LLMChatViewNode, ChatRoleNode, ChatConversationNode, ChatGroupNode, ChatExecutionLogNode, RecentActivityRootNode, RecentActivityItemNode } from './LLMChatRoleProvider';
+export { LLMChatRoleProvider, type LLMChatViewNode, ChatRoleNode, ChatConversationNode, ChatGroupNode, ChatExecutionLogNode, RecentConversationRootNode, RecentConversationItemNode, RecentRunItemNode } from './LLMChatRoleProvider';
 export { LLMChatService } from './LLMChatService';
 export { ChatHistoryPanel } from './ChatHistoryPanel';
 export { registerLLMChatCommands } from './llmChatCommands';
@@ -15,8 +15,9 @@ export {
     getOrCreateExecutionLog,
     getExecutionLogInfo,
     getRecentActivityEntries,
+    getRecentConversationEntries,
     appendExecutionRunRecord,
     startLogRun,
     appendLogLine,
 } from './llmChatDataManager';
-export type { ChatRoleInfo, ChatConversationInfo, ChatMessage, ChatGroupInfo, ChatGroupMessage, ChromeChatInfo, ChatExecutionLogInfo, ExecutionRunRecord, ExecutionToolCall, RecentActivityEntry } from './types';
+export type { ChatRoleInfo, ChatConversationInfo, ChatMessage, ChatGroupInfo, ChatGroupMessage, ChromeChatInfo, ChatExecutionLogInfo, ExecutionRunRecord, ExecutionToolCall, RecentActivityEntry, RecentConversationEntry } from './types';

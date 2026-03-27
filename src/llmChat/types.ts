@@ -281,7 +281,23 @@ export interface ChatGroupMessage {
     timestamp: number;
 }
 
-// ─── 最近活动（聚合视图） ─────────────────────────────────────
+// ─── 最近对话（聚合视图） ─────────────────────────────────────
+
+/** 按对话聚合的最近对话条目（顶层节点） */
+export interface RecentConversationEntry {
+    /** 对话 ID */
+    conversationId: string;
+    /** 对话标题 */
+    title: string;
+    /** 所属角色名称 */
+    roleName: string;
+    /** 对话文件 URI（可能为空，如对话被删除） */
+    conversationUri?: import('vscode').Uri;
+    /** 最近一次 Run 的时间戳 */
+    latestTimestamp: number;
+    /** 该对话下的所有 Run（按时间倒序） */
+    runs: RecentActivityEntry[];
+}
 
 /** 从多个执行日志聚合出的单次 Run 条目 */
 export interface RecentActivityEntry {
