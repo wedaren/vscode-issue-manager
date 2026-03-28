@@ -20,6 +20,7 @@ import {
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { parseStateMarker, stripMarker } from './convStateMarker';
+import { McpManager } from './mcp';
 import { ChatRoleNode, ChatConversationNode, ChatGroupNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
 import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
@@ -989,24 +990,21 @@ export function registerLLMChatCommands(
             const newToolSets = selectedSets.map(i => i.label);
 
             // ── Step 2: 选择 mcp_servers ──────────────────────────
+            const mcpManager = McpManager.getInstance();
+            const serversWithTools = mcpManager.getServersWithTools();
             const serverToolsMap = new Map<string, string[]>();
-            for (const tool of vscode.lm.tools) {
-                const match = tool.name.match(/^mcp_([^_]+)_(.+)$/);
-                if (match) {
-                    const server = match[1];
-                    if (!serverToolsMap.has(server)) { serverToolsMap.set(server, []); }
-                    serverToolsMap.get(server)!.push(tool.name);
-                }
+            for (const [server, tools] of serversWithTools) {
+                serverToolsMap.set(server, tools.map(t => t.name));
             }
             type ServerItem = vscode.QuickPickItem & { serverId: string };
             const serverItems: ServerItem[] = serverToolsMap.size > 0 ? [
                 { label: '*', serverId: '*', description: '引入全部已注册 MCP 工具', picked: currentServers.includes('*') },
                 { label: '', kind: vscode.QuickPickItemKind.Separator, serverId: '' },
-                ...[...serverToolsMap.entries()].map(([server, tools]): ServerItem => ({
+                ...[...serversWithTools.entries()].map(([server, tools]): ServerItem => ({
                     label: server,
                     serverId: server,
                     description: `${tools.length} 个工具`,
-                    detail: tools.slice(0, 4).map(t => t.replace(`mcp_${server}_`, '')).join('、') +
+                    detail: tools.slice(0, 4).map(t => t.originalName).join('、') +
                         (tools.length > 4 ? ` … +${tools.length - 4}` : ''),
                     picked: currentServers.includes(server),
                 })),

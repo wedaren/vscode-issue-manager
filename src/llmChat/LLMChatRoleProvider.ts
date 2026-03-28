@@ -10,6 +10,7 @@ import { whenCacheReady, onTitleUpdate, isIssueMarkdownFile } from '../data/Issu
 import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentConversationEntries, getToolCallsForLog, type ChatToolCallInfo } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, RecentActivityEntry, RecentConversationEntry } from './types';
 import { RoleTimerManager } from './RoleTimerManager';
+import { McpManager, type McpServerStatus, type McpToolDescriptor } from './mcp';
 
 // ─── 节点类型 ────────────────────────────────────────────────
 
@@ -201,7 +202,82 @@ export class ChatToolCallNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode;
+// ─── MCP 节点类型 ─────────────────────────────────────────────
+
+/** MCP Server 折叠根节点（树顶层固定节点） */
+export class McpRootNode extends vscode.TreeItem {
+    constructor(serverCount: number, connectedCount: number) {
+        // 无 server 时展开（引导添加），有 server 时折叠
+        super('MCP Server', serverCount > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.Expanded);
+        this.contextValue = 'mcpRoot';
+        this.iconPath = new vscode.ThemeIcon('server-environment');
+        this.description = serverCount > 0 ? `${connectedCount}/${serverCount} 已连接` : '点击 + 添加';
+    }
+}
+
+/** 单个 MCP Server 节点 */
+export class McpServerNode extends vscode.TreeItem {
+    constructor(public readonly status: McpServerStatus) {
+        super(status.name, status.connected
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None);
+        this.id = `mcp-server:${status.name}`;
+        this.contextValue = status.connected ? 'mcpServerConnected' : 'mcpServerDisconnected';
+        this.iconPath = new vscode.ThemeIcon(
+            status.connected ? 'plug' : 'debug-disconnect',
+            status.connected
+                ? new vscode.ThemeColor('testing.iconPassed')
+                : status.error
+                    ? new vscode.ThemeColor('testing.iconFailed')
+                    : new vscode.ThemeColor('disabledForeground'),
+        );
+        if (status.connected) {
+            this.description = `${status.toolCount} 个工具`;
+        } else {
+            const shortError = status.error
+                ? (status.error.length > 40 ? status.error.slice(0, 37) + '…' : status.error)
+                : '未连接';
+            this.description = shortError;
+            // 未连接时点击触发重启
+            this.command = {
+                command: 'issueManager.mcp.restartServer',
+                title: '重启',
+                arguments: [this],
+            };
+        }
+        this.tooltip = new vscode.MarkdownString(
+            `**${status.name}**\n\n`
+            + `- 状态: ${status.connected ? '✅ 已连接' : '❌ 未连接'}\n`
+            + `- 工具数: ${status.toolCount}\n`
+            + (status.error ? `\n**错误详情:**\n\`\`\`\n${status.error}\n\`\`\`\n` : '')
+            + (status.connected ? '' : '\n💡 点击节点重启，右键更多操作'),
+        );
+    }
+}
+
+/** MCP 工具节点（Server 的子节点） */
+export class McpToolNode extends vscode.TreeItem {
+    constructor(
+        public readonly tool: McpToolDescriptor,
+        public readonly serverName: string,
+    ) {
+        super(tool.originalName, vscode.TreeItemCollapsibleState.None);
+        this.id = `mcp-tool:${tool.name}`;
+        this.contextValue = 'mcpTool';
+        this.iconPath = new vscode.ThemeIcon('wrench');
+        this.description = tool.description.length > 60
+            ? tool.description.slice(0, 57) + '…'
+            : tool.description;
+        this.tooltip = new vscode.MarkdownString(
+            `**${tool.originalName}**\n\n${tool.description}\n\n`
+            + `完整名称: \`${tool.name}\``,
+        );
+    }
+}
+
+export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -218,6 +294,10 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         // 执行状态变化时刷新视图（更新对话节点的执行中图标）
         this.context.subscriptions.push(
             RoleTimerManager.getInstance().onExecutingCountChange(() => this.refresh())
+        );
+        // MCP server 工具变化时刷新视图
+        this.context.subscriptions.push(
+            McpManager.getInstance().onDidChangeTools(() => this.refresh())
         );
     }
 
@@ -273,11 +353,31 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const [roles, groups] = [getAllChatRoles(), getAllChatGroups()];
 
             const nodes: LLMChatViewNode[] = [];
-            // 最近对话放在最顶部
+
+            // MCP Server 根节点（最顶部）
+            const mcpManager = McpManager.getInstance();
+            const statuses = mcpManager.getServerStatuses();
+            const connectedCount = statuses.filter(s => s.connected).length;
+            nodes.push(new McpRootNode(statuses.length, connectedCount));
+
+            // 最近对话
             nodes.push(new RecentConversationRootNode());
             nodes.push(...groups.map(g => new ChatGroupNode(g)));
             nodes.push(...roles.map(r => new ChatRoleNode(r)));
             return nodes;
+        }
+        // ─── MCP 子节点 ──────────────────────────────────────
+        if (element instanceof McpRootNode) {
+            const mcpManager = McpManager.getInstance();
+            const statuses = mcpManager.getServerStatuses();
+            if (statuses.length === 0) { return []; }
+            return statuses.map(s => new McpServerNode(s));
+        }
+        if (element instanceof McpServerNode) {
+            if (!element.status.connected) { return []; }
+            const mcpManager = McpManager.getInstance();
+            const tools = mcpManager.getServersWithTools().get(element.status.name) || [];
+            return tools.map(t => new McpToolNode(t, element.status.name));
         }
         if (element instanceof RecentConversationRootNode) {
             const conversations = await getRecentConversationEntries(20);
@@ -345,6 +445,16 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         }
         if (element instanceof RecentConversationItemNode) {
             return new RecentConversationRootNode();
+        }
+        if (element instanceof McpToolNode) {
+            const statuses = McpManager.getInstance().getServerStatuses();
+            const status = statuses.find(s => s.name === element.serverName);
+            return status ? new McpServerNode(status) : undefined;
+        }
+        if (element instanceof McpServerNode) {
+            const statuses = McpManager.getInstance().getServerStatuses();
+            const connectedCount = statuses.filter(s => s.connected).length;
+            return new McpRootNode(statuses.length, connectedCount);
         }
         return undefined;
     }

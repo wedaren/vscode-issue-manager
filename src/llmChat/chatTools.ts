@@ -63,6 +63,7 @@ import {
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { readStateMarker } from './convStateMarker';
+import { McpManager } from './mcp';
 
 /** 委派递归深度限制 */
 const MAX_DELEGATION_DEPTH = 5;
@@ -613,7 +614,7 @@ const TOOL_SET_REGISTRY: Record<string, vscode.LanguageModelChatTool[]> = {
 /**
  * 根据角色的工具集配置，组装该角色可用的完整工具集。
  * - toolSets: 内置工具包名称列表
- * - mcpServers / extraTools / excludedTools: 从 vscode.lm.tools 筛选 MCP 工具
+ * - mcpServers / extraTools / excludedTools: 从 McpManager 获取 MCP 工具
  */
 export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatTool[] {
     const tools = [...CHAT_TOOLS];
@@ -635,20 +636,13 @@ export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatToo
         (role.excludedTools && role.excludedTools.length > 0);
 
     if (hasMcpConfig) {
-        const allVscodeLmTools = vscode.lm.tools;
+        const mcpManager = McpManager.getInstance();
         const mcpToolNames = new Set<string>();
 
         // 收集来自指定 MCP server 的所有工具（"*" 表示引入全部）
         if (role.mcpServers && role.mcpServers.length > 0) {
-            const includeAll = role.mcpServers.includes('*');
-            for (const t of allVscodeLmTools) {
-                // VSCode MCP 工具名格式为 "mcp_<serverName>_<toolName>"，用 startsWith 匹配
-                if (includeAll || role.mcpServers.some(s =>
-                    t.name.startsWith(`mcp_${s}_`) || t.name.startsWith(`${s}_`)
-                )) {
-                    mcpToolNames.add(t.name);
-                }
-            }
+            const mcpTools = mcpManager.getToolsByServers(role.mcpServers);
+            for (const t of mcpTools) { mcpToolNames.add(t.name); }
         }
 
         // 额外引入的具体工具
@@ -662,7 +656,8 @@ export function getToolsForRole(role: ChatRoleInfo): vscode.LanguageModelChatToo
         }
 
         // 将筛选出的 MCP 工具转换为 LanguageModelChatTool 格式后追加
-        for (const t of allVscodeLmTools) {
+        const allMcpTools = mcpManager.getAllTools();
+        for (const t of allMcpTools) {
             if (!mcpToolNames.has(t.name)) { continue; }
             tools.push({
                 name: t.name,
@@ -782,29 +777,12 @@ export async function executeChatTool(
             case 'read_role_execution_logs':
                 return await executeReadRoleExecutionLogs(input);
             default: {
-                // 尝试通过 vscode.lm.invokeTool 调用 MCP 工具
-                const vscodeTool = vscode.lm.tools.find(t => t.name === toolName);
-                if (!vscodeTool) {
+                // 尝试通过 McpManager 调用 MCP 工具
+                const mcpManager = McpManager.getInstance();
+                if (!mcpManager.isMcpTool(toolName)) {
                     return { success: false, content: `未知工具: ${toolName}` };
                 }
-                const tokenSource = new vscode.CancellationTokenSource();
-                if (context?.signal) {
-                    context.signal.addEventListener('abort', () => tokenSource.cancel());
-                }
-                try {
-                    const result = await vscode.lm.invokeTool(
-                        toolName,
-                        { input, toolInvocationToken: undefined as never },
-                        tokenSource.token,
-                    );
-                    // result 是 LanguageModelToolResult，content 为 LanguageModelTextPart[] | LanguageModelPromptTsxPart[]
-                    const text = result.content
-                        .map(p => (p instanceof vscode.LanguageModelTextPart ? p.value : '[non-text]'))
-                        .join('');
-                    return { success: true, content: text };
-                } finally {
-                    tokenSource.dispose();
-                }
+                return await mcpManager.invokeTool(toolName, input);
             }
         }
     } catch (e) {
@@ -2327,23 +2305,16 @@ function executeListAvailableTools(): ToolCallResult {
         ...BUILT_IN.map(s => `- ${s.id}: ${s.tools} — ${s.desc}`),
     ].join('\n');
 
-    // 从 vscode.lm.tools 解析 MCP server
-    const serverToolsMap = new Map<string, string[]>();
-    for (const tool of vscode.lm.tools) {
-        const match = tool.name.match(/^mcp_([^_]+)_(.+)$/);
-        if (match) {
-            const server = match[1];
-            if (!serverToolsMap.has(server)) { serverToolsMap.set(server, []); }
-            serverToolsMap.get(server)!.push(match[2]);
-        }
-    }
+    // 从 McpManager 获取已注册的 MCP server 及其工具
+    const mcpManager = McpManager.getInstance();
+    const serversWithTools = mcpManager.getServersWithTools();
 
     let mcpSection: string;
-    if (serverToolsMap.size === 0) {
+    if (serversWithTools.size === 0) {
         mcpSection = '## 已注册 MCP Server（mcp_servers）\n（当前未注册任何 MCP 工具）';
     } else {
-        const lines = [...serverToolsMap.entries()].map(([server, tools]) =>
-            `- ${server} (${tools.length} 个工具): ${tools.join('、')}`
+        const lines = [...serversWithTools.entries()].map(([server, tools]) =>
+            `- ${server} (${tools.length} 个工具): ${tools.map(t => t.originalName).join('、')}`
         );
         mcpSection = ['## 已注册 MCP Server（mcp_servers）', '> 按角色职责按需选择 server，避免使用 "*"（会将全部工具注入上下文，消耗大量 token）', ...lines].join('\n');
     }
