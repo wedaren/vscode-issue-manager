@@ -218,13 +218,16 @@ export class LLMChatService {
 
         const messages = await buildConversationMessages(uri, this._activeRole!);
         const tools = this._activeRole ? getToolsForRole(this._activeRole) : CHAT_TOOLS;
-        const toolContext: ToolExecContext = { role: this._activeRole, signal: options?.signal };
         const signal = options?.signal;
         const startedAt = Date.now();
 
         // 对话级配置覆盖角色级
         const convoConfig = await getConversationConfig(uri);
         const effectiveModelFamily = convoConfig?.modelFamily || this._activeRole?.modelFamily;
+
+        // 用户直接对话：非自主模式（dangerous 工具需确认）
+        const isAutonomous = convoConfig?.autonomous ?? this._activeRole?.autonomous ?? false;
+        const toolContext: ToolExecContext = { role: this._activeRole, signal, autonomous: isAutonomous };
 
         // ── 日志先行 ──
         const logUri = await this.getLogUri(uri);

@@ -343,10 +343,19 @@ export class RoleTimerManager implements vscode.Disposable {
             }, 5_000);
 
             const tools = getToolsForRole(role);
+            // 自主模式判定：
+            //   timer 触发 → 无人值守，必须自主
+            //   save（用户手动） → 取对话/角色配置，默认非自主（危险工具弹确认）
+            const convoConfig = await getConversationConfig(uri);
+            const isAutonomous = trigger === 'timer'
+                ? true
+                : (convoConfig?.autonomous ?? role.autonomous ?? false);
+
             const toolContext: ToolExecContext = {
                 role,
                 conversationUri: uri,
                 signal: ac.signal,
+                autonomous: isAutonomous,
                 // 心跳回调：长时间工具（如同步委派等待）定期调用，刷新空闲计时
                 onHeartbeat: () => { execLastActivityAt = Date.now(); },
             };
