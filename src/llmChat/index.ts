@@ -4,6 +4,7 @@ export { ChatHistoryPanel } from './ChatHistoryPanel';
 export { registerLLMChatCommands } from './llmChatCommands';
 export { CHAT_TOOLS, executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 export { RoleTimerManager } from './RoleTimerManager';
+export { executeConversation, type ExecutionOptions, type ExecutionResult } from './ConversationExecutor';
 export {
     getAllChromeChatConversations,
     createChromeChatConversation,

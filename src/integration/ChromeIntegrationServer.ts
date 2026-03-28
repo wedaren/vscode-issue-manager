@@ -728,7 +728,7 @@ export class ChromeIntegrationServer {
                   _logger.info(`[ChromeChat] 工具调用: ${toolName}`, input);
                   const summary = getToolInputSummary(toolName, input);
                   try { ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'tool_call', toolName, summary }, id: msgId })); } catch { }
-                  const res = await executeChatTool(toolName, input);
+                  const res = await executeChatTool(toolName, input, { autonomous: true });
                   const preview = typeof res.content === 'string' ? res.content.slice(0, 300) : '';
                   _logger.info(`[ChromeChat] 工具结果: ${toolName} | success=${res.success} | ${preview.slice(0, 100)}`);
                   try { ws.send(JSON.stringify({ type: 'llm-push', data: { event: 'tool_result', toolName, preview, success: res.success }, id: msgId })); } catch { }

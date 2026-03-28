@@ -185,7 +185,7 @@ export class WebAgentService {
                     onProgress({ phase: 'tool_call', message: `调用工具: ${toolLabel}`, detail: summary });
 
                     // 执行工具
-                    const toolResult = await executeChatTool(toolName, input);
+                    const toolResult = await executeChatTool(toolName, input, { autonomous: true });
 
                     // 追踪创建的笔记
                     if ((toolName === 'create_issue' || toolName === 'create_issue_tree') && toolResult.success) {
