@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getAllIssueMarkdowns } from './IssueMarkdowns';
+import { getAllIssueMarkdowns, getIssueMarkdown } from './IssueMarkdowns';
 import { getIssueNodesByUri } from './issueTreeManager';
 
 /**
@@ -53,6 +53,71 @@ const DAYS_IN_WEEK = 7;
 /** 默认展开的分组标签 */
 export const DEFAULT_EXPANDED_GROUPS = ['今天', '昨天', '最近一周'];
 
+// ========== 增量数据存储 ========== //
+
+/** 内存中的完整列表，初始化后不再需要全量重查 */
+let _store: RecentIssueStats[] | null = null;
+
+/** 脏标记：tree 结构变更后需重新检查 isolation 状态 */
+let _dirty = false;
+
+/**
+ * 初始化增量存储（启动时调用一次，在 whenCacheReady 之后）
+ */
+export async function initRecentIssuesStore(): Promise<void> {
+  await _fullReload();
+}
+
+/**
+ * 增量更新单个文件（由 UnifiedFileWatcher 的 markdown 变更事件驱动）
+ */
+export async function updateRecentIssue(
+  uri: vscode.Uri,
+  changeType: 'create' | 'change' | 'delete',
+): Promise<void> {
+  if (!_store) { return; } // 未初始化，跳过
+
+  const fsPath = uri.fsPath;
+
+  if (changeType === 'delete') {
+    _store = _store.filter(s => s.filePath !== fsPath);
+    return;
+  }
+
+  // create / change：从缓存获取最新元信息
+  const issue = await getIssueMarkdown(uri);
+  if (!issue) {
+    // 文件无效或已删除，从列表移除
+    _store = _store.filter(s => s.filePath !== fsPath);
+    return;
+  }
+
+  const nodes = await getIssueNodesByUri(uri);
+  const stat: RecentIssueStats = {
+    file: path.basename(fsPath),
+    filePath: fsPath,
+    mtime: new Date(issue.mtime),
+    ctime: new Date(issue.ctime),
+    vtime: issue.vtime ? new Date(issue.vtime) : undefined,
+    isIsolated: nodes.length === 0,
+    uri,
+  };
+
+  const idx = _store.findIndex(s => s.filePath === fsPath);
+  if (idx >= 0) {
+    _store[idx] = stat;
+  } else {
+    _store.push(stat);
+  }
+}
+
+/**
+ * 标记脏：tree 结构变更后调用，下次 getRecentIssuesStats 时全量刷新 isolation 状态
+ */
+export function invalidateRecentIssuesStore(): void {
+  _dirty = true;
+}
+
 // ========== 数据获取函数 ========== //
 
 /**
@@ -63,32 +128,49 @@ export const DEFAULT_EXPANDED_GROUPS = ['今天', '昨天', '最近一周'];
 export async function getRecentIssuesStats(
   sortBy: SortOrder = 'ctime'
 ): Promise<RecentIssueStats[]> {
-  const issues = await getAllIssueMarkdowns({ sortBy });
-  if (!issues || issues.length === 0) {
-    return [];
+  // 脏或未初始化 → 全量重载
+  if (!_store || _dirty) {
+    await _fullReload();
   }
 
-  // 使用 getIssueNodesByUri 判断每个问题是否孤立
-  const stats = await Promise.all(
+  // 纯内存排序后返回（不修改原数组）
+  return sortStats([..._store!], sortBy);
+}
+
+/** 全量加载（初始化或 dirty 时） */
+async function _fullReload(): Promise<void> {
+  const issues = await getAllIssueMarkdowns();
+  if (!issues || issues.length === 0) {
+    _store = [];
+    _dirty = false;
+    return;
+  }
+
+  _store = await Promise.all(
     issues.map(async (issue) => {
       const filePath = issue.uri.fsPath;
-      // 通过检查文件是否在问题树中存在节点来判断是否孤立
       const nodes = await getIssueNodesByUri(issue.uri);
-      const isIsolated = nodes.length === 0;
-
       return {
         file: path.basename(filePath),
         filePath,
         mtime: new Date(issue.mtime),
         ctime: new Date(issue.ctime),
         vtime: issue.vtime ? new Date(issue.vtime) : undefined,
-        isIsolated,
+        isIsolated: nodes.length === 0,
         uri: issue.uri,
       };
-    })
+    }),
   );
+  _dirty = false;
+}
 
-  return stats;
+/** 按指定字段降序排序 */
+function sortStats(stats: RecentIssueStats[], sortBy: SortOrder): RecentIssueStats[] {
+  return stats.sort((a, b) => {
+    if (sortBy === 'ctime') return b.ctime.getTime() - a.ctime.getTime();
+    if (sortBy === 'vtime') return (b.vtime ?? b.mtime).getTime() - (a.vtime ?? a.mtime).getTime();
+    return b.mtime.getTime() - a.mtime.getTime();
+  });
 }
 
 // ========== 分组策略函数 ========== //

@@ -676,6 +676,16 @@
         "icon": "$(close)"
       },
       {
+        "command": "issueManager.editorGroup.closeOtherGroups",
+        "title": "关闭其他编辑组",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "issueManager.editorGroup.keepOnlyActiveEditor",
+        "title": "仅保留当前活动编辑器",
+        "icon": "$(circle-filled)"
+      },
+      {
         "command": "issueManager.editorGroup.closeTab",
         "title": "关闭标签页",
         "icon": "$(close)"
@@ -694,6 +704,161 @@
         "command": "issueManager.organizeEditorGroupsWithLLM",
         "title": "LLM 智能整理编辑器组",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "issueManager.llmChat.openPersonalAssistant",
+        "title": "打开个人助手",
+        "category": "Issue Manager",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "issueManager.llmChat.createRole",
+        "title": "新建聊天角色",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.llmChat.newConversation",
+        "title": "新建对话",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.llmChat.openConversation",
+        "title": "打开对话",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.llmChat.sendMessage",
+        "title": "发送消息到 LLM",
+        "category": "Issue Manager",
+        "icon": "$(send)"
+      },
+      {
+        "command": "issueManager.llmChat.refresh",
+        "title": "刷新聊天角色视图",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.llmChat.editRole",
+        "title": "编辑角色",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.llmChat.openChat",
+        "title": "打开聊天",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.setDisplayMode.bubble",
+        "title": "切换到气泡模式",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.setDisplayMode.editor",
+        "title": "切换到编辑器模式",
+        "category": "Issue Manager",
+        "icon": "$(file)"
+      },
+      {
+        "command": "issueManager.llmChat.openConversation",
+        "title": "打开对话",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.deleteConversation",
+        "title": "删除对话",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.llmChat.createGroup",
+        "title": "新建群组",
+        "category": "Issue Manager",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "issueManager.llmChat.openGroupConversation",
+        "title": "打开群组对话",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.editGroup",
+        "title": "编辑群组",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.llmChat.askRole",
+        "title": "发送到角色对话",
+        "category": "Issue Manager",
+        "icon": "$(send)"
+      },
+      {
+        "command": "issueManager.llmChat.configureRole",
+        "title": "配置角色",
+        "category": "Issue Manager",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "issueManager.llmChat.configureConversation",
+        "title": "配置对话",
+        "category": "Issue Manager",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "issueManager.llmChat.toggleDebugLog",
+        "title": "开启全局调试日志",
+        "category": "Issue Manager",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "issueManager.llmChat.toggleDebugLogOff",
+        "title": "关闭全局调试日志（当前已开启）",
+        "category": "Issue Manager",
+        "icon": "$(record)"
+      },
+      {
+        "command": "issueManager.mcp.manage",
+        "title": "MCP: 管理 Server",
+        "category": "Issue Manager",
+        "icon": "$(server)"
+      },
+      {
+        "command": "issueManager.mcp.addServer",
+        "title": "MCP: 添加 Server",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.mcp.removeServer",
+        "title": "MCP: 移除 Server",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.mcp.restartServer",
+        "title": "MCP: 重启 Server",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.mcp.restartAll",
+        "title": "MCP: 重启所有 Server",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.mcp.openConfig",
+        "title": "MCP: 打开配置文件",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
       }
     ],
     "submenus": [
@@ -843,6 +1008,16 @@
           "group": "navigation@4"
         },
         {
+          "command": "issueManager.editorGroup.closeOtherGroups",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.editorGroup.keepOnlyActiveEditor",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
+        },
+        {
           "command": "issueManager.autoDeleteOnDisassociate.enable",
           "when": "view == issueManager.views.overview && !issueManager.autoDeleteOnDisassociate",
           "group": "navigation@1"
@@ -941,6 +1116,36 @@
           "command": "issueManager.deepResearch.refresh",
           "when": "view == issueManager.views.deepResearch",
           "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.organizeEditorGroupsWithLLM",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.llmChat.createRole",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.llmChat.createGroup",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "issueManager.llmChat.toggleDebugLog",
+          "when": "view == 'issueManager.views.llmChat' && !issueManager.llmChat.debugLogAll",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.llmChat.toggleDebugLogOff",
+          "when": "view == 'issueManager.views.llmChat' && issueManager.llmChat.debugLogAll",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.llmChat.refresh",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@4"
         }
       ],
       "editor/title": [
@@ -962,14 +1167,79 @@
         {
           "command": "issueManager.setRecentSort.vtime",
           "group": "1_sort@3"
-        },
-        {
-          "command": "issueManager.organizeEditorGroupsWithLLM",
-          "when": "view == issueManager.views.editorGroups",
-          "group": "navigation@1"
         }
       ],
       "view/item/context": [
+        {
+          "command": "issueManager.llmChat.setDisplayMode.bubble",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole' && issueManager.llmChat.displayMode == 'editor'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.setDisplayMode.editor",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole' && issueManager.llmChat.displayMode != 'editor'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.llmChat.newConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.llmChat.configureRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@4"
+        },
+        {
+          "command": "issueManager.llmChat.editRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "9_edit"
+        },
+        {
+          "command": "issueManager.llmChat.newConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatGroup'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.editGroup",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatGroup'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.llmChat.configureConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatConversation'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.deleteConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatConversation'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.mcp.addServer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'mcpRoot'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.mcp.restartAll",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'mcpRoot'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.mcp.openConfig",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'mcpRoot'",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.mcp.restartServer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^mcpServer/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.mcp.removeServer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^mcpServer/",
+          "group": "inline@2"
+        },
         {
           "command": "issueManager.editorGroup.rename",
           "when": "view == issueManager.views.editorGroups && viewItem =~ /^editorGroup/",
@@ -1480,6 +1750,12 @@
         "key": "ctrl+j ctrl+k",
         "mac": "cmd+j cmd+k",
         "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.llmChat.askRole",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "issueManager.isDirConfigured && editorLangId == 'markdown' && issueManager.editorIsIssueMarkdown"
       }
     ],
     "configuration": {
@@ -1744,7 +2020,7 @@
         },
         "issueManager.completion.maxItems": {
           "type": "number",
-          "default": 200,
+          "default": 50,
           "minimum": 10,
           "maximum": 1000,
           "description": "补全提示列表中显示的最大文件数量。"
@@ -1752,7 +2028,8 @@
         "issueManager.completion.triggers": {
           "type": "array",
           "default": [
-            "[["
+            "[",
+            "【"
           ],
           "items": {
             "type": "string"
@@ -1789,8 +2066,17 @@
         },
         "issueManager.llm.modelFamily": {
           "type": "string",
-          "default": "gpt-4.1",
-          "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
+          "default": "gpt-5-mini",
+          "enum": [
+            "gpt-5-mini",
+            "gpt-4o",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "claude-3.5-sonnet",
+            "o3-mini",
+            "o1-mini"
+          ],
+          "description": "全局默认 AI 模型（聊天角色未单独配置模型时使用）。各聊天角色可在其文件的 chat_role_model_family 字段中覆盖此设置。"
         }
       }
     },
@@ -1859,6 +2145,11 @@
           "id": "issueManager.views.editorGroups",
           "name": "编辑器组",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.llmChat",
+          "name": "LLM 聊天",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -1912,6 +2203,16 @@
         "view": "issueManager.views.logicalTree",
         "contents": "当前文件没有 issue_root 字段。\n[为当前文件创建根节点](command:issueManager.logicalTree.createRoot)\n\n逻辑层级树基于当前活动文件的 Frontmatter 字段构建，显示该文件所属的完整层级结构。",
         "when": "issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.llmChat",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.llmChat",
+        "contents": "还没有聊天角色，创建一个来开始对话吧。\n[新建聊天角色](command:issueManager.llmChat.createRole)",
+        "when": "issueManager.isDirConfigured"
       }
     ]
   },
@@ -1949,14 +2250,14 @@
     "@vscode/test-electron": "^2.4.1",
     "dotenv": "^17.2.3",
     "eslint": "^9.21.0",
+    "prettier": "^2.8.8",
     "sinon": "^21.0.0",
     "ts-loader": "^9.5.2",
     "typescript": "^5.7.3",
     "vue": "^3.5.22",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1",
-    "wxt": "^0.20.11",
-    "prettier": "^2.8.8"
+    "wxt": "^0.20.11"
   },
   "dependencies": {
     "@antv/g2": "^5.4.6",
@@ -1966,6 +2267,7 @@
     "@antv/x6-plugin-keyboard": "^2.2.3",
     "@antv/x6-plugin-scroller": "^2.0.10",
     "@antv/x6-plugin-selection": "^2.2.2",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "cheerio": "^1.1.2",
     "dompurify": "^3.3.0",
     "js-yaml": "^4.1.0",
