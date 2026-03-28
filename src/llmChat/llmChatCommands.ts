@@ -973,6 +973,7 @@ export function registerLLMChatCommands(
                 { id: 'memory',          description: '持久记忆',     detail: 'read_memory、write_memory — 适合需要跨对话记忆的角色' },
                 { id: 'delegation',      description: '委派能力',     detail: 'delegate_to_role、list_chat_roles — 适合中枢调度角色' },
                 { id: 'planning',        description: '执行计划',     detail: 'create_plan、check_step、add_step 等 — 适合多步骤长任务角色，持久化任务进度' },
+                { id: 'terminal',        description: '终端 & 文件',  detail: 'read_file、search_files（静默）+ run_command（需确认）— 适合需要读代码、执行命令的开发角色' },
                 { id: 'role_management', description: '角色管理',     detail: 'create/update/evaluate_role、read_role_execution_logs — 仅管理型角色需要' },
             ];
             const toolSetItems = BUILT_IN_SETS.map(s => ({
