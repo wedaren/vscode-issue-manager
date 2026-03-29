@@ -1196,6 +1196,11 @@
           "group": "9_edit"
         },
         {
+          "command": "issueManager.llmChat.deleteRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@5"
+        },
+        {
           "command": "issueManager.llmChat.newConversation",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatGroup'",
           "group": "inline@1"

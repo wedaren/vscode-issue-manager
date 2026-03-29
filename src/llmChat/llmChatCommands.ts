@@ -17,6 +17,7 @@ import {
     createGroupConversation,
     appendUserMessageQueued,
     getToolCallsForLog,
+    deleteChatRole,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
 import { parseStateMarker, stripMarker } from './convStateMarker';
@@ -759,6 +760,39 @@ export function registerLLMChatCommands(
         vscode.commands.registerCommand('issueManager.llmChat.editRole', async (node?: ChatRoleNode) => {
             if (!node) { return; }
             await vscode.window.showTextDocument(node.role.uri, { preview: false });
+        }),
+    );
+
+    // ─── 删除角色（级联删除角色下对话、日志与工具调用） ────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.deleteRole', async (node?: ChatRoleNode) => {
+            if (!node) { return; }
+            const role = node.role;
+
+            const convos = getConversationsForRole(role.id);
+
+            const confirm = await vscode.window.showWarningMessage(
+                `确定要删除角色「${role.name}」吗？将同时删除该角色下的 ${convos.length} 个对话及其执行日志与工具调用（不可恢复）。`,
+                { modal: true },
+                '删除',
+            );
+            if (confirm !== '删除') { return; }
+
+            try {
+                const res = await deleteChatRole(role.id);
+                roleProvider.refresh();
+                if (res.success) {
+                    vscode.window.showInformationMessage(`已删除角色「${role.name}」，共删除 ${res.deletedFiles} 个文件`);
+                } else {
+                    vscode.window.showWarningMessage(`删除角色完成（部分失败）。已删除 ${res.deletedFiles} 个文件`);
+                    if (res.errors && res.errors.length) {
+                        logger.warn('[LLMChat] 删除角色部分失败: ' + res.errors.slice(0, 5).join(' | '));
+                    }
+                }
+            } catch (e) {
+                logger.error('删除角色失败', e);
+                vscode.window.showErrorMessage('删除角色失败');
+            }
         }),
     );
 

@@ -1330,6 +1330,93 @@ export function getToolCallsForLog(logId: string): ChatToolCallInfo[] {
     return calls;
 }
 
+/**
+ * 删除角色及其下属对话、执行日志与工具调用文件。
+ * 尽量继续完成所有删除操作，返回已删除文件数与错误列表。
+ */
+export interface DeleteRoleResult {
+    success: boolean;
+    deletedFiles: number;
+    errors: string[];
+}
+
+export async function deleteChatRole(roleId: string): Promise<DeleteRoleResult> {
+    const role = getChatRoleById(roleId);
+    if (!role) {
+        return { success: false, deletedFiles: 0, errors: ['角色不存在'] };
+    }
+
+    let deleted = 0;
+    const errors: string[] = [];
+
+    try {
+        // 删除角色下的所有对话及其关联的日志/工具调用
+        const convos = getConversationsForRole(roleId);
+        for (const c of convos) {
+            const logId = c.logId;
+            const toolCalls = logId ? getToolCallsForLog(logId) : [];
+
+            for (const tc of toolCalls) {
+                try {
+                    await vscode.workspace.fs.delete(tc.uri);
+                    deleted++;
+                } catch (e) {
+                    errors.push(`删除工具调用 ${tc.uri.fsPath} 失败: ${e instanceof Error ? e.message : String(e)}`);
+                }
+            }
+
+            if (logId) {
+                const dir = getIssueDir();
+                if (dir) {
+                    const logUri = vscode.Uri.file(path.join(dir, `${logId}.md`));
+                    try {
+                        await vscode.workspace.fs.delete(logUri);
+                        deleted++;
+                    } catch (e) {
+                        errors.push(`删除执行日志 ${logUri.fsPath} 失败: ${e instanceof Error ? e.message : String(e)}`);
+                    }
+                }
+            }
+
+            try {
+                await vscode.workspace.fs.delete(c.uri);
+                deleted++;
+            } catch (e) {
+                errors.push(`删除对话 ${c.uri.fsPath} 失败: ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
+
+        // 删除角色的自动提取记忆文件（若存在）
+        const autos = getIssueMarkdownsByType('role_auto_memory');
+        for (const md of autos) {
+            if ((md.frontmatter as Record<string, unknown>)?.role_auto_memory_owner_id === roleId) {
+                try {
+                    await vscode.workspace.fs.delete(md.uri);
+                    deleted++;
+                } catch (e) {
+                    errors.push(`删除自动记忆 ${md.uri.fsPath} 失败: ${e instanceof Error ? e.message : String(e)}`);
+                }
+            }
+        }
+
+        // 最后删除角色文件本身
+        try {
+            await vscode.workspace.fs.delete(role.uri);
+            deleted++;
+        } catch (e) {
+            errors.push(`删除角色文件 ${role.uri.fsPath} 失败: ${e instanceof Error ? e.message : String(e)}`);
+            return { success: false, deletedFiles: deleted, errors };
+        }
+
+        logger.info(`[llmChatDataManager] deleteChatRole: 角色 ${role.name} (${roleId}) 删除完成，已删除 ${deleted} 个文件`);
+
+        return { success: errors.length === 0, deletedFiles: deleted, errors };
+    } catch (e) {
+        logger.error('deleteChatRole 失败', e);
+        return { success: false, deletedFiles: deleted, errors: [String(e)] };
+    }
+}
+
 /** 格式化单条执行记录为 markdown */
 function formatRunRecord(record: ExecutionRunRecord): string {
     const ts = formatTimestamp(record.startedAt);
