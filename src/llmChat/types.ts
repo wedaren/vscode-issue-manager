@@ -230,6 +230,8 @@ export interface ChatConversationInfo {
     tokenUsed?: number;
     /** 关联的执行日志 ID */
     logId?: string;
+    /** 关联的执行计划 ID */
+    planId?: string;
     /** 对话级自主模式 */
     autonomous?: boolean;
     /** 对话级日志生成开关 */
@@ -396,6 +398,38 @@ export interface ChatExecutionLogInfo {
     successCount: number;
     /** 失败次数 */
     failureCount: number;
+}
+
+/** 执行计划运行时信息 */
+export interface ChatPlanInfo {
+    /** 计划文件 ID */
+    id: string;
+    /** 关联的对话 ID */
+    conversationId: string;
+    /** 文件 URI */
+    uri: import('vscode').Uri;
+    /** 计划标题 */
+    title: string;
+    /** 计划状态 */
+    status: 'in_progress' | 'completed' | 'abandoned';
+    /** 总步骤数 */
+    totalSteps: number;
+    /** 已完成步骤数 */
+    doneSteps: number;
+}
+
+/** 角色记忆运行时信息 */
+export interface ChatMemoryInfo {
+    /** 记忆文件 ID */
+    id: string;
+    /** 关联的角色 ID */
+    roleId: string;
+    /** 文件 URI */
+    uri: import('vscode').Uri;
+    /** 记忆类型 */
+    type: 'role_memory' | 'role_auto_memory';
+    /** 内容概要（首行或条目数） */
+    summary: string;
 }
 
 // ─── 工具调用详情节点 ─────────────────────────────────────────

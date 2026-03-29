@@ -31,11 +31,11 @@ export class McpManager implements vscode.Disposable {
     }
 
     /** 初始化：读取配置，连接所有 enabled server */
-    async initialize(context: vscode.ExtensionContext): Promise<void> {
+    async initialize(issueDir: string): Promise<void> {
         if (this._initialized) { return; }
         this._initialized = true;
 
-        mcpConfigStore.initialize(context.globalStorageUri);
+        mcpConfigStore.initialize(issueDir);
 
         // 监听配置变更
         this.configListener = mcpConfigStore.onDidChangeConfig(() => {

@@ -125,6 +125,22 @@ export class RoleTimerManager implements vscode.Disposable {
     }
 
     /**
+     * 注册外部执行（如内联委派），使 isExecuting / 执行计数 / 树视图 spinner 生效。
+     * 调用方须确保在执行结束后调用 unregisterExecution。
+     */
+    registerExecution(uri: vscode.Uri): void {
+        this.executing.add(uri.fsPath);
+        this._onExecutingCountChange.fire(this.executing.size);
+    }
+
+    /** 取消注册外部执行，恢复状态 */
+    unregisterExecution(uri: vscode.Uri, roleId: string, success: boolean): void {
+        this.executing.delete(uri.fsPath);
+        this._onExecutingCountChange.fire(this.executing.size);
+        this._onDidChange.fire({ uri, roleId, success });
+    }
+
+    /**
      * 立即触发指定对话的处理（用户提交后绕过定时器等待）。
      * 若对话状态不是 queued，或正在执行中，则忽略。
      */

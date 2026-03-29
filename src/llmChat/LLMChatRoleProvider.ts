@@ -7,8 +7,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { whenCacheReady, onTitleUpdate, isIssueMarkdownFile } from '../data/IssueMarkdowns';
-import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getRecentConversationEntries, getToolCallsForLog, type ChatToolCallInfo } from './llmChatDataManager';
-import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, RecentActivityEntry, RecentConversationEntry } from './types';
+import { getAllChatRoles, getConversationsForRole, getAllChatGroups, getConversationsForGroup, getExecutionLogInfo, getPlanInfo, getMemoryInfoForRole, getRecentConversationEntries, getToolCallsForLog, type ChatToolCallInfo } from './llmChatDataManager';
+import type { ChatRoleInfo, ChatConversationInfo, ChatGroupInfo, ChatExecutionLogInfo, ChatPlanInfo, ChatMemoryInfo, RecentActivityEntry, RecentConversationEntry } from './types';
 import { RoleTimerManager } from './RoleTimerManager';
 import { McpManager, type McpServerStatus, type McpToolDescriptor } from './mcp';
 
@@ -57,10 +57,10 @@ export class ChatConversationNode extends vscode.TreeItem {
         public readonly isGroup: boolean,
         executing = false,
     ) {
-        // 有日志时自动展开显示执行日志，否则为叶子节点
+        // 有日志或计划时自动展开，否则为叶子节点
         super(
             conversation.title,
-            conversation.logId
+            (conversation.logId || conversation.planId)
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None,
         );
@@ -107,6 +107,67 @@ export class ChatExecutionLogNode extends vscode.TreeItem {
             command: 'vscode.open',
             title: '打开执行日志',
             arguments: [logInfo.uri],
+        };
+    }
+}
+
+/** 执行计划节点（对话的子节点） */
+export class ChatPlanNode extends vscode.TreeItem {
+    constructor(
+        public readonly planInfo: ChatPlanInfo,
+        public readonly parentConversation?: ChatConversationInfo,
+        public readonly parentRoleOrGroupId?: string,
+        public readonly parentIsGroup?: boolean,
+    ) {
+        super(planInfo.title, vscode.TreeItemCollapsibleState.None);
+        this.id = `plan:${planInfo.id}`;
+        this.contextValue = 'chatPlan';
+        const statusIcon = planInfo.status === 'completed' ? '✅' : planInfo.status === 'abandoned' ? '🚫' : '📋';
+        this.iconPath = new vscode.ThemeIcon(
+            planInfo.status === 'completed' ? 'pass-filled'
+                : planInfo.status === 'abandoned' ? 'circle-slash'
+                    : 'tasklist',
+        );
+        this.description = `${statusIcon} ${planInfo.doneSteps}/${planInfo.totalSteps} 步`;
+        this.tooltip = new vscode.MarkdownString(
+            `**${planInfo.title}**\n\n`
+            + `- 状态: ${planInfo.status === 'completed' ? '已完成' : planInfo.status === 'abandoned' ? '已放弃' : '进行中'}\n`
+            + `- 进度: ${planInfo.doneSteps}/${planInfo.totalSteps} 步\n\n`
+            + `点击打开计划文件`,
+        );
+        this.command = {
+            command: 'vscode.open',
+            title: '打开执行计划',
+            arguments: [planInfo.uri],
+        };
+    }
+}
+
+/** 角色记忆节点（角色的子节点） */
+export class ChatMemoryNode extends vscode.TreeItem {
+    constructor(
+        public readonly memoryInfo: ChatMemoryInfo,
+        public readonly parentRole?: ChatRoleInfo,
+    ) {
+        super(
+            memoryInfo.type === 'role_memory' ? '角色记忆' : '自动记忆',
+            vscode.TreeItemCollapsibleState.None,
+        );
+        this.id = `memory:${memoryInfo.id}`;
+        this.contextValue = memoryInfo.type === 'role_memory' ? 'chatMemory' : 'chatAutoMemory';
+        this.iconPath = new vscode.ThemeIcon(
+            memoryInfo.type === 'role_memory' ? 'notebook' : 'lightbulb-autofix',
+        );
+        this.description = memoryInfo.summary;
+        this.tooltip = new vscode.MarkdownString(
+            memoryInfo.type === 'role_memory'
+                ? '**角色记忆**\n\nLLM 主动管理的知识积累，点击查看/编辑'
+                : '**自动记忆**\n\n系统自动从对话中提取的要点，点击查看',
+        );
+        this.command = {
+            command: 'vscode.open',
+            title: '打开记忆文件',
+            arguments: [memoryInfo.uri],
         };
     }
 }
@@ -277,7 +338,7 @@ export class McpToolNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode;
+export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -387,9 +448,15 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             return element.entry.runs.map(r => new RecentRunItemNode(r, element.entry));
         }
         if (element instanceof ChatRoleNode) {
+            const nodes: LLMChatViewNode[] = [];
+            // 角色记忆文件（置顶）
+            const memInfos = getMemoryInfoForRole(element.role.id);
+            nodes.push(...memInfos.map(m => new ChatMemoryNode(m, element.role)));
+            // 对话列表
             const convos = await getConversationsForRole(element.role.id);
             const mgr = RoleTimerManager.getInstance();
-            return convos.map(c => new ChatConversationNode(c, element.role.id, false, mgr.isExecuting(c.uri)));
+            nodes.push(...convos.map(c => new ChatConversationNode(c, element.role.id, false, mgr.isExecuting(c.uri))));
+            return nodes;
         }
         if (element instanceof ChatGroupNode) {
             const convos = await getConversationsForGroup(element.group.id);
@@ -397,11 +464,18 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             return convos.map(c => new ChatConversationNode(c, element.group.id, true, mgr.isExecuting(c.uri)));
         }
         if (element instanceof ChatConversationNode) {
+            const nodes: LLMChatViewNode[] = [];
+            // 执行计划
+            const planInfo = await getPlanInfo(element.conversation.uri);
+            if (planInfo) {
+                nodes.push(new ChatPlanNode(planInfo, element.conversation, element.parentId, element.isGroup));
+            }
+            // 执行日志
             const logInfo = await getExecutionLogInfo(element.conversation.uri);
             if (logInfo) {
-                return [new ChatExecutionLogNode(logInfo, element.conversation, element.parentId, element.isGroup)];
+                nodes.push(new ChatExecutionLogNode(logInfo, element.conversation, element.parentId, element.isGroup));
             }
-            return [];
+            return nodes;
         }
         if (element instanceof ChatExecutionLogNode) {
             const toolCalls = getToolCallsForLog(element.logInfo.id);
@@ -430,6 +504,16 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         if (element instanceof ChatExecutionLogNode) {
             if (element.parentConversation && element.parentRoleOrGroupId !== undefined) {
                 return new ChatConversationNode(element.parentConversation, element.parentRoleOrGroupId, element.parentIsGroup ?? false);
+            }
+        }
+        if (element instanceof ChatPlanNode) {
+            if (element.parentConversation && element.parentRoleOrGroupId !== undefined) {
+                return new ChatConversationNode(element.parentConversation, element.parentRoleOrGroupId, element.parentIsGroup ?? false);
+            }
+        }
+        if (element instanceof ChatMemoryNode) {
+            if (element.parentRole) {
+                return new ChatRoleNode(element.parentRole);
             }
         }
         if (element instanceof ChatToolCallNode) {
@@ -501,6 +585,30 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
                 const logInfo = await getExecutionLogInfo(convo.uri);
                 if (logInfo) { return new ChatExecutionLogNode(logInfo, convo, g.id, true); }
             }
+        }
+
+        // 计划文件（通过 planId 反查所属对话）
+        const fileId = path.basename(fsPath, '.md');
+        for (const r of roles) {
+            const convo = getConversationsForRole(r.id).find(c => c.planId === fileId);
+            if (convo) {
+                const planInfo = await getPlanInfo(convo.uri);
+                if (planInfo) { return new ChatPlanNode(planInfo, convo, r.id, false); }
+            }
+        }
+        for (const g of groups) {
+            const convo = getConversationsForGroup(g.id).find(c => c.planId === fileId);
+            if (convo) {
+                const planInfo = await getPlanInfo(convo.uri);
+                if (planInfo) { return new ChatPlanNode(planInfo, convo, g.id, true); }
+            }
+        }
+
+        // 记忆文件（通过 memoryInfo 反查所属角色）
+        for (const r of roles) {
+            const memInfos = getMemoryInfoForRole(r.id);
+            const mem = memInfos.find(m => m.uri.fsPath === fsPath);
+            if (mem) { return new ChatMemoryNode(mem, r); }
         }
 
         return undefined;

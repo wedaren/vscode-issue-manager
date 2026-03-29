@@ -13,7 +13,6 @@ import {
     updateIssueMarkdownBody,
 } from '../data/IssueMarkdowns';
 import type { FrontmatterData } from '../data/IssueMarkdowns';
-import { createIssueNodes, getSingleIssueNodeByUri } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
 import type {
     ChatRoleInfo,
@@ -36,6 +35,8 @@ import type {
     RecentConversationEntry,
     RoleAutoMemoryFrontmatter,
     ChatPlanFrontmatter,
+    ChatPlanInfo,
+    ChatMemoryInfo,
 } from './types';
 import { stripMarker, parseStateMarker } from './convStateMarker';
 import { Logger } from '../core/utils/Logger';
@@ -187,7 +188,6 @@ export async function createChatRole(
     if (!uri) {
         return null;
     }
-    await createIssueNodes([uri]);
     return extractId(uri);
 }
 
@@ -211,6 +211,7 @@ export function getConversationsForRole(roleId: string): ChatConversationInfo[] 
             maxTokens: fm.chat_max_tokens,
             tokenUsed: fm.chat_token_used,
             logId: fm.chat_log_id,
+            planId: fm.chat_plan_id,
             logEnabled: typeof fm.chat_log_enabled === 'boolean' ? fm.chat_log_enabled : undefined,
         });
     }
@@ -240,11 +241,6 @@ export async function createConversation(roleId: string, title?: string): Promis
 
     const body = `# ${convoTitle}\n\n<!-- llm:ready -->\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
-    if (uri) {
-        // 挂在角色的树节点下
-        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
-        await createIssueNodes([uri], roleNode?.id);
-    }
     return uri;
 }
 
@@ -344,11 +340,6 @@ async function findOrCreateAutoMemoryFile(roleId: string): Promise<vscode.Uri | 
     } as Partial<FrontmatterData> & RoleAutoMemoryFrontmatter;
     const body = '# 自动提取记忆\n\n';
     const uri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
-    if (uri) {
-        const role = getChatRoleById(roleId);
-        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
-        await createIssueNodes([uri], roleNode?.id);
-    }
     return uri ?? null;
 }
 
@@ -611,11 +602,6 @@ export async function createPlanFile(
     const planId = path.basename(planUri.fsPath, '.md');
     await updateIssueMarkdownFrontmatter(conversationUri, { chat_plan_id: planId } as any);
 
-    const convoNode = await getSingleIssueNodeByUri(conversationUri);
-    if (convoNode) {
-        await createIssueNodes([planUri], convoNode.id);
-    }
-
     return { uri: planUri, content: body };
 }
 
@@ -842,7 +828,6 @@ export async function createChatGroup(
     const body = `# ${name}\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
     if (!uri) { return null; }
-    await createIssueNodes([uri]);
     return extractId(uri);
 }
 
@@ -879,7 +864,6 @@ export async function createGroupConversation(groupId: string, title?: string): 
     };
     const body = `# ${convoTitle}\n\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
-    if (uri) { await createIssueNodes([uri]); }
     return uri;
 }
 
@@ -1056,10 +1040,6 @@ export async function getOrCreateExecutionLog(conversationUri: vscode.Uri): Prom
         const logUri = await createIssueMarkdown({ frontmatter: logFm, markdownBody: body });
         if (!logUri) { return null; }
 
-        // 挂在对话的树节点下
-        const convoNode = await getSingleIssueNodeByUri(conversationUri);
-        await createIssueNodes([logUri], convoNode?.id);
-
         // 将 log_id 写回对话文件
         const logId = extractId(logUri);
         await updateIssueMarkdownFrontmatter(conversationUri, {
@@ -1149,6 +1129,78 @@ export async function getExecutionLogInfo(conversationUri: vscode.Uri): Promise<
         logger.error('getExecutionLogInfo 失败', e);
         return null;
     }
+}
+
+/** 获取对话关联的执行计划信息（供树视图展示） */
+export async function getPlanInfo(conversationUri: vscode.Uri): Promise<ChatPlanInfo | null> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(conversationUri)).toString('utf8');
+        const { frontmatter } = extractFrontmatterAndBody(raw);
+        if (!frontmatter) { return null; }
+
+        const fm = frontmatter as Record<string, unknown>;
+        const planId = fm.chat_plan_id as string | undefined;
+        if (!planId) { return null; }
+
+        const dir = getIssueDir();
+        if (!dir) { return null; }
+        const planUri = vscode.Uri.file(path.join(dir, `${planId}.md`));
+
+        try { await vscode.workspace.fs.stat(planUri); } catch { return null; }
+
+        const planRaw = Buffer.from(await vscode.workspace.fs.readFile(planUri)).toString('utf8');
+        const planParsed = extractFrontmatterAndBody(planRaw);
+        const pfm = planParsed.frontmatter as Record<string, unknown> | undefined;
+        const { steps } = parsePlanBody(planParsed.body);
+
+        return {
+            id: planId,
+            conversationId: extractId(conversationUri),
+            uri: planUri,
+            title: (pfm?.chat_plan_title as string) ?? '未命名计划',
+            status: (pfm?.chat_plan_status as ChatPlanInfo['status']) ?? 'in_progress',
+            totalSteps: steps.length,
+            doneSteps: steps.filter(s => s.done).length,
+        };
+    } catch (e) {
+        logger.error('getPlanInfo 失败', e);
+        return null;
+    }
+}
+
+/** 获取角色的记忆文件信息列表（role_memory + role_auto_memory，供树视图展示） */
+export function getMemoryInfoForRole(roleId: string): ChatMemoryInfo[] {
+    const result: ChatMemoryInfo[] = [];
+
+    // 角色记忆（LLM 主动管理）
+    const memories = getIssueMarkdownsByType('role_memory');
+    for (const md of memories) {
+        if (md.frontmatter?.role_memory_owner_id === roleId) {
+            result.push({
+                id: extractId(md.uri),
+                roleId,
+                uri: md.uri,
+                type: 'role_memory',
+                summary: '角色记忆',
+            });
+        }
+    }
+
+    // 自动提取记忆（hook 写入）
+    const autoMemories = getIssueMarkdownsByType('role_auto_memory');
+    for (const md of autoMemories) {
+        if (md.frontmatter?.role_auto_memory_owner_id === roleId) {
+            result.push({
+                id: extractId(md.uri),
+                roleId,
+                uri: md.uri,
+                type: 'role_auto_memory',
+                summary: '自动记忆',
+            });
+        }
+    }
+
+    return result;
 }
 
 /**
@@ -1637,10 +1689,6 @@ export async function createToolCallNode(
         const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
         if (!uri) { return null; }
 
-        // 挂在执行日志的树节点下
-        const logNode = await getSingleIssueNodeByUri(logUri);
-        await createIssueNodes([uri], logNode?.id);
-
         return path.basename(uri.fsPath);
     } catch (e) {
         logger.warn('createToolCallNode 失败', e);
@@ -1684,7 +1732,6 @@ export async function createChromeChatConversation(title?: string): Promise<Chro
     const body = `# ${convoTitle}\n\n`;
     const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
     if (!uri) { return null; }
-    await createIssueNodes([uri]);
     return {
         id: extractId(uri),
         title: convoTitle,

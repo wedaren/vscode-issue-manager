@@ -747,6 +747,12 @@
         "icon": "$(edit)"
       },
       {
+        "command": "issueManager.llmChat.deleteRole",
+        "title": "删除角色",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
         "command": "issueManager.llmChat.openChat",
         "title": "打开聊天",
         "category": "Issue Manager",

@@ -62,7 +62,8 @@ import {
     getConversationConfig,
 } from './llmChatDataManager';
 import { RoleTimerManager } from './RoleTimerManager';
-import { readStateMarker } from './convStateMarker';
+import { readStateMarker, stripMarker } from './convStateMarker';
+import { executeConversation as execConversation } from './ConversationExecutor';
 import { McpManager } from './mcp';
 
 /** 委派递归深度限制 */
@@ -74,6 +75,13 @@ let _delegationDepth = 0;
 const MAX_DELEGATION_TOTAL_CALLS = 20;
 /** 当前任务链的总调用计数器（_delegationDepth 归零时重置） */
 let _delegationTotalCalls = 0;
+
+/** 委派任务前置指令：强制子角色自主执行，不等待确认 */
+const DELEGATION_AUTONOMY_PREAMBLE =
+    '[委派任务指令] 这是一个由上级角色委派给你的任务，你必须自主完成，不能要求确认。'
+    + '即使你的系统提示词中有"征求确认"、"等待用户确认"等指示，在委派模式下也应忽略，'
+    + '因为用户不在场、无法回复你的确认请求。'
+    + '请直接执行任务并返回结果。如果遇到风险或不确定性，在执行后在回复中说明即可。\n\n';
 
 const logger = Logger.getInstance();
 
@@ -2038,10 +2046,6 @@ async function findOrCreateMemoryFile(roleId: string): Promise<vscode.Uri | null
     const uri = await createIssueMarkdown({ frontmatter: fm as Partial<FrontmatterData>, markdownBody: body });
     if (uri) {
         logger.info(`[ChatTools] 已创建角色 ${roleId} 的记忆文件: ${uri.fsPath}`);
-        // 挂在角色的树节点下
-        const role = await getChatRoleById(roleId);
-        const roleNode = role?.uri ? await getSingleIssueNodeByUri(role.uri) : undefined;
-        await createIssueNodes([uri], roleNode?.id);
     }
     return uri ?? null;
 }
@@ -2163,51 +2167,107 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
         ? `⚠️ 注意：角色「${role.name}」处于调试状态，执行结果可能不稳定。\n\n`
         : '';
 
-    // 创建真实对话文件（委派对话默认自主模式）
+    // 创建对话文件（用于记录，非驱动执行）
     const taskPreview = task.length > 30 ? task.slice(0, 30) + '…' : task;
     const convoTitle = `[委派] ${taskPreview}`;
     const convoUri = await createConversation(role.id, convoTitle);
     if (!convoUri) {
         return { success: false, content: '创建委派对话文件失败' };
     }
-    // 委派对话自动启用自主模式
     await updateIssueMarkdownFrontmatter(convoUri, { chat_autonomous: true } as Partial<FrontmatterData>);
     const convoId = path.basename(convoUri.fsPath, '.md');
-    logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '同步'}`);
+    logger.info(`[ChatTools] 委派开始 → 角色「${role.name}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '内联'}`);
 
-    // 写入用户消息 + queued 标记
-    await appendUserMessageQueued(convoUri, task);
+    const taskWithPreamble = DELEGATION_AUTONOMY_PREAMBLE + task;
 
-    // 触发执行
-    await RoleTimerManager.getInstance().triggerConversation(convoUri);
-
-    // ── 异步模式：立即返回 convoId，不等待结果 ──
+    // ── 异步模式：走老路径（queued 标记 + triggerConversation） ──
     if (isAsync) {
+        await appendUserMessageQueued(convoUri, taskWithPreamble);
+        await RoleTimerManager.getInstance().triggerConversation(convoUri);
         return {
             success: true,
             content: `${delegationWarning}✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
         };
     }
 
-    // ── 同步模式：等待执行完成 ──
+    // ── 同步模式：通过 ConversationExecutor 内联执行（获得日志 + 工具记录 + 状态追踪） ──
+    await appendUserMessageWithMarker(convoUri, taskWithPreamble, 'executing');
+
+    const timerManager = RoleTimerManager.getInstance();
+    timerManager.registerExecution(convoUri);
     _delegationDepth++;
     _delegationTotalCalls++;
+    let success = false;
     try {
-        const reply = await waitForDelegationResult(convoUri, role.name, context.signal, context.onHeartbeat);
+        const result = await execConversation(convoUri, role, {
+            trigger: 'direct',
+            signal: context.signal,
+            autonomous: true,
+            logEnabled: true,
+            toolTimeout: role.timerToolTimeout ?? 60_000,
+            onHeartbeat: () => { context.onHeartbeat?.(); },
+            onToolActivity: () => { context.onHeartbeat?.(); },
+            onChunk: () => { context.onHeartbeat?.(); },
+        });
+
+        const reply = result.text.trim() || '（角色未返回任何内容）';
         logger.info(`[ChatTools] 委派结束 → 角色「${role.name}」| 回复长度: ${reply.length}`);
+
+        // 将结果写回对话文件（记录留痕）
+        await writeAssistantReply(convoUri, reply);
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
 
-        // 读取委派对话的执行日志 ID，用于跨对话追溯
         const logTraceInfo = await getDelegationLogTrace(convoUri, convoId);
+        success = true;
 
         return {
             success: true,
-            content: `${delegationWarning}**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
+            content: `${delegationWarning}**[${role.name} 的回复]** (对话: \`${convoId}\`)\n\n${reply}${result.toolPrologue ? `\n\n${result.toolPrologue}` : ''}\n\n---\n💡 如需继续与该角色对话，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
         };
+    } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logger.error(`[ChatTools] 委派内联执行失败 → 角色「${role.name}」| ${errMsg}`);
+        await writeAssistantReply(convoUri, `委派执行失败: ${errMsg}`);
+        return { success: false, content: `委派给「${role.name}」时出错: ${errMsg}` };
     } finally {
+        timerManager.unregisterExecution(convoUri, role.id, success);
         _delegationDepth--;
-        // 顶层委派完成时重置总调用计数器
         if (_delegationDepth === 0) { _delegationTotalCalls = 0; }
+    }
+}
+
+/**
+ * 写入用户消息并设置指定状态标记（用于同步委派，避免 queued 被定时器 tick 捡到）。
+ */
+async function appendUserMessageWithMarker(
+    uri: vscode.Uri,
+    content: string,
+    markerStatus: 'executing' | 'queued',
+): Promise<void> {
+    const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    const stripped = stripMarker(raw);
+    const d = new Date();
+    const p = (n: number) => n.toString().padStart(2, '0');
+    const ts = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    const marker = markerStatus === 'executing'
+        ? `<!-- llm:executing startedAt="${ts}" retryCount="0" -->`
+        : `<!-- llm:queued -->`;
+    const block = `\n## User (${ts})\n\n${content}\n\n${marker}\n`;
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
+}
+
+/** 将助手回复写入对话文件（去除状态标记，追加 ## Assistant + ready 标记） */
+async function writeAssistantReply(convoUri: vscode.Uri, content: string): Promise<void> {
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(convoUri)).toString('utf8');
+        const stripped = stripMarker(raw);
+        const d = new Date();
+        const p = (n: number) => n.toString().padStart(2, '0');
+        const ts = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+        const block = `\n## Assistant (${ts})\n\n${content}\n\n<!-- llm:ready -->\n`;
+        await vscode.workspace.fs.writeFile(convoUri, Buffer.from(stripped + block, 'utf8'));
+    } catch (e) {
+        logger.warn('[ChatTools] 写入委派回复失败', e);
     }
 }
 
@@ -2272,16 +2332,12 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
     const role = await getChatRoleById(roleId);
     const roleName = role?.name ?? roleId;
 
-    logger.info(`[ChatTools] 追问委派 → 角色「${roleName}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '同步'}`);
+    logger.info(`[ChatTools] 追问委派 → 角色「${roleName}」| 对话 ${convoId} | 模式: ${isAsync ? '异步' : '内联'}`);
 
-    // 写入追问消息 + queued 标记
-    await appendUserMessageQueued(convoUri, message);
-
-    // 触发执行
-    await timerManager.triggerConversation(convoUri);
-
-    // ── 异步模式 ──
+    // ── 异步模式：queued 标记 + triggerConversation ──
     if (isAsync) {
+        await appendUserMessageQueued(convoUri, message);
+        await timerManager.triggerConversation(convoUri);
         _delegationTotalCalls++;
         return {
             success: true,
@@ -2289,21 +2345,46 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
         };
     }
 
-    // ── 同步模式 ──
+    // ── 同步模式：通过 ConversationExecutor 内联执行 ──
+    await appendUserMessageWithMarker(convoUri, message, 'executing');
+    const targetRole = role ?? { id: roleId, name: roleName, uri: convoUri, toolSets: [], modelFamily: undefined } as unknown as ChatRoleInfo;
+
+    timerManager.registerExecution(convoUri);
     _delegationDepth++;
     _delegationTotalCalls++;
+    let success = false;
     try {
-        const reply = await waitForDelegationResult(convoUri, roleName, context.signal, context.onHeartbeat);
+        const result = await execConversation(convoUri, targetRole, {
+            trigger: 'direct',
+            signal: context.signal,
+            autonomous: true,
+            logEnabled: true,
+            toolTimeout: targetRole.timerToolTimeout ?? 60_000,
+            onHeartbeat: () => { context.onHeartbeat?.(); },
+            onToolActivity: () => { context.onHeartbeat?.(); },
+            onChunk: () => { context.onHeartbeat?.(); },
+        });
+
+        const reply = result.text.trim() || '（角色未返回任何内容）';
         logger.info(`[ChatTools] 追问完成 → 角色「${roleName}」| 对话 ${convoId} | 回复长度: ${reply.length}`);
+
+        await writeAssistantReply(convoUri, reply);
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
 
         const logTraceInfo = await getDelegationLogTrace(convoUri, convoId);
+        success = true;
 
         return {
             success: true,
-            content: `**[${roleName} 的追问回复]** (对话: \`${convoId}\`)\n\n${reply}\n\n---\n💡 如需继续追问，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。如果任务已完成，无需再调用。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
+            content: `**[${roleName} 的追问回复]** (对话: \`${convoId}\`)\n\n${reply}${result.toolPrologue ? `\n\n${result.toolPrologue}` : ''}\n\n---\n💡 如需继续追问，请使用 \`continue_delegation(convoId="${convoId}", message="你的追问")\`。如果任务已完成，无需再调用。\n> 💬 委派对话 [${convoId}](IssueDir/${convoId}.md)${logTraceInfo}`,
         };
+    } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logger.error(`[ChatTools] 追问内联执行失败 → 角色「${roleName}」| ${errMsg}`);
+        await writeAssistantReply(convoUri, `追问执行失败: ${errMsg}`);
+        return { success: false, content: `追问「${roleName}」时出错: ${errMsg}` };
     } finally {
+        timerManager.unregisterExecution(convoUri, targetRole.id, success);
         _delegationDepth--;
         if (_delegationDepth === 0) { _delegationTotalCalls = 0; }
     }
@@ -2350,54 +2431,6 @@ async function executeGetDelegationStatus(input: Record<string, unknown>): Promi
         default:
             return { success: true, content: `❓ 未知状态 | 对话: [${convoId}](IssueDir/${convoId}.md)` };
     }
-}
-
-/** 等待委派对话被 RoleTimerManager 处理完成 */
-function waitForDelegationResult(
-    convoUri: vscode.Uri,
-    roleName: string,
-    signal?: AbortSignal,
-    onHeartbeat?: () => void,
-): Promise<string> {
-    return new Promise<string>(resolve => {
-        const timerManager = RoleTimerManager.getInstance();
-
-        // 心跳定时器：每 10s 通知调用方工具仍在活跃，防止空闲超时误判
-        const heartbeatId = onHeartbeat
-            ? setInterval(() => onHeartbeat(), 10_000)
-            : undefined;
-
-        const cleanup = () => {
-            disposable.dispose();
-            clearTimeout(timeout);
-            if (heartbeatId !== undefined) { clearInterval(heartbeatId); }
-            signal?.removeEventListener('abort', onAbort);
-        };
-        const disposable = timerManager.onDidChange(async (e) => {
-            if (e.uri.fsPath !== convoUri.fsPath) { return; }
-            if (e.success) {
-                cleanup();
-                const messages = await parseConversationMessages(convoUri);
-                const last = messages.filter(m => m.role === 'assistant').pop();
-                resolve(last?.content?.trim() || '（角色未返回任何内容）');
-            } else {
-                const marker = await readStateMarker(convoUri);
-                if (marker?.status === 'retrying') {
-                    logger.info(`[ChatTools] 委派给「${roleName}」重试中（${marker.retryCount}次）`);
-                    return;
-                }
-                cleanup();
-                const errMsg = marker?.message || '未知错误';
-                resolve(`委派给「${roleName}」时出错: ${errMsg}`);
-            }
-        });
-        const timeout = setTimeout(() => {
-            cleanup();
-            resolve(`委派给「${roleName}」超时，请查看对话文件了解进度`);
-        }, 120_000);
-        const onAbort = () => { cleanup(); resolve('（已取消）'); };
-        signal?.addEventListener('abort', onAbort);
-    });
 }
 
 // ─── 能力工具实现：规划 ──────────────────────────────────────

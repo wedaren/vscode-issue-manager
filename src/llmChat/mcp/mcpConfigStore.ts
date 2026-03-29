@@ -1,7 +1,7 @@
 /**
  * MCP 配置持久化
  *
- * 将 MCP server 配置存储在 globalStorageUri/mcp.json，跨 workspace 生效。
+ * 将 MCP server 配置存储在 <issueDir>/.issueManager/mcp.json，跟随用户数据目录。
  */
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -16,9 +16,9 @@ let configFilePath: string | undefined;
 const _onDidChangeConfig = new vscode.EventEmitter<void>();
 export const onDidChangeConfig: vscode.Event<void> = _onDidChangeConfig.event;
 
-/** 初始化配置存储（传入 globalStorageUri） */
-export function initialize(globalStorageUri: vscode.Uri): void {
-    const dir = globalStorageUri.fsPath;
+/** 初始化配置存储（传入 issueDir） */
+export function initialize(issueDir: string): void {
+    const dir = path.join(issueDir, '.issueManager');
     fs.mkdirSync(dir, { recursive: true });
     configFilePath = path.join(dir, 'mcp.json');
 }

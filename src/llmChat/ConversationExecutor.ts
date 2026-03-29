@@ -211,23 +211,27 @@ export async function executeConversation(
                 }
             }
 
-            // 工具调用（含超时）
+            // 工具调用（含超时；委派工具不限时，由父的 signal 兜底）
             const isDelegationTool = isDelegation || toolName === 'continue_delegation';
-            const thisToolTimeout = isDelegationTool ? toolTimeout * 3 : toolTimeout;
             let res: Awaited<ReturnType<typeof executeChatTool>>;
-            try {
-                res = await Promise.race([
-                    executeChatTool(toolName, input, toolContext),
-                    new Promise<never>((_, reject) => {
-                        setTimeout(() => reject(new Error(`工具 ${toolName} 执行超时（${thisToolTimeout / 1000}s）`)), thisToolTimeout);
-                    }),
-                ]);
-            } catch {
-                const dur = Date.now() - tcStart;
-                if (logUri) { void appendLogLine(logUri, `⏰ \`${toolName}\` 超时 (${fmtDuration(dur)})`); }
-                toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName: null, success: false, round: currentRound });
-                onToolActivity?.();
-                return `[工具执行失败] ${toolName} 超时（${thisToolTimeout / 1000}s），请尝试其他方式或跳过此步骤。`;
+            if (isDelegationTool) {
+                // 委派内联执行：不加 per-call 超时，依赖共享的 AbortSignal（空闲超时 + 总执行超时）
+                res = await executeChatTool(toolName, input, toolContext);
+            } else {
+                try {
+                    res = await Promise.race([
+                        executeChatTool(toolName, input, toolContext),
+                        new Promise<never>((_, reject) => {
+                            setTimeout(() => reject(new Error(`工具 ${toolName} 执行超时（${toolTimeout / 1000}s）`)), toolTimeout);
+                        }),
+                    ]);
+                } catch {
+                    const dur = Date.now() - tcStart;
+                    if (logUri) { void appendLogLine(logUri, `⏰ \`${toolName}\` 超时 (${fmtDuration(dur)})`); }
+                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName: null, success: false, round: currentRound });
+                    onToolActivity?.();
+                    return `[工具执行失败] ${toolName} 超时（${toolTimeout / 1000}s），请尝试其他方式或跳过此步骤。`;
+                }
             }
             const dur = Date.now() - tcStart;
             onToolActivity?.();

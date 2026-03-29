@@ -29,6 +29,7 @@ import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRol
 import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
 import { McpManager, registerMcpCommands } from '../llmChat/mcp';
 import { RoleTimerManager } from '../llmChat/RoleTimerManager';
+import { getIssueDir } from '../config';
 
 /**
  * 视图注册管理器
@@ -483,9 +484,12 @@ export class ViewRegistry {
         // 绑定 TreeView：选中节点时自动预览对应文件（不抢焦点）
         llmChatRoleProvider.bindTreeView(llmChatRoleView);
 
-        // 初始化 MCP 管理器（插件自管理，跨 workspace）
+        // 初始化 MCP 管理器（配置存储在 issueDir/.issueManager/）
         const mcpManager = McpManager.getInstance();
-        void mcpManager.initialize(this.context);
+        const issueDir = getIssueDir();
+        if (issueDir) {
+            void mcpManager.initialize(issueDir);
+        }
         this.context.subscriptions.push(mcpManager);
         registerMcpCommands(this.context);
 
