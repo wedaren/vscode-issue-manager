@@ -126,7 +126,7 @@ export class ExtensionInitializer {
             const finalMemory = this.getMemoryUsage();
             const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed;
             
-            this.logger.info('✅ 扩展初始化完成', {
+            this.logger.info('✓ 扩展初始化完成', {
                 duration: `${duration}ms`,
                 memoryIncrease: `${memoryIncrease.toFixed(2)}MB`,
                 finalMemoryUsage: `${finalMemory.heapUsed.toFixed(2)}MB`

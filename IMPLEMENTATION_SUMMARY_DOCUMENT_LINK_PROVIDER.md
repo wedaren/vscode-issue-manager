@@ -144,25 +144,25 @@ if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
 ```bash
 npm run compile
 ```
-✅ 通过（仅有预存在的警告）
+✓ 通过（仅有预存在的警告）
 
 ### 代码检查
 ```bash
 npm run lint
 ```
-✅ 通过（无错误）
+✓ 通过（无错误）
 
 ### 安全扫描
 ```bash
 codeql_checker
 ```
-✅ 通过（0 个安全警报）
+✓ 通过（0 个安全警报）
 
 ### 单元测试
 ```bash
 npm run compile-tests
 ```
-✅ 测试文件成功编译
+✓ 测试文件成功编译
 
 ## 文件清单
 
@@ -198,10 +198,10 @@ npm run compile-tests
 
 本次实现成功为 VSCode 问题管理器插件添加了 DocumentLinkProvider 功能，提供了：
 
-1. ✅ 完整的链接解析功能
-2. ✅ 健壮的安全性保护
-3. ✅ 完善的错误处理
-4. ✅ 全面的单元测试
-5. ✅ 详细的文档说明
+1. ✓ 完整的链接解析功能
+2. ✓ 健壮的安全性保护
+3. ✓ 完善的错误处理
+4. ✓ 全面的单元测试
+5. ✓ 详细的文档说明
 
 代码质量经过两轮审查改进，通过了所有自动化检查，可以安全地集成到主分支。

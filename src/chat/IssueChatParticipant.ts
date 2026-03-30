@@ -364,7 +364,7 @@ export class IssueChatParticipant {
 
         const plan = planUnknown;
 
-        stream.markdown(`# ✅ 可执行计划\n\n`);
+        stream.markdown(`# ✓ 可执行计划\n\n`);
         stream.markdown(`**目标**：${plan.goal}\n\n`);
         stream.markdown(`**下一步最小动作**：${plan.nextAction}\n\n`);
 
@@ -462,7 +462,7 @@ export class IssueChatParticipant {
 
         if (uri) {
             const filename = path.basename(uri.fsPath);
-            stream.markdown(`✅ 已创建问题: \`${filename}\`\n\n`);
+            stream.markdown(`✓ 已创建问题: \`${filename}\`\n\n`);
 
             // 创建一个包含 resourceUri 的对象,符合 focusIssueFromIssueFile 命令的要求
             stream.button({
@@ -597,7 +597,7 @@ export class IssueChatParticipant {
 
             if (uri) {
                 const filename = path.basename(uri.fsPath);
-                stream.markdown(`✅ 文档已保存: \`${filename}\`\n\n`);
+                stream.markdown(`✓ 文档已保存: \`${filename}\`\n\n`);
 
                 stream.button({
                     command: "issueManager.focusIssueFromIssueFile",

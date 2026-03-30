@@ -77,7 +77,7 @@ npm run chrome:build    # 生产构建
 npm run chrome:zip      # 打包 ZIP
 ```
 
-### ✅ 功能保持
+### ✓ 功能保持
 
 所有原有功能完整保留：
 - WebSocket 与 VSCode 通信

@@ -122,7 +122,7 @@ export class ChatPlanNode extends vscode.TreeItem {
         super(planInfo.title, vscode.TreeItemCollapsibleState.None);
         this.id = `plan:${planInfo.id}`;
         this.contextValue = 'chatPlan';
-        const statusIcon = planInfo.status === 'completed' ? '✅' : planInfo.status === 'abandoned' ? '🚫' : '📋';
+        const statusIcon = planInfo.status === 'completed' ? '✓' : planInfo.status === 'abandoned' ? '🚫' : '📋';
         this.iconPath = new vscode.ThemeIcon(
             planInfo.status === 'completed' ? 'pass-filled'
                 : planInfo.status === 'abandoned' ? 'circle-slash'
@@ -310,7 +310,7 @@ export class McpServerNode extends vscode.TreeItem {
         }
         this.tooltip = new vscode.MarkdownString(
             `**${status.name}**\n\n`
-            + `- 状态: ${status.connected ? '✅ 已连接' : '❌ 未连接'}\n`
+            + `- 状态: ${status.connected ? '✓ 已连接' : '❌ 未连接'}\n`
             + `- 工具数: ${status.toolCount}\n`
             + (status.error ? `\n**错误详情:**\n\`\`\`\n${status.error}\n\`\`\`\n` : '')
             + (status.connected ? '' : '\n💡 点击节点重启，右键更多操作'),

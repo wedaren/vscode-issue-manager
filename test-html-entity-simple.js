@@ -97,6 +97,6 @@ for (const testCase of testCases) {
     console.log('-'.repeat(80));
 }
 
-console.log('\n✅ HTML 实体解码功能测试完成！');
+console.log('\n✓ HTML 实体解码功能测试完成！');
 console.log('\n说明：新增的 HtmlEntityDecodeProcessor 处理器已经集成到所有预设配置中，');
 console.log('将作为第一步处理，确保HTML实体在后续处理之前被正确解码。');

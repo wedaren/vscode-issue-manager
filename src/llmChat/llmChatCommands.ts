@@ -937,7 +937,7 @@ export function registerLLMChatCommands(
             } else if (category.id === 'status') {
                 // ── 委派状态 ──────────────────────────────────────
                 const statusItems = [
-                    { label: '✅ ready',    description: '可正常接受委派（默认）',              value: 'ready',    picked: currentStatus === 'ready' },
+                    { label: '✓ ready',    description: '可正常接受委派（默认）',              value: 'ready',    picked: currentStatus === 'ready' },
                     { label: '⚠️ testing',  description: '调试中，委派时显示警告',              value: 'testing',  picked: currentStatus === 'testing' },
                     { label: '🚫 disabled', description: '禁止接受委派，不在可用角色列表中显示', value: 'disabled', picked: currentStatus === 'disabled' },
                 ];

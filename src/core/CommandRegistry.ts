@@ -270,7 +270,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             );
 
 
-            this.logger.info('✅ 所有命令注册完成');
+            this.logger.info('✓ 所有命令注册完成');
 
         } catch (error) {
             this.logger.error('✗ 命令注册过程中出现错误:', error);
