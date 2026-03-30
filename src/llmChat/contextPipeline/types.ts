@@ -12,6 +12,7 @@
 /** 上下文来源 ID（与 provider 一一对应） */
 export type ContextSourceId =
     | 'identity'              // 角色身份（system prompt body）
+    | 'goal'                  // 对话目标（完成条件）
     | 'intent'                // 意图锚点
     | 'plan'                  // 执行计划
     | 'mode'                  // 执行模式（自主/交互）
@@ -27,12 +28,12 @@ export type ContextSourceId =
 
 /** 所有可获取的 source（identity 由 assembler 处理，不在此列） */
 export const ALL_SOURCES: ContextSourceId[] = [
-    'intent', 'plan', 'mode', 'memory', 'active_editor', 'selection',
+    'goal', 'intent', 'plan', 'mode', 'memory', 'active_editor', 'selection',
     'git_diff', 'datetime', 'linked_files', 'terms', 'children', 'conversation_context',
 ];
 
 /** 所有策略下始终注入的 source */
-export const ALWAYS_ON: ContextSourceId[] = ['mode', 'intent'];
+export const ALWAYS_ON: ContextSourceId[] = ['mode', 'intent', 'goal'];
 
 /** minimal 策略注入的 source */
 export const MINIMAL_SOURCES: ContextSourceId[] = ['mode', 'intent', 'datetime'];
@@ -65,6 +66,7 @@ export interface ProviderContext {
         tokenUsed?: number;
         autonomous?: boolean;
         intent?: string;
+        goal?: string;
     } | null;
     autonomous: boolean;
     latestUserMessage: string;

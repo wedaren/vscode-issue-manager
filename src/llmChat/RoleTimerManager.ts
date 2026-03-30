@@ -24,6 +24,7 @@ import {
     getAutoQueueCount,
     setAutoQueueCount,
     appendUserMessageQueued,
+    getPlanStatus,
 } from './llmChatDataManager';
 import {
     readStateMarker,
@@ -42,6 +43,9 @@ const logger = Logger.getInstance();
 
 /** executing 状态超过此时间（ms）视为进程崩溃，强制进入重试 */
 const STALE_EXECUTING_MS = 5 * 60 * 1000;
+
+/** 系统级 Agent Loop 自动续写的上限（与 LLM 侧 queue_continuation 共享计数） */
+const MAX_AGENT_LOOP_RUNS = 30;
 
 /** 文件变化监听的防抖延迟（ms） */
 const WATCHER_DEBOUNCE_MS = 2_000;
@@ -340,9 +344,10 @@ export class RoleTimerManager implements vscode.Disposable {
                 notifyChange: (p) => this._onDidChange.fire(p),
             });
 
-            // ─── 续写提升 ───────────────────────────────────────
+            // ─── 续写提升（优先级：LLM 显式 > 系统 Agent Loop）────
             const pendingMsg = await getPendingContinuation(uri);
             if (pendingMsg) {
+                // LLM 显式调用了 queue_continuation — 使用其指定的消息
                 await clearPendingContinuation(uri);
                 try {
                     await appendUserMessageQueued(uri, pendingMsg);
@@ -352,6 +357,9 @@ export class RoleTimerManager implements vscode.Disposable {
                 } catch (promoteErr) {
                     logger.error('[RoleTimerManager] 续写消息提升失败', promoteErr);
                 }
+            } else if (isAutonomous) {
+                // LLM 没有显式排队 — 系统级 Agent Loop 检查计划状态
+                await this.agentLoopAutoResume(uri, role, filePath);
             }
 
             vscode.window.setStatusBarMessage(`$(check) ${role.name} 回复完成`, 3000);
@@ -390,6 +398,59 @@ export class RoleTimerManager implements vscode.Disposable {
         } finally {
             this.executing.delete(filePath);
             this._onExecutingCountChange.fire(this.executing.size);
+        }
+    }
+
+    // ─── Agent Loop：系统级自动续写 ──────────────────────────
+
+    /**
+     * 系统级 Agent Loop 自动续写。
+     *
+     * 在 LLM 没有显式调用 queue_continuation 的情况下，系统检查：
+     *   1. 对话是否有活跃计划（status = in_progress）
+     *   2. 计划是否还有未完成的步骤
+     *   3. 自动续写计数是否未超限
+     *
+     * 满足条件时，系统自动追加 "继续执行下一步" 消息并标记 queued，
+     * 无需依赖 LLM 记得调用 queue_continuation。
+     *
+     * 优先级：LLM 显式 queue_continuation > 系统 Agent Loop > 停止
+     */
+    private async agentLoopAutoResume(uri: vscode.Uri, role: ChatRoleInfo, filePath: string): Promise<void> {
+        try {
+            // 仅 planning 角色参与 Agent Loop
+            if (!role.toolSets.includes('planning')) { return; }
+
+            const planStatus = await getPlanStatus(uri);
+
+            // 无计划 或 计划已完成/已放弃 → 不续写
+            if (!planStatus.hasPlan || planStatus.status !== 'in_progress') { return; }
+            if (planStatus.allDone) {
+                logger.info(`[AgentLoop] 计划已全部完成，停止自动续写: ${filePath}`);
+                return;
+            }
+
+            // 检查续写计数上限（与 queue_continuation 共享计数器）
+            const currentCount = await getAutoQueueCount(uri);
+            if (currentCount >= MAX_AGENT_LOOP_RUNS) {
+                logger.warn(`[AgentLoop] 已达自动续写上限(${MAX_AGENT_LOOP_RUNS})，停止: ${filePath}`);
+                return;
+            }
+
+            // 构建系统续写消息：包含下一步信息
+            const nextStep = planStatus.nextStepText
+                ? `继续执行计划的下一步：${planStatus.nextStepText}`
+                : '继续执行计划中尚未完成的步骤';
+            const progress = `（进度 ${planStatus.doneSteps}/${planStatus.totalSteps}）`;
+            const autoMsg = `${nextStep}${progress}\n\n<!-- agent-loop-auto-queued -->`;
+
+            await appendUserMessageQueued(uri, autoMsg);
+            const newCount = currentCount + 1;
+            await setAutoQueueCount(uri, newCount);
+            logger.info(`[AgentLoop] 系统自动续写（${newCount}/${MAX_AGENT_LOOP_RUNS}），下一步: ${planStatus.nextStepText ?? '(未知)'}: ${filePath}`);
+        } catch (e) {
+            // Agent Loop 失败不影响主流程，静默降级
+            logger.warn('[AgentLoop] 自动续写失败（已忽略）', e);
         }
     }
 

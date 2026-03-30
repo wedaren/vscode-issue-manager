@@ -160,6 +160,13 @@ export interface ChatConversationFrontmatter {
      * run 失败时清空（避免错误状态下死循环）。
      */
     chat_pending_continuation?: string;
+    /**
+     * 对话目标：明确的完成条件（自然语言）。
+     * 由用户或 LLM 设置，注入到 system prompt。
+     * 与 intent（描述性）不同，goal 是判定"什么时候算完"的依据。
+     * 系统在每次 run 结束后检查 plan 完成状态，结合 goal 决定是否自动续写。
+     */
+    chat_goal?: string;
 }
 
 /** 运行时聊天角色信息（从 issueMarkdown 解析而来） */

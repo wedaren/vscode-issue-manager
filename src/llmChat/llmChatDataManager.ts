@@ -504,6 +504,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
     autonomous?: boolean;
     intent?: string;
     logEnabled?: boolean;
+    goal?: string;
 } | null> {
     try {
         const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
@@ -517,6 +518,7 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
             autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
             intent: typeof fm.chat_intent === 'string' ? fm.chat_intent : undefined,
             logEnabled: typeof fm.chat_log_enabled === 'boolean' ? fm.chat_log_enabled : undefined,
+            goal: typeof fm.chat_goal === 'string' ? fm.chat_goal : undefined,
         };
     } catch {
         return null;
@@ -575,6 +577,57 @@ async function getPlanUri(conversationUri: vscode.Uri): Promise<vscode.Uri | nul
     }
 }
 
+/** 计划完成状态（供 Agent Loop 判断是否自动续写） */
+export interface PlanCompletionStatus {
+    /** 是否存在关联计划 */
+    hasPlan: boolean;
+    /** 计划文件状态（in_progress / completed / abandoned） */
+    status: 'in_progress' | 'completed' | 'abandoned' | 'none';
+    /** 总步骤数 */
+    totalSteps: number;
+    /** 已完成步骤数 */
+    doneSteps: number;
+    /** 是否全部完成 */
+    allDone: boolean;
+    /** 下一个待执行步骤的文本（无则为 undefined） */
+    nextStepText?: string;
+    /** 进度说明 */
+    progressNote?: string;
+}
+
+/**
+ * 读取对话关联计划的完成状态。
+ * 供 RoleTimerManager Agent Loop 使用，判断是否需要系统级自动续写。
+ */
+export async function getPlanStatus(conversationUri: vscode.Uri): Promise<PlanCompletionStatus> {
+    const empty: PlanCompletionStatus = { hasPlan: false, status: 'none', totalSteps: 0, doneSteps: 0, allDone: false };
+    const planUri = await getPlanUri(conversationUri);
+    if (!planUri) { return empty; }
+    try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(planUri)).toString('utf8');
+        const { frontmatter, body } = extractFrontmatterAndBody(raw);
+        const fm = frontmatter as Record<string, unknown>;
+        const status = (fm?.chat_plan_status as string) ?? 'in_progress';
+        if (status === 'abandoned') {
+            return { hasPlan: true, status: 'abandoned', totalSteps: 0, doneSteps: 0, allDone: false };
+        }
+        const { note, steps } = parsePlanBody(body);
+        const doneSteps = steps.filter(s => s.done).length;
+        const nextStep = steps.find(s => !s.done);
+        return {
+            hasPlan: true,
+            status: status as PlanCompletionStatus['status'],
+            totalSteps: steps.length,
+            doneSteps,
+            allDone: steps.length > 0 && doneSteps === steps.length,
+            nextStepText: nextStep?.text,
+            progressNote: note || undefined,
+        };
+    } catch {
+        return empty;
+    }
+}
+
 /** 创建计划文件并链接到对话（已有计划时返回 null） */
 export async function createPlanFile(
     conversationUri: vscode.Uri,
@@ -617,7 +670,7 @@ export async function readPlanContent(conversationUri: vscode.Uri): Promise<stri
         const status = fm?.chat_plan_status as string ?? 'in_progress';
         const { note, steps } = parsePlanBody(body);
         const doneCount = steps.filter(s => s.done).length;
-        return `**${title}**（${status === 'completed' ? '✅ 已完成' : '进行中'}，${doneCount}/${steps.length} 步）\n\n${serializePlanBody(note, steps)}`;
+        return `**${title}**（${status === 'completed' ? '✓ 已完成' : '进行中'}，${doneCount}/${steps.length} 步）\n\n${serializePlanBody(note, steps)}`;
     } catch {
         return null;
     }
@@ -670,7 +723,7 @@ export async function clearPendingContinuation(conversationUri: vscode.Uri): Pro
 
 /**
  * 读取计划供 context 注入。
- * autonomous=true 时在末尾追加执行规范，引导 LLM 在计划未完成时调用 queue_continuation。
+ * autonomous=true 时追加执行规范，告知 LLM 系统会自动驱动续写。
  */
 export async function readPlanForInjection(conversationUri: vscode.Uri, autonomous?: boolean): Promise<string> {
     const planUri = await getPlanUri(conversationUri);
@@ -688,7 +741,7 @@ export async function readPlanForInjection(conversationUri: vscode.Uri, autonomo
         const firstPendingIdx = steps.findIndex(s => !s.done);
 
         const stepsStr = steps.map((s, i) => {
-            if (s.done) { return `✅ ${i + 1}. ${s.text}`; }
+            if (s.done) { return `✓ ${i + 1}. ${s.text}`; }
             if (i === firstPendingIdx) { return `▶ ${i + 1}. ${s.text}（当前）`; }
             return `□ ${i + 1}. ${s.text}`;
         }).join('\n');
@@ -697,9 +750,15 @@ export async function readPlanForInjection(conversationUri: vscode.Uri, autonomo
         if (note && note !== '（暂无说明）') { parts.push(`进度说明: ${note}`); }
         parts.push('', stepsStr);
 
-        // 自主模式 + 计划未完成时，注入执行规范，引导 LLM 正确使用 queue_continuation
+        // 自主模式 + 计划未完成时，注入执行规范
         if (autonomous && status !== 'completed') {
-            parts.push('', '[规划执行规范] 每完成一步立即调用 check_step 标记。计划未完成时，每次 run 结束前调用 queue_continuation 触发下一次执行（消息描述下一步具体行动）。计划全部完成后停止 queue，向用户汇报最终结果。');
+            parts.push('',
+                '[规划执行规范]',
+                '- 每完成一步立即调用 check_step 标记。',
+                '- 系统会在每次 run 结束后自动检查计划进度：若有未完成步骤，自动触发下一次执行。你无需手动调用 queue_continuation。',
+                '- 如需指定下一步的具体行动（而非按计划顺序），可调用 queue_continuation 覆盖系统默认续写。',
+                '- 计划全部完成后，系统自动停止。你应在最后一步完成后输出最终总结。',
+            );
         }
 
         return parts.join('\n');
@@ -735,7 +794,7 @@ export async function checkPlanStep(
         return {
             success: ok,
             message: ok
-                ? `✅ 步骤 ${stepIndex} 已标记为${done ? '完成' : '未完成'}（${doneCount}/${steps.length}）`
+                ? `✓ 步骤 ${stepIndex} 已标记为${done ? '完成' : '未完成'}（${doneCount}/${steps.length}）`
                 : '更新失败',
         };
     } catch (e) {
@@ -760,7 +819,7 @@ export async function addPlanStep(
         const ok = await updateIssueMarkdownBody(planUri, serializePlanBody(note, steps));
         return {
             success: ok,
-            message: ok ? `✅ 已追加步骤 ${steps.length}: ${step}` : '追加失败',
+            message: ok ? `✓ 已追加步骤 ${steps.length}: ${step}` : '追加失败',
         };
     } catch (e) {
         logger.error('[PlanTools] addPlanStep 失败', e);
@@ -780,7 +839,7 @@ export async function updatePlanProgressNote(
         const { body } = extractFrontmatterAndBody(raw);
         const { steps } = parsePlanBody(body);
         const ok = await updateIssueMarkdownBody(planUri, serializePlanBody(note.trim(), steps));
-        return { success: ok, message: ok ? '✅ 进度说明已更新' : '更新失败' };
+        return { success: ok, message: ok ? '✓ 进度说明已更新' : '更新失败' };
     } catch (e) {
         logger.error('[PlanTools] updatePlanProgressNote 失败', e);
         return { success: false, message: '更新进度说明失败' };

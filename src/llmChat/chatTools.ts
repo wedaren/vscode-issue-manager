@@ -600,11 +600,11 @@ const PLANNING_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'queue_continuation',
-        description: '【仅自主模式可用】在当前 run 结束前排队下一次执行，触发 timer 自动续写。计划未完成时使用，全部步骤完成后不要再调用。message 描述下一步的具体行动，将作为下一次 run 的 user 消息。',
+        description: '【仅自主模式可用 · 通常无需调用】系统会在 run 结束后自动检查计划进度并续写。仅当你需要覆盖默认的"按计划顺序执行下一步"行为时才调用此工具（如跳过步骤、插入临时任务、指定特殊执行指令）。message 将作为下一次 run 的 user 消息，优先级高于系统自动续写。',
         inputSchema: {
             type: 'object',
             properties: {
-                message: { type: 'string', description: '下一次执行的指令，描述要完成的具体步骤（如"继续写第3章"）' },
+                message: { type: 'string', description: '下一次执行的指令，描述要完成的具体步骤（如"跳过第3步，先完成第5步"）' },
             },
             required: ['message'],
         },
@@ -1309,7 +1309,7 @@ async function executeCreateIssue(input: Record<string, unknown>): Promise<ToolC
 
     return {
         success: true,
-        content: `✅ 已创建 ${issueLink(title, fileName)}\n> 请在回复中向用户提供上述文档链接。`,
+        content: `✓ 已创建 ${issueLink(title, fileName)}\n> 请在回复中向用户提供上述文档链接。`,
     };
 }
 
@@ -1402,7 +1402,7 @@ async function executeCreateIssueTree(input: Record<string, unknown>): Promise<T
     const summary = nodes.map((n, i) => `${i === rootIndex ? '📁' : '  📄'} ${issueLink(n.title, createdFileNames[i])}`).join('\n');
     return {
         success: true,
-        content: `✅ 已创建 ${nodes.length} 个笔记并建立层级结构：\n${summary}`,
+        content: `✓ 已创建 ${nodes.length} 个笔记并建立层级结构：\n${summary}`,
     };
 }
 
@@ -1499,7 +1499,7 @@ async function executeUpdateIssue(input: Record<string, unknown>): Promise<ToolC
 
     return {
         success: true,
-        content: `✅ 已更新 ${issueLink(issue.title, fileName)}`,
+        content: `✓ 已更新 ${issueLink(issue.title, fileName)}`,
     };
 }
 
@@ -1567,7 +1567,7 @@ async function executeMoveIssueNode(input: Record<string, unknown>): Promise<Too
     const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
     return {
         success: true,
-        content: `✅ 已将 ${issueLink(fileName, fileName)} 移动到 ${target} 第 ${safeIndex} 位`,
+        content: `✓ 已将 ${issueLink(fileName, fileName)} 移动到 ${target} 第 ${safeIndex} 位`,
     };
 }
 
@@ -1635,7 +1635,7 @@ async function executeSortIssueChildren(input: Record<string, unknown>): Promise
     const byLabel: Record<string, string> = { title: '标题', mtime: '修改时间', ctime: '创建时间' };
     return {
         success: true,
-        content: `✅ 已对 ${target} 的子节点按「${byLabel[by]}」${order === 'asc' ? '升序' : '降序'} 排序${recursive ? '（含所有子孙节点）' : ''}`,
+        content: `✓ 已对 ${target} 的子节点按「${byLabel[by]}」${order === 'asc' ? '升序' : '降序'} 排序${recursive ? '（含所有子孙节点）' : ''}`,
     };
 }
 
@@ -1691,7 +1691,7 @@ async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCal
         const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
         return {
             success: true,
-            content: `✅ 已将 ${issueLink(childFileName, childFileName)} 移动到 ${target} 下`,
+            content: `✓ 已将 ${issueLink(childFileName, childFileName)} 移动到 ${target} 下`,
         };
     } else {
         // 不在树中 → 创建节点
@@ -1700,7 +1700,7 @@ async function executeLinkIssue(input: Record<string, unknown>): Promise<ToolCal
         const target = parentFileName ? issueLink(parentFileName, parentFileName) : '根级';
         return {
             success: true,
-            content: `✅ 已将 ${issueLink(childFileName, childFileName)} 关联到 ${target} 下`,
+            content: `✓ 已将 ${issueLink(childFileName, childFileName)} 关联到 ${target} 下`,
         };
     }
 }
@@ -1734,7 +1734,7 @@ async function executeUnlinkIssue(input: Record<string, unknown>): Promise<ToolC
             return { success: false, content: `移除失败: ${fileName}` };
         }
         await writeTree(treeData);
-        return { success: true, content: `✅ 已将 ${issueLink(fileName, fileName)} 从树中移除` };
+        return { success: true, content: `✓ 已将 ${issueLink(fileName, fileName)} 从树中移除` };
     } else {
         // 移到根级
         const parent = findParentNodeById(treeData.rootNodes, node.id);
@@ -1743,7 +1743,7 @@ async function executeUnlinkIssue(input: Record<string, unknown>): Promise<ToolC
         }
         moveNode(treeData, node.id, null, 0);
         await writeTree(treeData);
-        return { success: true, content: `✅ 已将 ${issueLink(fileName, fileName)} 移到根级` };
+        return { success: true, content: `✓ 已将 ${issueLink(fileName, fileName)} 移到根级` };
     }
 }
 
@@ -1885,7 +1885,7 @@ async function executeDeleteIssue(input: Record<string, unknown>): Promise<ToolC
 
     const childCount = filesToDelete.size - 1;
     const extra = childCount > 0 ? `，连同 ${childCount} 个子孙笔记` : '';
-    return { success: true, content: `✅ 已删除 ${issueLink(fileName, fileName)}${extra}，并解除树关联` };
+    return { success: true, content: `✓ 已删除 ${issueLink(fileName, fileName)}${extra}，并解除树关联` };
 }
 
 async function executeBatchDeleteIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
@@ -1921,7 +1921,7 @@ async function executeBatchDeleteIssues(input: Record<string, unknown>): Promise
 
     const lines: string[] = [];
     if (filesToDelete.size - failed.length > 0) {
-        lines.push(`✅ 已删除 ${filesToDelete.size - failed.length} 个笔记并解除树关联`);
+        lines.push(`✓ 已删除 ${filesToDelete.size - failed.length} 个笔记并解除树关联`);
     }
     if (notFound.length > 0) { lines.push(`⚠️ 文件不存在（已跳过）: ${notFound.join(', ')}`); }
     if (failed.length > 0) { lines.push(`❌ 删除失败: ${failed.join(', ')}`); }
@@ -1989,7 +1989,7 @@ async function executeWriteTodos(input: Record<string, unknown>, context?: ToolE
     try {
         await writeTodosToConversation(context.conversationUri, todos);
         const summary = todos.map(t => {
-            const icon = t.status === 'done' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬚';
+            const icon = t.status === 'done' ? '✓' : t.status === 'in_progress' ? '🔄' : '⬚';
             return `${icon} ${t.id}. ${t.content}`;
         }).join('\n');
         return { success: true, content: `已写入 ${todos.length} 个 todo 项：\n${summary}` };
@@ -2019,7 +2019,7 @@ async function executeUpdateTodo(input: Record<string, unknown>, context?: ToolE
             target.content = input.content.trim();
         }
         await writeTodosToConversation(context.conversationUri, todos);
-        const icon = target.status === 'done' ? '✅' : target.status === 'in_progress' ? '🔄' : '⬚';
+        const icon = target.status === 'done' ? '✓' : target.status === 'in_progress' ? '🔄' : '⬚';
         return { success: true, content: `已更新: ${icon} ${target.id}. ${target.content} [${target.status}]` };
     } catch (e) {
         return { success: false, content: `更新 todo 失败: ${e}` };
@@ -2077,7 +2077,7 @@ async function executeWriteMemory(input: Record<string, unknown>, context?: Tool
     try {
         const ok = await updateIssueMarkdownBody(memUri, content);
         return ok
-            ? { success: true, content: '✅ 记忆已更新' }
+            ? { success: true, content: '✓ 记忆已更新' }
             : { success: false, content: '记忆更新失败' };
     } catch (e) {
         logger.error('[ChatTools] 写入记忆失败', e);
@@ -2186,7 +2186,7 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
         await RoleTimerManager.getInstance().triggerConversation(convoUri);
         return {
             success: true,
-            content: `${delegationWarning}✅ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `${delegationWarning}✓ 已异步委派给「${role.name}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
         };
     }
 
@@ -2341,7 +2341,7 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
         _delegationTotalCalls++;
         return {
             success: true,
-            content: `✅ 已异步追问「${roleName}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
+            content: `✓ 已异步追问「${roleName}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
         };
     }
 
@@ -2411,7 +2411,7 @@ async function executeGetDelegationStatus(input: Record<string, unknown>): Promi
         const reply = last?.content?.trim() || '（角色未返回任何内容）';
         return {
             success: true,
-            content: `✅ **委派已完成** | 对话: [${convoId}](IssueDir/${convoId}.md)\n\n${reply}`,
+            content: `✓ **委派已完成** | 对话: [${convoId}](IssueDir/${convoId}.md)\n\n${reply}`,
         };
     }
 
@@ -2451,7 +2451,7 @@ async function executeCreatePlan(input: Record<string, unknown>, context?: ToolE
     if (!result) {
         return { success: false, content: '计划已存在，请用 read_plan 查看当前计划' };
     }
-    return { success: true, content: `✅ 已创建执行计划「${title}」（${stepsRaw.length} 步）\n\n${result.content}` };
+    return { success: true, content: `✓ 已创建执行计划「${title}」（${stepsRaw.length} 步）\n\n${result.content}` };
 }
 
 async function executeReadPlan(context?: ToolExecContext): Promise<ToolCallResult> {
@@ -2547,7 +2547,7 @@ async function executeQueueContinuation(input: Record<string, unknown>, context?
         await setPendingContinuation(context.conversationUri, `${message}\n\n<!-- llm-auto-queued -->`);
         return {
             success: true,
-            content: `✅ 已暂存续写指令，本次 run 结束后自动触发下一次执行（当前累计 ${currentCount} 次，上限 ${MAX_CONSECUTIVE_AUTO_QUEUE}）`,
+            content: `✓ 已暂存续写指令，本次 run 结束后自动触发下一次执行（当前累计 ${currentCount} 次，上限 ${MAX_CONSECUTIVE_AUTO_QUEUE}）`,
         };
     } catch (e) {
         logger.error('[PlanTools] queue_continuation 失败', e);
@@ -2724,7 +2724,7 @@ async function executeRunCommand(input: Record<string, unknown>, context?: ToolE
             const header = killed
                 ? `⏰ 命令超时（${timeout / 1000}s）已终止`
                 : exitCode === 0
-                    ? '✅ 命令执行成功'
+                    ? '✓ 命令执行成功'
                     : `❌ 命令退出码: ${exitCode}`;
             const meta = [
                 `**命令**: \`${command}\``,
@@ -2807,7 +2807,7 @@ async function executeCreateChatRole(input: Record<string, unknown>): Promise<To
     const modelNote = modelFamily ? `，模型：${modelFamily}` : '';
     return {
         success: true,
-        content: `✅ 已创建角色「${name}」(ID: \`${roleId}\`${modelNote}${capStr}${mcpStr})。`,
+        content: `✓ 已创建角色「${name}」(ID: \`${roleId}\`${modelNote}${capStr}${mcpStr})。`,
     };
 }
 
@@ -2827,7 +2827,7 @@ async function executeUpdateRoleConfig(input: Record<string, unknown>): Promise<
         if (!ok) { return { success: false, content: '更新失败' }; }
         void vscode.commands.executeCommand('issueManager.llmChat.refresh');
         const reasonStr = reason ? `\n更新原因：${reason}` : '';
-        return { success: true, content: `✅ 已更新角色「${role.name}」的系统提示词${reasonStr}` };
+        return { success: true, content: `✓ 已更新角色「${role.name}」的系统提示词${reasonStr}` };
     } catch (e) {
         logger.error('[ChatTools] 更新角色配置失败', e);
         return { success: false, content: '更新角色配置失败' };
@@ -2842,7 +2842,7 @@ async function executeEvaluateRole(input: Record<string, unknown>, context?: Too
     if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
     if (!notes) { return { success: false, content: '请提供评估说明' }; }
 
-    const outcomeLabel = outcome === 'success' ? '✅ 良好' : outcome === 'partial' ? '⚠️ 部分完成' : '❌ 未完成';
+    const outcomeLabel = outcome === 'success' ? '✓ 良好' : outcome === 'partial' ? '⚠️ 部分完成' : '❌ 未完成';
 
     // 如果当前角色有记忆能力，将评估写入记忆
     if (context?.role?.toolSets.includes('memory') && context.role.id) {
@@ -2866,7 +2866,7 @@ async function executeEvaluateRole(input: Record<string, unknown>, context?: Too
         }
     }
 
-    return { success: true, content: `✅ 已记录角色「${roleNameOrId}」的绩效评估：${outcomeLabel}` };
+    return { success: true, content: `✓ 已记录角色「${roleNameOrId}」的绩效评估：${outcomeLabel}` };
 }
 
 async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Promise<ToolCallResult> {

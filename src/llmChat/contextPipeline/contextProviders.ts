@@ -69,14 +69,32 @@ export const planProvider: ContextProviderFn = async (ctx) => {
 
 /** 执行模式 — priority 90（行为约束，几乎必须） */
 export const modeProvider: ContextProviderFn = async (ctx) => {
-    const content = ctx.autonomous
-        ? '[执行模式: 自主] 当前为自主执行模式，用户不在场。'
-            + '你应该独立思考、主动调用工具完成任务，不要等待用户确认。'
-            + '遇到不明确的地方自行做出合理决策，完成后在回复中说明你的决策和理由。'
-        : '[执行模式: 交互] 当前为交互对话模式，用户在场。'
+    if (!ctx.autonomous) {
+        return makeItem('mode',
+            '[执行模式: 交互] 当前为交互对话模式，用户在场。'
             + '执行破坏性操作（修改角色配置、删除笔记、大规模变更）前应征求用户确认。'
-            + '常规的信息查询、笔记创建、分析建议等可直接执行。';
-    return makeItem('mode', content, 90);
+            + '常规的信息查询、笔记创建、分析建议等可直接执行。',
+            90);
+    }
+
+    const hasPlanning = ctx.role.toolSets.includes('planning');
+    const lines = [
+        '[执行模式: 自主] 当前为自主执行模式，用户不在场。',
+        '你应该独立思考、主动调用工具完成任务，不要等待用户确认。',
+        '遇到不明确的地方自行做出合理决策，完成后在回复中说明你的决策和理由。',
+    ];
+    if (hasPlanning) {
+        lines.push(
+            '',
+            '[自主执行协议]',
+            '1. 收到需要多步骤才能完成的任务时，第一步必须调用 create_plan 将任务分解为可执行步骤。',
+            '2. 每完成一步立即调用 check_step 标记进度。',
+            '3. 系统会根据计划进度自动驱动后续执行，计划全部完成时自动停止。',
+            '4. 每次 run 专注完成 1-2 个步骤，不要试图一次做完所有事。',
+            '5. 最后一步完成后，输出最终总结。',
+        );
+    }
+    return makeItem('mode', lines.join('\n'), 90);
 };
 
 /** 自动提取记忆 — priority 70 */
@@ -460,11 +478,19 @@ export const conversationContextProvider: ContextProviderFn = async (ctx) => {
     });
 };
 
+/** 对话目标 — priority 96（高于 intent，明确的完成条件） */
+export const goalProvider: ContextProviderFn = async (ctx) => {
+    const goal = ctx.convoConfig?.goal;
+    if (!goal) { return null; }
+    return makeItem('goal', `[对话目标] ${goal}\n系统会在每次执行结束后自动检查计划完成状态。计划全部完成即视为目标达成，届时你应输出最终总结。`, 96);
+};
+
 // ━━━ Provider 注册表 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /** 所有 provider 的映射表 */
 export const allProviders: Record<ContextSourceId, ContextProviderFn> = {
     identity: async () => null, // identity 由 promptAssembler 直接处理，不走 provider
+    goal: goalProvider,
     intent: intentProvider,
     plan: planProvider,
     mode: modeProvider,
