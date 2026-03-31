@@ -29,6 +29,7 @@ import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRol
 import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
 import { McpManager, registerMcpCommands } from '../llmChat/mcp';
 import { RoleTimerManager } from '../llmChat/RoleTimerManager';
+import { SkillManager } from '../llmChat/SkillManager';
 import { getIssueDir } from '../config';
 
 /**
@@ -489,9 +490,18 @@ export class ViewRegistry {
         const issueDir = getIssueDir();
         if (issueDir) {
             void mcpManager.initialize(issueDir);
+            void SkillManager.getInstance().initialize(issueDir);
         }
         this.context.subscriptions.push(mcpManager);
         registerMcpCommands(this.context);
+
+        // Skills 刷新命令
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.skills.refresh', async () => {
+                await SkillManager.getInstance().rescan();
+                llmChatRoleProvider.refresh();
+            }),
+        );
 
         // 注册聊天相关命令
         registerLLMChatCommands(this.context, llmChatRoleProvider, llmChatRoleView);

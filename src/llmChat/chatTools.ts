@@ -112,12 +112,33 @@ function normalizeFileName(name: string, issueDir?: string): string {
 /** 基础笔记工具（所有角色均可用） */
 const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
     {
-        name: 'search_issues',
-        description: '搜索 issueMarkdown 笔记。支持多关键词（空格分隔，全部匹配）、按类型过滤、按范围搜索。返回标题、类型标签、修改时间和关键词匹配的上下文片段。',
+        name: 'get_library_stats',
+        description: '获取笔记库的统计概览：各类型笔记数量、总数、最近修改的笔记列表。一次调用即可获取全局概况，无需多次搜索。',
         inputSchema: {
             type: 'object',
             properties: {
-                query: { type: 'string', description: '搜索关键词（多个词用空格分隔，全部匹配）' },
+                recentLimit: { type: 'number', description: '最近修改的笔记返回条数，默认 15' },
+            },
+        },
+    },
+    {
+        name: 'activate_skill',
+        description: '加载指定 Agent Skill 的完整指令。当任务匹配 system prompt 中 [Agent Skills] 列表的某个技能时调用，获取详细操作指南后再执行。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: '要加载的 skill 名称（来自 [Agent Skills] 列表）' },
+            },
+            required: ['name'],
+        },
+    },
+    {
+        name: 'search_issues',
+        description: '搜索 issueMarkdown 笔记。支持多关键词（空格分隔，全部匹配）、按类型过滤、按范围搜索。query 为空时按类型列出笔记（按修改时间倒序）。返回标题、类型标签、修改时间和关键词匹配的上下文片段。',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: '搜索关键词（多个词用空格分隔，全部匹配）。留空则按类型列出笔记' },
                 limit: { type: 'number', description: '最多返回条数，默认 20' },
                 type: {
                     type: 'string',
@@ -130,7 +151,6 @@ const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
                     description: '搜索范围：all（默认，标题+frontmatter+正文）、title（仅标题）、body（仅正文）',
                 },
             },
-            required: ['query'],
         },
     },
     {
@@ -939,6 +959,10 @@ export async function executeChatTool(
 
     try {
         switch (toolName) {
+            case 'get_library_stats':
+                return await executeGetLibraryStats(input);
+            case 'activate_skill':
+                return await executeActivateSkill(input, context);
             case 'search_issues':
                 return await executeSearchIssues(input);
             case 'read_issue':
@@ -1072,14 +1096,140 @@ function extractSnippet(text: string, keyword: string, contextChars = 40): strin
     return snippet;
 }
 
+/** Tier 2: 按需加载 skill 完整指令（agentskills.io 渐进式披露） */
+async function executeActivateSkill(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
+    const name = String(input.name || '').trim();
+    if (!name) { return { success: false, content: '请提供 skill 名称' }; }
+
+    // 权限校验：skills 已配置时展开 vendor 前缀后过滤，未配置则全部可用
+    const whitelist = context?.role?.skills;
+    if (whitelist && whitelist.length > 0) {
+        const { SkillManager: SM } = require('./SkillManager');
+        const resolved = new Set(SM.getInstance().resolveNames(whitelist) as string[]);
+        if (!resolved.has(name)) {
+            return { success: false, content: `当前角色未装备 skill "${name}"。可用: ${[...resolved].join(', ')}` };
+        }
+    }
+
+    const { SkillManager } = require('./SkillManager');
+    const skill = SkillManager.getInstance().getSkill(name);
+    if (!skill) {
+        return { success: false, content: `未找到 skill "${name}"。请检查是否已安装到 ~/.agents/skills/${name}/ 或 <issueDir>/.skills/${name}/` };
+    }
+
+    // 返回完整指令 + 资源提示
+    const dirPath = path.dirname(skill.filePath);
+    const lines = [
+        `<skill_content name="${skill.name}">`,
+        skill.body,
+        '',
+        `Skill 目录: ${dirPath}`,
+        '如果指令中引用了相对路径（如 scripts/xxx），请基于上述目录解析为绝对路径。',
+        '</skill_content>',
+    ];
+
+    return { success: true, content: lines.join('\n') };
+}
+
+/** 空 query + type filter：按类型列出笔记（按修改时间倒序） */
+async function listIssuesByType(typeFilter: string, limit: number): Promise<ToolCallResult> {
+    let candidates: Awaited<ReturnType<typeof getAllIssueMarkdowns>>;
+    if (typeFilter === 'note') {
+        const allIssues = await getAllIssueMarkdowns({});
+        const systemTypeKeys = Object.values(TYPE_FILTER_MAP);
+        candidates = allIssues.filter(issue => {
+            const fm = issue.frontmatter as Record<string, unknown> | null;
+            if (!fm) { return true; }
+            return !systemTypeKeys.some(key => fm[key] === true);
+        });
+    } else if (TYPE_FILTER_MAP[typeFilter]) {
+        candidates = getIssueMarkdownsByType(TYPE_FILTER_MAP[typeFilter] as any);
+    } else {
+        return { success: false, content: `未知类型: ${typeFilter}` };
+    }
+
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    const items = candidates.slice(0, limit);
+
+    if (items.length === 0) {
+        return { success: true, content: `类型 "${typeFilter}" 下没有笔记。` };
+    }
+
+    const lines = items.map((issue, i) => {
+        const fileName = path.basename(issue.uri.fsPath);
+        const age = formatAge(issue.mtime);
+        return `${i + 1}. ${issueLink(issue.title, fileName)} (${age})`;
+    });
+
+    return {
+        success: true,
+        content: `类型 "${typeFilter}" 共 ${candidates.length} 条，显示前 ${items.length} 条：\n${lines.join('\n')}`,
+    };
+}
+
+async function executeGetLibraryStats(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const recentLimit = typeof input.recentLimit === 'number' ? Math.min(input.recentLimit, 50) : 15;
+
+    // 各系统类型计数（直接从类型索引读取，O(1)）
+    const typeCounts: Record<string, number> = {};
+    const systemTypes = Object.entries(TYPE_FILTER_MAP);
+    let systemTotal = 0;
+    for (const [label, typeKey] of systemTypes) {
+        const items = getIssueMarkdownsByType(typeKey as any);
+        typeCounts[label] = items.length;
+        systemTotal += items.length;
+    }
+
+    // 总文件数 & 用户笔记数
+    const allIssues = await getAllIssueMarkdowns({});
+    const totalFiles = allIssues.length;
+    typeCounts['note'] = totalFiles - systemTotal; // 排除所有系统类型 = 用户笔记
+
+    // 最近修改的用户笔记（排除系统文件）
+    const systemTypeKeys = new Set(Object.values(TYPE_FILTER_MAP));
+    const userNotes = allIssues.filter(issue => {
+        const fm = issue.frontmatter as Record<string, unknown> | null;
+        if (!fm) { return true; }
+        return ![...systemTypeKeys].some(key => fm[key] === true);
+    });
+    userNotes.sort((a, b) => b.mtime - a.mtime);
+
+    const recentLines = userNotes.slice(0, recentLimit).map((issue, i) => {
+        const fileName = path.basename(issue.uri.fsPath);
+        const age = formatAge(issue.mtime);
+        return `${i + 1}. ${issueLink(issue.title, fileName)} (${age})`;
+    });
+
+    // 组装输出
+    const statsLines = [
+        `笔记库统计：共 ${totalFiles} 个文件`,
+        '',
+        '**类型分布：**',
+        `- 用户笔记 (note): ${typeCounts['note']}`,
+    ];
+    for (const [label] of systemTypes) {
+        if (typeCounts[label] > 0) {
+            statsLines.push(`- ${label}: ${typeCounts[label]}`);
+        }
+    }
+    statsLines.push('', `**最近修改的笔记（前 ${recentLines.length} 条）：**`);
+    statsLines.push(...recentLines);
+
+    return { success: true, content: statsLines.join('\n') };
+}
+
 async function executeSearchIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
     const queryRaw = String(input.query || '').trim();
     const limit = typeof input.limit === 'number' ? input.limit : 20;
     const scope = String(input.scope || 'all');
     const typeFilter = input.type ? String(input.type) : undefined;
 
+    // 空 query：按类型列出笔记（按修改时间倒序）
     if (!queryRaw) {
-        return { success: false, content: '请提供搜索关键词' };
+        if (!typeFilter) {
+            return { success: false, content: '请提供搜索关键词，或指定 type 按类型列出笔记。也可使用 get_library_stats 获取全局概览。' };
+        }
+        return await listIssuesByType(typeFilter, limit);
     }
 
     // 多关键词：空格分隔，全部匹配
@@ -1301,6 +1451,9 @@ async function executeCreateIssue(input: Record<string, unknown>): Promise<ToolC
     if (!uri) {
         return { success: false, content: '创建笔记失败' };
     }
+
+    // 挂载到 tree.json 根节点顶部，使笔记在问题总览视图可见
+    await createIssueNodes([uri]);
 
     const fileName = path.basename(uri.fsPath);
 

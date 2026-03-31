@@ -485,6 +485,42 @@ export const goalProvider: ContextProviderFn = async (ctx) => {
     return makeItem('goal', `[对话目标] ${goal}\n系统会在每次执行结束后自动检查计划完成状态。计划全部完成即视为目标达成，届时你应输出最终总结。`, 96);
 };
 
+/**
+ * Agent Skills Catalog — priority 88
+ *
+ * 遵循 agentskills.io 渐进式披露规范：
+ *   Tier 1 (Catalog): 仅注入 name + description，~50-100 token/skill
+ *   Tier 2 (Activate): LLM 按需调用 activate_skill 工具加载完整指令
+ */
+export const skillsProvider: ContextProviderFn = async (ctx) => {
+    const { SkillManager } = await import('../SkillManager');
+    const mgr = SkillManager.getInstance();
+
+    // skills 未配置 → 全部可用；配置了 → 展开 vendor 前缀后过滤
+    const whitelist = ctx.role.skills;
+    const allSkills = mgr.getAllSkills();
+    let visible: typeof allSkills;
+    if (whitelist && whitelist.length > 0) {
+        const resolved = new Set(mgr.resolveNames(whitelist));
+        visible = allSkills.filter((s: { name: string }) => resolved.has(s.name));
+    } else {
+        visible = allSkills;
+    }
+
+    if (visible.length === 0) { return null; }
+
+    const catalog = visible.map((s: { name: string; description: string }) => `- **${s.name}**: ${s.description}`);
+
+    const content = [
+        '[Agent Skills]',
+        '以下技能可用。当任务匹配某个技能的描述时，调用 activate_skill 工具加载详细指令后再执行。',
+        '',
+        ...catalog,
+    ].join('\n');
+
+    return makeItem('skills', content, 88);
+};
+
 // ━━━ Provider 注册表 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /** 所有 provider 的映射表 */
@@ -494,6 +530,7 @@ export const allProviders: Record<ContextSourceId, ContextProviderFn> = {
     intent: intentProvider,
     plan: planProvider,
     mode: modeProvider,
+    skills: skillsProvider,
     memory: memoryProvider,
     active_editor: activeEditorProvider,
     selection: selectionProvider,

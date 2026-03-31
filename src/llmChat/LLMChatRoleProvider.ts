@@ -338,7 +338,62 @@ export class McpToolNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode;
+/** Skills 根节点 */
+export class SkillRootNode extends vscode.TreeItem {
+    constructor(skillCount: number, vendorCount: number) {
+        super('Skills', skillCount > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'skillRoot';
+        this.iconPath = new vscode.ThemeIcon('mortar-board');
+        this.description = skillCount > 0 ? `${skillCount} 个技能 · ${vendorCount} 组` : '无';
+    }
+}
+
+/** Skill 供应商分组节点 */
+export class SkillVendorNode extends vscode.TreeItem {
+    constructor(
+        public readonly vendor: string,
+        public readonly skills: Array<{ name: string; description: string; filePath: string; source: string }>,
+    ) {
+        super(vendor, vscode.TreeItemCollapsibleState.Collapsed);
+        this.id = `skill-vendor:${vendor}`;
+        this.contextValue = 'skillVendor';
+        this.iconPath = new vscode.ThemeIcon('package');
+        this.description = `${skills.length} 个技能`;
+    }
+}
+
+/** 单个 Skill 节点 */
+export class SkillItemNode extends vscode.TreeItem {
+    constructor(public readonly skill: { name: string; description: string; filePath: string; source: string }) {
+        super(skill.name, vscode.TreeItemCollapsibleState.None);
+        this.id = `skill:${skill.name}`;
+        this.contextValue = 'skillItem';
+        this.iconPath = new vscode.ThemeIcon('book');
+        this.description = skill.description.length > 50
+            ? skill.description.slice(0, 47) + '…'
+            : skill.description;
+        this.tooltip = new vscode.MarkdownString(
+            `**${skill.name}**\n\n${skill.description}\n\n`
+            + `来源: ${skill.source === 'project' ? '项目级' : '个人级'}\n`
+            + `文件: \`${skill.filePath}\``,
+        );
+        this.command = {
+            command: 'vscode.open',
+            title: '打开 SKILL.md',
+            arguments: [vscode.Uri.file(skill.filePath)],
+        };
+    }
+}
+
+/** 从 skill name 提取 vendor 前缀（第一个 - 之前的部分） */
+function extractVendor(name: string): string {
+    const idx = name.indexOf('-');
+    return idx > 0 ? name.slice(0, idx) : name;
+}
+
+export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -421,6 +476,17 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const connectedCount = statuses.filter(s => s.connected).length;
             nodes.push(new McpRootNode(statuses.length, connectedCount));
 
+            // Skills 根节点（MCP 下方）
+            const { SkillManager } = await import('./SkillManager');
+            const allSkills = SkillManager.getInstance().getAllSkills();
+            const vendorMap = new Map<string, typeof allSkills>();
+            for (const s of allSkills) {
+                const v = extractVendor(s.name);
+                if (!vendorMap.has(v)) { vendorMap.set(v, []); }
+                vendorMap.get(v)!.push(s);
+            }
+            nodes.push(new SkillRootNode(allSkills.length, vendorMap.size));
+
             // 最近对话
             nodes.push(new RecentConversationRootNode());
             nodes.push(...groups.map(g => new ChatGroupNode(g)));
@@ -439,6 +505,30 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const mcpManager = McpManager.getInstance();
             const tools = mcpManager.getServersWithTools().get(element.status.name) || [];
             return tools.map(t => new McpToolNode(t, element.status.name));
+        }
+        // ─── Skills 子节点（按 vendor 分组） ────────────────────
+        if (element instanceof SkillRootNode) {
+            const { SkillManager } = await import('./SkillManager');
+            const allSkills = SkillManager.getInstance().getAllSkills();
+            const vendorMap = new Map<string, typeof allSkills>();
+            for (const s of allSkills) {
+                const v = extractVendor(s.name);
+                if (!vendorMap.has(v)) { vendorMap.set(v, []); }
+                vendorMap.get(v)!.push(s);
+            }
+            // 只有 1 个 skill 的 vendor 不分组，直接展示
+            const nodes: LLMChatViewNode[] = [];
+            for (const [vendor, skills] of vendorMap) {
+                if (skills.length === 1) {
+                    nodes.push(new SkillItemNode(skills[0]));
+                } else {
+                    nodes.push(new SkillVendorNode(vendor, skills));
+                }
+            }
+            return nodes;
+        }
+        if (element instanceof SkillVendorNode) {
+            return element.skills.map(s => new SkillItemNode(s));
         }
         if (element instanceof RecentConversationRootNode) {
             const conversations = await getRecentConversationEntries(20);
@@ -539,6 +629,12 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const statuses = McpManager.getInstance().getServerStatuses();
             const connectedCount = statuses.filter(s => s.connected).length;
             return new McpRootNode(statuses.length, connectedCount);
+        }
+        if (element instanceof SkillItemNode) {
+            return undefined; // 简化：不追溯到 vendor/root
+        }
+        if (element instanceof SkillVendorNode) {
+            return undefined;
         }
         return undefined;
     }

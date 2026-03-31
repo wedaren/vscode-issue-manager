@@ -24,11 +24,12 @@ export type ContextSourceId =
     | 'linked_files'          // 关联文件
     | 'terms'                 // 术语表
     | 'children'              // 子问题摘要
-    | 'conversation_context'; // 对话上下文（相关 + 近期，合并去重）
+    | 'conversation_context' // 对话上下文（相关 + 近期，合并去重）
+    | 'skills';             // Agent Skills（agentskills.io 规范）
 
 /** 所有可获取的 source（identity 由 assembler 处理，不在此列） */
 export const ALL_SOURCES: ContextSourceId[] = [
-    'goal', 'intent', 'plan', 'mode', 'memory', 'active_editor', 'selection',
+    'goal', 'intent', 'plan', 'mode', 'skills', 'memory', 'active_editor', 'selection',
     'git_diff', 'datetime', 'linked_files', 'terms', 'children', 'conversation_context',
 ];
 

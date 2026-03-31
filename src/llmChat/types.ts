@@ -45,6 +45,8 @@ export interface ChatRoleFrontmatter {
     extra_tools?: string[];
     /** 排除的具体工具名称列表 */
     excluded_tools?: string[];
+    /** Agent Skills 名称列表（遵循 agentskills.io 规范），知识注入到 system prompt */
+    skills?: string[];
     /**
      * 委派可用状态：
      * - 'ready'（默认）— 可正常接受委派
@@ -205,6 +207,8 @@ export interface ChatRoleInfo {
     extraTools?: string[];
     /** 排除的具体工具名称列表 */
     excludedTools?: string[];
+    /** Agent Skills 名称列表 */
+    skills?: string[];
     /** 委派可用状态，undefined 等同于 'ready' */
     roleStatus?: 'ready' | 'testing' | 'disabled';
     /** 角色级自主模式默认值，undefined 等同于 false（交互模式） */

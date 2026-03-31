@@ -865,6 +865,12 @@
         "title": "MCP: 打开配置文件",
         "category": "Issue Manager",
         "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.skills.refresh",
+        "title": "Skills: 刷新技能列表",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
       }
     ],
     "submenus": [
@@ -1244,6 +1250,11 @@
         {
           "command": "issueManager.mcp.restartServer",
           "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^mcpServer/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.skills.refresh",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillRoot'",
           "group": "inline@1"
         },
         {

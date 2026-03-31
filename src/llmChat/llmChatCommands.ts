@@ -871,9 +871,13 @@ export function registerLLMChatCommands(
             const maxE = Number(fm['timer_max_execution']) || 600000;
             const timeoutLabel = `空闲 ${idleT / 1000}s / 工具 ${toolT / 1000}s / 总上限 ${maxE / 1000}s`;
 
+            const currentSkills: string[] = Array.isArray(fm['skills']) ? (fm['skills'] as string[]) : [];
+            const skillsLabel = currentSkills.length > 0 ? currentSkills.join(', ') : '未配置';
+
             const category = await vscode.window.showQuickPick([
                 { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
                 { label: '$(tools) 工具集',           description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
+                { label: '$(mortar-board) Skills',   description: `当前: ${skillsLabel}`, id: 'skills' },
                 { label: '$(clock) 超时配置',          description: timeoutLabel, id: 'timeout' },
                 { label: '$(shield) 委派状态',         description: `当前: ${currentStatus}`, id: 'status' },
                 { label: '$(robot) 自主模式',          description: `当前: ${autonomousLabel}`, id: 'autonomous' },
@@ -885,6 +889,73 @@ export function registerLLMChatCommands(
                 await vscode.commands.executeCommand('issueManager.llmChat.configureModel', targetUri);
             } else if (category.id === 'tools') {
                 await vscode.commands.executeCommand('issueManager.llmChat.configureTools', targetUri);
+            } else if (category.id === 'skills') {
+                // ── Skills 配置（支持 vendor 级选择） ────────────────
+                const skillMod = await import('./SkillManager');
+                const mgr = skillMod.SkillManager.getInstance();
+                const allSkills = mgr.getAllSkills();
+                if (allSkills.length === 0) {
+                    vscode.window.showInformationMessage(
+                        '未发现可用的 Skills。请将 SKILL.md 放入 <issueDir>/.skills/<name>/ 或 ~/.agents/skills/<name>/，然后刷新。',
+                    );
+                    return;
+                }
+
+                // 展开当前配置中的 vendor 前缀，用于判断 picked 状态
+                const resolvedCurrent = new Set(mgr.resolveNames(currentSkills) as string[]);
+
+                // 按 vendor 分组
+                const vendorGroups = mgr.getVendorGroups() as Map<string, string[]>;
+
+                // 构建 QuickPick 列表：vendor（2+ skills）显示为分组选项，单个 skill 直接展示
+                type SkillPickItem = vscode.QuickPickItem & { skillNames: string[]; isVendor?: boolean };
+                const pickItems: SkillPickItem[] = [];
+                for (const [vendor, names] of vendorGroups) {
+                    if (names.length >= 2) {
+                        const allPicked = names.every(n => resolvedCurrent.has(n));
+                        pickItems.push({
+                            label: `$(package) ${vendor}`,
+                            description: `${names.length} 个技能（全选/取消）`,
+                            picked: allPicked,
+                            skillNames: names,
+                            isVendor: true,
+                        });
+                    } else {
+                        const s = mgr.getSkill(names[0])!;
+                        pickItems.push({
+                            label: s.name,
+                            description: s.description.length > 60 ? s.description.slice(0, 57) + '…' : s.description,
+                            picked: resolvedCurrent.has(s.name),
+                            skillNames: [s.name],
+                        });
+                    }
+                }
+
+                const selected = await vscode.window.showQuickPick<SkillPickItem>(pickItems, {
+                    canPickMany: true,
+                    title: '配置 Skills',
+                    placeHolder: '勾选要装备的技能（支持按 vendor 批量选择）',
+                });
+                if (selected === undefined) { return; }
+
+                // 收集选中结果：vendor 选项保存为 vendor 名（简写），单个 skill 保存为全名
+                const newSkills: string[] = [];
+                for (const item of selected) {
+                    if (item.isVendor) {
+                        // vendor 级：取 vendor 前缀名（如 "wecomcli"），frontmatter 更清爽
+                        const vendor = item.label.replace(/^\$\(package\)\s*/, '');
+                        newSkills.push(vendor);
+                    } else {
+                        newSkills.push(item.skillNames[0]);
+                    }
+                }
+
+                await updateIssueMarkdownFrontmatter(targetUri, { skills: newSkills } as any);
+                vscode.window.showInformationMessage(
+                    newSkills.length > 0
+                        ? `已配置 Skills: ${newSkills.join(', ')}`
+                        : '已清空 Skills 配置',
+                );
             } else if (category.id === 'timeout') {
                 // ── 超时配置（三层） ────────────────────────────────
                 const presets = [

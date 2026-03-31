@@ -25,3 +25,4 @@ export {
 } from './llmChatDataManager';
 export type { ChatRoleInfo, ChatConversationInfo, ChatMessage, ChatGroupInfo, ChatGroupMessage, ChromeChatInfo, ChatExecutionLogInfo, ExecutionRunRecord, ExecutionToolCall, RecentActivityEntry, RecentConversationEntry } from './types';
 export { McpManager } from './mcp';
+export { SkillManager, type SkillMeta } from './SkillManager';
