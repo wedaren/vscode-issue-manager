@@ -51,7 +51,7 @@ export async function runContextPipeline(
     if (strategy === 'generous') {
         sourcesToFetch = ALL_SOURCES;
     } else if (strategy === 'minimal') {
-        sourcesToFetch = MINIMAL_SOURCES;
+        sourcesToFetch = [...MINIMAL_SOURCES];
     } else {
         // focused：始终注入 mode + intent，加上角色声明的 sources
         const declared = role.contextSources ?? [];
@@ -59,6 +59,11 @@ export async function runContextPipeline(
             (s): s is ContextSourceId => s in allProviders,
         );
         sourcesToFetch = [...new Set([...ALWAYS_ON, ...validDeclared])];
+    }
+
+    // skills 跟随角色配置：有 skills 就注入 catalog，无论策略
+    if (role.skills && role.skills.length > 0 && !sourcesToFetch.includes('skills')) {
+        sourcesToFetch.push('skills');
     }
 
     // 并行获取所有 source

@@ -38,6 +38,8 @@ export interface SkillMeta {
     license?: string;
     /** 可选：compatibility */
     compatibility?: string;
+    /** 可选：依赖的工具名称列表（逗号分隔解析自 allowed-tools） */
+    allowedTools?: string[];
 }
 
 /** SKILL.md frontmatter 解析结果 */
@@ -50,11 +52,17 @@ interface SkillFrontmatter {
     'allowed-tools'?: string;
 }
 
-export class SkillManager {
+export class SkillManager implements vscode.Disposable {
     private static _instance: SkillManager | undefined;
     private readonly _skills = new Map<string, SkillMeta>();
     private _issueDir: string | undefined;
     private _initialized = false;
+    private readonly _disposables: vscode.Disposable[] = [];
+    private _watcherDebounce: ReturnType<typeof setTimeout> | undefined;
+
+    private readonly _onDidChange = new vscode.EventEmitter<void>();
+    /** skill 列表变更事件（供树视图刷新使用） */
+    readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
 
     private constructor() {}
 
@@ -65,18 +73,33 @@ export class SkillManager {
         return SkillManager._instance;
     }
 
-    /** 初始化：扫描 skill 目录 */
+    /** 从 skill name 提取 vendor 前缀（第一个 - 之前的部分） */
+    static extractVendor(name: string): string {
+        const idx = name.indexOf('-');
+        return idx > 0 ? name.slice(0, idx) : name;
+    }
+
+    /** 初始化：扫描 skill 目录并启动文件监听 */
     async initialize(issueDir: string): Promise<void> {
         if (this._initialized) { return; }
         this._initialized = true;
         this._issueDir = issueDir;
         await this.scan();
+        this.startFileWatchers();
     }
 
     /** 重新扫描 skill 目录 */
     async rescan(): Promise<void> {
         this._skills.clear();
         await this.scan();
+        this._onDidChange.fire();
+    }
+
+    dispose(): void {
+        if (this._watcherDebounce) { clearTimeout(this._watcherDebounce); }
+        for (const d of this._disposables) { d.dispose(); }
+        this._onDidChange.dispose();
+        SkillManager._instance = undefined;
     }
 
     /** 获取所有已加载的 skill 元数据 */
@@ -129,14 +152,13 @@ export class SkillManager {
         return result;
     }
 
-    /** 获取 vendor 分组：{ vendor → skill names[] } */
-    getVendorGroups(): Map<string, string[]> {
-        const groups = new Map<string, string[]>();
-        for (const name of this._skills.keys()) {
-            const idx = name.indexOf('-');
-            const vendor = idx > 0 ? name.slice(0, idx) : name;
+    /** 获取 vendor 分组：{ vendor → SkillMeta[] } */
+    getVendorGroups(): Map<string, SkillMeta[]> {
+        const groups = new Map<string, SkillMeta[]>();
+        for (const skill of this._skills.values()) {
+            const vendor = SkillManager.extractVendor(skill.name);
             if (!groups.has(vendor)) { groups.set(vendor, []); }
-            groups.get(vendor)!.push(name);
+            groups.get(vendor)!.push(skill);
         }
         return groups;
     }
@@ -230,6 +252,11 @@ export class SkillManager {
             return null;
         }
 
+        // 解析 allowed-tools（逗号分隔的工具名列表）
+        const allowedTools = fm['allowed-tools']
+            ? fm['allowed-tools'].split(',').map(t => t.trim()).filter(Boolean)
+            : undefined;
+
         return {
             name,
             description: description.slice(0, 1024),
@@ -238,6 +265,7 @@ export class SkillManager {
             source,
             license: fm.license,
             compatibility: fm.compatibility,
+            allowedTools,
         };
     }
 
@@ -251,5 +279,34 @@ export class SkillManager {
             }
         }
         return result as unknown as SkillFrontmatter;
+    }
+
+    // ─── 文件监听 ────────────────────────────────────────────
+
+    /** 监听 skill 目录中的文件变化，自动重新扫描 */
+    private startFileWatchers(): void {
+        for (const { dir } of this.getSkillDirs()) {
+            try {
+                const pattern = new vscode.RelativePattern(vscode.Uri.file(dir), '**/SKILL.md');
+                const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+                const handler = () => this.scheduleRescan();
+                this._disposables.push(
+                    watcher,
+                    watcher.onDidCreate(handler),
+                    watcher.onDidChange(handler),
+                    watcher.onDidDelete(handler),
+                );
+            } catch {
+                // 目录不存在时 watcher 创建可能失败，静默跳过
+            }
+        }
+    }
+
+    private scheduleRescan(): void {
+        if (this._watcherDebounce) { clearTimeout(this._watcherDebounce); }
+        this._watcherDebounce = setTimeout(() => {
+            this._skills.clear();
+            void this.scan().then(() => this._onDidChange.fire());
+        }, 1_000);
     }
 }

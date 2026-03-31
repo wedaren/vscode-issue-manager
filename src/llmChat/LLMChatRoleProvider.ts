@@ -387,11 +387,6 @@ export class SkillItemNode extends vscode.TreeItem {
     }
 }
 
-/** 从 skill name 提取 vendor 前缀（第一个 - 之前的部分） */
-function extractVendor(name: string): string {
-    const idx = name.indexOf('-');
-    return idx > 0 ? name.slice(0, idx) : name;
-}
 
 export type LLMChatViewNode = ChatRoleNode | ChatGroupNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode;
 
@@ -478,13 +473,9 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
 
             // Skills 根节点（MCP 下方）
             const { SkillManager } = await import('./SkillManager');
-            const allSkills = SkillManager.getInstance().getAllSkills();
-            const vendorMap = new Map<string, typeof allSkills>();
-            for (const s of allSkills) {
-                const v = extractVendor(s.name);
-                if (!vendorMap.has(v)) { vendorMap.set(v, []); }
-                vendorMap.get(v)!.push(s);
-            }
+            const skillMgr = SkillManager.getInstance();
+            const allSkills = skillMgr.getAllSkills();
+            const vendorMap = skillMgr.getVendorGroups();
             nodes.push(new SkillRootNode(allSkills.length, vendorMap.size));
 
             // 最近对话
@@ -509,14 +500,7 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         // ─── Skills 子节点（按 vendor 分组） ────────────────────
         if (element instanceof SkillRootNode) {
             const { SkillManager } = await import('./SkillManager');
-            const allSkills = SkillManager.getInstance().getAllSkills();
-            const vendorMap = new Map<string, typeof allSkills>();
-            for (const s of allSkills) {
-                const v = extractVendor(s.name);
-                if (!vendorMap.has(v)) { vendorMap.set(v, []); }
-                vendorMap.get(v)!.push(s);
-            }
-            // 只有 1 个 skill 的 vendor 不分组，直接展示
+            const vendorMap = SkillManager.getInstance().getVendorGroups();
             const nodes: LLMChatViewNode[] = [];
             for (const [vendor, skills] of vendorMap) {
                 if (skills.length === 1) {

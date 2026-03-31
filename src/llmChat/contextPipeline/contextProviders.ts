@@ -9,6 +9,7 @@ import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import type { ContextItem, ContextSourceId, ProviderContext } from './types';
 import { readPlanForInjection, readAutoMemoryForInjection, getAllChatRoles, getConversationsForRole } from '../llmChatDataManager';
+import { SkillManager } from '../SkillManager';
 import {
     extractFrontmatterAndBody,
     getIssueMarkdown,
@@ -493,7 +494,6 @@ export const goalProvider: ContextProviderFn = async (ctx) => {
  *   Tier 2 (Activate): LLM 按需调用 activate_skill 工具加载完整指令
  */
 export const skillsProvider: ContextProviderFn = async (ctx) => {
-    const { SkillManager } = await import('../SkillManager');
     const mgr = SkillManager.getInstance();
 
     // skills 未配置 → 全部可用；配置了 → 展开 vendor 前缀后过滤
@@ -502,14 +502,14 @@ export const skillsProvider: ContextProviderFn = async (ctx) => {
     let visible: typeof allSkills;
     if (whitelist && whitelist.length > 0) {
         const resolved = new Set(mgr.resolveNames(whitelist));
-        visible = allSkills.filter((s: { name: string }) => resolved.has(s.name));
+        visible = allSkills.filter(s => resolved.has(s.name));
     } else {
         visible = allSkills;
     }
 
     if (visible.length === 0) { return null; }
 
-    const catalog = visible.map((s: { name: string; description: string }) => `- **${s.name}**: ${s.description}`);
+    const catalog = visible.map(s => `- **${s.name}**: ${s.description}`);
 
     const content = [
         '[Agent Skills]',

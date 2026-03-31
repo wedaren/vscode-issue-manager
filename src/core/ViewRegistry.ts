@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { IssueOverviewProvider } from '../views/IssueOverviewProvider';
 import { FocusedIssuesProvider } from '../views/FocusedIssuesProvider';
 import { RecentIssuesProvider } from '../views/RecentIssuesProvider';
@@ -495,11 +496,23 @@ export class ViewRegistry {
         this.context.subscriptions.push(mcpManager);
         registerMcpCommands(this.context);
 
-        // Skills 刷新命令
+        // Skills 命令
         this.context.subscriptions.push(
             vscode.commands.registerCommand('issueManager.skills.refresh', async () => {
                 await SkillManager.getInstance().rescan();
                 llmChatRoleProvider.refresh();
+            }),
+            vscode.commands.registerCommand('issueManager.skills.openSkillDir', (node: { skill?: { filePath: string } }) => {
+                if (node?.skill?.filePath) {
+                    const dirUri = vscode.Uri.file(path.dirname(node.skill.filePath));
+                    void vscode.commands.executeCommand('revealInExplorer', dirUri);
+                }
+            }),
+            vscode.commands.registerCommand('issueManager.skills.revealInExplorer', (node: { skill?: { filePath: string } }) => {
+                if (node?.skill?.filePath) {
+                    const dirPath = path.dirname(node.skill.filePath);
+                    void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dirPath));
+                }
             }),
         );
 

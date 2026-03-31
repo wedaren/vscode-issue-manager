@@ -871,6 +871,18 @@
         "title": "Skills: 刷新技能列表",
         "category": "Issue Manager",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.skills.openSkillDir",
+        "title": "在 VS Code 中打开 Skill 目录",
+        "category": "Issue Manager",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "issueManager.skills.revealInExplorer",
+        "title": "在系统文件管理器中显示",
+        "category": "Issue Manager",
+        "icon": "$(link-external)"
       }
     ],
     "submenus": [
@@ -1256,6 +1268,16 @@
           "command": "issueManager.skills.refresh",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillRoot'",
           "group": "inline@1"
+        },
+        {
+          "command": "issueManager.skills.openSkillDir",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillItem'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.skills.revealInExplorer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillItem'",
+          "group": "inline@2"
         },
         {
           "command": "issueManager.mcp.removeServer",

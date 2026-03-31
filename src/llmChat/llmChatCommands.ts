@@ -905,23 +905,24 @@ export function registerLLMChatCommands(
                 const resolvedCurrent = new Set(mgr.resolveNames(currentSkills) as string[]);
 
                 // 按 vendor 分组
-                const vendorGroups = mgr.getVendorGroups() as Map<string, string[]>;
+                const vendorGroups = mgr.getVendorGroups() as Map<string, Array<{ name: string; description: string }>>;
 
                 // 构建 QuickPick 列表：vendor（2+ skills）显示为分组选项，单个 skill 直接展示
                 type SkillPickItem = vscode.QuickPickItem & { skillNames: string[]; isVendor?: boolean };
                 const pickItems: SkillPickItem[] = [];
-                for (const [vendor, names] of vendorGroups) {
-                    if (names.length >= 2) {
+                for (const [vendor, skills] of vendorGroups) {
+                    const names = skills.map(s => s.name);
+                    if (skills.length >= 2) {
                         const allPicked = names.every(n => resolvedCurrent.has(n));
                         pickItems.push({
                             label: `$(package) ${vendor}`,
-                            description: `${names.length} 个技能（全选/取消）`,
+                            description: `${skills.length} 个技能（全选/取消）`,
                             picked: allPicked,
                             skillNames: names,
                             isVendor: true,
                         });
                     } else {
-                        const s = mgr.getSkill(names[0])!;
+                        const s = skills[0];
                         pickItems.push({
                             label: s.name,
                             description: s.description.length > 60 ? s.description.slice(0, 57) + '…' : s.description,
