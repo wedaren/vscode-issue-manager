@@ -13,17 +13,9 @@ import {
     getChatGroupById,
     parseGroupConversationMessages,
     appendGroupMessageToConversation,
-    getConversationConfig,
-    updateConversationTokenUsed,
-    estimateTokens,
-    getOrCreateExecutionLog,
-    startLogRun,
-    appendLogLine,
     getRoleSystemPrompt,
 } from './llmChatDataManager';
-import { buildConversationMessages } from './messageBuilder';
 import type { ChatRoleInfo, ChatGroupInfo } from './types';
-import { CHAT_TOOLS, executeChatTool } from './chatTools';
 import { Logger } from '../core/utils/Logger';
 import { executeConversation as execConversation } from './ConversationExecutor';
 
@@ -125,6 +117,7 @@ export class LLMChatService {
 
     /**
      * 向当前活跃对话发送用户消息，并获取 LLM 回复。
+     * 通过 ConversationExecutor 统一执行引擎处理（含工具调用、token 门禁、日志）。
      */
     async sendMessage(
         userMessage: string,
@@ -139,57 +132,22 @@ export class LLMChatService {
         await appendMessageToConversation(uri, 'user', userMessage);
         this._onDidSendMessage.fire({ uri, role: 'user', content: userMessage });
 
-        const messages = await buildConversationMessages(uri, this._activeRole!);
-        const startedAt = Date.now();
-
-        // 对话级配置覆盖角色级
-        const convoConfig = await getConversationConfig(uri);
-        const effectiveModelFamily = convoConfig?.modelFamily || this._activeRole?.modelFamily;
-
-        // ── 日志先行 ──
-        const logUri = await this.getLogUri(uri);
-        if (logUri) {
-            try {
-                await startLogRun(logUri, {
-                    trigger: 'direct',
-                    roleName: this._activeRole?.name,
-                    modelFamily: effectiveModelFamily,
-                    maxTokens: convoConfig?.maxTokens ?? this._activeRole?.maxTokens,
-                });
-            } catch { /* 日志写入失败不阻塞主流程 */ }
-        }
-
         try {
-            if (logUri) { void appendLogLine(logUri, '🚀 发起 LLM 请求...'); }
-
-            const result = await LLMService.chat(messages, {
+            const result = await execConversation(uri, this._activeRole!, {
+                trigger: 'direct',
                 signal: options?.signal,
-                modelFamily: effectiveModelFamily,
             });
 
-            if (!result?.text) {
-                if (logUri) { void appendLogLine(logUri, `❌ **失败** | LLM 返回空响应 | 耗时 ${fmtDuration(Date.now() - startedAt)}`); }
-                return null;
-            }
+            const fullReply = result.toolPrologue
+                ? result.toolPrologue + '\n\n' + result.text
+                : result.text;
+            await appendMessageToConversation(uri, 'assistant', fullReply);
+            this._onDidSendMessage.fire({ uri, role: 'assistant', content: result.text });
 
-            const assistantReply = result.text.trim();
-            await appendMessageToConversation(uri, 'assistant', assistantReply);
-            this._onDidSendMessage.fire({ uri, role: 'assistant', content: assistantReply });
-
-            const inputTokens = await estimateTokens(messages);
-            const outputMsg = vscode.LanguageModelChatMessage.Assistant(assistantReply);
-            const outputTokens = await estimateTokens([outputMsg]);
-            void updateConversationTokenUsed(uri, inputTokens + outputTokens, convoConfig?.maxTokens ?? this._activeRole?.maxTokens);
-
-            if (logUri) { void appendLogLine(logUri, `✓ **成功** | 耗时 ${fmtDuration(Date.now() - startedAt)} | input ${inputTokens} + output ${outputTokens} = ${inputTokens + outputTokens} tokens`); }
-            return assistantReply;
+            return result.text;
         } catch (e) {
+            if (options?.signal?.aborted) { return null; }
             const errMsg = e instanceof Error ? e.message : String(e);
-            if (options?.signal?.aborted) {
-                if (logUri) { void appendLogLine(logUri, `⏹️ **用户中止** | 耗时 ${fmtDuration(Date.now() - startedAt)}`); }
-                return null;
-            }
-            if (logUri) { void appendLogLine(logUri, `❌ **失败** | 耗时 ${fmtDuration(Date.now() - startedAt)} | ${errMsg}`); }
             logger.error('[LLMChat] 发送消息失败', e);
             vscode.window.showErrorMessage(`LLM 回复失败: ${errMsg}`);
             return null;
@@ -440,7 +398,7 @@ ${userMessage}
         }
     }
 
-    /** 并行执行：所有成员同时回复，互不看到本轮其他人的发言（支持工具调用） */
+    /** 并行执行：所有成员同时回复，互不看到本轮其他人的发言 */
     private async executeParallel(
         uri: vscode.Uri,
         members: ChatRoleInfo[],
@@ -458,7 +416,7 @@ ${userMessage}
             })),
         );
 
-        // 并行调用 LLM，但回复的写入仍然串行（保证文件写入顺序一致）
+        // 并行调用 LLM（通过 ConversationExecutor），但回复的写入仍然串行
         const results = await Promise.all(
             messagesByMember.map(async ({ member, messages }) => {
                 if (options?.signal?.aborted) { return { member, reply: '' }; }
@@ -467,27 +425,15 @@ ${userMessage}
 
                 try {
                     let accumulated = '';
-                    const result = await LLMService.streamWithTools(
-                        messages,
-                        CHAT_TOOLS,
-                        (chunk) => {
-                            accumulated += chunk;
-                            callbacks.onChunk(accumulated, member);
-                        },
-                        async (toolName, input) => {
-                            const res = await executeChatTool(toolName, input, { autonomous: false });
-                            return res.content;
-                        },
-                        {
-                            signal: options?.signal,
-                            modelFamily: member.modelFamily,
-                            onToolStatus: (status) => {
-                                callbacks.onToolStatus?.(status, member);
-                            },
-                        },
-                    );
+                    const result = await execConversation(uri, member, {
+                        trigger: 'direct',
+                        prebuiltMessages: messages,
+                        signal: options?.signal,
+                        onChunk: (chunk) => { accumulated += chunk; callbacks.onChunk(accumulated, member); },
+                        onToolStatus: (status) => { callbacks.onToolStatus?.(status, member); },
+                    });
 
-                    const reply = result?.text?.trim() || '';
+                    const reply = result.text;
                     callbacks.onMemberEnd(member, reply);
                     return { member, reply };
                 } catch (e) {
@@ -509,7 +455,7 @@ ${userMessage}
         }
     }
 
-    /** 单个成员回复（用于顺序模式，支持工具调用） */
+    /** 单个成员回复（用于顺序模式） */
     private async executeMemberReply(
         uri: vscode.Uri,
         member: ChatRoleInfo,
@@ -525,27 +471,15 @@ ${userMessage}
             const messages = await this.buildGroupLLMMessages(uri, member, guidance);
 
             let accumulated = '';
-            const result = await LLMService.streamWithTools(
-                messages,
-                CHAT_TOOLS,
-                (chunk) => {
-                    accumulated += chunk;
-                    callbacks.onChunk(accumulated, member);
-                },
-                async (toolName, input) => {
-                    const res = await executeChatTool(toolName, input, { autonomous: false });
-                    return res.content;
-                },
-                {
-                    signal: options?.signal,
-                    modelFamily: member.modelFamily,
-                    onToolStatus: (status) => {
-                        callbacks.onToolStatus?.(status, member);
-                    },
-                },
-            );
+            const result = await execConversation(uri, member, {
+                trigger: 'direct',
+                prebuiltMessages: messages,
+                signal: options?.signal,
+                onChunk: (chunk) => { accumulated += chunk; callbacks.onChunk(accumulated, member); },
+                onToolStatus: (status) => { callbacks.onToolStatus?.(status, member); },
+            });
 
-            const reply = result?.text?.trim() || '';
+            const reply = result.text;
             if (reply) {
                 await appendGroupMessageToConversation(uri, 'assistant', reply, member.name);
                 this._onDidSendMessage.fire({ uri, role: 'assistant', content: reply, roleName: member.name });
@@ -615,22 +549,8 @@ ${userMessage}
         return msgs;
     }
 
-    /** 获取日志文件 URI（按需创建） */
-    private async getLogUri(uri: vscode.Uri): Promise<vscode.Uri | null> {
-        try { return await getOrCreateExecutionLog(uri); } catch { return null; }
-    }
-
     dispose(): void {
         this._onDidSendMessage.dispose();
     }
 }
 
-/** 截断字符串，超出 maxLen 时添加省略号 */
-function truncate(text: string, maxLen: number): string {
-    if (text.length <= maxLen) { return text; }
-    return text.slice(0, maxLen - 1) + '…';
-}
-
-function fmtDuration(ms: number): string {
-    return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
-}

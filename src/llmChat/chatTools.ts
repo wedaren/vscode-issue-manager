@@ -68,13 +68,9 @@ import { McpManager } from './mcp';
 
 /** 委派递归深度限制 */
 const MAX_DELEGATION_DEPTH = 5;
-/** 当前委派深度（递归计数器，进程级） */
-let _delegationDepth = 0;
 
 /** 单次顶层任务链中，委派（含追问）的总调用次数上限 */
 const MAX_DELEGATION_TOTAL_CALLS = 20;
-/** 当前任务链的总调用计数器（_delegationDepth 归零时重置） */
-let _delegationTotalCalls = 0;
 
 /** 委派任务前置指令：强制子角色自主执行，不等待确认 */
 const DELEGATION_AUTONOMY_PREAMBLE =
@@ -762,6 +758,16 @@ export interface ToolExecContext {
      * undefined 等同于 false。
      */
     autonomous?: boolean;
+    /**
+     * 当前委派递归深度（per-execution，非进程级）。
+     * 每层同步委派 +1，回到上层 -1。不传则视为 0（顶层）。
+     */
+    delegationDepth?: number;
+    /**
+     * 当前任务链的委派总调用次数（per-execution，非进程级）。
+     * 同步/异步委派及追问均计数。不传则视为 0。
+     */
+    delegationTotalCalls?: number;
 }
 
 // ─── 工具安全等级 ─────────────────────────────────────────────
@@ -2299,13 +2305,16 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
     if (!roleNameOrId) { return { success: false, content: '请提供角色名称或 ID' }; }
     if (!task) { return { success: false, content: '请提供委派任务描述' }; }
 
+    const currentDepth = context.delegationDepth ?? 0;
+    const currentTotalCalls = context.delegationTotalCalls ?? 0;
+
     // 总调用次数保护
-    if (_delegationTotalCalls >= MAX_DELEGATION_TOTAL_CALLS) {
+    if (currentTotalCalls >= MAX_DELEGATION_TOTAL_CALLS) {
         return { success: false, content: `委派总调用次数超限（最大 ${MAX_DELEGATION_TOTAL_CALLS} 次），请简化任务链` };
     }
 
     // 递归深度保护（异步委派不占深度）
-    if (!isAsync && _delegationDepth >= MAX_DELEGATION_DEPTH) {
+    if (!isAsync && currentDepth >= MAX_DELEGATION_DEPTH) {
         return { success: false, content: `委派深度超限（最大 ${MAX_DELEGATION_DEPTH} 层），请简化任务链` };
     }
 
@@ -2348,8 +2357,8 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
 
     const timerManager = RoleTimerManager.getInstance();
     timerManager.registerExecution(convoUri);
-    _delegationDepth++;
-    _delegationTotalCalls++;
+    const childDepth = currentDepth + 1;
+    const childTotalCalls = currentTotalCalls + 1;
     let success = false;
     try {
         const result = await execConversation(convoUri, role, {
@@ -2361,6 +2370,8 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
             onHeartbeat: () => { context.onHeartbeat?.(); },
             onToolActivity: () => { context.onHeartbeat?.(); },
             onChunk: () => { context.onHeartbeat?.(); },
+            delegationDepth: childDepth,
+            delegationTotalCalls: childTotalCalls,
         });
 
         const reply = result.text.trim() || '（角色未返回任何内容）';
@@ -2384,8 +2395,6 @@ async function executeDelegateToRole(input: Record<string, unknown>, context?: T
         return { success: false, content: `委派给「${role.name}」时出错: ${errMsg}` };
     } finally {
         timerManager.unregisterExecution(convoUri, role.id, success);
-        _delegationDepth--;
-        if (_delegationDepth === 0) { _delegationTotalCalls = 0; }
     }
 }
 
@@ -2435,13 +2444,16 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
     if (!convoId) { return { success: false, content: '请提供委派对话 ID（convoId）' }; }
     if (!message) { return { success: false, content: '请提供追问内容' }; }
 
+    const currentDepth = context?.delegationDepth ?? 0;
+    const currentTotalCalls = context?.delegationTotalCalls ?? 0;
+
     // 总调用次数保护
-    if (_delegationTotalCalls >= MAX_DELEGATION_TOTAL_CALLS) {
+    if (currentTotalCalls >= MAX_DELEGATION_TOTAL_CALLS) {
         return { success: false, content: `委派总调用次数超限（最大 ${MAX_DELEGATION_TOTAL_CALLS} 次），请简化任务链` };
     }
 
     // 递归深度保护（异步追问不占深度）
-    if (!isAsync && _delegationDepth >= MAX_DELEGATION_DEPTH) {
+    if (!isAsync && currentDepth >= MAX_DELEGATION_DEPTH) {
         return { success: false, content: `委派深度超限（最大 ${MAX_DELEGATION_DEPTH} 层），请简化任务链` };
     }
 
@@ -2491,7 +2503,6 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
     if (isAsync) {
         await appendUserMessageQueued(convoUri, message);
         await timerManager.triggerConversation(convoUri);
-        _delegationTotalCalls++;
         return {
             success: true,
             content: `✓ 已异步追问「${roleName}」，对话 ID: \`${convoId}\`\n用 get_delegation_status 查询结果。\n> 💬 [${convoId}](IssueDir/${convoId}.md)`,
@@ -2503,8 +2514,8 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
     const targetRole = role ?? { id: roleId, name: roleName, uri: convoUri, toolSets: [], modelFamily: undefined } as unknown as ChatRoleInfo;
 
     timerManager.registerExecution(convoUri);
-    _delegationDepth++;
-    _delegationTotalCalls++;
+    const childDepth = currentDepth + 1;
+    const childTotalCalls = currentTotalCalls + 1;
     let success = false;
     try {
         const result = await execConversation(convoUri, targetRole, {
@@ -2516,6 +2527,8 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
             onHeartbeat: () => { context.onHeartbeat?.(); },
             onToolActivity: () => { context.onHeartbeat?.(); },
             onChunk: () => { context.onHeartbeat?.(); },
+            delegationDepth: childDepth,
+            delegationTotalCalls: childTotalCalls,
         });
 
         const reply = result.text.trim() || '（角色未返回任何内容）';
@@ -2538,8 +2551,6 @@ async function executeContinueDelegation(input: Record<string, unknown>, context
         return { success: false, content: `追问「${roleName}」时出错: ${errMsg}` };
     } finally {
         timerManager.unregisterExecution(convoUri, targetRole.id, success);
-        _delegationDepth--;
-        if (_delegationDepth === 0) { _delegationTotalCalls = 0; }
     }
 }
 

@@ -56,6 +56,15 @@ export interface ExecutionOptions {
     onHeartbeat?: () => void;
     /** 工具调用活动回调：每次工具调用开始/完成时通知调用方（用于刷新 idle timer） */
     onToolActivity?: () => void;
+    /** 委派递归深度（per-execution 传递，非进程级全局变量） */
+    delegationDepth?: number;
+    /** 委派总调用次数（per-execution 传递） */
+    delegationTotalCalls?: number;
+    /**
+     * 预构建的消息列表（可选）。提供时跳过内部 buildConversationMessages，
+     * 用于群组聊天等需要自定义消息构建逻辑的场景。
+     */
+    prebuiltMessages?: vscode.LanguageModelChatMessage[];
 }
 
 export interface ExecutionResult {
@@ -126,8 +135,8 @@ export async function executeConversation(
     }
 
     // ─── 构建消息 ────────────────────────────────────────────
-    const messages = await buildConversationMessages(uri, role);
-    const isFirstResponse = messages.length === 2;
+    const messages = options.prebuiltMessages ?? await buildConversationMessages(uri, role);
+    const isFirstResponse = !options.prebuiltMessages && messages.length === 2;
     const firstUserText = isFirstResponse ? extractMessageText(messages[1]) : '';
     const lastUserText = extractMessageText(messages[messages.length - 1]);
     const inputTokens = await estimateTokens(messages);
@@ -148,6 +157,8 @@ export async function executeConversation(
         signal,
         autonomous: isAutonomous,
         onHeartbeat,
+        delegationDepth: options.delegationDepth,
+        delegationTotalCalls: options.delegationTotalCalls,
     };
 
     // ─── LLM 请求 + 工具循环 ────────────────────────────────
