@@ -163,6 +163,43 @@ export class SkillManager implements vscode.Disposable {
         return groups;
     }
 
+    /** 将 ~/.agents/skills/ 下的 skill 复制到 <issueDir>/.skills/，已存在的跳过 */
+    async importPersonalToProject(): Promise<{ copied: number; skipped: number }> {
+        if (!this._issueDir) { return { copied: 0, skipped: 0 }; }
+
+        const personalDir = path.join(os.homedir(), '.agents', 'skills');
+        const projectDir = path.join(this._issueDir, '.skills');
+
+        let entries: [string, vscode.FileType][];
+        try {
+            entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(personalDir));
+        } catch { return { copied: 0, skipped: 0 }; }
+
+        // 确保项目 .skills 目录存在
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(projectDir));
+
+        let copied = 0;
+        let skipped = 0;
+        for (const [name, type] of entries) {
+            if (type !== vscode.FileType.Directory) { continue; }
+            const targetDir = path.join(projectDir, name);
+            try {
+                await vscode.workspace.fs.stat(vscode.Uri.file(targetDir));
+                skipped++; // 已存在
+            } catch {
+                // 不存在，复制整个目录
+                await vscode.workspace.fs.copy(
+                    vscode.Uri.file(path.join(personalDir, name)),
+                    vscode.Uri.file(targetDir),
+                );
+                copied++;
+            }
+        }
+
+        logger.info(`[SkillManager] 导入完成: copied=${copied}, skipped=${skipped}`);
+        return { copied, skipped };
+    }
+
     // ─── 内部扫描逻辑 ──────────────────────────────────────────
 
     private async scan(): Promise<void> {

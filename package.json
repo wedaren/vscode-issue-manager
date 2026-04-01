@@ -883,6 +883,12 @@
         "title": "在系统文件管理器中显示",
         "category": "Issue Manager",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "issueManager.skills.importToProject",
+        "title": "Skills: 导入到笔记库",
+        "category": "Issue Manager",
+        "icon": "$(cloud-download)"
       }
     ],
     "submenus": [
@@ -1265,9 +1271,14 @@
           "group": "inline@1"
         },
         {
-          "command": "issueManager.skills.refresh",
+          "command": "issueManager.skills.importToProject",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillRoot'",
           "group": "inline@1"
+        },
+        {
+          "command": "issueManager.skills.refresh",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillRoot'",
+          "group": "inline@2"
         },
         {
           "command": "issueManager.skills.openSkillDir",

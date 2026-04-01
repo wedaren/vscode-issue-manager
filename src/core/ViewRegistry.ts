@@ -514,6 +514,19 @@ export class ViewRegistry {
                     void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dirPath));
                 }
             }),
+            vscode.commands.registerCommand('issueManager.skills.importToProject', async () => {
+                const mgr = SkillManager.getInstance();
+                const result = await mgr.importPersonalToProject();
+                if (result.copied > 0) {
+                    await mgr.rescan();
+                    llmChatRoleProvider.refresh();
+                    vscode.window.showInformationMessage(`已导入 ${result.copied} 个 skill 到笔记库（跳过 ${result.skipped} 个已存在）`);
+                } else if (result.skipped > 0) {
+                    vscode.window.showInformationMessage(`所有 ${result.skipped} 个 skill 已存在于笔记库，无需导入`);
+                } else {
+                    vscode.window.showInformationMessage('未发现个人级 skill（~/.agents/skills/ 为空）');
+                }
+            }),
         );
 
         // 注册聊天相关命令
