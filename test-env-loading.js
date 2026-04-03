@@ -34,7 +34,7 @@ let loadedVars = {};
 
 for (const envFile of envFiles) {
   const exists = fs.existsSync(envFile);
-  const status = exists ? '✅' : '❌';
+  const status = exists ? '✓' : '❌';
   console.log(`${status} ${path.basename(envFile)}`);
   
   if (exists) {
@@ -69,7 +69,7 @@ const checkVars = [
 for (const varName of checkVars) {
   const value = process.env[varName];
   if (value !== undefined) {
-    console.log(`✅ ${varName} = ${value}`);
+    console.log(`✓ ${varName} = ${value}`);
   } else {
     console.log(`❌ ${varName} = (未设置)`);
   }
@@ -91,7 +91,7 @@ if (mode === 'development') {
   for (const check of checks) {
     const actual = process.env[check.var];
     const match = actual === check.expected;
-    const status = match ? '✅' : '❌';
+    const status = match ? '✓' : '❌';
     console.log(`${status} ${check.desc}: ${check.var}=${actual} (期望: ${check.expected})`);
   }
 } else {

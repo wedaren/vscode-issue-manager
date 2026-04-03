@@ -200,10 +200,10 @@ chrome-extension-wxt/public/
    - Chrome 扩展保存配置供后续使用
 
 支持的特性：
-- ✅ **零配置**：开箱即用，无需手动设置
-- ✅ **端口自动发现**：Chrome 扩展自动找到 VSCode 实例
-- ✅ **配置自动同步**：连接成功后 VSCode 自动发送配置
-- ✅ **多实例支持**：支持同时运行多个 VSCode 实例
+- ✓ **零配置**：开箱即用，无需手动设置
+- ✓ **端口自动发现**：Chrome 扩展自动找到 VSCode 实例
+- ✓ **配置自动同步**：连接成功后 VSCode 自动发送配置
+- ✓ **多实例支持**：支持同时运行多个 VSCode 实例
 
 #### VSCode 端配置（可选）
 
@@ -287,11 +287,11 @@ chrome.storage.sync.set({
 
 ### 前置条件
 
-1. ✅ 已安装 VSCode
-2. ✅ 已安装 Issue Manager VSCode 扩展
-3. ✅ 已配置问题目录（`issueManager.issueDir`）
-4. ✅ VSCode 正在运行
-5. ✅ VSCode 扩展中已启用 WebSocket 服务
+1. ✓ 已安装 VSCode
+2. ✓ 已安装 Issue Manager VSCode 扩展
+3. ✓ 已配置问题目录（`issueManager.issueDir`）
+4. ✓ VSCode 正在运行
+5. ✓ VSCode 扩展中已启用 WebSocket 服务
 
 ### 基本流程
 
@@ -432,10 +432,10 @@ VSCode Extension (本地服务器 :37892)
 ### 功能保持
 
 所有原有功能都得到保留：
-- ✅ DOM 选取功能
-- ✅ WebSocket 通信
-- ✅ 关注问题列表
-- ✅ 与 VSCode 的集成
+- ✓ DOM 选取功能
+- ✓ WebSocket 通信
+- ✓ 关注问题列表
+- ✓ 与 VSCode 的集成
 
 ## 📝 开发注意事项
 

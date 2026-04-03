@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { IssueOverviewProvider } from '../views/IssueOverviewProvider';
 import { FocusedIssuesProvider } from '../views/FocusedIssuesProvider';
 import { RecentIssuesProvider } from '../views/RecentIssuesProvider';
@@ -25,6 +26,12 @@ import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
 import { EditorGroupTreeProvider, type EditorGroupViewNode } from '../views/EditorGroupTreeProvider';
+import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRoleProvider';
+import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
+import { McpManager, registerMcpCommands } from '../llmChat/mcp';
+import { RoleTimerManager } from '../llmChat/RoleTimerManager';
+import { SkillManager } from '../llmChat/SkillManager';
+import { getIssueDir } from '../config';
 
 /**
  * 视图注册管理器
@@ -110,11 +117,14 @@ export class ViewRegistry {
         // 注册编辑器组管理视图
         const { editorGroupProvider, editorGroupView } = this.registerEditorGroupView();
 
+        // 注册 LLM 聊天角色视图
+        const { llmChatRoleProvider, llmChatRoleView } = this.registerLLMChatViews();
+
         // 注册相关问题视图
         this.registerRelatedView();
         // 注册回顾视图
         this.registerReviewView();
-        
+
         // 注册RSS虚拟文件提供器
         this.registerRSSVirtualFileProvider();
 
@@ -147,6 +157,8 @@ export class ViewRegistry {
             gitBranchView,
             editorGroupProvider,
             editorGroupView,
+            llmChatRoleProvider,
+            llmChatRoleView,
         };
     }
 
@@ -415,6 +427,17 @@ export class ViewRegistry {
             vscode.commands.registerCommand('issueManager.editorGroup.refresh', () => editorGroupProvider.refresh()),
         );
 
+        // 注册编辑器组相关命令（关闭其他组 / 仅保留当前活动编辑器）
+        // 实现在 src/commands/editorGroupCommands.ts
+        try {
+            // 延迟加载以避免循环依赖
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { registerEditorGroupCommands } = require('../commands/editorGroupCommands');
+            registerEditorGroupCommands(this.context);
+        } catch (e) {
+            // ignore
+        }
+
         return { editorGroupProvider, editorGroupView };
     }
 
@@ -441,5 +464,79 @@ export class ViewRegistry {
         commandHandler.registerCommands(this.context);
         
         return { markerManager, markerTreeProvider, markerView };
+    }
+
+    /**
+     * 注册 LLM 聊天角色视图和底部聊天输入面板
+     */
+    private registerLLMChatViews(): {
+        llmChatRoleProvider: LLMChatRoleProvider;
+        llmChatRoleView: vscode.TreeView<LLMChatViewNode>;
+    } {
+        // 侧边栏树视图：聊天角色列表
+        const llmChatRoleProvider = new LLMChatRoleProvider(this.context);
+        const llmChatRoleView = vscode.window.createTreeView<LLMChatViewNode>('issueManager.views.llmChat', {
+            treeDataProvider: llmChatRoleProvider,
+            showCollapseAll: true,
+        });
+
+        this.context.subscriptions.push(llmChatRoleView);
+        this.context.subscriptions.push(llmChatRoleProvider);
+
+        // 绑定 TreeView：选中节点时自动预览对应文件（不抢焦点）
+        llmChatRoleProvider.bindTreeView(llmChatRoleView);
+
+        // 初始化 MCP 管理器（配置存储在 issueDir/.issueManager/）
+        const mcpManager = McpManager.getInstance();
+        const issueDir = getIssueDir();
+        if (issueDir) {
+            void mcpManager.initialize(issueDir);
+            void SkillManager.getInstance().initialize(issueDir);
+        }
+        this.context.subscriptions.push(mcpManager);
+        registerMcpCommands(this.context);
+
+        // Skills 命令
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.skills.refresh', async () => {
+                await SkillManager.getInstance().rescan();
+                llmChatRoleProvider.refresh();
+            }),
+            vscode.commands.registerCommand('issueManager.skills.openSkillDir', (node: { skill?: { filePath: string } }) => {
+                if (node?.skill?.filePath) {
+                    const dirUri = vscode.Uri.file(path.dirname(node.skill.filePath));
+                    void vscode.commands.executeCommand('revealInExplorer', dirUri);
+                }
+            }),
+            vscode.commands.registerCommand('issueManager.skills.revealInExplorer', (node: { skill?: { filePath: string } }) => {
+                if (node?.skill?.filePath) {
+                    const dirPath = path.dirname(node.skill.filePath);
+                    void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dirPath));
+                }
+            }),
+            vscode.commands.registerCommand('issueManager.skills.importToProject', async () => {
+                const mgr = SkillManager.getInstance();
+                const result = await mgr.importPersonalToProject();
+                if (result.copied > 0) {
+                    await mgr.rescan();
+                    llmChatRoleProvider.refresh();
+                    vscode.window.showInformationMessage(`已导入 ${result.copied} 个 skill 到笔记库（跳过 ${result.skipped} 个已存在）`);
+                } else if (result.skipped > 0) {
+                    vscode.window.showInformationMessage(`所有 ${result.skipped} 个 skill 已存在于笔记库，无需导入`);
+                } else {
+                    vscode.window.showInformationMessage('未发现个人级 skill（~/.agents/skills/ 为空）');
+                }
+            }),
+        );
+
+        // 注册聊天相关命令
+        registerLLMChatCommands(this.context, llmChatRoleProvider, llmChatRoleView);
+
+        // 启动角色定时器管理器
+        const timerManager = RoleTimerManager.getInstance();
+        void timerManager.start();
+        this.context.subscriptions.push(timerManager);
+
+        return { llmChatRoleProvider, llmChatRoleView };
     }
 }
