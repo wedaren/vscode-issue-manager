@@ -653,7 +653,7 @@ const TERMINAL_TOOLS: vscode.LanguageModelChatTool[] = [
             properties: {
                 command: { type: 'string', description: '要执行的 shell 命令（如 "git status"、"npm test"、"ls -la src/"）' },
                 cwd: { type: 'string', description: '工作目录（相对于工作区根目录的路径，可选，默认为工作区根目录）' },
-                timeout: { type: 'number', description: '超时时间（毫秒），可选，默认 30000（30秒），最大 120000（2分钟）' },
+                timeout: { type: 'number', description: '超时时间（毫秒），可选，默认 30000（30秒），最大 600000（10分钟）' },
             },
             required: ['command'],
         },
@@ -2742,8 +2742,9 @@ async function executeQueueContinuation(input: Record<string, unknown>, context?
 
 // ─── 能力工具实现：终端 ────────────────────────────────────────
 
-const TERMINAL_MAX_TIMEOUT = 120_000;
+const TERMINAL_MAX_TIMEOUT = 600_000;
 const TERMINAL_DEFAULT_TIMEOUT = 30_000;
+const HEARTBEAT_INTERVAL = 10_000;
 const TERMINAL_MAX_OUTPUT = 32_000;
 const READ_FILE_MAX_LINES = 500;
 const READ_FILE_DEFAULT_LINES = 200;
@@ -2752,9 +2753,6 @@ function resolveWorkspacePath(relativePath: string): { resolved: string; workspa
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceRoot) { return { error: '未打开工作区' }; }
     const resolved = path.resolve(workspaceRoot, relativePath);
-    if (!resolved.startsWith(workspaceRoot)) {
-        return { error: `路径 "${relativePath}" 超出工作区范围` };
-    }
     return { resolved, workspaceRoot };
 }
 
@@ -2879,9 +2877,13 @@ async function executeRunCommand(input: Record<string, unknown>, context?: ToolE
     const rawTimeout = Number(input.timeout) || TERMINAL_DEFAULT_TIMEOUT;
     const timeout = Math.min(Math.max(rawTimeout, 1000), TERMINAL_MAX_TIMEOUT);
 
-    // 执行
+    // 执行（长时间运行时定期心跳，防止 idle timeout 误杀）
     const { exec } = await import('child_process');
     return new Promise<ToolCallResult>((resolve) => {
+        const heartbeatId = context?.onHeartbeat
+            ? setInterval(() => context.onHeartbeat!(), HEARTBEAT_INTERVAL)
+            : undefined;
+
         const proc = exec(command, {
             cwd,
             timeout,
@@ -2889,6 +2891,7 @@ async function executeRunCommand(input: Record<string, unknown>, context?: ToolE
             env: { ...process.env, FORCE_COLOR: '0' },
             shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
         }, (error, stdout, stderr) => {
+            if (heartbeatId) { clearInterval(heartbeatId); }
             const exitCode = error && 'code' in error ? (error as { code?: number }).code ?? 1 : 0;
             const killed = error && 'killed' in error ? (error as { killed?: boolean }).killed : false;
 

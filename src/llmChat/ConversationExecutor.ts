@@ -27,6 +27,8 @@ import {
     startLogRun,
     appendLogLine,
     createToolCallNode,
+    createToolCallNodePending,
+    finalizeToolCallNode,
 } from './llmChatDataManager';
 import { executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 import { buildConversationMessages } from './messageBuilder';
@@ -200,9 +202,24 @@ export async function executeConversation(
 
             const isDelegation = toolName === 'delegate_to_role';
 
-            // 日志：工具调用开始
+            const isDelegationTool = isDelegation || toolName === 'continue_delegation';
+            const toolDef = tools.find((t: { name: string }) => t.name === toolName);
+
+            // ─── 阶段 1：执行前创建工具调用文档（记录输入参数） ────
+            let pendingFileName: string | null = null;
+            if (logUri && runNumber > 0 && !isDelegation) {
+                try {
+                    pendingFileName = await createToolCallNodePending(logUri, toolName, input, {
+                        description: toolDef?.description, sequence: toolCallSeq, runNumber,
+                    });
+                } catch { /* ignore */ }
+            }
+
+            // 日志：工具调用开始（含输入摘要 + 文档链接）
             if (logUri && !isDelegation) {
-                void appendLogLine(logUri, `⏳ 调用 \`${toolName}\`...`);
+                const inputHint = summarizeToolInput(toolName, input as Record<string, unknown>);
+                const toolRef = pendingFileName ? `[\`${toolName}\`](IssueDir/${pendingFileName})` : `\`${toolName}\``;
+                void appendLogLine(logUri, `⏳ 调用 ${toolRef}${inputHint ? ` — ${inputHint}` : ''}...`);
             }
 
             // 委派意图日志
@@ -222,11 +239,9 @@ export async function executeConversation(
                 }
             }
 
-            // 工具调用（含超时；委派工具不限时，由父的 signal 兜底）
-            const isDelegationTool = isDelegation || toolName === 'continue_delegation';
+            // ─── 执行工具（含超时；委派工具不限时，由父的 signal 兜底） ──
             let res: Awaited<ReturnType<typeof executeChatTool>>;
             if (isDelegationTool) {
-                // 委派内联执行：不加 per-call 超时，依赖共享的 AbortSignal（空闲超时 + 总执行超时）
                 res = await executeChatTool(toolName, input, toolContext);
             } else {
                 try {
@@ -238,8 +253,14 @@ export async function executeConversation(
                     ]);
                 } catch {
                     const dur = Date.now() - tcStart;
+                    // 超时：补充文档结果
+                    if (pendingFileName) {
+                        void finalizeToolCallNode(pendingFileName, toolName, input, `[超时] 执行超时（${toolTimeout / 1000}s）`, dur, {
+                            success: false, description: toolDef?.description, sequence: toolCallSeq, runNumber,
+                        });
+                    }
                     if (logUri) { void appendLogLine(logUri, `⏰ \`${toolName}\` 超时 (${fmtDuration(dur)})`); }
-                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName: null, success: false, round: currentRound });
+                    toolCallItems.push({ name: toolName, time: new Date(tcStart), dur, fileName: pendingFileName, success: false, round: currentRound });
                     onToolActivity?.();
                     return `[工具执行失败] ${toolName} 超时（${toolTimeout / 1000}s），请尝试其他方式或跳过此步骤。`;
                 }
@@ -247,15 +268,22 @@ export async function executeConversation(
             const dur = Date.now() - tcStart;
             onToolActivity?.();
 
-            // 工具调用详情节点 + 日志
-            let fileName: string | null = null;
+            // ─── 阶段 2：执行后补充文档结果 ─────────────────────────
+            let fileName: string | null = pendingFileName;
             if (logUri && runNumber > 0) {
-                const toolDef = tools.find((t: { name: string }) => t.name === toolName);
-                try {
-                    fileName = await createToolCallNode(logUri, toolName, input, res.content, dur, {
+                if (pendingFileName) {
+                    // 补充结果到已创建的文档
+                    void finalizeToolCallNode(pendingFileName, toolName, input, res.content, dur, {
                         success: res.success, description: toolDef?.description, sequence: toolCallSeq, runNumber,
                     });
-                } catch { /* ignore */ }
+                } else if (!isDelegation) {
+                    // 没有 pending 文档（创建失败等），退回到一次性创建
+                    try {
+                        fileName = await createToolCallNode(logUri, toolName, input, res.content, dur, {
+                            success: res.success, description: toolDef?.description, sequence: toolCallSeq, runNumber,
+                        });
+                    } catch { /* ignore */ }
+                }
 
                 const toolLink = fileName ? `[\`${toolName}\`](IssueDir/${fileName})` : `\`${toolName}\``;
                 const statusIcon = res.success ? '✓' : '❌';
@@ -415,4 +443,29 @@ function fmtHms(d: Date): string {
 
 function fmtDuration(ms: number): string {
     return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+/** 从工具输入中提取关键信息的一行摘要（用于日志预览） */
+function summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
+    const s = (key: string, max = 80) => {
+        const v = input[key];
+        if (v == null) { return ''; }
+        const str = String(v).replace(/\n+/g, ' ').trim();
+        return str.length > max ? str.slice(0, max - 1) + '…' : str;
+    };
+    switch (toolName) {
+        case 'run_command':      return s('command', 120);
+        case 'read_file':        return s('filePath');
+        case 'search_files':     return [s('pattern'), s('grep')].filter(Boolean).join(' + ') || '';
+        case 'search_issues':    return [s('query'), input.type ? `type:${input.type}` : ''].filter(Boolean).join(' ');
+        case 'read_issue':       return s('fileName');
+        case 'create_issue':     return s('title');
+        case 'update_issue':     return s('fileName');
+        case 'activate_skill':   return s('name');
+        case 'create_plan':      return s('title');
+        case 'check_step':       return `step ${input.step_index}`;
+        case 'write_memory':     return '(更新记忆)';
+        case 'delegate_to_role': return `→ ${s('roleNameOrId')}`;
+        default:                 return '';
+    }
 }

@@ -1756,6 +1756,102 @@ export async function createToolCallNode(
     }
 }
 
+/**
+ * 两阶段写入 — 阶段 1：执行前创建工具调用节点（仅输入参数）。
+ * 返回文件名，后续由 finalizeToolCallNode 补充结果。
+ */
+export async function createToolCallNodePending(
+    logUri: vscode.Uri,
+    toolName: string,
+    input: unknown,
+    meta: Pick<ToolCallNodeMeta, 'description' | 'sequence' | 'runNumber'>,
+): Promise<string | null> {
+    try {
+        const logId = extractId(logUri);
+        const ts = formatTimeHMS(new Date());
+
+        let inputStr: string;
+        try { inputStr = JSON.stringify(input, null, 2); } catch { inputStr = String(input); }
+
+        const fm: Partial<FrontmatterData> & ChatToolCallFrontmatter = {
+            chat_tool_call: true,
+            chat_log_id: logId,
+            run_number: meta.runNumber,
+            tool_name: toolName,
+            tool_success: false,
+            tool_duration: 0,
+            call_sequence: meta.sequence,
+        };
+
+        const infoParts: string[] = [];
+        if (meta.description) { infoParts.push(meta.description); }
+        infoParts.push(`开始于 ${ts}`);
+
+        let body = `# #${meta.sequence} ${toolName} (执行中…)\n\n`;
+        body += `> ${infoParts.join(' | ')}\n\n`;
+        body += `## 输入\n\n\`\`\`json\n${inputStr}\n\`\`\`\n\n`;
+        body += `## 输出\n\n（等待执行完成…）\n`;
+
+        const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
+        if (!uri) { return null; }
+        return path.basename(uri.fsPath);
+    } catch (e) {
+        logger.warn('createToolCallNodePending 失败', e);
+        return null;
+    }
+}
+
+/**
+ * 两阶段写入 — 阶段 2：执行后补充结果（覆盖输出部分、更新 frontmatter）。
+ */
+export async function finalizeToolCallNode(
+    fileName: string,
+    toolName: string,
+    input: unknown,
+    output: string,
+    durationMs: number,
+    meta: ToolCallNodeMeta,
+): Promise<void> {
+    try {
+        const dir = getIssueDir();
+        if (!dir) { return; }
+        const uri = vscode.Uri.file(path.join(dir, fileName));
+
+        const durLabel = durationMs >= 1000 ? `${(durationMs / 1000).toFixed(1)}s` : `${durationMs}ms`;
+        const statusIcon = meta.success === false ? '❌' : '✓';
+        const ts = formatTimeHMS(new Date());
+
+        let inputStr: string;
+        try { inputStr = JSON.stringify(input, null, 2); } catch { inputStr = String(input); }
+
+        const outputLen = output.length;
+        const outputLenLabel = outputLen >= 1024
+            ? `${(outputLen / 1024).toFixed(1)}KB`
+            : `${outputLen}字符`;
+
+        const title = `#${meta.sequence} ${toolName} (${durLabel}) ${statusIcon}`;
+
+        const infoParts: string[] = [];
+        if (meta.description) { infoParts.push(meta.description); }
+        infoParts.push(`输出 ${outputLenLabel}`);
+        infoParts.push(ts);
+
+        let body = `# ${title}\n\n`;
+        body += `> ${infoParts.join(' | ')}\n\n`;
+        body += `## 输入\n\n\`\`\`json\n${inputStr}\n\`\`\`\n\n`;
+        body += `## 输出\n\n${output}\n`;
+
+        // 更新 frontmatter + body
+        await updateIssueMarkdownFrontmatter(uri, {
+            tool_success: meta.success,
+            tool_duration: durationMs,
+        } as any);
+        await updateIssueMarkdownBody(uri, body);
+    } catch (e) {
+        logger.warn('finalizeToolCallNode 失败', e);
+    }
+}
+
 // ─── Chrome 面板聊天 ─────────────────────────────────────────
 
 /** 根据 ID 构造对话文件 URI */

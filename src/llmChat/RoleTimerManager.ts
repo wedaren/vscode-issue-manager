@@ -25,6 +25,8 @@ import {
     setAutoQueueCount,
     appendUserMessageQueued,
     getPlanStatus,
+    getOrCreateExecutionLog,
+    appendLogLine,
 } from './llmChatDataManager';
 import {
     readStateMarker,
@@ -373,8 +375,23 @@ export class RoleTimerManager implements vscode.Disposable {
                 errMsg = e instanceof Error ? e.message : String(e);
             }
 
+            const duration = Date.now() - startedAt;
             const nextRetry = retryCount + 1;
             const maxRetries = role.timerMaxRetries ?? 3;
+
+            // ─── 将失败原因写入执行日志（解决日志断裂问题） ───
+            try {
+                const effectiveLogEnabled = this._debugLogAll || (convoConfig?.logEnabled ?? role.logEnabled ?? false);
+                if (effectiveLogEnabled) {
+                    const logUri = await getOrCreateExecutionLog(uri);
+                    if (logUri) {
+                        const retryHint = nextRetry > maxRetries
+                            ? `已达最大重试次数(${maxRetries})`
+                            : `将在第 ${nextRetry} 次重试（共 ${maxRetries} 次）`;
+                        await appendLogLine(logUri, `❌ **执行失败** | 耗时 ${(duration / 1000).toFixed(1)}s | ${errMsg} | ${retryHint}`);
+                    }
+                }
+            } catch { /* 日志写入失败不阻塞错误处理 */ }
 
             if (nextRetry > maxRetries) {
                 await writeStateMarker(uri, { status: 'error', message: errMsg, retryCount: nextRetry });

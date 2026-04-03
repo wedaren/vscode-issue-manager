@@ -6,7 +6,8 @@
       "Bash(npx vue-tsc --noEmit)",
       "Bash(npx tsc:*)",
       "Bash(git status:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(grep -l 'chat_tool_call: true' /Users/wedaren/repositoryDestinationOfGithub/issue-notes/*.md)"
     ],
     "additionalDirectories": [
       "/Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/llmChat"
