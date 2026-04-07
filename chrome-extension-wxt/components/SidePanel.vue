@@ -9,6 +9,9 @@
     <!-- 划线助手窗口 -->
     <SelectionAssistPanel v-else-if="showSelectionAssist" @back="showSelectionAssist = false" />
 
+    <!-- Web Research Agent -->
+    <WebAgentPanel v-else-if="showWebAgent" @back="showWebAgent = false" />
+
     <!-- 问题总览视图 - 全屏模式 -->
     <div v-else class="focused-section-fullscreen">
       <div class="section-header-fullscreen">
@@ -96,6 +99,20 @@
               <path d="M3.5 5h7M3.5 8h5M3.5 11h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
               <path d="M11 5h5.5M13.5 5c0 3-1.5 5.2-4 6.8M13.5 5c0 3 1.5 5.2 4 6.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
               <path d="M11 15h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button
+            id="open-web-agent-btn"
+            class="icon-btn"
+            title="Web Research Agent"
+            @click="showWebAgent = true"
+          >
+            <!-- 搜索+AI 图标 -->
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="8.5" cy="8.5" r="5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M12.5 12.5L16 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="15.5" cy="5.5" r="2.5" fill="currentColor" opacity="0.3"/>
+              <path d="M14.5 5.5h2M15.5 4.5v2" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
             </svg>
           </button>
           <button
@@ -188,6 +205,7 @@ import TreeNode from './TreeNode.vue';
 import AutoLoginPanel from './AutoLoginPanel.vue';
 import LLMPanel from './LLMPanel.vue';
 import SelectionAssistPanel from './SelectionAssistPanel.vue';
+import WebAgentPanel from './WebAgentPanel.vue';
 
 interface FocusedIssue {
   id: string;
@@ -218,6 +236,7 @@ const message = ref<Message>({ show: false, text: '', type: 'info' });
 const showAutoLogin = ref(false);
 const showLLM = ref(false);
 const showSelectionAssist = ref(false);
+const showWebAgent = ref(false);
 
 const wsStatusClass = computed(() => {
   return {
