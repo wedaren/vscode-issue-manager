@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { getIssueDir } from '../config';
 import { TreeData, IssueNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/issueTreeManager';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
-import { FocusedIssuesProvider } from './FocusedIssuesProvider';
 import { RecentIssuesProvider } from './RecentIssuesProvider';
 import { RSSItem, RSSService } from '../services/RSSService';
 
@@ -19,8 +18,8 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
     public dropMimeTypes: string[] = [];
     public dragMimeTypes: string[] = [];
 
-    constructor(private viewProvider: IssueOverviewProvider | FocusedIssuesProvider | RecentIssuesProvider, private viewMode: 'overview' | 'focused' | 'recent') {
-        if (viewMode === 'overview' || viewMode === 'focused') {
+    constructor(private viewProvider: IssueOverviewProvider | RecentIssuesProvider, private viewMode: 'overview' | 'recent') {
+        if (viewMode === 'overview') {
             this.dropMimeTypes = [ISSUE_MIME_TYPE, 'text/uri-list', RSS_MIME_TYPE];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else if (viewMode === 'recent') {
@@ -61,7 +60,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         }
 
         const treeData = await readTree();
-        if (!target && this.viewMode === 'focused') {
+        if (!target && this.viewMode === 'overview') {
             vscode.window.showErrorMessage('请先选择一个节点作为目标。');
             return;
         }

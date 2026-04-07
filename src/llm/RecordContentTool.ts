@@ -68,7 +68,7 @@ export class RecordContentTool implements vscode.LanguageModelTool<IRecordConten
 
       return new vscode.LanguageModelToolResult([
         new vscode.LanguageModelTextPart(
-          `✅ 内容已成功记录到新文档：**${docTitle}**\n\n` +
+          `✓ 内容已成功记录到新文档：**${docTitle}**\n\n` +
           `文件路径：\`${fileName}\`\n\n` +
           `文档已创建，您可以在问题管理插件的视图中找到它。`
         )

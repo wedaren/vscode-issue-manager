@@ -31,8 +31,7 @@ export class StateCommandRegistry extends BaseCommandRegistry {
      * @param focusedView 关注问题树视图
      */
     public registerExpandCollapseSync(
-        overviewView: vscode.TreeView<IssueNode>,
-        focusedView: vscode.TreeView<IssueNode>
+        overviewView: vscode.TreeView<IssueNode>
     ): void {
         if (!this.expandCollapseHandler) {
             this.expandCollapseHandler = new ExpandCollapseHandler();
@@ -40,7 +39,6 @@ export class StateCommandRegistry extends BaseCommandRegistry {
 
         try {
             this.expandCollapseHandler.registerTreeView(overviewView, 'overview');
-            this.expandCollapseHandler.registerTreeView(focusedView, 'focused');
             this.logger.info('    ✓ 展开/折叠状态同步已注册');
         } catch (error) {
             this.logger.error('    ✗ 展开/折叠状态同步注册失败:', error);

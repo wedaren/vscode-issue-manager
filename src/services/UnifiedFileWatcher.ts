@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
+import { isInBatchRefresh, onBatchEnd } from '../utils/refreshBatch';
 
 /**
  * 文件变更事件类型
@@ -39,6 +40,10 @@ export type FileWatcherCallback = (event: FileChangeEvent) => void | Promise<voi
  * - 自动处理 issueDir 配置变更
  * - 统一的错误处理和日志记录
  * - 防止回调函数重复注册
+ * - **事件合并（L1 防抖）**：200ms 窗口内的多次文件变更合并为一批分发，
+ *   同一文件只保留最后一次事件，避免下游重复处理
+ * - **批量暂停**：在 `withBatchRefresh()` 期间只缓冲不分发，
+ *   batch 结束后统一 flush（详见 refreshBatch.ts）
  * 
  * @example
  * ```typescript
@@ -66,6 +71,14 @@ export class UnifiedFileWatcher implements vscode.Disposable {
     private mdChangeCallbacks: Set<FileWatcherCallback> = new Set();
     private paraCacheCallbacks: Set<FileWatcherCallback> = new Set();
     private issueManagerCallbacks: Set<FileWatcherCallback> = new Set();
+
+    // 事件合并：缓冲短时间内的多次文件变更，合并后一次性分发
+    private mdEventBuffer: FileChangeEvent[] = [];
+    private mdCoalesceTimer?: NodeJS.Timeout;
+    private issueManagerEventBuffer: FileChangeEvent[] = [];
+    private issueManagerCoalesceTimer?: NodeJS.Timeout;
+    private batchEndDisposable?: vscode.Disposable;
+    private static readonly COALESCE_MS = 200;
 
     private constructor() {
         this.logger = Logger.getInstance();
@@ -95,7 +108,8 @@ export class UnifiedFileWatcher implements vscode.Disposable {
     private initialize(context: vscode.ExtensionContext): void {
         this.context = context;
         this.setupWatchers();
-        
+        this.setupBatchListener();
+
         // 监听配置变化，重新设置监听器
         this.context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
@@ -105,6 +119,15 @@ export class UnifiedFileWatcher implements vscode.Disposable {
                 }
             })
         );
+    }
+
+    /**
+     * 注册批量操作结束监听，在 batch 结束时刷新缓冲的事件
+     */
+    private setupBatchListener(): void {
+        this.batchEndDisposable = onBatchEnd(() => {
+            this.flushAllBufferedEvents();
+        });
     }
 
     /**
@@ -152,8 +175,11 @@ export class UnifiedFileWatcher implements vscode.Disposable {
 
     /**
      * 处理 Markdown 文件变更
+     *
+     * 使用事件合并策略：将短时间内的多次变更缓冲后一次性分发。
+     * 在批量操作（batch）期间，事件会被缓冲直到 batch 结束。
      */
-    private async handleMdChange(uri: vscode.Uri, type: FileChangeType): Promise<void> {
+    private handleMdChange(uri: vscode.Uri, type: FileChangeType): void {
         const issueDir = getIssueDir();
         if (!issueDir) {
             return;
@@ -161,28 +187,57 @@ export class UnifiedFileWatcher implements vscode.Disposable {
 
         const relativePath = path.relative(issueDir, uri.fsPath);
         const fileName = path.basename(uri.fsPath);
-        
-        const event: FileChangeEvent = {
-            uri,
-            type,
-            fileName,
-            relativePath
-        };
+
+        const event: FileChangeEvent = { uri, type, fileName, relativePath };
 
         this.logger.debug?.(`Markdown 文件变更: ${fileName} (${type})`);
 
-        // 分发事件给所有订阅者
-        for (const callback of this.mdChangeCallbacks) {  
-            Promise.resolve(callback(event)).catch(error => {  
-                this.logger.warn(`Markdown 文件监听回调执行失败 (${fileName}):`, error);  
-            });  
-        }  
+        this.mdEventBuffer.push(event);
+
+        // 批量操作期间只缓冲，不调度 flush
+        if (isInBatchRefresh()) {
+            return;
+        }
+
+        // 正常模式：合并短时间内的多次事件
+        if (this.mdCoalesceTimer) {
+            clearTimeout(this.mdCoalesceTimer);
+        }
+        this.mdCoalesceTimer = setTimeout(() => {
+            this.mdCoalesceTimer = undefined;
+            this.flushMdEvents();
+        }, UnifiedFileWatcher.COALESCE_MS);
+    }
+
+    /**
+     * 刷新缓冲的 Markdown 事件，去重后分发给订阅者
+     */
+    private flushMdEvents(): void {
+        if (this.mdEventBuffer.length === 0) { return; }
+        const events = this.deduplicateEvents(this.mdEventBuffer);
+        this.mdEventBuffer = [];
+        this.dispatchMdEvents(events);
+    }
+
+    /**
+     * 分发 Markdown 事件给所有订阅者（fire-and-forget）
+     */
+    private dispatchMdEvents(events: FileChangeEvent[]): void {
+        for (const callback of this.mdChangeCallbacks) {
+            for (const event of events) {
+                Promise.resolve(callback(event)).catch(error => {
+                    this.logger.warn(`Markdown 文件监听回调执行失败 (${event.fileName}):`, error);
+                });
+            }
+        }
     }
 
     /**
      * 处理 .issueManager 目录下文件变更
+     *
+     * 使用与 Markdown 事件相同的合并策略。
      */
-    private async handleIssueManagerChange(uri: vscode.Uri, type: FileChangeType): Promise<void> {
+    private handleIssueManagerChange(uri: vscode.Uri, type: FileChangeType): void {
         const issueDir = getIssueDir();
         if (!issueDir) {
             return;
@@ -190,34 +245,86 @@ export class UnifiedFileWatcher implements vscode.Disposable {
 
         const relativePath = path.relative(path.join(issueDir, '.issueManager'), uri.fsPath);
         const fileName = path.basename(uri.fsPath);
-        
-        const event: FileChangeEvent = {
-            uri,
-            type,
-            fileName,
-            relativePath
-        };
+
+        const event: FileChangeEvent = { uri, type, fileName, relativePath };
 
         this.logger.debug?.(`.issueManager 文件变更: ${fileName} (${type})`);
 
-        if (fileName === 'para.json') {
-            for (const callback of this.paraCacheCallbacks) {
+        this.issueManagerEventBuffer.push(event);
+
+        if (isInBatchRefresh()) {
+            return;
+        }
+
+        if (this.issueManagerCoalesceTimer) {
+            clearTimeout(this.issueManagerCoalesceTimer);
+        }
+        this.issueManagerCoalesceTimer = setTimeout(() => {
+            this.issueManagerCoalesceTimer = undefined;
+            void this.flushIssueManagerEvents();
+        }, UnifiedFileWatcher.COALESCE_MS);
+    }
+
+    /**
+     * 刷新缓冲的 .issueManager 事件，去重后分发给订阅者
+     */
+    private async flushIssueManagerEvents(): Promise<void> {
+        if (this.issueManagerEventBuffer.length === 0) { return; }
+        const events = this.deduplicateEvents(this.issueManagerEventBuffer);
+        this.issueManagerEventBuffer = [];
+        await this.dispatchIssueManagerEvents(events);
+    }
+
+    /**
+     * 分发 .issueManager 事件给订阅者（顺序执行）
+     */
+    private async dispatchIssueManagerEvents(events: FileChangeEvent[]): Promise<void> {
+        for (const event of events) {
+            if (event.fileName === 'para.json') {
+                for (const callback of this.paraCacheCallbacks) {
+                    try {
+                        await callback(event);
+                    } catch (error) {
+                        this.logger.warn('para.json 监听回调执行失败:', error);
+                    }
+                }
+            }
+            for (const callback of this.issueManagerCallbacks) {
                 try {
                     await callback(event);
                 } catch (error) {
-                    this.logger.warn('para.json 监听回调执行失败:', error);
+                    this.logger.warn(`.issueManager 文件监听回调执行失败 (${event.fileName}):`, error);
                 }
             }
         }
+    }
 
-        // 同时触发通用 .issueManager 目录回调
-        for (const callback of this.issueManagerCallbacks) {
-            try {
-                await callback(event);
-            } catch (error) {
-                this.logger.warn(`.issueManager 文件监听回调执行失败 (${fileName}):`, error);
-            }
+    /**
+     * 对事件按文件名去重，保留每个文件的最后一个事件
+     */
+    private deduplicateEvents(events: FileChangeEvent[]): FileChangeEvent[] {
+        const map = new Map<string, FileChangeEvent>();
+        for (const event of events) {
+            map.set(event.fileName, event);
         }
+        return Array.from(map.values());
+    }
+
+    /**
+     * 刷新所有缓冲的事件（在 batch 结束时调用）
+     */
+    private flushAllBufferedEvents(): void {
+        if (this.mdCoalesceTimer) {
+            clearTimeout(this.mdCoalesceTimer);
+            this.mdCoalesceTimer = undefined;
+        }
+        this.flushMdEvents();
+
+        if (this.issueManagerCoalesceTimer) {
+            clearTimeout(this.issueManagerCoalesceTimer);
+            this.issueManagerCoalesceTimer = undefined;
+        }
+        void this.flushIssueManagerEvents();
     }
 
     /**
@@ -273,6 +380,17 @@ export class UnifiedFileWatcher implements vscode.Disposable {
         this.disposables = [];
         this.mdWatcher = undefined;
         this.issueManagerWatcher = undefined;
+        // 清理合并计时器和缓冲区
+        if (this.mdCoalesceTimer) {
+            clearTimeout(this.mdCoalesceTimer);
+            this.mdCoalesceTimer = undefined;
+        }
+        if (this.issueManagerCoalesceTimer) {
+            clearTimeout(this.issueManagerCoalesceTimer);
+            this.issueManagerCoalesceTimer = undefined;
+        }
+        this.mdEventBuffer = [];
+        this.issueManagerEventBuffer = [];
     }
 
     /**
@@ -283,6 +401,8 @@ export class UnifiedFileWatcher implements vscode.Disposable {
         this.mdChangeCallbacks.clear();
         this.paraCacheCallbacks.clear();
         this.issueManagerCallbacks.clear();
+        this.batchEndDisposable?.dispose();
+        this.batchEndDisposable = undefined;
         UnifiedFileWatcher.instance = null;
         this.logger.info('统一文件监听器已释放');
     }
