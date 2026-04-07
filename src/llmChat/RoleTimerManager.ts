@@ -418,6 +418,9 @@ export class RoleTimerManager implements vscode.Disposable {
             logger.info(`[RoleTimerManager] 对话处理成功: ${filePath}`);
             this._onDidChange.fire({ uri, roleId: role.id, success: true });
         } catch (e) {
+            const userCancelled = ac.signal.aborted && ac.signal.reason instanceof Error
+                && ac.signal.reason.message === '用户手动取消';
+
             let errMsg: string;
             if (ac.signal.aborted && ac.signal.reason instanceof Error) {
                 errMsg = ac.signal.reason.message;
@@ -426,30 +429,42 @@ export class RoleTimerManager implements vscode.Disposable {
             }
 
             const duration = Date.now() - startedAt;
-            const nextRetry = retryCount + 1;
-            const maxRetries = role.timerMaxRetries ?? 3;
 
-            // ─── 将失败原因写入执行日志 ─────────────────────────
-            try {
-                const retryHint = nextRetry > maxRetries
-                    ? `已达最大重试次数(${maxRetries})`
-                    : `将在第 ${nextRetry} 次重试（共 ${maxRetries} 次）`;
-                ctx.log(`❌ **执行失败** | 耗时 ${(duration / 1000).toFixed(1)}s | ${errMsg} | ${retryHint}`);
-            } catch { /* 日志写入失败不阻塞错误处理 */ }
-
-            if (nextRetry > maxRetries) {
-                await writeStateMarker(uri, { status: 'error', message: errMsg, retryCount: nextRetry });
-                logger.error(`[RoleTimerManager] 已达最大重试次数(${maxRetries})，对话: ${filePath}，错误: ${errMsg}`);
+            if (userCancelled) {
+                // 用户主动取消 → 追加 assistant 取消提示 + ready 标记，不触发重试
+                const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+                const stripped = stripMarker(raw);
+                const dateStr = formatTimestamp(Date.now());
+                const block = `\n## Assistant (${dateStr})\n\n> ⏹ 用户取消了本次执行\n\n<!-- llm:ready -->\n`;
+                await vscode.workspace.fs.writeFile(uri, Buffer.from(stripped + block, 'utf8'));
+                try { ctx.log(`⏹ **用户取消** | 耗时 ${(duration / 1000).toFixed(1)}s`); } catch { /* ignore */ }
+                logger.info(`[RoleTimerManager] 用户手动取消执行: ${filePath}`);
             } else {
-                const baseDelay = Number(role.timerRetryDelay) || 5_000;
-                const delay = Math.max(1_000, baseDelay * Math.pow(2, retryCount));
-                const retryAt = Number.isFinite(Date.now() + delay) ? Date.now() + delay : Date.now() + 5_000;
-                await writeStateMarker(uri, {
-                    status: 'retrying',
-                    retryAt,
-                    retryCount: nextRetry,
-                });
-                logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
+                const nextRetry = retryCount + 1;
+                const maxRetries = role.timerMaxRetries ?? 3;
+
+                // ─── 将失败原因写入执行日志 ─────────────────────────
+                try {
+                    const retryHint = nextRetry > maxRetries
+                        ? `已达最大重试次数(${maxRetries})`
+                        : `将在第 ${nextRetry} 次重试（共 ${maxRetries} 次）`;
+                    ctx.log(`❌ **执行失败** | 耗时 ${(duration / 1000).toFixed(1)}s | ${errMsg} | ${retryHint}`);
+                } catch { /* 日志写入失败不阻塞错误处理 */ }
+
+                if (nextRetry > maxRetries) {
+                    await writeStateMarker(uri, { status: 'error', message: errMsg, retryCount: nextRetry });
+                    logger.error(`[RoleTimerManager] 已达最大重试次数(${maxRetries})，对话: ${filePath}，错误: ${errMsg}`);
+                } else {
+                    const baseDelay = Number(role.timerRetryDelay) || 5_000;
+                    const delay = Math.max(1_000, baseDelay * Math.pow(2, retryCount));
+                    const retryAt = Number.isFinite(Date.now() + delay) ? Date.now() + delay : Date.now() + 5_000;
+                    await writeStateMarker(uri, {
+                        status: 'retrying',
+                        retryAt,
+                        retryCount: nextRetry,
+                    });
+                    logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
+                }
             }
 
             // run 失败时清空待续写消息，避免错误状态下死循环
