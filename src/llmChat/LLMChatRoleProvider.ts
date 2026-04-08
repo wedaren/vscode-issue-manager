@@ -15,11 +15,14 @@ import { McpManager, type McpServerStatus, type McpToolDescriptor } from './mcp'
 // ─── 节点类型 ────────────────────────────────────────────────
 
 export class ChatRoleNode extends vscode.TreeItem {
-    constructor(public readonly role: ChatRoleInfo) {
+    constructor(public readonly role: ChatRoleInfo, executing = false) {
         super(role.name, vscode.TreeItemCollapsibleState.Collapsed);
         this.id = `role:${role.id}`;
         this.contextValue = 'chatRole';
-        this.iconPath = new vscode.ThemeIcon(role.avatar || 'hubot');
+        this.iconPath = new vscode.ThemeIcon(
+            executing ? 'sync~spin' : (role.avatar || 'hubot'),
+            executing ? new vscode.ThemeColor('testing.iconPassed') : undefined,
+        );
         this.resourceUri = role.uri;
 
         // 工具集徽章
@@ -364,11 +367,7 @@ export class SkillItemNode extends vscode.TreeItem {
             + `来源: ${skill.source === 'project' ? '项目级' : '个人级'}\n`
             + `文件: \`${skill.filePath}\``,
         );
-        this.command = {
-            command: 'vscode.open',
-            title: '打开 SKILL.md',
-            arguments: [vscode.Uri.file(skill.filePath)],
-        };
+        // 不设 command — 点击 label 不触发动作，通过 inline icon 按钮打开
     }
 }
 
@@ -381,15 +380,20 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
     private _onDidChangeTreeData = new vscode.EventEmitter<LLMChatViewNode | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
     private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 缓存当前有执行中对话的角色 ID 集合，避免在 getChildren 中遍历 */
+    private _executingRoleIds = new Set<string>();
 
     constructor(private readonly context: vscode.ExtensionContext) {
         // 文件新增或标题变更时自动刷新视图
         this.context.subscriptions.push(
             onTitleUpdate(() => this.debouncedRefresh())
         );
-        // 执行状态变化时刷新视图（更新对话节点的执行中图标）
+        // 执行状态变化时：更新缓存 + 防抖刷新视图
         this.context.subscriptions.push(
-            RoleTimerManager.getInstance().onExecutingCountChange(() => this.refresh())
+            RoleTimerManager.getInstance().onExecutingCountChange(() => {
+                this._updateExecutingRoleIds();
+                this.debouncedRefresh(150);
+            })
         );
         // MCP server 工具变化时刷新视图
         this.context.subscriptions.push(
@@ -415,7 +419,7 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
                     void vscode.commands.executeCommand('vscode.open', uri, { preserveFocus: true, preview: true });
                 }
                 void vscode.commands.executeCommand('list.expand');
-            })
+            }),
         );
 
         // 编辑器切换 → 自动在树视图中定位对应节点（仅视图可见时）
@@ -434,12 +438,28 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
     }
 
     /** 防抖刷新，合并短时间内的多次缓存更新事件 */
-    private debouncedRefresh(): void {
+    private debouncedRefresh(ms = 500): void {
         if (this.refreshTimer) { clearTimeout(this.refreshTimer); }
         this.refreshTimer = setTimeout(() => {
             this.refreshTimer = null;
             this.refresh();
-        }, 500);
+        }, ms);
+    }
+
+    /** 从 executingPaths 反查出哪些角色有执行中对话 */
+    private _updateExecutingRoleIds(): void {
+        const mgr = RoleTimerManager.getInstance();
+        const paths = new Set(mgr.executingPaths);
+        this._executingRoleIds.clear();
+        if (paths.size === 0) { return; }
+        for (const role of getAllChatRoles()) {
+            for (const c of getConversationsForRole(role.id)) {
+                if (paths.has(c.uri.fsPath)) {
+                    this._executingRoleIds.add(role.id);
+                    break;
+                }
+            }
+        }
     }
 
     async getChildren(element?: LLMChatViewNode): Promise<LLMChatViewNode[]> {
@@ -465,7 +485,7 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
 
             // 最近对话
             nodes.push(new RecentConversationRootNode());
-            nodes.push(...roles.map(r => new ChatRoleNode(r)));
+            nodes.push(...roles.map(r => new ChatRoleNode(r, this._executingRoleIds.has(r.id))));
             return nodes;
         }
         // ─── MCP 子节点 ──────────────────────────────────────

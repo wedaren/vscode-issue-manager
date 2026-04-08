@@ -333,7 +333,7 @@ export class ViewRegistry {
             vscode.commands.registerCommand('issueManager.skills.openSkillDir', (node: { skill?: { filePath: string } }) => {
                 if (node?.skill?.filePath) {
                     const dirUri = vscode.Uri.file(path.dirname(node.skill.filePath));
-                    void vscode.commands.executeCommand('revealInExplorer', dirUri);
+                    void vscode.commands.executeCommand('vscode.openFolder', dirUri, true);
                 }
             }),
             vscode.commands.registerCommand('issueManager.skills.revealInExplorer', (node: { skill?: { filePath: string } }) => {
