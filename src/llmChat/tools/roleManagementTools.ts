@@ -7,17 +7,17 @@ import { Logger } from '../../core/utils/Logger';
 import type { ChatRoleInfo } from '../types';
 import type { ToolCallResult, ToolExecContext } from './types';
 import { findRole } from './shared';
-import { findOrCreateMemoryFile } from './memoryTools';
+// findOrCreateMemoryFile 已废弃，记忆由 knowledge_base 统一管理
 import {
     getAllChatRoles, getChatRoleById, createChatRole as dataCreateChatRole,
     getConversationsForRole, getRoleSystemPrompt, updateRoleSystemPrompt,
     getConversationConfig,
 } from '../llmChatDataManager';
 import {
-    getIssueMarkdownsByType, extractFrontmatterAndBody, updateIssueMarkdownBody,
+    getIssueMarkdownsByType, updateIssueMarkdownFrontmatter,
+    createIssueMarkdown, type FrontmatterData,
 } from '../../data/IssueMarkdowns';
 import { getIssueDir } from '../../config';
-import { updateIssueMarkdownFrontmatter } from '../../data/IssueMarkdowns';
 import { McpManager } from '../mcp';
 import { SkillManager } from '../SkillManager';
 
@@ -136,7 +136,7 @@ export const ROLE_MANAGEMENT_TOOLS: vscode.LanguageModelChatTool[] = [
 function executeListAvailableTools(): ToolCallResult {
     const BUILT_IN = [
         { id: '(基础)',            tools: 'read_todos、write_todos、update_todo',               desc: '对话级 todo 管理，所有角色默认可用，无需配置' },
-        { id: 'memory',            tools: 'write_memory',                                       desc: '持久记忆（记忆内容自动注入上下文，无需手动读取），适合长期任务角色' },
+        { id: 'knowledge_base',    tools: 'kb_ingest、kb_compile、kb_query、kb_link_scan、kb_health_check', desc: '统一知识库（raw→wiki 管道），记忆自动注入上下文，适合所有需要记忆和知识的角色' },
         { id: 'delegation',        tools: 'delegate_to_role、continue_delegation、list_chat_roles、get_delegation_status', desc: '委派能力（delegate_to_role 发起 → continue_delegation 多轮追问直到完成），适合中枢调度角色' },
         { id: 'planning',          tools: 'create_plan、read_plan、check_step、add_step、update_progress_note', desc: '执行计划管理，将复杂任务分解为有序步骤并持久化进度，适合多步骤长任务角色' },
         { id: 'role_management',   tools: 'list_available_tools、create_chat_role、update_role_config 等', desc: '角色管理，仅管理型角色需要' },
@@ -339,25 +339,18 @@ async function executeEvaluateRole(input: Record<string, unknown>, context?: Too
 
     const outcomeLabel = outcome === 'success' ? '✓ 良好' : outcome === 'partial' ? '⚠️ 部分完成' : '❌ 未完成';
 
-    // 如果当前角色有记忆能力，将评估写入记忆
-    if (context?.role?.toolSets.includes('memory') && context.role.id) {
-        const memUri = await findOrCreateMemoryFile(context.role.id);
-        if (memUri) {
-            try {
-                const raw = Buffer.from(await vscode.workspace.fs.readFile(memUri)).toString('utf8');
-                const { body } = extractFrontmatterAndBody(raw);
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const entry = `\n### ${roleNameOrId} — ${timestamp} ${outcomeLabel}\n${notes}\n`;
-                let newBody: string;
-                if (body.includes('## 角色绩效')) {
-                    newBody = body.replace('## 角色绩效', `## 角色绩效${entry}`);
-                } else {
-                    newBody = body + `\n## 角色绩效${entry}`;
-                }
-                await updateIssueMarkdownBody(memUri, newBody);
-            } catch (e) {
-                logger.error('[ChatTools] 写入评估到记忆失败', e);
-            }
+    // 将评估写入 raw/observations/ 作为原始记录，后续由编译器整理
+    if (context?.role?.name) {
+        try {
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const evalTitle = `raw/observations/${context.role.name}/eval-${timestamp}`;
+            const evalBody = `> 角色绩效评估\n> 日期: ${timestamp}\n\n- [评估] ${roleNameOrId}: ${outcomeLabel} — ${notes}`;
+            await createIssueMarkdown({
+                frontmatter: { issue_title: evalTitle } as Partial<FrontmatterData>,
+                markdownBody: evalBody,
+            });
+        } catch (e) {
+            logger.error('[ChatTools] 写入评估到 raw/ 失败', e);
         }
     }
 

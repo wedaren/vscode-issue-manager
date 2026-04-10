@@ -83,7 +83,12 @@
       "Bash(npm list:*)",
       "Bash(npm info:*)",
       "Bash(wc -l /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/src/**/*.ts)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)",
+      "Bash(git stash:*)",
+      "WebSearch"
     ],
     "additionalDirectories": [
       "/Users/wedaren/repositoryDestinationOfGithub/issue-notes"

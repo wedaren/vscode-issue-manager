@@ -26,12 +26,13 @@ export type ContextSourceId =
     | 'terms'                 // 术语表
     | 'children'              // 子问题摘要
     | 'conversation_context' // 对话上下文（相关 + 近期，合并去重）
-    | 'skills';             // Agent Skills（agentskills.io 规范）
+    | 'skills'              // Agent Skills（agentskills.io 规范）
+    | 'external_knowledge'; // 全局知识库（wiki/ 文章按关键词注入）
 
 /** 所有可获取的 source（identity 由 assembler 处理，不在此列） */
 export const ALL_SOURCES: ContextSourceId[] = [
     'goal', 'intent', 'plan', 'mode', 'skills', 'role_memory', 'memory', 'active_editor', 'selection',
-    'git_diff', 'datetime', 'linked_files', 'terms', 'children', 'conversation_context',
+    'git_diff', 'datetime', 'linked_files', 'terms', 'children', 'conversation_context', 'external_knowledge',
 ];
 
 /** 所有策略下始终注入的 source */

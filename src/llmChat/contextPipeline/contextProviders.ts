@@ -8,10 +8,11 @@
 import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import type { ContextItem, ContextSourceId, ProviderContext } from './types';
-import { readPlanForInjection, readAutoMemoryForInjection, readRoleMemoryForInjection, getAllChatRoles, getConversationsForRole } from '../llmChatDataManager';
+import { readPlanForInjection, getAllChatRoles, getConversationsForRole } from '../llmChatDataManager';
 import { SkillManager } from '../SkillManager';
 import {
     extractFrontmatterAndBody,
+    getAllIssueMarkdowns,
     getIssueMarkdown,
 } from '../../data/IssueMarkdowns';
 import { getIssueDir } from '../../config';
@@ -99,40 +100,109 @@ export const modeProvider: ContextProviderFn = async (ctx) => {
 };
 
 /**
- * 角色记忆（LLM 主动写入）— priority 72
+ * 角色知识（wiki 编译结果）— priority 72
  *
- * 自动注入替代 read_memory 工具调用：
- * - 启用 memory 工具集的角色，在每次对话前自动读取并注入
- * - 无需 LLM 主动调用 read_memory，节省一轮工具往返
- * - 压缩版只保留 ## State 区块（最常变动的当前状态）
+ * 统一知识架构：读取 wiki/user/* 和 wiki/roles/{roleName}/* 作为角色记忆。
+ * 这些内容由 memoryCompilerHook 从 raw/observations/ 离线编译而来，
+ * 替代了原来 LLM 在对话中直接写入 role_memory 的模式。
+ *
+ * wiki/user/* = 用户画像（所有角色共享）
+ * wiki/roles/{roleName}/* = 角色专有经验（仅该角色可见）
  */
 export const roleMemoryProvider: ContextProviderFn = async (ctx) => {
-    if (!ctx.role.toolSets.includes('memory')) { return null; }
-    const body = await readRoleMemoryForInjection(ctx.role.id);
-    if (!body || body === '（暂无，将在对话中逐步积累）') { return null; }
+    const roleName = ctx.role.name;
 
-    // 压缩版：只取 ## State 区块（若存在），否则取前 300 字符
-    const stateMatch = /^## State\s*\n([\s\S]*?)(?=^## |\z)/m.exec(body);
-    const compressedContent = stateMatch
-        ? `[角色记忆 · State]\n${stateMatch[1].trim()}`
-        : `[角色记忆]\n${body.slice(0, 300)}${body.length > 300 ? '\n...(截断)' : ''}`;
+    // 读取 wiki/user/* 和 wiki/roles/{roleName}/*
+    const allIssues = await getAllIssueMarkdowns({});
+    const userWikis = allIssues.filter(i => i.title.startsWith('wiki/user/'));
+    const roleWikis = allIssues.filter(i => i.title.startsWith(`wiki/roles/${roleName}/`));
 
-    return makeItem('role_memory', `[角色记忆]\n${body}`, 72, {
+    if (userWikis.length === 0 && roleWikis.length === 0) { return null; }
+
+    const parts: string[] = [];
+    const compressedParts: string[] = [];
+
+    // 读取用户画像
+    for (const wiki of userWikis) {
+        try {
+            const content = Buffer.from(await vscode.workspace.fs.readFile(wiki.uri)).toString('utf8');
+            const { body } = extractFrontmatterAndBody(content);
+            if (body.trim()) {
+                parts.push(`### ${wiki.title}\n${body.trim()}`);
+                // 压缩版取前 3 行要点
+                const lines = body.split('\n').filter(l => l.startsWith('- ')).slice(0, 3);
+                if (lines.length > 0) { compressedParts.push(...lines); }
+            }
+        } catch { /* skip */ }
+    }
+
+    // 读取角色专有经验
+    for (const wiki of roleWikis) {
+        try {
+            const content = Buffer.from(await vscode.workspace.fs.readFile(wiki.uri)).toString('utf8');
+            const { body } = extractFrontmatterAndBody(content);
+            if (body.trim()) {
+                parts.push(`### ${wiki.title}\n${body.trim()}`);
+                const lines = body.split('\n').filter(l => l.startsWith('- ')).slice(0, 3);
+                if (lines.length > 0) { compressedParts.push(...lines); }
+            }
+        } catch { /* skip */ }
+    }
+
+    if (parts.length === 0) { return null; }
+
+    const fullContent = `[角色知识]\n${parts.join('\n\n')}`;
+    const compressed = compressedParts.length > 0
+        ? `[角色知识 · 要点]\n${compressedParts.join('\n')}`
+        : `[角色知识]\n${parts[0].slice(0, 300)}...`;
+
+    return makeItem('role_memory', fullContent, 72, {
         compressible: true,
-        compressedContent,
+        compressedContent: compressed,
     });
 };
 
-/** 自动提取记忆 — priority 70 */
+/**
+ * 原始观察（raw，未编译的最新记录）— priority 70
+ *
+ * 作为 wiki 编译结果的 fallback：当 memoryCompilerHook 还未运行时，
+ * 直接注入最近的原始观察，确保新信息不丢失。
+ *
+ * 读取 raw/observations/{roleName}/ 下最近的观察文件。
+ */
 export const memoryProvider: ContextProviderFn = async (ctx) => {
-    const autoMemory = await readAutoMemoryForInjection(ctx.role.id);
-    if (!autoMemory) { return null; }
-    // 压缩版：只保留最近 3 条
-    const lines = autoMemory.split('\n').filter(l => l.startsWith('- '));
-    const compressed = lines.slice(0, 3).join('\n');
-    return makeItem('memory', autoMemory, 70, {
+    const roleName = ctx.role.name;
+
+    const allIssues = await getAllIssueMarkdowns({});
+    const observations = allIssues
+        .filter(i => i.title.startsWith(`raw/observations/${roleName}/`))
+        .sort((a, b) => b.mtime - a.mtime);
+
+    if (observations.length === 0) { return null; }
+
+    // 只取最近 3 天的观察
+    const recentObs = observations.slice(0, 3);
+    const parts: string[] = [];
+
+    for (const obs of recentObs) {
+        try {
+            const content = Buffer.from(await vscode.workspace.fs.readFile(obs.uri)).toString('utf8');
+            const { body } = extractFrontmatterAndBody(content);
+            if (body.trim()) { parts.push(body.trim()); }
+        } catch { /* skip */ }
+    }
+
+    if (parts.length === 0) { return null; }
+
+    const allText = parts.join('\n');
+    const entryLines = allText.split('\n').filter(l => l.startsWith('- '));
+
+    // 压缩版：最近 5 条
+    const compressed = entryLines.slice(0, 5).join('\n');
+
+    return makeItem('memory', `[最近观察]\n${allText}`, 70, {
         compressible: true,
-        compressedContent: compressed || autoMemory.slice(0, 200),
+        compressedContent: compressed || allText.slice(0, 200),
     });
 };
 
@@ -562,6 +632,116 @@ export const skillsProvider: ContextProviderFn = async (ctx) => {
     return makeItem('skills', content, 88);
 };
 
+// ━━━ 知识库 Provider ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * 全局知识库（wiki/）— priority 58
+ *
+ * 根据用户最新消息中的关键词，自动从 wiki/ 文章中检索相关知识并注入。
+ * 让所有角色都能受益于知识库，无需主动调用 kb_query 工具。
+ *
+ * 触发条件：用户消息 >= 5 字符
+ * 范围：所有 wiki/ 前缀的 issue
+ * 匹配：标题关键词匹配 + 正文首段作为摘要
+ */
+export const externalKnowledgeProvider: ContextProviderFn = async (ctx) => {
+    // 短消息不触发知识检索
+    if (!ctx.latestUserMessage || ctx.latestUserMessage.length < 5) { return null; }
+
+    // 提取关键词
+    const keywords = extractKbKeywords(ctx.latestUserMessage);
+    if (keywords.length === 0) { return null; }
+
+    // 获取所有 wiki/ 文章
+    const allIssues = await getAllIssueMarkdowns({});
+    const wikiIssues = allIssues.filter(issue => issue.title.startsWith('wiki/'));
+    if (wikiIssues.length === 0) { return null; }
+
+    // 关键词匹配评分
+    interface KbMatch { title: string; score: number; uri: typeof wikiIssues[0]['uri'] }
+    const matches: KbMatch[] = [];
+
+    for (const wiki of wikiIssues) {
+        const titleLower = wiki.title.toLowerCase();
+        let score = 0;
+        for (const kw of keywords) {
+            if (titleLower.includes(kw.toLowerCase())) {
+                score += kw.length;
+            }
+        }
+        if (score > 0) {
+            matches.push({ title: wiki.title, score, uri: wiki.uri });
+        }
+    }
+
+    if (matches.length === 0) { return null; }
+
+    // 取 top 3
+    matches.sort((a, b) => b.score - a.score);
+    const topMatches = matches.slice(0, 3);
+
+    // 读取每篇文章的摘要（正文前 400 字符）
+    const parts: string[] = [];
+    const compressedParts: string[] = [];
+
+    for (const m of topMatches) {
+        try {
+            const content = Buffer.from(
+                await vscode.workspace.fs.readFile(m.uri),
+            ).toString('utf8');
+            const { body } = extractFrontmatterAndBody(content);
+
+            // 摘要：取"## 定义"或"## 详述"段落，否则取前 400 字符
+            let snippet = '';
+            const defMatch = /^## 定义\s*\n([\s\S]*?)(?=^## |\z)/m.exec(body);
+            if (defMatch) {
+                snippet = defMatch[1].trim().slice(0, 400);
+            } else {
+                snippet = body.slice(0, 400).trim();
+            }
+            if (snippet.length > 0) {
+                parts.push(`### ${m.title}\n${snippet}`);
+                compressedParts.push(`- ${m.title}`);
+            }
+        } catch { /* skip */ }
+    }
+
+    if (parts.length === 0) { return null; }
+
+    const fullContent = `[知识库参考]\n以下是与当前话题相关的知识库文章，仅供参考：\n\n${parts.join('\n\n')}`;
+    const compressed = `[知识库参考] ${compressedParts.join(', ')}`;
+
+    return makeItem('external_knowledge', fullContent, 58, {
+        compressible: true,
+        compressedContent: compressed,
+    });
+};
+
+/** 从用户消息中提取知识库搜索关键词 */
+function extractKbKeywords(message: string): string[] {
+    const words: string[] = [];
+
+    // 中文词组（2-8 字）
+    const chineseMatches = message.match(/[\u4e00-\u9fff]{2,8}/g) || [];
+    words.push(...chineseMatches);
+
+    // 英文词（3+ 字母，排除常见虚词）
+    const STOP = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'has', 'have', 'this', 'that', 'with', 'from', 'what', 'how', 'why', 'when', 'where', 'which']);
+    const englishMatches = message.match(/[a-zA-Z_-]{3,}/g) || [];
+    for (const w of englishMatches) {
+        if (!STOP.has(w.toLowerCase())) { words.push(w); }
+    }
+
+    // 去重
+    const seen = new Set<string>();
+    return words.filter(w => {
+        const key = w.toLowerCase();
+        if (seen.has(key)) { return false; }
+        seen.add(key);
+        return true;
+    });
+}
+
 // ━━━ Provider 注册表 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /** 所有 provider 的映射表 */
@@ -582,6 +762,7 @@ export const allProviders: Record<ContextSourceId, ContextProviderFn> = {
     terms: termsProvider,
     children: childrenProvider,
     conversation_context: conversationContextProvider,
+    external_knowledge: externalKnowledgeProvider,
 };
 
 // ━━━ 工具函数 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

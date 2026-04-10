@@ -11,13 +11,15 @@ import { McpManager } from '../mcp';
 
 import { BASE_ISSUE_TOOLS, ISSUE_RELATION_TOOLS } from './issueTools';
 import { TODO_TOOLS } from './todoTools';
-import { MEMORY_TOOLS } from './memoryTools';
+// memory 工具集已废弃，记忆由 knowledge_base 统一管理
+// import { MEMORY_TOOLS } from './memoryTools';
 import { DELEGATION_TOOLS } from './delegationTools';
 import { ROLE_MANAGEMENT_TOOLS } from './roleManagementTools';
 import { PLANNING_TOOLS } from './planningTools';
 import { TERMINAL_TOOLS } from './terminalTools';
 import { GROUP_COORDINATOR_TOOLS } from './groupTools';
 import { BROWSING_TOOLS } from './browsingTools';
+import { KNOWLEDGE_BASE_TOOLS } from './knowledgeBaseTools';
 import { SKILL_TOOLS } from './skillTools';
 
 const logger = Logger.getInstance();
@@ -31,13 +33,13 @@ export const CHAT_TOOLS: vscode.LanguageModelChatTool[] = [
 
 /** 内置工具包注册表，新增工具包只需在此添加一条记录 */
 const TOOL_SET_REGISTRY: Record<string, vscode.LanguageModelChatTool[]> = {
-    memory:               MEMORY_TOOLS,
     delegation:           DELEGATION_TOOLS,
     role_management:      ROLE_MANAGEMENT_TOOLS,
     planning:             PLANNING_TOOLS,
     terminal:             TERMINAL_TOOLS,
     group_coordinator:    GROUP_COORDINATOR_TOOLS,
     browsing:             BROWSING_TOOLS,
+    knowledge_base:       KNOWLEDGE_BASE_TOOLS,
 };
 
 /**

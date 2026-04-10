@@ -38,6 +38,8 @@ import { titleGeneratorHook } from './hooks/titleGeneratorHook';
 import { memoryExtractorHook } from './hooks/memoryExtractorHook';
 import { intentAnchorHook } from './hooks/intentAnchorHook';
 import { insightCrystallizerHook } from './hooks/insightCrystallizerHook';
+import { knowledgeCompilerHook } from './hooks/knowledgeCompilerHook';
+import { memoryCompilerHook } from './hooks/memoryCompilerHook';
 import { executeConversation as execConversation } from './ConversationExecutor';
 import { ExecutionContext } from './ExecutionContext';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
@@ -90,6 +92,8 @@ export class RoleTimerManager implements vscode.Disposable {
         this._hookRunner.register('intentAnchor', intentAnchorHook);
         this._hookRunner.register('memoryExtractor', memoryExtractorHook);
         this._hookRunner.register('insightCrystallizer', insightCrystallizerHook);
+        this._hookRunner.register('knowledgeCompiler', knowledgeCompilerHook);
+        this._hookRunner.register('memoryCompiler', memoryCompilerHook);
     }
 
     static getInstance(): RoleTimerManager {

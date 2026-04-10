@@ -2,6 +2,50 @@ import * as vscode from "vscode";
 import { getAllIssueMarkdowns } from "../data/IssueMarkdowns";
 import { Logger } from "../core/utils/Logger";
 
+// ─── Abort 辅助工具 ──────────────────────────────────────────────
+
+/**
+ * 将 Promise/Thenable 与 AbortSignal 竞速：signal 触发时立即 reject，无需等底层 Promise settle。
+ */
+function raceAbort<T>(promise: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return Promise.resolve(promise);
+    if (signal.aborted) return Promise.reject(signal.reason ?? new Error('请求已取消'));
+    return Promise.race([
+        Promise.resolve(promise),
+        new Promise<never>((_, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason ?? new Error('请求已取消')), { once: true });
+        }),
+    ]);
+}
+
+/**
+ * 包装 AsyncIterable，使 for-await 在 AbortSignal 触发时立即中断，
+ * 不再阻塞等待下一个 chunk。
+ */
+function abortableStream<T>(iterable: AsyncIterable<T>, signal?: AbortSignal): AsyncIterable<T> {
+    if (!signal) return iterable;
+    return {
+        [Symbol.asyncIterator]() {
+            const iter = iterable[Symbol.asyncIterator]();
+            let abortPromise: Promise<never> | undefined;
+            if (!signal.aborted) {
+                abortPromise = new Promise<never>((_, reject) => {
+                    signal.addEventListener('abort', () => reject(signal.reason ?? new Error('请求已取消')), { once: true });
+                });
+            }
+            return {
+                next() {
+                    if (signal.aborted) return Promise.reject(signal.reason ?? new Error('请求已取消'));
+                    return abortPromise ? Promise.race([iter.next(), abortPromise]) : iter.next();
+                },
+                return(value?: any) {
+                    return iter.return?.(value) ?? Promise.resolve({ done: true as const, value: undefined });
+                },
+            };
+        },
+    };
+}
+
 export class LLMService {
     // 使用 VS Code LanguageModelChat.sendRequest 并基于 response.text 聚合结果，兼容 Cancellation
     private static async _sendRequestAndAggregate(
@@ -26,13 +70,10 @@ export class LLMService {
             }
         }
 
-        const resp = await model.sendRequest(messages, undefined, cts.token);
+        const resp = await raceAbort(model.sendRequest(messages, undefined, cts.token), options?.signal);
         let full = "";
         try {
-            for await (const chunk of resp.text) {
-                if (cts.token.isCancellationRequested) {
-                    throw new Error("请求已取消");
-                }
+            for await (const chunk of abortableStream(resp.text, options?.signal)) {
                 full += String(chunk);
             }
         } finally {
@@ -250,15 +291,13 @@ export class LLMService {
                 logger.info(`[LLM.streamWithTools] 第 ${round} 轮请求`);
                 try { options?.onRoundStart?.({ round }); } catch { /* 回调错误不阻塞 */ }
 
-                const resp = await model.sendRequest(workingMessages, { tools: activeTools }, cts.token);
+                const resp = await raceAbort(model.sendRequest(workingMessages, { tools: activeTools }, cts.token), options?.signal);
 
                 // 收集本轮的文本和工具调用
                 let roundText = '';
                 const toolCalls: vscode.LanguageModelToolCallPart[] = [];
 
-                for await (const part of resp.stream) {
-                    if (cts.token.isCancellationRequested) { throw new Error('请求已取消'); }
-
+                for await (const part of abortableStream(resp.stream, options?.signal)) {
                     if (part instanceof vscode.LanguageModelTextPart) {
                         roundText += part.value;
                         try { onChunk(part.value); } catch { /* 忽略回调错误 */ }
