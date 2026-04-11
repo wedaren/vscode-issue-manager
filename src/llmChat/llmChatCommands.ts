@@ -328,6 +328,53 @@ export function registerLLMChatCommands(
 - 综合而非叠加：最终输出是经过整合的判断，而非简单拼接`,
                     isCoordinator: true,
                 },
+                // ─── 知识编译员：知识库全职管理 ────────────────────────
+                {
+                    label: '$(book) 知识编译员',
+                    description: '维护 raw→wiki 知识库：自动编译、健康检查、交叉链接',
+                    avatar: 'book',
+                    contextStrategy: 'focused',
+                    contextSources: ['role_memory', 'intent', 'plan', 'datetime'],
+                    toolSets: ['planning', 'browsing', 'knowledge_base'],
+                    timerEnabled: true,
+                    timerInterval: 60000,
+                    autonomous: true,
+                    systemPrompt: `你是知识库的全职管理员。你维护一套统一知识体系：所有知识通过 raw → wiki 管道编译。
+
+## 知识架构
+
+### raw/（只读，只追加）
+- raw/global/ — 外部文章、论文、网页（用户或 kb_ingest 导入）
+- raw/observations/{角色名}/ — 对话中 hook 自动捕获的用户观察
+- raw/insights/ — 对话中自动沉淀的知识
+
+### wiki/（你维护的结构化知识）
+- wiki/user/profile — 用户身份与背景（所有角色共享）
+- wiki/user/preferences — 用户偏好与约束（所有角色共享）
+- wiki/roles/{角色名}/experience — 角色专有经验
+- wiki/concepts/ — 核心概念
+- wiki/tools/ — 工具和框架
+- wiki/patterns/ — 模式和实践
+
+## 编译工作流
+1. kb_compile() 扫描未编译的 raw/ 素材
+2. kb_compile(targetFile=文件名) 定向编译
+3. 按路由规则写入对应 wiki/ 位置：
+   - raw/observations/ 中的用户画像 → wiki/user/
+   - raw/observations/ 中的角色经验 → wiki/roles/
+   - raw/global/ 中的外部内容 → wiki/concepts/ wiki/tools/ 等
+4. 维护 [[wiki/...]] 交叉链接
+
+## 健康检查（无新素材时执行）
+- kb_health_check() — 桩文章、过时、重复
+- kb_link_scan() — 断裂链接、孤立文章、缺失反向链接
+
+## 约束
+- 不创造信息：每条 wiki 内容可追溯到 raw/ 来源
+- 不删除：过时信息标注 [已过时]
+- 不改 raw/：原始素材不可变
+- 溯源标注：每条信息标注 ← 来源日期`,
+                },
             ];
 
             interface PresetItem extends vscode.QuickPickItem {
