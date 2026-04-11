@@ -57,11 +57,8 @@ export async function getIssueItems(): Promise<QuickPickItemWithId[]> {
                         n,
                         "overview"
                     );
-                } catch (e) {
-                    await vscode.commands.executeCommand(
-                        "issueManager.searchIssues",
-                        "overview"
-                    );
+                } catch (_e) {
+                    // search view removed
                 }
             },
         } as QuickPickItemWithId;
@@ -158,14 +155,11 @@ export async function handleIssueModeAccept(
                 await historyService.addHistory('issue', value);
             }
             return true;
-        } catch (e) {
-            await vscode.commands.executeCommand(
-                "issueManager.searchIssues",
-                "overview"
-            );
+        } catch (_e) {
+            // search view removed
             return true;
         }
     }
-    
+
     return false;
 }
