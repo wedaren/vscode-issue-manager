@@ -7,7 +7,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { whenCacheReady, onTitleUpdate, isIssueMarkdownFile } from '../data/IssueMarkdowns';
-import { getAllChatRoles, getConversationsForRole, getExecutionLogInfo, getPlanInfo, getMemoryInfoForRole, getRecentConversationEntries, getToolCallsForLog, type ChatToolCallInfo } from './llmChatDataManager';
+import { getAllChatRoles, getConversationsForRole, getExecutionLogInfo, getPlanInfo, getMemoryInfoForRole, getRecentConversationEntries, getToolCallsForLog, getKnowledgeBaseTree, type ChatToolCallInfo, type KbCategory, type KbSubCategory, type KbArticleInfo } from './llmChatDataManager';
 import type { ChatRoleInfo, ChatConversationInfo, ChatExecutionLogInfo, ChatPlanInfo, ChatMemoryInfo, RecentActivityEntry, RecentConversationEntry } from './types';
 import { RoleTimerManager } from './RoleTimerManager';
 import { McpManager, type McpServerStatus, type McpToolDescriptor } from './mcp';
@@ -372,7 +372,91 @@ export class SkillItemNode extends vscode.TreeItem {
 }
 
 
-export type LLMChatViewNode = ChatRoleNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode;
+// ─── Knowledge Base 节点类型 ─────────────────────────────────
+
+/** 知识库折叠根节点（树顶层固定节点） */
+export class KbRootNode extends vscode.TreeItem {
+    constructor(wikiCount: number, rawCount: number) {
+        super('Knowledge Base', wikiCount + rawCount > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'kbRoot';
+        this.iconPath = new vscode.ThemeIcon('library');
+        this.description = wikiCount + rawCount > 0
+            ? `wiki ${wikiCount} · raw ${rawCount}`
+            : '空';
+    }
+}
+
+/** 知识库顶层分类节点（wiki/ 或 raw/） */
+export class KbCategoryNode extends vscode.TreeItem {
+    constructor(public readonly category: KbCategory) {
+        super(
+            `${category.prefix}/`,
+            vscode.TreeItemCollapsibleState.Collapsed,
+        );
+        this.id = `kb-cat:${category.prefix}`;
+        this.contextValue = 'kbCategory';
+        this.iconPath = new vscode.ThemeIcon(category.prefix === 'wiki' ? 'book' : 'file-text');
+        this.description = `${category.totalCount} 篇`;
+    }
+}
+
+/** 知识库子分类节点（如 concepts/、user/、observations/） */
+export class KbSubCategoryNode extends vscode.TreeItem {
+    constructor(
+        public readonly sub: KbSubCategory,
+        public readonly parentPrefix: 'wiki' | 'raw',
+    ) {
+        super(
+            `${sub.name}/`,
+            vscode.TreeItemCollapsibleState.Collapsed,
+        );
+        this.id = `kb-sub:${parentPrefix}/${sub.name}`;
+        this.contextValue = 'kbSubCategory';
+        this.iconPath = new vscode.ThemeIcon('folder');
+        this.description = `${sub.articles.length}`;
+    }
+}
+
+/** 知识库文章叶子节点 */
+export class KbArticleNode extends vscode.TreeItem {
+    constructor(
+        public readonly article: KbArticleInfo,
+        public readonly parentPrefix: 'wiki' | 'raw',
+        public readonly parentSub: string,
+    ) {
+        // 显示名：去掉 "wiki/concepts/" 前缀，只显示最后的标题部分
+        const displayName = article.title.replace(new RegExp(`^${parentPrefix}/${parentSub}/`), '');
+        super(displayName, vscode.TreeItemCollapsibleState.None);
+        this.id = `kb-article:${article.id}`;
+        this.contextValue = 'kbArticle';
+        this.iconPath = new vscode.ThemeIcon(parentPrefix === 'wiki' ? 'note' : 'file-text');
+        this.description = formatRelativeTime(article.mtime);
+        this.resourceUri = article.uri;
+        this.command = {
+            command: 'vscode.open',
+            title: '打开知识文章',
+            arguments: [article.uri],
+        };
+    }
+}
+
+/** 角色知识库折叠节点（角色内的 wiki/raw 入口） */
+export class KbRoleNode extends vscode.TreeItem {
+    constructor(
+        public readonly roleName: string,
+        public readonly categories: KbCategory[],
+    ) {
+        const total = categories.reduce((sum, c) => sum + c.totalCount, 0);
+        super('角色知识', vscode.TreeItemCollapsibleState.Collapsed);
+        this.contextValue = 'kbRoleRoot';
+        this.iconPath = new vscode.ThemeIcon('library');
+        this.description = `${total} 篇`;
+    }
+}
+
+export type LLMChatViewNode = ChatRoleNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode | KbRootNode | KbCategoryNode | KbSubCategoryNode | KbArticleNode | KbRoleNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -483,6 +567,12 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const vendorMap = skillMgr.getVendorGroups();
             nodes.push(new SkillRootNode(allSkills.length, vendorMap.size));
 
+            // 知识库根节点（Skills 下方）
+            const kbTree = await getKnowledgeBaseTree();
+            const wikiCat = kbTree.find(c => c.prefix === 'wiki');
+            const rawCat = kbTree.find(c => c.prefix === 'raw');
+            nodes.push(new KbRootNode(wikiCat?.totalCount ?? 0, rawCat?.totalCount ?? 0));
+
             // 最近对话
             nodes.push(new RecentConversationRootNode());
             nodes.push(...roles.map(r => new ChatRoleNode(r, this._executingRoleIds.has(r.id))));
@@ -518,6 +608,24 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         if (element instanceof SkillVendorNode) {
             return element.skills.map(s => new SkillItemNode(s));
         }
+        // ─── Knowledge Base 子节点 ──────────────────────────────
+        if (element instanceof KbRootNode) {
+            const kbTree = await getKnowledgeBaseTree();
+            return kbTree.map(c => new KbCategoryNode(c));
+        }
+        if (element instanceof KbCategoryNode) {
+            return element.category.subCategories.map(
+                s => new KbSubCategoryNode(s, element.category.prefix),
+            );
+        }
+        if (element instanceof KbSubCategoryNode) {
+            return element.sub.articles.map(
+                a => new KbArticleNode(a, element.parentPrefix, element.sub.name),
+            );
+        }
+        if (element instanceof KbRoleNode) {
+            return element.categories.map(c => new KbCategoryNode(c));
+        }
         if (element instanceof RecentConversationRootNode) {
             const conversations = await getRecentConversationEntries(20);
             return conversations.map(c => new RecentConversationItemNode(c));
@@ -530,6 +638,12 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             // 角色记忆文件（置顶）
             const memInfos = getMemoryInfoForRole(element.role.id);
             nodes.push(...memInfos.map(m => new ChatMemoryNode(m, element.role)));
+            // 角色相关知识（wiki/roles/{name} + wiki/user + raw/observations/{name}）
+            const roleKb = await getKnowledgeBaseTree(element.role.name);
+            const roleKbTotal = roleKb.reduce((sum, c) => sum + c.totalCount, 0);
+            if (roleKbTotal > 0) {
+                nodes.push(new KbRoleNode(element.role.name, roleKb));
+            }
             // 对话列表
             const convos = await getConversationsForRole(element.role.id);
             const mgr = RoleTimerManager.getInstance();
@@ -613,6 +727,15 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             return undefined; // 简化：不追溯到 vendor/root
         }
         if (element instanceof SkillVendorNode) {
+            return undefined;
+        }
+        if (element instanceof KbArticleNode) {
+            return undefined; // 简化：不追溯到 sub/category/root
+        }
+        if (element instanceof KbSubCategoryNode) {
+            return undefined;
+        }
+        if (element instanceof KbCategoryNode) {
             return undefined;
         }
         return undefined;

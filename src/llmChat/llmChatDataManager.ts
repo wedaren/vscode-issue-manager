@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import {
     getIssueMarkdownsByType,
+    getAllIssueMarkdowns,
     extractFrontmatterAndBody,
     createIssueMarkdown,
     updateIssueMarkdownFrontmatter,
@@ -1228,6 +1229,90 @@ export function getMemoryInfoForRole(roleId: string): ChatMemoryInfo[] {
     }
 
     return result;
+}
+
+// ─── 知识库相关 ──────────────────────────────────────────────
+
+/** 知识库条目（供树视图展示） */
+export interface KbArticleInfo {
+    id: string;
+    title: string;
+    uri: vscode.Uri;
+    mtime: number;
+}
+
+/** 知识库子分类（如 wiki/concepts、raw/observations） */
+export interface KbSubCategory {
+    name: string;
+    articles: KbArticleInfo[];
+}
+
+/** 知识库顶层分类（wiki 或 raw） */
+export interface KbCategory {
+    prefix: 'wiki' | 'raw';
+    subCategories: KbSubCategory[];
+    totalCount: number;
+}
+
+/**
+ * 获取知识库的分层结构。
+ *
+ * 返回 wiki/ 和 raw/ 两个顶层分类，各自包含子分类和文章列表。
+ * 可选 roleFilter 过滤角色相关条目（wiki/roles/{role}、raw/observations/{role}）。
+ */
+export async function getKnowledgeBaseTree(roleFilter?: string): Promise<KbCategory[]> {
+    const all = await getAllIssueMarkdowns({});
+    const categories: KbCategory[] = [];
+
+    for (const prefix of ['wiki', 'raw'] as const) {
+        const items = all.filter(i => i.title.startsWith(`${prefix}/`));
+        if (items.length === 0) { continue; }
+
+        // 按第二段路径分组：wiki/concepts/xxx → "concepts"
+        const subMap = new Map<string, KbArticleInfo[]>();
+        for (const item of items) {
+            const rest = item.title.slice(prefix.length + 1); // "concepts/xxx"
+            const slashIdx = rest.indexOf('/');
+            const sub = slashIdx > 0 ? rest.slice(0, slashIdx) : '(ungrouped)';
+
+            // 角色过滤：只保留与该角色相关的子分类
+            if (roleFilter) {
+                if (prefix === 'wiki' && sub === 'roles') {
+                    // wiki/roles/{roleName}/xxx — 只保留匹配的角色
+                    const afterRoles = rest.slice('roles/'.length);
+                    if (!afterRoles.startsWith(`${roleFilter}/`)) { continue; }
+                } else if (prefix === 'raw' && sub === 'observations') {
+                    const afterObs = rest.slice('observations/'.length);
+                    if (!afterObs.startsWith(`${roleFilter}/`)) { continue; }
+                } else if (prefix === 'wiki' && sub === 'user') {
+                    // wiki/user/* 是全局共享的，角色视角也显示
+                } else {
+                    // 其他子分类不在角色视角显示
+                    continue;
+                }
+            }
+
+            const id = path.basename(item.uri.fsPath, '.md');
+            if (!subMap.has(sub)) { subMap.set(sub, []); }
+            subMap.get(sub)!.push({ id, title: item.title, uri: item.uri, mtime: item.mtime });
+        }
+
+        if (subMap.size === 0) { continue; }
+
+        const subCategories: KbSubCategory[] = [];
+        let totalCount = 0;
+        for (const [name, articles] of subMap) {
+            articles.sort((a, b) => b.mtime - a.mtime);
+            subCategories.push({ name, articles });
+            totalCount += articles.length;
+        }
+        // 按名称排序子分类
+        subCategories.sort((a, b) => a.name.localeCompare(b.name));
+
+        categories.push({ prefix, subCategories, totalCount });
+    }
+
+    return categories;
 }
 
 /**
