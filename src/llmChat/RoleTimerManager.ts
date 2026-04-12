@@ -389,16 +389,21 @@ export class RoleTimerManager implements vscode.Disposable {
             // 回复写入文件后再刷新面板，确保显示最新内容
             void getActivePanel()?.refreshMessages();
 
-            this._hookRunner.fire({
-                uri,
-                conversationId: path.basename(uri.fsPath, '.md'),
-                role,
-                isFirstResponse: result.isFirstResponse,
-                firstUserText: result.firstUserText,
-                lastUserText: result.lastUserText,
-                assistantText: result.text,
-                notifyChange: (p) => this._onDidChange.fire(p),
-            });
+            this._hookRunner.fire(
+                {
+                    uri,
+                    conversationId: path.basename(uri.fsPath, '.md'),
+                    role,
+                    isFirstResponse: result.isFirstResponse,
+                    firstUserText: result.firstUserText,
+                    lastUserText: result.lastUserText,
+                    assistantText: result.text,
+                    notifyChange: (p) => this._onDidChange.fire(p),
+                },
+                ctx.logUri && ctx.runNumber > 0
+                    ? { logUri: ctx.logUri, runNumber: ctx.runNumber }
+                    : undefined,
+            );
 
             // ─── 续写提升（优先级：LLM 显式 > 系统 Agent Loop）────
             const pendingMsg = await getPendingContinuation(uri);

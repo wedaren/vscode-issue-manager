@@ -174,6 +174,7 @@ export const memoryCompilerHook: PostResponseHook = async (ctx) => {
         .replace('{OBSERVATIONS}', allObservations.slice(0, 6000))
         .replace('{CURRENT_WIKI}', currentWiki.slice(0, 4000));
 
+    const start = Date.now();
     try {
         const result = await LLMService.chat(
             [vscode.LanguageModelChatMessage.User(prompt)],
@@ -182,11 +183,14 @@ export const memoryCompilerHook: PostResponseHook = async (ctx) => {
 
         const { userWiki, roleWiki } = parseCompileOutput(result.text);
 
+        const updated: string[] = [];
+
         // 7. 写入 wiki/user/profile
         if (userWiki) {
             const uri = await findOrCreateWiki(userWikiTitle, '');
             if (uri) {
                 await updateIssueMarkdownBody(uri, userWiki);
+                updated.push(userWikiTitle);
                 logger.info(`[MemoryCompiler] 已更新 ${userWikiTitle}`);
             }
         }
@@ -196,8 +200,13 @@ export const memoryCompilerHook: PostResponseHook = async (ctx) => {
             const uri = await findOrCreateWiki(roleWikiTitle, '');
             if (uri) {
                 await updateIssueMarkdownBody(uri, roleWiki);
+                updated.push(roleWikiTitle);
                 logger.info(`[MemoryCompiler] 已更新 ${roleWikiTitle}`);
             }
+        }
+
+        if (updated.length > 0) {
+            ctx.log?.(`🪝 memoryCompiler → 编译 ${observations.length} 份观察，更新 ${updated.join(', ')} (${((Date.now() - start) / 1000).toFixed(1)}s)`);
         }
 
         ctx.notifyChange({ uri: ctx.uri, roleId: ctx.role.id, success: true });

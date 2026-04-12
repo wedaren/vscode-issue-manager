@@ -1635,6 +1635,11 @@ export async function appendLogLine(logUri: vscode.Uri, line: string): Promise<v
     await appendRawToLog(logUri, `- \`${ts}\` ${line}\n`);
 }
 
+/** 向执行日志追加 hooks 子段（由 PostResponseHookRunner 批量写入） */
+export async function appendHookSection(logUri: vscode.Uri, section: string): Promise<void> {
+    await appendRawToLog(logUri, section);
+}
+
 /** 日志文件写入队列，按 URI 序列化，避免并发 read-modify-write 竞态 */
 const logWriteQueues = new Map<string, Promise<void>>();
 

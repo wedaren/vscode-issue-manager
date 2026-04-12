@@ -102,6 +102,7 @@ export const memoryExtractorHook: PostResponseHook = async (ctx) => {
 
     const prompt = EXTRACTION_PROMPT.replace('{USER}', userText.slice(0, 1200));
 
+    const start = Date.now();
     const result = await LLMService.chat(
         [vscode.LanguageModelChatMessage.User(prompt)],
     );
@@ -126,6 +127,7 @@ export const memoryExtractorHook: PostResponseHook = async (ctx) => {
         const fileUri = await findOrCreateObservationFile(ctx.role.name);
         if (!fileUri) { return; }
         await appendObservations(fileUri, entries, ctx.conversationId);
+        ctx.log?.(`🪝 memoryExtractor → 提取 ${entries.length} 条观察 (${((Date.now() - start) / 1000).toFixed(1)}s)`);
         logger.info(`[MemoryExtractor] 已记录 ${entries.length} 条观察 → raw/observations/${ctx.role.name}/`);
     } catch (e) {
         logger.warn('[MemoryExtractor] 写入观察失败（已忽略）', e);

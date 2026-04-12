@@ -67,6 +67,7 @@ export const knowledgeCompilerHook: PostResponseHook = async (ctx) => {
         .replace('{USER}', userText.slice(0, 1500))
         .replace('{ASSISTANT}', assistantText.slice(0, 2000));
 
+    const start = Date.now();
     try {
         const result = await LLMService.chat(
             [vscode.LanguageModelChatMessage.User(prompt)],
@@ -90,6 +91,7 @@ export const knowledgeCompilerHook: PostResponseHook = async (ctx) => {
         if (!Array.isArray(items) || items.length === 0) { return; }
 
         // 为每条创建 raw/ 素材
+        const created: string[] = [];
         for (const item of items.slice(0, 2)) { // 最多 2 条
             const category = ['articles', 'concepts', 'tools', 'patterns'].includes(item.category)
                 ? item.category
@@ -121,10 +123,15 @@ export const knowledgeCompilerHook: PostResponseHook = async (ctx) => {
                     frontmatter: { issue_title: issueTitle },
                     markdownBody: body,
                 });
+                created.push(title);
                 logger.info(`[KnowledgeCompilerHook] 已沉淀知识: ${issueTitle}`);
             } catch (e) {
                 logger.warn(`[KnowledgeCompilerHook] 创建素材失败: ${issueTitle}`, e);
             }
+        }
+
+        if (created.length > 0) {
+            ctx.log?.(`🪝 knowledgeCompiler → 沉淀 ${created.length} 条: ${created.join(', ')} (${((Date.now() - start) / 1000).toFixed(1)}s)`);
         }
 
         ctx.notifyChange({

@@ -47,6 +47,7 @@ export const insightCrystallizerHook: PostResponseHook = async (ctx) => {
         .replace('{USER}', userText.slice(0, 800))
         .replace('{ASSISTANT}', assistantText.slice(0, 800));
 
+    const start = Date.now();
     const result = await LLMService.chat(
         [vscode.LanguageModelChatMessage.User(prompt)],
     );
@@ -72,4 +73,5 @@ export const insightCrystallizerHook: PostResponseHook = async (ctx) => {
     const updated = [...existing, insight].slice(-5);
 
     await updateIssueMarkdownFrontmatter(ctx.uri, { chat_insights: updated } as any);
+    ctx.log?.(`🪝 insightCrystallizer → 「${insight}」(${((Date.now() - start) / 1000).toFixed(1)}s)`);
 };

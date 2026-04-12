@@ -17,6 +17,7 @@ export const titleGeneratorHook: PostResponseHook = async (ctx) => {
     if (!userText) { return; }
 
     const prompt = `请为以下对话内容生成一个简洁的标题（10个字以内），直接输出标题文字，不要加引号、标点或解释：\n\n${userText.slice(0, 500)}`;
+    const start = Date.now();
     const result = await LLMService.chat(
         [vscode.LanguageModelChatMessage.User(prompt)],
     );
@@ -26,5 +27,6 @@ export const titleGeneratorHook: PostResponseHook = async (ctx) => {
     if (!title) { return; }
 
     await updateConversationTitle(ctx.uri, title);
+    ctx.log?.(`🪝 titleGenerator → 标题「${title}」(${((Date.now() - start) / 1000).toFixed(1)}s)`);
     ctx.notifyChange({ uri: ctx.uri, roleId: ctx.role.id, success: true });
 };

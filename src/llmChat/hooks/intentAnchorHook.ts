@@ -35,6 +35,7 @@ export const intentAnchorHook: PostResponseHook = async (ctx) => {
         .replace('{USER}', userText.slice(0, 600))
         .replace('{ASSISTANT}', assistantText.slice(0, 400));
 
+    const start = Date.now();
     const result = await LLMService.chat(
         [vscode.LanguageModelChatMessage.User(prompt)],
     );
@@ -44,4 +45,5 @@ export const intentAnchorHook: PostResponseHook = async (ctx) => {
     if (!intent) { return; }
 
     await updateConversationIntent(ctx.uri, intent);
+    ctx.log?.(`🪝 intentAnchor → 意图「${intent}」(${((Date.now() - start) / 1000).toFixed(1)}s)`);
 };
