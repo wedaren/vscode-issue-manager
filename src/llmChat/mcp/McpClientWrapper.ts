@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { McpServerConfig, McpToolDescriptor, McpToolResult } from './mcpTypes';
 import { Logger } from '../../core/utils/Logger';
+import { resolveShellEnvironment } from '../../core/ShellEnvironmentResolver';
 
 const logger = Logger.getInstance();
 
@@ -34,17 +35,8 @@ export class McpClientWrapper implements vscode.Disposable {
     async connect(): Promise<void> {
         this._error = undefined;
         try {
-            // 扩展 PATH：VS Code 扩展进程的 PATH 常缺少用户自定义路径（nvm、homebrew、pipx 等），
-            // 导致 spawn npx/node 等命令 ENOENT。显式补齐常用路径。
-            const home = process.env.HOME || '';
-            const extraPaths = [`${home}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin'];
-            try {
-                const nvmDir = process.env.NVM_DIR || `${home}/.nvm`;
-                const versions: string[] = require('fs').readdirSync(`${nvmDir}/versions/node`);
-                if (versions.length > 0) { extraPaths.unshift(`${nvmDir}/versions/node/${versions.sort().pop()}/bin`); }
-            } catch { /* nvm 不存在 */ }
-            const extendedPath = [...extraPaths, process.env.PATH].filter(Boolean).join(':');
-            const baseEnv: Record<string, string> = { ...process.env, PATH: extendedPath } as Record<string, string>;
+            // 使用 ShellEnvironmentResolver 获取完整的用户 shell 环境（含 nvm/pyenv/homebrew 等 PATH）
+            const baseEnv = resolveShellEnvironment();
 
             this.transport = new StdioClientTransport({
                 command: this.config.command,

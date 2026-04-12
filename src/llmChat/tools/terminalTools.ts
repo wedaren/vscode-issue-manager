@@ -1,9 +1,15 @@
 /**
  * 终端工具：read_file / search_files / run_command
+ *
+ * run_command 采用双模式架构：
+ *   - background（默认）：child_process.spawn 静默执行，适合短命令和批量操作
+ *   - terminal：VSCode Shell Integration API 可见终端，适合长时间构建和需要用户可见进度的命令
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import { Logger } from '../../core/utils/Logger';
+import { resolveShellEnvironment } from '../../core/ShellEnvironmentResolver';
 import type { ToolCallResult, ToolExecContext } from './types';
 
 const logger = Logger.getInstance();
@@ -16,6 +22,10 @@ const HEARTBEAT_INTERVAL = 10_000;
 const TERMINAL_MAX_OUTPUT = 32_000;
 const READ_FILE_MAX_LINES = 500;
 const READ_FILE_DEFAULT_LINES = 200;
+/** Shell Integration 就绪等待超时 */
+const SHELL_INTEGRATION_TIMEOUT = 4_000;
+/** 可见终端名称 */
+const VISIBLE_TERMINAL_NAME = 'LLM Tools';
 
 // ─── 辅助函数 ────────────────────────────────────────────────
 
@@ -28,6 +38,20 @@ function resolveWorkspacePath(relativePath: string): { resolved: string; workspa
 
 function escapeShellArg(s: string): string {
     return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * 智能截断：尾部优先（前 30% + 后 70%）。
+ * LLM 通常更关注最近的输出（错误信息、最终状态）。
+ */
+function truncateOutput(output: string, maxLen: number = TERMINAL_MAX_OUTPUT): string {
+    if (output.length <= maxLen) { return output; }
+    const headSize = Math.floor(maxLen * 0.3);
+    const tailSize = maxLen - headSize;
+    const omitted = output.length - maxLen;
+    return output.slice(0, headSize)
+        + `\n\n... [省略 ${omitted} 字符] ...\n\n`
+        + output.slice(-tailSize);
 }
 
 // ─── 工具 schema ─────────────────────────────────────────────
@@ -62,13 +86,14 @@ export const TERMINAL_TOOLS: vscode.LanguageModelChatTool[] = [
     },
     {
         name: 'run_command',
-        description: '在工作区终端执行 shell 命令并返回输出。适用于 git 操作、构建、测试、文件修改等开发任务。每次调用都需要用户确认。命令在工作区根目录执行，超时后自动终止。优先使用 read_file 和 search_files 进行只读操作，仅在需要执行副作用时使用本工具。',
+        description: '在工作区执行 shell 命令并返回输出。支持两种模式：background（默认，静默执行）和 terminal（在 VSCode 可见终端中执行，适合长时间构建）。适用于 git 操作、构建、测试、文件修改等开发任务。每次调用都需要用户确认。命令在工作区根目录执行，超时后自动终止。优先使用 read_file 和 search_files 进行只读操作，仅在需要执行副作用时使用本工具。',
         inputSchema: {
             type: 'object',
             properties: {
                 command: { type: 'string', description: '要执行的 shell 命令（如 "git status"、"npm test"、"ls -la src/"）' },
                 cwd: { type: 'string', description: '工作目录（相对于工作区根目录的路径，可选，默认为工作区根目录）' },
                 timeout: { type: 'number', description: '超时时间（毫秒），可选，默认 30000（30秒），最大 600000（10分钟）' },
+                mode: { type: 'string', enum: ['background', 'terminal'], description: '执行模式：background（默认，静默后台执行）或 terminal（VSCode 可见终端，适合 npm install、构建等长时间操作）' },
             },
             required: ['command'],
         },
@@ -146,8 +171,9 @@ async function executeSearchFiles(input: Record<string, unknown>, context?: Tool
         return { success: true, content: `匹配 \`${pattern}\` 的文件（${results.length} 个）：\n\n${results.map(r => `- ${r}`).join('\n')}` };
     }
 
-    // grep 模式（可能带 pattern/include 过滤）
+    // grep 模式（可能带 pattern/include 过滤）— 使用 resolved env
     const { exec } = await import('child_process');
+    const env = resolveShellEnvironment();
     const includeGlob = String(input.include || pattern || '').trim();
     const escapedGlob = includeGlob ? escapeShellArg(includeGlob) : '';
     const globArgs = escapedGlob ? `--glob ${escapedGlob}` : '';
@@ -158,7 +184,7 @@ async function executeSearchFiles(input: Record<string, unknown>, context?: Tool
             cwd: workspaceRoot,
             timeout: 15_000,
             maxBuffer: 2 * 1024 * 1024,
-            env: { ...process.env, FORCE_COLOR: '0' },
+            env: { ...env, FORCE_COLOR: '0' },
             shell: '/bin/sh',
         }, (error, stdout) => {
             const output = (stdout || '').trim();
@@ -175,6 +201,196 @@ async function executeSearchFiles(input: Record<string, unknown>, context?: Tool
         });
     });
 }
+
+// ─── run_command 双模式实现 ──────────────────────────────────
+
+/**
+ * Mode B: 后台执行 — child_process.spawn
+ * 适合短命令、批量操作、无需用户可见的场景
+ */
+function spawnBackground(command: string, opts: {
+    cwd: string;
+    timeout: number;
+    signal?: AbortSignal;
+    onHeartbeat?: () => void;
+}): Promise<{ exitCode: number; stdout: string; stderr: string; killed: boolean; killedBy?: 'timeout' | 'abort' }> {
+    return new Promise((resolve) => {
+        const env = resolveShellEnvironment();
+        const shell = env.SHELL || process.env.SHELL || '/bin/zsh';
+        const proc = spawn(shell, ['-c', command], {
+            cwd: opts.cwd,
+            env: { ...env, FORCE_COLOR: '0' },
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        const stdoutChunks: string[] = [];
+        const stderrChunks: string[] = [];
+        let killed = false;
+        let killedBy: 'timeout' | 'abort' | undefined;
+
+        proc.stdout.setEncoding('utf8');
+        proc.stderr.setEncoding('utf8');
+        proc.stdout.on('data', (chunk: string) => stdoutChunks.push(chunk));
+        proc.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+
+        // 心跳
+        const heartbeatId = opts.onHeartbeat
+            ? setInterval(opts.onHeartbeat, HEARTBEAT_INTERVAL)
+            : undefined;
+
+        // 超时终止
+        const timer = setTimeout(() => {
+            killed = true;
+            killedBy = 'timeout';
+            proc.kill('SIGTERM');
+        }, opts.timeout);
+
+        // 外部中止
+        if (opts.signal) {
+            const onAbort = () => {
+                killed = true;
+                killedBy = 'abort';
+                proc.kill('SIGTERM');
+            };
+            opts.signal.addEventListener('abort', onAbort, { once: true });
+        }
+
+        proc.on('close', (code) => {
+            clearTimeout(timer);
+            if (heartbeatId) { clearInterval(heartbeatId); }
+            resolve({
+                exitCode: code ?? 1,
+                stdout: stdoutChunks.join(''),
+                stderr: stderrChunks.join(''),
+                killed,
+                killedBy,
+            });
+        });
+    });
+}
+
+/**
+ * Mode A: 可见终端执行 — VSCode Shell Integration API
+ * 适合长时间构建（npm install、npm run build）和需要用户可见进度的场景
+ *
+ * 如果 Shell Integration 不可用，自动回退到 Mode B (spawn)。
+ */
+async function executeInTerminal(command: string, opts: {
+    cwd: string;
+    timeout: number;
+    signal?: AbortSignal;
+    onHeartbeat?: () => void;
+}): Promise<{ exitCode: number | undefined; output: string; killed: boolean; killedBy?: 'timeout' | 'abort'; mode: 'terminal' | 'background-fallback' }> {
+    // 复用或创建终端
+    let terminal = vscode.window.terminals.find(t => t.name === VISIBLE_TERMINAL_NAME);
+    if (!terminal) {
+        terminal = vscode.window.createTerminal({
+            name: VISIBLE_TERMINAL_NAME,
+            cwd: opts.cwd,
+        });
+    }
+    terminal.show(true); // preserveFocus = true
+
+    // 等待 Shell Integration 就绪
+    const si = terminal.shellIntegration ?? await new Promise<vscode.TerminalShellIntegration | undefined>(
+        (resolve) => {
+            const timeout = setTimeout(() => {
+                disposable.dispose();
+                resolve(undefined);
+            }, SHELL_INTEGRATION_TIMEOUT);
+            const disposable = vscode.window.onDidChangeTerminalShellIntegration(e => {
+                if (e.terminal === terminal) {
+                    clearTimeout(timeout);
+                    disposable.dispose();
+                    resolve(e.shellIntegration);
+                }
+            });
+        }
+    );
+
+    if (!si) {
+        logger.warn('[TerminalTools] Shell Integration 不可用，回退到后台模式');
+        const bg = await spawnBackground(command, opts);
+        return {
+            exitCode: bg.exitCode,
+            output: bg.stdout + (bg.stderr ? '\n--- stderr ---\n' + bg.stderr : ''),
+            killed: bg.killed,
+            killedBy: bg.killedBy,
+            mode: 'background-fallback',
+        };
+    }
+
+    // 通过 Shell Integration 执行命令
+    const execution = si.executeCommand(command);
+
+    // 流式收集输出
+    const chunks: string[] = [];
+    let killed = false;
+    let killedBy: 'timeout' | 'abort' | undefined;
+
+    // 心跳
+    const heartbeatId = opts.onHeartbeat
+        ? setInterval(opts.onHeartbeat, HEARTBEAT_INTERVAL)
+        : undefined;
+
+    // 超时终止（通过发送 Ctrl+C）
+    const timer = setTimeout(() => {
+        killed = true;
+        killedBy = 'timeout';
+        terminal!.sendText('\x03', false); // Ctrl+C
+    }, opts.timeout);
+
+    // 外部中止
+    let abortDisposable: { dispose(): void } | undefined;
+    if (opts.signal) {
+        const onAbort = () => {
+            killed = true;
+            killedBy = 'abort';
+            terminal!.sendText('\x03', false);
+        };
+        opts.signal.addEventListener('abort', onAbort, { once: true });
+        abortDisposable = { dispose: () => opts.signal!.removeEventListener('abort', onAbort) };
+    }
+
+    // 读取输出流
+    try {
+        for await (const data of execution.read()) {
+            chunks.push(data);
+        }
+    } catch (err) {
+        logger.warn('[TerminalTools] Shell Integration read() 出错', err);
+    }
+
+    // 获取退出码
+    const exitCode = await new Promise<number | undefined>(resolve => {
+        const exitTimeout = setTimeout(() => {
+            exitDisposable.dispose();
+            resolve(undefined);
+        }, 3000);
+        const exitDisposable = vscode.window.onDidEndTerminalShellExecution(e => {
+            if (e.execution === execution) {
+                clearTimeout(exitTimeout);
+                exitDisposable.dispose();
+                resolve(e.exitCode);
+            }
+        });
+    });
+
+    // 清理
+    clearTimeout(timer);
+    if (heartbeatId) { clearInterval(heartbeatId); }
+    abortDisposable?.dispose();
+
+    return {
+        exitCode,
+        output: chunks.join(''),
+        killed,
+        killedBy,
+        mode: 'terminal',
+    };
+}
+
+// ─── run_command 统一入口 ────────────────────────────────────
 
 async function executeRunCommand(input: Record<string, unknown>, context?: ToolExecContext): Promise<ToolCallResult> {
     if (!context?.role?.toolSets.includes('terminal')) {
@@ -194,70 +410,88 @@ async function executeRunCommand(input: Record<string, unknown>, context?: ToolE
     const rawTimeout = Number(input.timeout) || TERMINAL_DEFAULT_TIMEOUT;
     const timeout = Math.min(Math.max(rawTimeout, 1000), TERMINAL_MAX_TIMEOUT);
 
-    // 执行（扩展 PATH 以包含用户常用目录，如 ~/.local/bin、homebrew）
-    const { exec } = await import('child_process');
-    const home = process.env.HOME || '';
-    const userPaths = [
-        `${home}/.local/bin`,
-        '/opt/homebrew/bin',
-        '/usr/local/bin',
-    ];
-    const extendedPath = [...userPaths, process.env.PATH].filter(Boolean).join(':');
-    return new Promise<ToolCallResult>((resolve) => {
-        const heartbeatFn = context?.ctx ? () => context.ctx!.heartbeat() : context?.onHeartbeat;
-        const heartbeatId = heartbeatFn
-            ? setInterval(() => heartbeatFn(), HEARTBEAT_INTERVAL)
-            : undefined;
+    // 执行模式
+    const mode = String(input.mode || 'background').trim();
+    const heartbeatFn = context?.ctx ? () => context.ctx!.heartbeat() : context?.onHeartbeat;
 
-        const proc = exec(command, {
-            cwd,
-            timeout,
-            maxBuffer: 2 * 1024 * 1024,
-            env: { ...process.env, PATH: extendedPath, FORCE_COLOR: '0' },
-            shell: process.env.SHELL || '/bin/zsh',
-        }, (error, stdout, stderr) => {
-            if (heartbeatId) { clearInterval(heartbeatId); }
-            const exitCode = error && 'code' in error ? (error as { code?: number }).code ?? 1 : 0;
-            const killed = error && 'killed' in error ? (error as { killed?: boolean }).killed : false;
+    if (mode === 'terminal') {
+        return _executeTerminalMode(command, cwd, timeout, heartbeatFn, context?.signal);
+    }
+    return _executeBackgroundMode(command, cwd, timeout, heartbeatFn, context?.signal);
+}
 
-            let output = '';
-            if (stdout) { output += stdout; }
-            if (stderr) { output += (output ? '\n--- stderr ---\n' : '') + stderr; }
-            if (!output && error) { output = error.message; }
+/** Mode B: background — 后台 spawn */
+async function _executeBackgroundMode(
+    command: string, cwd: string, timeout: number,
+    onHeartbeat?: () => void, signal?: AbortSignal,
+): Promise<ToolCallResult> {
+    const result = await spawnBackground(command, { cwd, timeout, signal, onHeartbeat });
 
-            // 截断过长输出
-            let truncated = false;
-            if (output.length > TERMINAL_MAX_OUTPUT) {
-                const half = Math.floor(TERMINAL_MAX_OUTPUT / 2);
-                const omitted = output.length - TERMINAL_MAX_OUTPUT;
-                output = output.slice(0, half) + `\n\n... [省略 ${omitted} 字符] ...\n\n` + output.slice(-half);
-                truncated = true;
-            }
+    let output = '';
+    if (result.stdout) { output += result.stdout; }
+    if (result.stderr) { output += (output ? '\n--- stderr ---\n' : '') + result.stderr; }
+    if (!output && result.exitCode !== 0) { output = `进程退出码 ${result.exitCode}`; }
 
-            const header = killed
-                ? `⏰ 命令超时（${timeout / 1000}s）已终止`
-                : exitCode === 0
-                    ? '✓ 命令执行成功'
-                    : `❌ 命令退出码: ${exitCode}`;
-            const meta = [
-                `**命令**: \`${command}\``,
-                `**工作目录**: ${cwd}`,
-                `**退出码**: ${exitCode}${killed ? '（超时终止）' : ''}`,
-                truncated ? `**输出已截断**（原始 ${stdout.length + stderr.length} 字符）` : '',
-            ].filter(Boolean).join('\n');
+    const rawLen = output.length;
+    const isTruncated = rawLen > TERMINAL_MAX_OUTPUT;
+    output = truncateOutput(output);
 
-            resolve({
-                success: exitCode === 0 && !killed,
-                content: `${header}\n\n${meta}\n\n\`\`\`\n${output || '（无输出）'}\n\`\`\``,
-            });
-        });
+    const header = result.killed
+        ? result.killedBy === 'timeout'
+            ? `⏰ 命令超时（${timeout / 1000}s）已终止`
+            : `⛔ 命令已被中止`
+        : result.exitCode === 0
+            ? '✓ 命令执行成功'
+            : `❌ 命令退出码: ${result.exitCode}`;
 
-        // 支持外部中止
-        if (context?.signal) {
-            const onAbort = () => { proc.kill(); };
-            context.signal.addEventListener('abort', onAbort, { once: true });
-        }
-    });
+    const meta = [
+        `**命令**: \`${command}\``,
+        `**工作目录**: ${cwd}`,
+        `**退出码**: ${result.exitCode}${result.killed ? `（${result.killedBy === 'timeout' ? '超时终止' : '外部中止'}）` : ''}`,
+        isTruncated ? `**输出已截断**（原始 ${rawLen} 字符）` : '',
+    ].filter(Boolean).join('\n');
+
+    return {
+        success: result.exitCode === 0 && !result.killed,
+        content: `${header}\n\n${meta}\n\n\`\`\`\n${output || '（无输出）'}\n\`\`\``,
+    };
+}
+
+/** Mode A: terminal — 可见终端 */
+async function _executeTerminalMode(
+    command: string, cwd: string, timeout: number,
+    onHeartbeat?: () => void, signal?: AbortSignal,
+): Promise<ToolCallResult> {
+    const result = await executeInTerminal(command, { cwd, timeout, signal, onHeartbeat });
+
+    const rawLen = result.output.length;
+    const isTruncated = rawLen > TERMINAL_MAX_OUTPUT;
+    const output = truncateOutput(result.output);
+
+    const modeLabel = result.mode === 'terminal' ? '可见终端' : '后台回退';
+    const exitDisplay = result.exitCode !== undefined ? String(result.exitCode) : '未知';
+    const success = result.exitCode === 0 && !result.killed;
+
+    const header = result.killed
+        ? result.killedBy === 'timeout'
+            ? `⏰ 命令超时（${timeout / 1000}s）已终止`
+            : `⛔ 命令已被中止`
+        : success
+            ? '✓ 命令执行成功'
+            : `❌ 命令退出码: ${exitDisplay}`;
+
+    const meta = [
+        `**命令**: \`${command}\``,
+        `**工作目录**: ${cwd}`,
+        `**模式**: ${modeLabel}`,
+        `**退出码**: ${exitDisplay}${result.killed ? `（${result.killedBy === 'timeout' ? '超时终止' : '外部中止'}）` : ''}`,
+        isTruncated ? `**输出已截断**（原始 ${rawLen} 字符）` : '',
+    ].filter(Boolean).join('\n');
+
+    return {
+        success,
+        content: `${header}\n\n${meta}\n\n\`\`\`\n${output || '（无输出）'}\n\`\`\``,
+    };
 }
 
 // ─── 导出 ────────────────────────────────────────────────────
