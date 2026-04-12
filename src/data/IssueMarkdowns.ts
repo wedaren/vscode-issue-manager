@@ -858,6 +858,11 @@ function scheduleOnDidUpdate(): void {
 
 export const onTitleUpdate = onTitleUpdateEmitter.event;
 
+// ---- vtime 变更事件（独立于标题变更，仅影响最近问题视图排序） ----
+const onVtimeUpdatedEmitter = new vscode.EventEmitter<void>();
+/** vtime 变更事件：仅当查看时间更新时触发，与标题变更互不干扰 */
+export const onVtimeUpdated = onVtimeUpdatedEmitter.event;
+
 // -------------------- vtime (View Time) management --------------------
 
 let _cacheSaveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -898,9 +903,9 @@ export function updateIssueVtime(uriOrPath: vscode.Uri | string): boolean {
     cached.vtime = now;
     _issueMarkdownCache.set(key, cached);
     
-    scheduleOnDidUpdate(); // 触发更新事件
+    onVtimeUpdatedEmitter.fire(); // 仅通知 vtime 订阅者，不触发全量视图刷新
     scheduleCacheSave(); // 安排保存缓存
-    
+
     return true;
 }
 

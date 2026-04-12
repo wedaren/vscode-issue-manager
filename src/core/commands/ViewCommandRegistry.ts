@@ -20,6 +20,9 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
     private paraViewProvider?: ParaViewProvider;
     private overviewView?: vscode.TreeView<IssueNode>;
     private refreshTimer?: ReturnType<typeof setTimeout>;
+    private overviewTimer?: ReturnType<typeof setTimeout>;
+    private recentTimer?: ReturnType<typeof setTimeout>;
+    private paraTimer?: ReturnType<typeof setTimeout>;
 
     /**
      * 设置视图提供者实例
@@ -56,16 +59,16 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
      * 注册视图刷新命令
      */
     private registerViewRefreshCommands(): void {
-        // 最近问题视图刷新
+        // 最近问题视图刷新（带防抖）
         this.registerCommand(
             'issueManager.recentIssues.refresh',
-            () => this.recentIssuesProvider?.refresh(),
+            () => this.scheduleRefreshRecent(),
             '刷新最近问题视图'
         );
 
         const debouncedRefreshAll = () => this.scheduleRefreshAllViews();
 
-        // 刷新所有视图
+        // 刷新所有视图（向后兼容：显式命令 / 批量结束 / 配置变更等场景继续使用）
         this.registerCommand(
             'issueManager.refreshAllViews',
             debouncedRefreshAll,
@@ -77,6 +80,29 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
             'issueManager.refreshViews',
             debouncedRefreshAll,
             '刷新视图'
+        );
+
+        // ---- 细粒度刷新命令 ----
+
+        // 问题总览：完整刷新（重读 tree.json）
+        this.registerCommand(
+            'issueManager.refreshOverview',
+            () => this.scheduleRefreshOverview(),
+            '刷新问题总览视图（完整）'
+        );
+
+        // 问题总览：标签刷新（仅 fire，不重读 tree.json）
+        this.registerCommand(
+            'issueManager.refreshOverviewLabels',
+            () => this.scheduleRefreshOverviewLabels(),
+            '刷新问题总览标签'
+        );
+
+        // PARA 视图刷新
+        this.registerCommand(
+            'issueManager.refreshParaView',
+            () => this.scheduleRefreshPara(),
+            '刷新 PARA 视图'
         );
     }
 
@@ -99,6 +125,50 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
             this.refreshTimer = undefined;
             this.issueOverviewProvider?.refresh();
             this.recentIssuesProvider?.refresh();
+            this.paraViewProvider?.refresh();
+        }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
+    }
+
+    // ---- 细粒度防抖刷新 ----
+
+    /** 问题总览完整刷新（重读 tree.json） */
+    private scheduleRefreshOverview(): void {
+        if (isInBatchRefresh()) { markRefreshNeeded(); return; }
+        if (this.overviewTimer) { clearTimeout(this.overviewTimer); }
+        this.overviewTimer = setTimeout(() => {
+            this.overviewTimer = undefined;
+            this.issueOverviewProvider?.refresh();
+        }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
+    }
+
+    /** 问题总览标签刷新（仅 fire，标题缓存已热） */
+    private scheduleRefreshOverviewLabels(): void {
+        if (isInBatchRefresh()) { markRefreshNeeded(); return; }
+        // 若完整刷新已挂起，跳过（refresh 是 fireUpdate 的超集）
+        if (this.overviewTimer) { return; }
+        // 复用 overviewTimer 防止冲突
+        this.overviewTimer = setTimeout(() => {
+            this.overviewTimer = undefined;
+            this.issueOverviewProvider?.fireUpdate();
+        }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
+    }
+
+    /** 最近问题视图刷新 */
+    private scheduleRefreshRecent(): void {
+        if (isInBatchRefresh()) { markRefreshNeeded(); return; }
+        if (this.recentTimer) { clearTimeout(this.recentTimer); }
+        this.recentTimer = setTimeout(() => {
+            this.recentTimer = undefined;
+            this.recentIssuesProvider?.refresh();
+        }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
+    }
+
+    /** PARA 视图刷新 */
+    private scheduleRefreshPara(): void {
+        if (isInBatchRefresh()) { markRefreshNeeded(); return; }
+        if (this.paraTimer) { clearTimeout(this.paraTimer); }
+        this.paraTimer = setTimeout(() => {
+            this.paraTimer = undefined;
             this.paraViewProvider?.refresh();
         }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
     }

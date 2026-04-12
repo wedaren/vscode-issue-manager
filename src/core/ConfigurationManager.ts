@@ -3,8 +3,8 @@ import { getIssueDir } from '../config';
 import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
-import { getIssueMarkdown, onTitleUpdate } from '../data/IssueMarkdowns';
-import { updateRecentIssue, invalidateRecentIssuesStore } from '../data/recentIssuesManager';
+import { getIssueMarkdown, onTitleUpdate, onVtimeUpdated } from '../data/IssueMarkdowns';
+import { updateRecentIssue, invalidateRecentIssuesStore, onRecentIssuesStoreUpdated } from '../data/recentIssuesManager';
 import { FileChangeType } from '../services/UnifiedFileWatcher';
 
 /**
@@ -122,16 +122,33 @@ export class ConfigurationManager {
             void updateRecentIssue(e.uri, changeType);
         });
 
-        // tree.json 变更 → 标记最近问题存储脏（isolation 状态可能变化）
+        // tree.json / para.json 变更 → 定向刷新对应视图
         fileWatcher.onIssueManagerChange((e) => {
             if (e.fileName === 'tree.json') {
                 invalidateRecentIssuesStore();
+                // tree 结构变更 → 问题总览完整刷新 + 最近问题重检 isolation + PARA 刷新
+                vscode.commands.executeCommand('issueManager.refreshOverview');
+                vscode.commands.executeCommand('issueManager.recentIssues.refresh');
+                vscode.commands.executeCommand('issueManager.refreshParaView');
+            }
+            if (e.fileName === 'para.json') {
+                vscode.commands.executeCommand('issueManager.refreshParaView');
             }
         });
 
-        // 订阅内存标题缓存写入/更新事件，触发刷新所有视图（加短延迟以合并快速连续更新）
+        // 标题变更 → 问题总览标签刷新（不重读 tree.json，缓存已热）
         this.fileWatcherDisposables.push(onTitleUpdate(() => {
-            vscode.commands.executeCommand('issueManager.refreshAllViews');
+            vscode.commands.executeCommand('issueManager.refreshOverviewLabels');
+        }));
+
+        // store 增量变更 → 仅刷新最近问题视图
+        this.fileWatcherDisposables.push(onRecentIssuesStoreUpdated(() => {
+            vscode.commands.executeCommand('issueManager.recentIssues.refresh');
+        }));
+
+        // vtime 变更 → 仅刷新最近问题视图（排序可能改变）
+        this.fileWatcherDisposables.push(onVtimeUpdated(() => {
+            vscode.commands.executeCommand('issueManager.recentIssues.refresh');
         }));
     }
 

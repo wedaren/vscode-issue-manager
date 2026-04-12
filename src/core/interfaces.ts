@@ -24,8 +24,8 @@ export interface IIssueViewProvider<T = vscode.TreeItem> extends vscode.TreeData
  * 为将来可能的扩展预留接口空间。
  */
 export interface IIssueOverviewProvider extends IIssueViewProvider<IssueNode> {
-    // 问题总览视图的特有方法可以在这里定义
-    // 目前使用基础接口功能即可
+    /** 标签刷新：仅触发 onDidChangeTreeData，不重读 tree.json */
+    fireUpdate(): void;
 }
 
 /**

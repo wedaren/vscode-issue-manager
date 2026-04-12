@@ -64,8 +64,14 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
     this._onDidChangeTreeData.fire();
   }
 
+  /** 完整刷新：重读 tree.json 并通知视图（tree 结构变更时使用） */
   public refresh(): void {
     this.loadData();
+  }
+
+  /** 标签刷新：仅触发 onDidChangeTreeData 让 VS Code 重新调 getTreeItem，不重读 tree.json（标题变更时使用） */
+  public fireUpdate(): void {
+    this._onDidChangeTreeData.fire();
   }
 
   async getTreeItem(element: IssueNode): Promise<vscode.TreeItem> {

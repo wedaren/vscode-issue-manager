@@ -53,6 +53,12 @@ const DAYS_IN_WEEK = 7;
 /** 默认展开的分组标签 */
 export const DEFAULT_EXPANDED_GROUPS = ['今天', '昨天', '最近一周'];
 
+// ========== store 变更事件 ========== //
+
+const _onStoreUpdated = new vscode.EventEmitter<void>();
+/** store 增量变更后触发，仅供 RecentIssuesProvider 监听以刷新视图 */
+export const onRecentIssuesStoreUpdated: vscode.Event<void> = _onStoreUpdated.event;
+
 // ========== 增量数据存储 ========== //
 
 /** 内存中的完整列表，初始化后不再需要全量重查 */
@@ -80,7 +86,9 @@ export async function updateRecentIssue(
   const fsPath = uri.fsPath;
 
   if (changeType === 'delete') {
+    const before = _store.length;
     _store = _store.filter(s => s.filePath !== fsPath);
+    if (_store.length !== before) { _onStoreUpdated.fire(); }
     return;
   }
 
@@ -109,6 +117,7 @@ export async function updateRecentIssue(
   } else {
     _store.push(stat);
   }
+  _onStoreUpdated.fire();
 }
 
 /**
