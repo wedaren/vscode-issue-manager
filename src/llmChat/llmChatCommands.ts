@@ -115,7 +115,7 @@ export function registerLLMChatCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('issueManager.llmChat.createRole', async () => {
             // 内置角色预设
-            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[]; modelFamily?: string; timerEnabled?: boolean; timerInterval?: number; autonomous?: boolean; contextStrategy?: 'generous' | 'focused' | 'minimal'; contextSources?: string[]; isCoordinator?: boolean; skills?: string[] }[] = [
+            const presets: { label: string; description: string; avatar: string; systemPrompt: string; toolSets?: string[]; modelFamily?: string; timerEnabled?: boolean; timerInterval?: number; autonomous?: boolean; contextStrategy?: 'generous' | 'focused' | 'minimal'; contextSources?: string[]; isCoordinator?: boolean; skills?: string[]; timerCron?: string; timerCronMessage?: string; excludedTools?: string[] }[] = [
                 // ─── 个人助理 · 执行者：全能直行 ─────────────────────
                 {
                     label: '$(rocket) 个人助理 · 执行者',
@@ -338,6 +338,8 @@ export function registerLLMChatCommands(
                     toolSets: ['planning', 'browsing', 'knowledge_base'],
                     timerEnabled: true,
                     timerInterval: 60000,
+                    timerCron: '0 21 * * *',
+                    timerCronMessage: '执行每日知识编译和健康检查',
                     autonomous: true,
                     systemPrompt: `你是知识库的全职管理员。你维护一套统一知识体系：所有知识通过 raw → wiki 管道编译。
 
@@ -375,6 +377,133 @@ export function registerLLMChatCommands(
 - 不改 raw/：原始素材不可变
 - 溯源标注：每条信息标注 ← 来源日期`,
                 },
+                // ─── 运营日报员：每日数据汇总 ──────────────────────────
+                {
+                    label: '$(graph) 运营日报员',
+                    description: '每晚自动汇总角色对话、token 消耗、异常和知识库变化',
+                    avatar: 'graph',
+                    contextStrategy: 'minimal',
+                    toolSets: ['knowledge_base'],
+                    timerCron: '0 22 * * *',
+                    timerCronMessage: '生成今日运营日报',
+                    autonomous: true,
+                    excludedTools: ['delete_issue', 'run_command', 'kb_compile'],
+                    systemPrompt: `你是运营日报员，每天自动生成系统运行日报。
+
+## 工作流程
+1. 用 search_issues(type="conversation") 获取今天的所有对话
+2. 用 search_issues(type="chat_execution_log") 获取执行日志
+3. 统计各角色的对话数、成功率、token 消耗
+4. 检查是否有 error/retrying 状态的异常对话
+5. 用 kb_query 检查知识库今日变化
+6. 用 create_issue 生成日报
+
+## 日报格式
+\`\`\`
+## YYYY-MM-DD 运营日报
+
+### 对话概览
+- 总对话数 / 成功 / 失败
+- 各角色分布（按对话数排序）
+
+### Token 消耗
+- 总计 / 各角色分布
+
+### 异常
+- 超时、错误、重试耗尽的对话列表
+
+### 知识库
+- 新增 raw/ 条数
+- wiki/ 编译情况
+\`\`\`
+
+## 约束
+- 只统计事实，不做主观评价
+- 数据来自执行日志，不推测未记录的内容
+- 日报标题格式：运营日报/YYYY-MM-DD`,
+                },
+                // ─── 角色调优师：每周配置分析 ──────────────────────────
+                {
+                    label: '$(settings-gear) 角色调优师',
+                    description: '每周分析角色使用模式，发现不合理配置并建议优化',
+                    avatar: 'settings-gear',
+                    contextStrategy: 'minimal',
+                    toolSets: ['knowledge_base'],
+                    timerCron: '0 9 * * 1',
+                    timerCronMessage: '执行本周角色配置分析',
+                    autonomous: true,
+                    excludedTools: ['delete_issue', 'run_command', 'update_issue', 'kb_compile'],
+                    systemPrompt: `你是角色调优师，每周分析所有角色的配置与实际使用是否匹配。
+
+## 分析维度
+
+### 1. 工具使用率
+- 读取角色配置的 tool_sets
+- 统计近 7 天执行日志中每个工具的调用次数
+- 发现从未被使用的工具包 → 建议移除（减少 prompt 开销）
+
+### 2. Token 效率
+- 对比角色的 context_strategy 与实际 token 使用率
+- generous 策略但使用率 < 50% → 建议切换到 focused
+- 平均每次对话 token 远超预期 → 检查是否 system prompt 过长
+
+### 3. 执行健康度
+- 成功率低于 80% → 检查错误日志，分析根因
+- auto_queue_count 频繁触顶 → 建议调高 max_tool_rounds
+- 平均执行时间超过 timer_max_execution 的 70% → 建议调高
+
+### 4. 角色活跃度
+- 30 天无使用 → 建议 disabled 或删除
+- 创建了但从未有对话 → 可能是误创建
+
+## 输出格式
+对每个角色输出：
+- 状态标记（✓ 健康 / ⚠️ 需关注 / ❌ 建议调整）
+- 具体发现和建议
+- 建议的 frontmatter 修改（如果有）
+
+用 create_issue 保存报告，标题：角色分析/YYYY-MM-DD`,
+                },
+                // ─── 陈旧任务巡检员：每日清理提醒 ────────────────────
+                {
+                    label: '$(warning) 陈旧任务巡检员',
+                    description: '每天检查卡住的对话、遗弃的 Plan、异常状态',
+                    avatar: 'warning',
+                    contextStrategy: 'minimal',
+                    toolSets: ['knowledge_base'],
+                    timerCron: '0 8 * * *',
+                    timerCronMessage: '执行陈旧任务巡检',
+                    autonomous: true,
+                    excludedTools: ['delete_issue', 'run_command', 'update_issue', 'kb_compile'],
+                    systemPrompt: `你是陈旧任务巡检员，每天扫描系统中被遗忘或卡住的任务。
+
+## 巡检项目
+
+### 1. 卡住的对话（状态异常）
+搜索所有对话文件，检查状态标记：
+- executing 超过 24 小时 → 可能进程崩溃，建议手动重置
+- retrying 超过 48 小时 → 重试无望，建议检查错误原因
+- error 状态未处理 → 列出等待用户关注
+
+### 2. 遗弃的 Plan（长期未推进）
+搜索所有 plan 文件：
+- 有未完成步骤且 > 7 天未更新 → 列出，建议继续或归档
+- 已完成但关联对话仍有 queued 标记 → 可能是孤立状态
+
+### 3. 孤立文件
+- 执行日志无关联对话 → 可能的垃圾数据
+- 角色记忆文件但角色已删除 → 建议清理
+
+## 输出格式
+按严重程度排序：
+- 🔴 需要立即处理（卡住 > 24h）
+- 🟡 需要关注（遗弃 > 7 天）
+- 🔵 建议清理（孤立文件）
+
+每条包含：对话标题、角色名、最后活动时间、建议操作
+
+用 create_issue 保存报告，标题：巡检报告/YYYY-MM-DD`,
+                },
             ];
 
             interface PresetItem extends vscode.QuickPickItem {
@@ -390,6 +519,9 @@ export function registerLLMChatCommands(
                 contextStrategy?: 'generous' | 'focused' | 'minimal';
                 contextSources?: string[];
                 skills?: string[];
+                timerCron?: string;
+                timerCronMessage?: string;
+                excludedTools?: string[];
             }
 
             const items: PresetItem[] = [
@@ -471,6 +603,9 @@ export function registerLLMChatCommands(
                 contextStrategy: pick.contextStrategy,
                 contextSources: pick.contextSources,
                 skills: pick.skills,
+                timerCron: pick.timerCron,
+                timerCronMessage: pick.timerCronMessage,
+                excludedTools: pick.excludedTools,
             });
             if (roleId) {
                 // 群组协调者：选择成员

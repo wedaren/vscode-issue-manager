@@ -31,6 +31,10 @@ export interface ChatRoleFrontmatter {
     timer_max_retries?: number;
     /** 初始重试间隔（ms），指数退避，默认 5000 */
     timer_retry_delay?: number;
+    /** Cron 表达式（minute hour day month weekday），如 "0 22 * * *" = 每天 22:00 */
+    timer_cron?: string;
+    /** Cron 触发时自动创建对话并排队的消息内容 */
+    timer_cron_message?: string;
     /** 角色级 LLM 请求最大 token 预算（可选） */
     chat_role_max_tokens?: number;
     /** 单次执行最大工具调用轮次，默认 30。复杂任务角色可调高。 */
@@ -209,6 +213,10 @@ export interface ChatRoleInfo {
     timerMaxExecution?: number;
     timerMaxRetries?: number;
     timerRetryDelay?: number;
+    /** Cron 表达式，设置后自动启用定时器 */
+    timerCron?: string;
+    /** Cron 触发时排队的消息 */
+    timerCronMessage?: string;
     /** 角色级最大 token 预算 */
     maxTokens?: number;
     /** 单次执行最大工具调用轮次 */

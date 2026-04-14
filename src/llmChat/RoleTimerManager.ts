@@ -24,6 +24,7 @@ import {
     getAutoQueueCount,
     setAutoQueueCount,
     appendUserMessageQueued,
+    createConversation,
     getPlanStatus,
 } from './llmChatDataManager';
 import {
@@ -43,6 +44,7 @@ import { memoryCompilerHook } from './hooks/memoryCompilerHook';
 import { executeConversation as execConversation } from './ConversationExecutor';
 import { ExecutionContext } from './ExecutionContext';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
+import { matchCron, isValidCron } from './cronMatcher';
 
 const logger = Logger.getInstance();
 
@@ -81,6 +83,10 @@ export class RoleTimerManager implements vscode.Disposable {
     private readonly _disposables: vscode.Disposable[] = [];
     private _watcherDebounce: ReturnType<typeof setTimeout> | undefined;
     private readonly _hookRunner = new PostResponseHookRunner();
+    /** Cron 调度器定时器（每 60s 检查一次） */
+    private _cronTimerId?: ReturnType<typeof setInterval>;
+    /** roleId → 上次 cron 触发的分钟时间戳（防同一分钟重复触发） */
+    private readonly _lastCronFire = new Map<string, number>();
 
     /** 全局调试开关：ON 时无视角色/对话配置，强制生成所有日志 */
     private _debugLogAll = false;
@@ -111,6 +117,7 @@ export class RoleTimerManager implements vscode.Disposable {
         await this.syncTimers();
         this.startFileWatcher();
         this.startSaveWatcher();
+        this.startCronScheduler();
         logger.info(`[RoleTimerManager] 已启动，当前活跃定时器: ${this.timers.size} 个`);
     }
 
@@ -120,6 +127,10 @@ export class RoleTimerManager implements vscode.Disposable {
             clearInterval(timer);
         }
         this.timers.clear();
+        if (this._cronTimerId) {
+            clearInterval(this._cronTimerId);
+            this._cronTimerId = undefined;
+        }
     }
 
     dispose(): void {
@@ -205,11 +216,12 @@ export class RoleTimerManager implements vscode.Disposable {
     /** 读取最新角色列表，启动/停止定时器使之与配置保持一致 */
     private async syncTimers(): Promise<void> {
         const roles = await getAllChatRoles();
-        const enabledIds = new Set(roles.filter(r => r.timerEnabled).map(r => r.id));
+        // cron 角色隐式启用 timer（需要 timer 来处理 cron 创建的 queued 对话）
+        const enabledIds = new Set(roles.filter(r => r.timerEnabled || r.timerCron).map(r => r.id));
 
         // 启动新增的角色定时器
         for (const role of roles) {
-            if (role.timerEnabled && !this.timers.has(role.id)) {
+            if ((role.timerEnabled || role.timerCron) && !this.timers.has(role.id)) {
                 this.startTimerForRole(role);
             }
         }
@@ -228,6 +240,56 @@ export class RoleTimerManager implements vscode.Disposable {
         const timer = setInterval(() => void this.tick(role.id), interval);
         this.timers.set(role.id, timer);
         logger.info(`[RoleTimerManager] 角色「${role.name}」定时器已启动（间隔 ${interval}ms）`);
+    }
+
+    // ─── 内部：Cron 调度 ──────────────────────────────────────
+
+    /** 启动 cron 调度器，每 60 秒检查一次所有 cron 表达式 */
+    private startCronScheduler(): void {
+        // 立即检查一次，然后每 60s 检查
+        void this.checkCronSchedules();
+        this._cronTimerId = setInterval(() => void this.checkCronSchedules(), 60_000);
+    }
+
+    /** 遍历所有配置了 timer_cron 的角色，匹配则触发 */
+    private async checkCronSchedules(): Promise<void> {
+        const now = new Date();
+        const roles = getAllChatRoles();
+
+        for (const role of roles) {
+            if (!role.timerCron) { continue; }
+            if (!isValidCron(role.timerCron)) {
+                logger.warn(`[CronScheduler] 角色「${role.name}」cron 表达式无效: "${role.timerCron}"，已跳过`);
+                continue;
+            }
+
+            // 防止同一分钟重复触发
+            const minuteTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes()).getTime();
+            const lastFire = this._lastCronFire.get(role.id) || 0;
+            if (lastFire >= minuteTs) { continue; }
+
+            if (matchCron(role.timerCron, now)) {
+                this._lastCronFire.set(role.id, minuteTs);
+                await this.fireCronTrigger(role);
+            }
+        }
+    }
+
+    /** 创建对话并排队 cron 消息 */
+    private async fireCronTrigger(role: ChatRoleInfo): Promise<void> {
+        const message = role.timerCronMessage || '定时任务触发';
+        try {
+            const uri = await createConversation(role.id, `[cron] ${new Date().toISOString().slice(0, 10)}`);
+            if (!uri) {
+                logger.warn(`[CronScheduler] 角色「${role.name}」创建对话失败`);
+                return;
+            }
+            await appendUserMessageQueued(uri, message);
+            logger.info(`[CronScheduler] 角色「${role.name}」cron 触发 → 已创建对话并排队: "${message}"`);
+            this._onDidChange.fire({ uri, roleId: role.id, success: true });
+        } catch (e) {
+            logger.error(`[CronScheduler] 角色「${role.name}」cron 触发失败`, e);
+        }
     }
 
     // ─── 内部：文件监听 ──────────────────────────────────────

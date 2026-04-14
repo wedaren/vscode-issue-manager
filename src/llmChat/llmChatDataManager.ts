@@ -71,6 +71,8 @@ export function getAllChatRoles(): ChatRoleInfo[] {
             timerMaxExecution: toFiniteNumber(fm.timer_max_execution),
             timerMaxRetries: toFiniteNumber(fm.timer_max_retries),
             timerRetryDelay: toFiniteNumber(fm.timer_retry_delay),
+            timerCron: typeof fm.timer_cron === 'string' ? fm.timer_cron.trim() : undefined,
+            timerCronMessage: typeof fm.timer_cron_message === 'string' ? fm.timer_cron_message : undefined,
             maxTokens: toFiniteNumber(fm.chat_role_max_tokens),
             maxToolRounds: toFiniteNumber(fm.max_tool_rounds),
             toolSets: Array.isArray(fm.tool_sets) ? (fm.tool_sets as unknown[]).map(String) : [],
@@ -158,6 +160,9 @@ export async function createChatRole(
         contextStrategy?: 'generous' | 'focused' | 'minimal';
         contextSources?: string[];
         skills?: string[];
+        timerCron?: string;
+        timerCronMessage?: string;
+        excludedTools?: string[];
     },
 ): Promise<string | null> {
     const defaultModelFamily = vscode.workspace.getConfiguration('issueManager').get<string>('llm.modelFamily') || 'gpt-5-mini';
@@ -182,6 +187,9 @@ export async function createChatRole(
         ...(options?.contextStrategy ? { context_strategy: options.contextStrategy } : {}),
         ...(options?.contextSources?.length ? { context_sources: options.contextSources } : {}),
         ...(options?.skills?.length ? { skills: options.skills } : {}),
+        ...(options?.timerCron ? { timer_cron: options.timerCron } : {}),
+        ...(options?.timerCronMessage ? { timer_cron_message: options.timerCronMessage } : {}),
+        ...(options?.excludedTools?.length ? { excluded_tools: options.excludedTools } : {}),
     } as Partial<FrontmatterData> & ChatRoleFrontmatter & { tool_sets: string[]; mcp_servers: string[] };
 
     const body = systemPrompt
