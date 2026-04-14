@@ -554,7 +554,10 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
 
             const nodes: LLMChatViewNode[] = [];
 
-            // MCP Server 根节点（最顶部）
+            // 最近对话根节点置顶，便于快速回到最近工作上下文
+            nodes.push(new RecentConversationRootNode());
+
+            // MCP Server 根节点
             const mcpManager = McpManager.getInstance();
             const statuses = mcpManager.getServerStatuses();
             const connectedCount = statuses.filter(s => s.connected).length;
@@ -573,8 +576,6 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const rawCat = kbTree.find(c => c.prefix === 'raw');
             nodes.push(new KbRootNode(wikiCat?.totalCount ?? 0, rawCat?.totalCount ?? 0));
 
-            // 最近对话
-            nodes.push(new RecentConversationRootNode());
             nodes.push(...roles.map(r => new ChatRoleNode(r, this._executingRoleIds.has(r.id))));
             return nodes;
         }
