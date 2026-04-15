@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { whenCacheReady, onTitleUpdate, isIssueMarkdownFile } from '../data/IssueMarkdowns';
 import { getAllChatRoles, getConversationsForRole, getExecutionLogInfo, getPlanInfo, getMemoryInfoForRole, getRecentConversationEntries, getToolCallsForLog, getKnowledgeBaseTree, type ChatToolCallInfo, type KbCategory, type KbSubCategory, type KbArticleInfo } from './llmChatDataManager';
-import type { ChatRoleInfo, ChatConversationInfo, ChatExecutionLogInfo, ChatPlanInfo, ChatMemoryInfo, RecentActivityEntry, RecentConversationEntry } from './types';
+import type { ChatRoleInfo, ChatConversationInfo, ChatExecutionLogInfo, ChatPlanInfo, ChatMemoryInfo, RecentConversationEntry } from './types';
 import { RoleTimerManager } from './RoleTimerManager';
 import { McpManager, type McpServerStatus, type McpToolDescriptor } from './mcp';
 
@@ -170,18 +170,20 @@ export class RecentConversationRootNode extends vscode.TreeItem {
     }
 }
 
-/** 单个对话条目（最近对话的子节点，可展开显示 Run 列表） */
+/** 单个对话条目（最近对话的子节点，不可展开） */
 export class RecentConversationItemNode extends vscode.TreeItem {
-    constructor(public readonly entry: RecentConversationEntry) {
-        super(
-            entry.title,
-            entry.runs.length > 0
-                ? vscode.TreeItemCollapsibleState.Collapsed
-                : vscode.TreeItemCollapsibleState.None,
-        );
-        this.contextValue = 'recentConversationItem';
-        this.iconPath = new vscode.ThemeIcon('comment-discussion');
-        this.description = `${entry.roleName} · ${entry.runs.length} 次执行 · ${formatRelativeTime(entry.latestTimestamp)}`;
+    constructor(public readonly entry: RecentConversationEntry, executing = false) {
+        super(entry.title, vscode.TreeItemCollapsibleState.None);
+        this.contextValue = executing ? 'recentConversationItemExecuting' : 'recentConversationItem';
+
+        if (executing) {
+            this.iconPath = new vscode.ThemeIcon('sync~spin');
+            this.description = `${entry.roleName} · 执行中…`;
+        } else {
+            this.iconPath = new vscode.ThemeIcon('comment-discussion');
+            this.description = `${entry.roleName} · ${formatRelativeTime(entry.latestTimestamp)}`;
+        }
+
         this.tooltip = new vscode.MarkdownString(
             `**${entry.title}**\n\n`
             + `- 角色: ${entry.roleName}\n`
@@ -195,34 +197,6 @@ export class RecentConversationItemNode extends vscode.TreeItem {
                 arguments: [entry.conversationUri],
             };
         }
-    }
-}
-
-/** 单次 Run 条目（对话的子节点） */
-export class RecentRunItemNode extends vscode.TreeItem {
-    constructor(
-        public readonly run: RecentActivityEntry,
-        public readonly parentConversation: RecentConversationEntry,
-    ) {
-        super(
-            `${run.success ? '✓' : '❌'} Run #${run.runNumber}`,
-            vscode.TreeItemCollapsibleState.None,
-        );
-        this.contextValue = 'recentRunItem';
-        this.iconPath = new vscode.ThemeIcon(run.success ? 'pass' : 'error');
-        this.description = `${run.modelFamily ?? '未知模型'} · ${formatRelativeTime(run.timestamp)}`;
-        this.tooltip = new vscode.MarkdownString(
-            `**Run #${run.runNumber}**\n\n`
-            + `- 角色: ${run.roleName ?? '未知'}\n`
-            + `- 模型: ${run.modelFamily ?? '未知'}\n`
-            + `- 触发: ${run.trigger ?? '未知'}\n`
-            + `- 结果: ${run.summary}`,
-        );
-        this.command = {
-            command: 'vscode.open',
-            title: '打开执行日志',
-            arguments: [run.logUri],
-        };
     }
 }
 
@@ -456,7 +430,7 @@ export class KbRoleNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | RecentRunItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode | KbRootNode | KbCategoryNode | KbSubCategoryNode | KbArticleNode | KbRoleNode;
+export type LLMChatViewNode = ChatRoleNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode | KbRootNode | KbCategoryNode | KbSubCategoryNode | KbArticleNode | KbRoleNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -629,11 +603,13 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         }
         if (element instanceof RecentConversationRootNode) {
             const conversations = await getRecentConversationEntries(20);
-            return conversations.map(c => new RecentConversationItemNode(c));
+            const mgr = RoleTimerManager.getInstance();
+            return conversations.map(c => new RecentConversationItemNode(
+                c,
+                c.conversationUri ? mgr.isExecuting(c.conversationUri) : false,
+            ));
         }
-        if (element instanceof RecentConversationItemNode) {
-            return element.entry.runs.map(r => new RecentRunItemNode(r, element.entry));
-        }
+        // RecentConversationItemNode 不再展开子节点
         if (element instanceof ChatRoleNode) {
             const nodes: LLMChatViewNode[] = [];
             // 角色记忆文件（置顶）
@@ -707,9 +683,6 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
                     element.parentRoleOrGroupId, element.parentIsGroup,
                 );
             }
-        }
-        if (element instanceof RecentRunItemNode) {
-            return new RecentConversationItemNode(element.parentConversation);
         }
         if (element instanceof RecentConversationItemNode) {
             return new RecentConversationRootNode();

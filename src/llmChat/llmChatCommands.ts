@@ -18,7 +18,7 @@ import {
 import { RoleTimerManager } from './RoleTimerManager';
 import { parseStateMarker, stripMarker } from './convStateMarker';
 import { McpManager } from './mcp';
-import { ChatRoleNode, ChatConversationNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
+import { ChatRoleNode, ChatConversationNode, RecentConversationItemNode, type LLMChatRoleProvider, type LLMChatViewNode } from './LLMChatRoleProvider';
 import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
 import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
@@ -1028,12 +1028,29 @@ export function registerLLMChatCommands(
         }),
     );
 
+    // ─── 最近对话 → 定位到角色下的实际对话节点 ──────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('issueManager.llmChat.revealRecentConversation', async (node?: RecentConversationItemNode) => {
+            if (!(node instanceof RecentConversationItemNode) || !node.entry.conversationUri) { return; }
+            const target = await roleProvider.findNodeByUri(node.entry.conversationUri);
+            if (!target) {
+                vscode.window.showWarningMessage('找不到对应的对话节点');
+                return;
+            }
+            try {
+                await llmChatView.reveal(target, { select: true, focus: false, expand: true });
+            } catch { /* ignore */ }
+        }),
+    );
+
     // ─── 取消对话执行 ─────────────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.cancelConversation', async (node?: ChatConversationNode) => {
+        vscode.commands.registerCommand('issueManager.llmChat.cancelConversation', async (node?: ChatConversationNode | RecentConversationItemNode) => {
             let uri: vscode.Uri | undefined;
             if (node instanceof ChatConversationNode) {
                 uri = node.conversation.uri;
+            } else if (node instanceof RecentConversationItemNode) {
+                uri = node.entry.conversationUri;
             } else {
                 // 尝试当前编辑器
                 const editor = vscode.window.activeTextEditor;

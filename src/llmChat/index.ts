@@ -1,4 +1,4 @@
-export { LLMChatRoleProvider, type LLMChatViewNode, ChatRoleNode, ChatConversationNode, ChatExecutionLogNode, RecentConversationRootNode, RecentConversationItemNode, RecentRunItemNode, McpRootNode, McpServerNode, McpToolNode } from './LLMChatRoleProvider';
+export { LLMChatRoleProvider, type LLMChatViewNode, ChatRoleNode, ChatConversationNode, ChatExecutionLogNode, RecentConversationRootNode, RecentConversationItemNode, McpRootNode, McpServerNode, McpToolNode } from './LLMChatRoleProvider';
 export { LLMChatService } from './LLMChatService';
 export { ChatHistoryPanel } from './ChatHistoryPanel';
 export { registerLLMChatCommands } from './llmChatCommands';
