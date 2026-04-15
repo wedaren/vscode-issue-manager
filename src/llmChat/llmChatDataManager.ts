@@ -171,8 +171,8 @@ export async function createChatRole(
         chat_role_name: name,
         chat_role_avatar: avatar || 'hubot',
         chat_role_model_family: modelFamily || defaultModelFamily,
-        // ─── 定时器配置（默认关闭，按需开启） ────────────────
-        timer_enabled: options?.timerEnabled ?? false,
+        // ─── 定时器配置（有 cron 时隐式启用） ─────────────────
+        timer_enabled: options?.timerEnabled ?? !!options?.timerCron,
         timer_interval: options?.timerInterval ?? 30000,
         timer_max_concurrent: 2,
         timer_timeout: 60000,
