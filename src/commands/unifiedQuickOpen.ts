@@ -499,10 +499,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     }
 
                     // 如果未处理，默认行为
-                    await vscode.commands.executeCommand(
-                        "issueManager.searchIssues",
-                        "overview"
-                    );
                     quickPick.hide();
                 });
 

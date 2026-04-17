@@ -1,8 +1,5 @@
 import * as vscode from 'vscode';
 import { IssueNode } from '../data/issueTreeManager';
-import { IssueStructureProvider } from '../views/IssueStructureProvider';
-import { IssueLogicalTreeProvider } from '../views/IssueLogicalTreeProvider';
-import { IssueLogicalTreeNode } from '../models/IssueLogicalTreeModel';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaViewNode } from '../types';
 import { MarkerManager } from '../marker/MarkerManager';
@@ -21,43 +18,14 @@ export interface IIssueViewProvider<T = vscode.TreeItem> extends vscode.TreeData
     getElementByUri?(uri: vscode.Uri): Promise<T | null | undefined>;  
 }  
 /**
- * 关注问题视图提供者接口
- * 
- * 扩展基础视图提供者，添加关注问题特有的功能，
- * 包括数据加载和节点查找功能。
- */
-export interface IFocusedIssuesProvider extends IIssueViewProvider<IssueNode> {
-    /**
-     * 加载关注问题数据
-     * 
-     * 异步加载关注问题列表，包括从存储中读取
-     * 用户标记的问题和相关元数据。
-     * 
-     * @returns Promise<void> 数据加载完成的Promise
-     */
-    loadData(): Promise<void>;
-    
-    /**
-     * 根据ID查找关注的问题节点
-     * 
-     * 在关注问题树中查找指定ID的节点，返回节点实例
-     * 及其在树中的路径信息。
-     * 
-     * @param id 问题节点的唯一标识符
-     * @returns 查找结果，包含节点和父级列表，未找到则返回null
-     */
-    findFirstFocusedNodeById(id: string): { node: IssueNode; parentList: IssueNode[] } | null;
-}
-
-/**
  * 问题总览视图提供者接口
  * 
  * 专门用于问题总览视图的接口定义，目前继承基础功能，
  * 为将来可能的扩展预留接口空间。
  */
 export interface IIssueOverviewProvider extends IIssueViewProvider<IssueNode> {
-    // 问题总览视图的特有方法可以在这里定义
-    // 目前使用基础接口功能即可
+    /** 标签刷新：仅触发 onDidChangeTreeData，不重读 tree.json */
+    fireUpdate(): void;
 }
 
 /**
@@ -69,66 +37,28 @@ export interface IIssueOverviewProvider extends IIssueViewProvider<IssueNode> {
 export interface IViewRegistryResult {
     /** 问题总览视图提供者实例 */
     issueOverviewProvider: IIssueOverviewProvider;
-    
-    /** 关注问题视图提供者实例 */
-    focusedIssuesProvider: IFocusedIssuesProvider;
-    
+
     /** 最近问题视图提供者实例 */
     recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
-    
+
     /** 问题总览树视图实例 */
     overviewView: vscode.TreeView<IssueNode>;
-    
-    /** 关注问题树视图实例 */
-    focusedView: vscode.TreeView<IssueNode>;
-    
+
     /** 最近问题树视图实例 */
     recentIssuesView: vscode.TreeView<vscode.TreeItem>;
 
-    /** 问题搜索视图提供者实例 */
-    issueSearchProvider: import('../views/IssueSearchViewProvider').IssueSearchViewProvider;
-
-    /** 问题搜索树视图实例 */
-    issueSearchView: vscode.TreeView<import('../views/IssueSearchViewProvider').IssueSearchViewNode>;
-
-    /** 深度调研问题视图提供者实例 */
-    deepResearchProvider: import('../views/DeepResearchIssuesProvider').DeepResearchIssuesProvider;
-
-    /** 深度调研问题树视图实例 */
-    deepResearchView: vscode.TreeView<import('../views/DeepResearchIssuesProvider').DeepResearchViewNode>;
-    
-    // /** RSS问题视图提供者实例 */
-    // rssIssuesProvider: IIssueViewProvider<vscode.TreeItem>;
-    
-    // /** RSS问题树视图实例 */
-    // rssIssuesView: vscode.TreeView<vscode.TreeItem>;
-    
-    // /** 问题结构视图提供者实例 */
-    // issueStructureProvider: IssueStructureProvider;
-    
-    // /** 问题结构树视图实例 */
-    // structureView: vscode.TreeView<vscode.TreeItem>;
-    
-    // /** 问题逻辑树视图提供者实例（基于 issue_ frontmatter 字段）*/
-    // issueLogicalTreeProvider: IssueLogicalTreeProvider;
-    
-    // /** 问题逻辑树视图实例 */
-    // logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
-    
     /** PARA 视图提供者实例 */
     paraViewProvider: ParaViewProvider;
-    
+
     /** PARA 树视图实例 */
     paraView: vscode.TreeView<ParaViewNode>;
-    
-    // 笔记映射视图已移除
-    
+
     /** 标记管理器实例 */
     markerManager: MarkerManager;
-    
+
     /** 标记树视图提供者实例 */
     markerTreeProvider: MarkerTreeProvider;
-    
+
     /** 标记树视图实例 */
     markerView: vscode.TreeView<vscode.TreeItem>;
     /** Git 分支管理器实例 */
@@ -141,6 +71,10 @@ export interface IViewRegistryResult {
     editorGroupProvider: import('../views/EditorGroupTreeProvider').EditorGroupTreeProvider;
     /** 编辑器组管理树视图实例 */
     editorGroupView: vscode.TreeView<import('../views/EditorGroupTreeProvider').EditorGroupViewNode>;
+    /** LLM 聊天角色视图提供者实例 */
+    llmChatRoleProvider: import('../llmChat/LLMChatRoleProvider').LLMChatRoleProvider;
+    /** LLM 聊天角色树视图实例 */
+    llmChatRoleView: vscode.TreeView<import('../llmChat/LLMChatRoleProvider').LLMChatViewNode>;
 }
 
 /**

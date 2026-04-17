@@ -3,7 +3,7 @@ import { QuickPickItemWithId, filterItems } from "./unifiedQuickOpen.types";
 import { getIssueIdFromUri } from "../utils/uriUtils";
 import { getIssueNodeById } from "../data/issueTreeManager";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
-import { getIssueMarkdown, isIssueMarkdown } from "../data/IssueMarkdowns";
+import { getIssueMarkdown, isIssueMarkdown, extractFrontmatterAndBody } from "../data/IssueMarkdowns";
 import { forceRefreshCurrentEditor } from "./forceRefreshCurrentEditor";
 import { canDeleteFromEditor } from "./deleteIssue";
 import { createAndOpenIssue } from "./createAndOpenIssue";
@@ -37,28 +37,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     },
 
     // --- 生成 (生成项目名 / 分支 / 标题 / 摘要) ---
-    {
-        label: "生成项目名",
-        group: "生成",
-        hint: "project",
-        description: "基于活动编辑器内容生成项目名并复制",
-        execute: () => {
-            vscode.commands.executeCommand(
-                "issueManager.generateProjectName"
-            );
-        },
-    },
-    {
-        label: "生成 Git 分支名",
-        group: "生成",
-        hint: "branch",
-        description: "基于活动编辑器内容生成 git 分支名并复制",
-        execute: () => {
-            vscode.commands.executeCommand(
-                "issueManager.generateGitBranchName"
-            );
-        },
-    },
+    
     {
         label: "生成标题",
         group: "生成",
@@ -98,7 +77,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "复制文件名",
         group: "复制",
-        hint: "filename",
+        hint: "copy filename",
         description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
         require: ctx => !!ctx.issueId,
         execute: () => {
@@ -108,7 +87,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "复制问题 ID",
         group: "复制",
-        hint: "id",
+        hint: "copy id",
         description: "复制当前编辑器中的 IssueNode ID 到剪贴板",
         require: ctx => !!ctx.issueId,
         execute: () => {
@@ -118,13 +97,24 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
     {
         label: "复制 IssueMarkdown 链接",
         group: "复制",
-        hint: "link",
+        hint: "copy link",
         description: "将当前编辑器对应的 IssueMarkdown 文件以 Markdown 链接格式复制到剪贴板（格式: [标题](IssueDir/相对路径)）",
         require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
         execute: () => {
             vscode.commands.executeCommand("issueManager.copyIssueMarkdownLink");
         },
     },
+    {
+        label: "复制 IssueMarkdown 链接（绝对路径）",
+        group: "复制",
+        hint: "copy link abs",
+        description: "将当前编辑器对应的 IssueMarkdown 文件以 Markdown 链接格式复制到剪贴板（格式: [标题](/绝对路径)）",
+        require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
+        execute: () => {
+            vscode.commands.executeCommand("issueManager.copyIssueMarkdownLinkAbsolute");
+        },
+    },
+    
 
     // --- 创建 (新建问题 / 子问题 / 译文) ---
     {
@@ -267,6 +257,24 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
     {
+        label: "关闭其他编辑组",
+        group: "文件",
+        hint: "close other groups",
+        description: "关闭除当前活动组之外的所有编辑组（会提示处理未保存文件）",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.editorGroup.closeOtherGroups");
+        },
+    },
+    {
+        label: "仅保留当前活动编辑器",
+        group: "文件",
+        hint: "keep only active",
+        description: "仅保留当前活动编辑器并关闭其它所有编辑器（会提示处理未保存文件）",
+        execute: async () => {
+            await vscode.commands.executeCommand("issueManager.editorGroup.keepOnlyActiveEditor");
+        },
+    },
+    {
         label: "LLM 智能整理编辑器组",
         group: "文件",
         hint: "llm organize group",
@@ -297,6 +305,25 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
             vscode.commands.executeCommand(
                 "issueManager.revealInOverviewFromEditor"
             );
+        },
+    },
+    {
+        label: "在聊天视图中定位",
+        group: "导航",
+        hint: "reveal llm chat role conversation log",
+        description: "在聊天视图中高亮当前角色、对话或执行日志文件",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_role || !!frontmatter?.chat_conversation || !!frontmatter?.chat_execution_log;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.revealInView', vscode.window.activeTextEditor?.document?.uri);
         },
     },
     {
@@ -341,6 +368,72 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         require: ctx => !!ctx.issueId,
         execute: async () => {
             await vscode.commands.executeCommand("issueManager.attachToFromEditor");
+        },
+    },
+    {
+        label: "配置角色",
+        group: "管理",
+        hint: "role model tools status configure",
+        description: "交互式配置角色模型、工具集或委派状态",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_role;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.configureRole', vscode.window.activeTextEditor?.document?.uri);
+        },
+    },
+    {
+        label: "配置对话模型",
+        group: "管理",
+        hint: "model tokens conversation",
+        description: "交互式配置当前对话的模型和 max_tokens",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_conversation;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.configureModel', vscode.window.activeTextEditor?.document?.uri);
+        },
+    },
+    {
+        label: "生成对话诊断报告",
+        group: "管理",
+        hint: "diagnostic report debug analyze conversation log",
+        description: "聚合对话、执行日志、注入上下文，生成还原 LLM 视角的诊断报告",
+        require: async ctx => {
+            if (!ctx.uri) { return false; }
+            try {
+                const bytes = await vscode.workspace.fs.readFile(ctx.uri);
+                const { frontmatter } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf-8'));
+                return !!frontmatter?.chat_conversation;
+            } catch {
+                return false;
+            }
+        },
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.generateDiagnosticReport', vscode.window.activeTextEditor?.document?.uri);
+        },
+    },
+    {
+        label: "发送到角色对话",
+        group: "LLM",
+        hint: "ask role chat send llm 对话 角色 发送",
+        description: "将笔记内容发送给角色，或在已有对话中追问（Cmd+Enter）",
+        execute: async () => {
+            await vscode.commands.executeCommand('issueManager.llmChat.askRole');
         },
     },
     {

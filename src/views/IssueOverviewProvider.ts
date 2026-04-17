@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { readTree, TreeData, IssueNode, FocusedData, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
+import { readTree, TreeData, IssueNode, findParentNodeById, getIssueNodeContextValue } from '../data/issueTreeManager';
 import { getIssueDir } from '../config';
-import { readFocused } from '../data/focusedManager';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
 import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 
@@ -49,7 +48,6 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
   readonly onDidChangeTreeData: vscode.Event<IssueNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private treeData: TreeData | null = null;
-  private focusedData: FocusedData | null = null;
 
   constructor(private context: vscode.ExtensionContext) {
     this.loadData();
@@ -63,12 +61,17 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
     } else {
       this.treeData = null;
     }
-    this.focusedData = await readFocused();
     this._onDidChangeTreeData.fire();
   }
 
+  /** 完整刷新：重读 tree.json 并通知视图（tree 结构变更时使用） */
   public refresh(): void {
     this.loadData();
+  }
+
+  /** 标签刷新：仅触发 onDidChangeTreeData 让 VS Code 重新调 getTreeItem，不重读 tree.json（标题变更时使用） */
+  public fireUpdate(): void {
+    this._onDidChangeTreeData.fire();
   }
 
   async getTreeItem(element: IssueNode): Promise<vscode.TreeItem> {
@@ -85,8 +88,6 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
   const uri = vscode.Uri.file(path.join(issueDir, element.filePath));
   const title = getIssueMarkdownTitleFromCache(element.filePath)||'';
 
-    const focusIndex = this.focusedData?.focusList.indexOf(element.id) ?? -1;
-
     const item = new vscode.TreeItem(title,
       element.children && element.children.length > 0
         ? (element.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
@@ -95,7 +96,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
     item.id = element.id;
     item.resourceUri = uri;
     
-    item.contextValue = await getIssueNodeContextValue(element.id, focusIndex > -1 ? 'focusedNode' : 'issueNode');
+    item.contextValue = await getIssueNodeContextValue(element.id, 'issueNode');
     
     item.iconPath = await getIssueNodeIconPath(element.id);
     item.command = {

@@ -15,6 +15,12 @@
 			"group": {
 				"kind": "build",
 				"isDefault": true
+			},
+			"options": {
+				"shell": {
+					"executable": "/bin/zsh",
+					"args": ["-i", "-c"]
+				}
 			}
 		},
 		{
