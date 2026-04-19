@@ -17,6 +17,26 @@
   "contributes": {
     "commands": [
       {
+        "command": "issueManager.a2a.copyEndpoint",
+        "title": "A2A: 复制当前 endpoint",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.a2a.copyToken",
+        "title": "A2A: 复制 Bearer Token",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.a2a.rotateToken",
+        "title": "A2A: 轮换 Bearer Token",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.a2a.showStatus",
+        "title": "A2A: 查看 server 状态",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.createIssue",
         "title": "新建问题",
         "icon": "$(add)"
@@ -1609,6 +1629,16 @@
           "type": "string",
           "default": "",
           "description": "【必须】指定一个绝对路径作为存放所有问题（.md文件）的根目录。"
+        },
+        "issueManager.a2a.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用 A2A Protocol server，把设置了 a2a.expose 的 LLM 角色暴露为标准 A2A agent，仅监听 127.0.0.1。"
+        },
+        "issueManager.a2a.port": {
+          "type": "number",
+          "default": 0,
+          "description": "A2A server 监听端口。0 表示首次使用随机端口并在下次启动时优先复用；非 0 时强制使用指定端口。"
         },
         "issueManager.recentIssues.defaultMode": {
           "type": "string",

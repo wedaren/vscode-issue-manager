@@ -48,6 +48,9 @@ export async function executeChatTool(
     input: Record<string, unknown>,
     context?: ToolExecContext,
 ): Promise<ToolCallResult> {
+    // 入口前置中止检查：signal 已经 abort 时，不做任何副作用直接抛
+    context?.signal?.throwIfAborted();
+
     // ─── 安全确认门 ──────────────────────────────────────
     const permission = await checkToolPermission(toolName, input, context?.autonomous ?? false);
     if (!permission.allowed) {
@@ -65,8 +68,12 @@ export async function executeChatTool(
         if (!mcpManager.isMcpTool(toolName)) {
             return { success: false, content: `未知工具: ${toolName}` };
         }
-        return await mcpManager.invokeTool(toolName, input);
+        return await mcpManager.invokeTool(toolName, input, context?.signal);
     } catch (e) {
+        // AbortError 穿透：让上层 ConversationExecutor 的 catch 统一处理为中止
+        if (context?.signal?.aborted || (e as { name?: string })?.name === 'AbortError') {
+            throw e;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         logger.error(`[ChatTools] 执行工具 ${toolName} 失败`, e);
         return { success: false, content: `工具执行失败: ${msg}` };

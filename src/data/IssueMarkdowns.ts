@@ -783,8 +783,15 @@ export async function updateIssueMarkdownBody(
 export async function createIssueMarkdown(opts?: {
     frontmatter?: Partial<FrontmatterData> | null;
     markdownBody?: string;
+    /**
+     * 可选子目录（相对于 issueDir）。传入后文件写入 `<issueDir>/<subdir>/`。
+     * 注意：类型索引（getIssueMarkdownsByType）仅扫描 issueDir 根目录，
+     * 写入子目录的文件不会进入索引 — 这是 A2A task 等场景的隔离需求。
+     * 外部调用者需自行维护子目录下文件的查找方式。
+     */
+    subdir?: string;
 }): Promise<vscode.Uri | null> {
-    const { frontmatter = null, markdownBody = "" } = opts ?? {};
+    const { frontmatter = null, markdownBody = "", subdir } = opts ?? {};
     const issueDir = getIssueDir();
     if (!issueDir) {
         vscode.window.showErrorMessage("问题目录（issueManager.issueDir）未配置，无法创建问题。");
@@ -792,13 +799,22 @@ export async function createIssueMarkdown(opts?: {
     }
 
     try {
+        // 防御性路径校验：subdir 必须是相对路径，不得跳出 issueDir
+        const targetDir = subdir
+            ? path.resolve(issueDir, subdir)
+            : issueDir;
+        if (subdir && !targetDir.startsWith(path.resolve(issueDir) + path.sep)) {
+            Logger.getInstance().error(`createIssueMarkdown: 非法 subdir "${subdir}"`);
+            return null;
+        }
+
         // 确保目录存在
-        await vscode.workspace.fs.createDirectory(vscode.Uri.file(issueDir));
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(targetDir));
 
         // 生成文件名：使用统一的 generateFileName()
         const finalName = generateFileName();
 
-        const targetPath = path.join(issueDir, finalName);
+        const targetPath = path.join(targetDir, finalName);
         const uri = vscode.Uri.file(targetPath);
 
         // 生成内容（包含 frontmatter，如果有的话）

@@ -13,6 +13,7 @@ import { registerLinkWorkspaceToIssue } from './commands/linkWorkspaceToIssue';
 import { registerQuickPeekIssue } from './commands/quickPeekIssue';
 import { registerRemoveWikiLinksFromSelection } from './commands/removeWikiLinksFromSelection';
 import { copilotDocumentProvider } from './virtual/CopilotDocumentProvider';
+import { activateA2A } from './a2a';
 
 // 当您的扩展被激活时,将调用此方法
 export function activate(context: vscode.ExtensionContext) {
@@ -23,6 +24,9 @@ export function activate(context: vscode.ExtensionContext) {
 	// 笔记映射功能已移除：不再预加载相关服务或更新上下文
 	// 启动 Chrome 集成本地服务与 URI Handler（不阻塞激活流程）
 	void ChromeIntegrationServer.getInstance().start(context);
+
+	// A2A 协议 server（根据 issueManager.a2a.enabled 按需启动）
+	activateA2A(context);
 	
 	// 注册 Issue 文件补全提供器
 	const completionProvider = new IssueNodeCompletionProvider(context);

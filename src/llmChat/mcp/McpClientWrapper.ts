@@ -92,13 +92,18 @@ export class McpClientWrapper implements vscode.Disposable {
         }
     }
 
-    /** 调用工具（传入原始工具名） */
-    async invokeTool(toolName: string, input: Record<string, unknown>): Promise<McpToolResult> {
+    /** 调用工具（传入原始工具名）。signal 用于中止长耗时调用。 */
+    async invokeTool(toolName: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<McpToolResult> {
         if (!this.client || !this._connected) {
             return { success: false, content: `MCP server "${this.serverId}" 未连接` };
         }
         try {
-            const result = await this.client.callTool({ name: toolName, arguments: input });
+            signal?.throwIfAborted();
+            const result = await this.client.callTool(
+                { name: toolName, arguments: input },
+                undefined,
+                signal ? { signal } : undefined,
+            );
             const content = Array.isArray(result.content)
                 ? result.content
                     .map((c: { type: string; text?: string }) => c.type === 'text' && c.text ? c.text : '')
@@ -107,6 +112,10 @@ export class McpClientWrapper implements vscode.Disposable {
                 : String(result.content ?? '');
             return { success: !result.isError, content };
         } catch (e) {
+            // AbortError 必须穿透，让上层识别为"主动中止"而非"工具失败"
+            if (signal?.aborted || (e as { name?: string })?.name === 'AbortError') {
+                throw e;
+            }
             const msg = e instanceof Error ? e.message : String(e);
             return { success: false, content: `调用工具 ${toolName} 失败: ${msg}` };
         }

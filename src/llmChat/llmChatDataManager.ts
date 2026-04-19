@@ -48,6 +48,40 @@ function toFiniteNumber(v: unknown): number | undefined {
     return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * 解析 A2A 暴露配置。
+ * 非对象或 expose!==true 返回 undefined（不暴露）。
+ * 不做强校验：缺失 skills 等字段留给 A2A server 层在注册时处理。
+ */
+function parseA2AConfig(v: unknown): import('./types').A2AExposeConfig | undefined {
+    if (!v || typeof v !== 'object') { return undefined; }
+    const obj = v as Record<string, unknown>;
+    if (obj.expose !== true) { return undefined; }
+
+    const strArr = (x: unknown): string[] | undefined =>
+        Array.isArray(x) ? x.map(String) : undefined;
+
+    const skills = Array.isArray(obj.skills)
+        ? obj.skills.filter((s): s is Record<string, unknown> => !!s && typeof s === 'object').map(s => ({
+            id: String(s.id ?? ''),
+            name: String(s.name ?? ''),
+            description: String(s.description ?? ''),
+            tags: strArr(s.tags),
+            examples: strArr(s.examples),
+        }))
+        : undefined;
+
+    return {
+        expose: true,
+        id: typeof obj.id === 'string' ? obj.id : undefined,
+        name: typeof obj.name === 'string' ? obj.name : undefined,
+        description: typeof obj.description === 'string' ? obj.description : undefined,
+        skills,
+        inputModes: strArr(obj.inputModes),
+        outputModes: strArr(obj.outputModes),
+    };
+}
+
 // ─── 角色相关 ───────────────────────────────────────────────
 
 /** 从类型索引中获取所有聊天角色（O(K)，K=角色数，无 findFiles） */
@@ -88,6 +122,7 @@ export function getAllChatRoles(): ChatRoleInfo[] {
                 : undefined,
             contextSources: Array.isArray(fm.context_sources) ? (fm.context_sources as unknown[]).map(String) : undefined,
             groupMembers: Array.isArray(fm.group_members) ? (fm.group_members as unknown[]).map(String) : undefined,
+            a2a: parseA2AConfig((fm as Record<string, unknown>).a2a),
         });
     }
     return roles;
@@ -230,11 +265,37 @@ export function getConversationsForRole(roleId: string): ChatConversationInfo[] 
     return convos;
 }
 
-/** 创建新的对话文件 */
-export async function createConversation(roleId: string, title?: string): Promise<vscode.Uri | null> {
+/**
+ * 创建新的对话文件。
+ *
+ * 调用形式：
+ *   - `createConversation(roleId)` — 使用默认标题
+ *   - `createConversation(roleId, '自定义标题')` — 传字符串（向后兼容）
+ *   - `createConversation(roleId, { title, extraFrontmatter, subdir })` — 新形式
+ *
+ * `extraFrontmatter`：合并到 frontmatter 的额外字段，用于 A2A 等外部系统
+ * 在对话文件上打标记（如 `a2a_task_id`、`a2a_context_id`）。
+ * 已存在的 chat_conversation/chat_role_id 等核心字段不会被覆盖。
+ *
+ * `subdir`：子目录路径（相对 issueDir），用于将对话文件隔离出用户日常视图。
+ * 例如 `.a2a-tasks`。写入子目录的文件不会进入类型索引，需由调用方维护自己的
+ * taskId → URI 映射表（见 A2A server 的 taskStore）。
+ */
+export async function createConversation(
+    roleId: string,
+    titleOrOptions?: string | {
+        title?: string;
+        extraFrontmatter?: Record<string, unknown>;
+        subdir?: string;
+    },
+): Promise<vscode.Uri | null> {
+    const options = typeof titleOrOptions === 'string'
+        ? { title: titleOrOptions }
+        : (titleOrOptions ?? {});
+
     const role = getChatRoleById(roleId);
     const roleName = role?.name || '未知角色';
-    const convoTitle = title || `与 ${roleName} 的对话`;
+    const convoTitle = options.title || `与 ${roleName} 的对话`;
 
     // 对话级默认值：继承角色配置，若无则使用系统默认
     const defaultModelFamily = role?.modelFamily
@@ -242,6 +303,7 @@ export async function createConversation(roleId: string, title?: string): Promis
         || 'gpt-5-mini';
 
     const fm: Partial<FrontmatterData> & ChatConversationFrontmatter = {
+        ...(options.extraFrontmatter ?? {}),
         chat_conversation: true,
         chat_role_id: roleId,
         chat_title: convoTitle,
@@ -251,9 +313,16 @@ export async function createConversation(roleId: string, title?: string): Promis
     };
 
     const body = `# ${convoTitle}\n\n<!-- llm:ready -->\n`;
-    const uri = await createIssueMarkdown({ frontmatter: fm, markdownBody: body });
+    const uri = await createIssueMarkdown({
+        frontmatter: fm,
+        markdownBody: body,
+        subdir: options.subdir,
+    });
     return uri;
 }
+
+/** A2A task 隔离目录（相对 issueDir）。A2A server 创建的对话文件都写入此目录。 */
+export const A2A_TASKS_SUBDIR = '.a2a-tasks';
 
 /** 从对话文件中解析所有消息（自动过滤末尾状态标记，不污染消息内容） */
 export async function parseConversationMessages(uri: vscode.Uri): Promise<ChatMessage[]> {
@@ -1628,7 +1697,10 @@ function formatRunRecord(record: ExecutionRunRecord): string {
     let md = `\n## Run #${record.runNumber} (${ts}) ${icon} ${summary}\n\n`;
 
     // 上下文信息块
-    const triggerLabel = record.trigger === 'timer' ? '定时器' : record.trigger === 'save' ? '保存触发' : '用户直接发送';
+    const triggerLabel = record.trigger === 'timer' ? '定时器'
+        : record.trigger === 'save' ? '保存触发'
+        : record.trigger === 'a2a' ? 'A2A 外部调用'
+        : '用户直接发送';
     md += `| 项目 | 值 |\n|------|------|\n`;
     md += `| 触发方式 | ${triggerLabel} |\n`;
     if (record.roleName) {
@@ -1690,7 +1762,7 @@ export async function getNextRunNumber(logUri: vscode.Uri): Promise<number> {
 
 /** 开始新的 Run 条目并写入标题 + 上下文行，返回 runNumber */
 export async function startLogRun(logUri: vscode.Uri, context: {
-    trigger?: 'timer' | 'direct' | 'save';
+    trigger?: 'timer' | 'direct' | 'save' | 'a2a';
     roleName?: string;
     modelFamily?: string;
     timeout?: number;
@@ -1706,7 +1778,9 @@ export async function startLogRun(logUri: vscode.Uri, context: {
     const timeStr = formatTimeHMS(date);
 
     const triggerLabel = context.trigger === 'timer' ? '定时器'
-        : context.trigger === 'save' ? '保存触发' : '直接发送';
+        : context.trigger === 'save' ? '保存触发'
+        : context.trigger === 'a2a' ? 'A2A 外部调用'
+        : '直接发送';
 
     const parts: string[] = [`触发: ${triggerLabel}`];
     if (context.roleName) { parts.push(`角色: ${context.roleName}`); }

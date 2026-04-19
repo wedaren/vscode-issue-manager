@@ -135,8 +135,9 @@ export class McpManager implements vscode.Disposable {
     /**
      * 调用工具（传入完整的 qualified name，如 "mcp_memory_search"）。
      * 内部解析 serverId + originalName 后委派给对应的 wrapper。
+     * signal 会透传到 MCP SDK 的 callTool，用于 abort 长耗时调用。
      */
-    async invokeTool(qualifiedName: string, input: Record<string, unknown>): Promise<McpToolResult> {
+    async invokeTool(qualifiedName: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<McpToolResult> {
         // 解析 mcp_{serverId}_{toolName}
         const match = qualifiedName.match(/^mcp_([^_]+)_(.+)$/);
         if (!match) {
@@ -152,7 +153,7 @@ export class McpManager implements vscode.Disposable {
             return { success: false, content: `MCP server "${serverId}" 未连接` };
         }
 
-        return wrapper.invokeTool(toolName, input);
+        return wrapper.invokeTool(toolName, input, signal);
     }
 
     /** 判断一个工具名是否属于 MCP 工具 */

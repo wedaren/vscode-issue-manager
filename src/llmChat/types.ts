@@ -2,6 +2,39 @@
  * LLM 聊天模块类型定义
  */
 
+// ─── A2A 协议暴露配置 ─────────────────────────────────────────
+
+/** A2A agent 技能描述（对应 A2A spec 的 AgentSkill） */
+export interface A2ASkillDescriptor {
+    id: string;
+    name: string;
+    description: string;
+    tags?: string[];
+    examples?: string[];
+}
+
+/**
+ * 角色级 A2A 暴露配置。
+ * 写入角色 frontmatter 的 `a2a` 字段；运行时映射到 ChatRoleInfo.a2a。
+ * 只有 expose: true 的角色会被 A2A server 注册为 agent card。
+ */
+export interface A2AExposeConfig {
+    /** 是否暴露为 A2A agent（默认 false） */
+    expose: boolean;
+    /** 对外 agent id（默认取 role id） */
+    id?: string;
+    /** 对外显示名（默认取 chat_role_name） */
+    name?: string;
+    /** Agent card description（默认取 markdown body 首段） */
+    description?: string;
+    /** 技能列表（必填，外部 agent 通过 skill id 路由） */
+    skills?: A2ASkillDescriptor[];
+    /** 支持的输入 MIME，默认 ["text/plain"] */
+    inputModes?: string[];
+    /** 支持的输出 MIME，默认 ["text/plain"] */
+    outputModes?: string[];
+}
+
 /** 聊天角色的 frontmatter 扩展字段 */
 export interface ChatRoleFrontmatter {
     /** 标记为聊天角色文件 */
@@ -82,6 +115,12 @@ export interface ChatRoleFrontmatter {
     context_strategy?: 'generous' | 'focused' | 'minimal';
     /** focused 策略下要注入的上下文来源列表 */
     context_sources?: string[];
+    /**
+     * A2A 协议暴露配置（可选）。
+     * 设置后此角色会被 A2A server 注册为独立 agent card，外部 agent 可通过
+     * `http://127.0.0.1:<port>/agents/<roleId>` 访问。
+     */
+    a2a?: A2AExposeConfig;
 }
 
 // ─── 角色记忆相关 ─────────────────────────────────────────────
@@ -247,6 +286,8 @@ export interface ChatRoleInfo {
     contextStrategy?: 'generous' | 'focused' | 'minimal';
     /** focused 策略下要注入的上下文来源列表 */
     contextSources?: string[];
+    /** A2A 暴露配置（来自 frontmatter.a2a，原样保留；undefined 表示不暴露） */
+    a2a?: A2AExposeConfig;
 }
 
 /** 运行时对话信息 */
@@ -378,7 +419,7 @@ export interface ExecutionRunRecord {
     retryCount: number;
     // ─── 上下文信息（用于审计） ─────────────────────────────
     /** 触发方式 */
-    trigger?: 'timer' | 'direct' | 'save';
+    trigger?: 'timer' | 'direct' | 'save' | 'a2a';
     /** 角色名称 */
     roleName?: string;
     /** 使用的模型 */

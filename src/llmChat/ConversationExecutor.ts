@@ -39,7 +39,7 @@ const logger = Logger.getInstance();
 
 export interface ExecutionOptions {
     /** 触发方式 */
-    trigger: 'direct' | 'timer' | 'save';
+    trigger: 'direct' | 'timer' | 'save' | 'a2a';
     /** 统一执行上下文（必须） */
     ctx: ExecutionContext;
     /**

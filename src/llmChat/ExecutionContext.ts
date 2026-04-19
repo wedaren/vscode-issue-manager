@@ -24,7 +24,7 @@ export interface ExecutionContextInit {
     role: ChatRoleInfo;
     conversationUri: vscode.Uri;
     signal?: AbortSignal;
-    trigger: 'direct' | 'timer' | 'save';
+    trigger: 'direct' | 'timer' | 'save' | 'a2a';
     autonomous?: boolean;
     logEnabled?: boolean;
     toolTimeout?: number;
@@ -71,7 +71,7 @@ export class ExecutionContext {
     readonly role: ChatRoleInfo;
     readonly conversationUri: vscode.Uri;
     readonly signal?: AbortSignal;
-    readonly trigger: 'direct' | 'timer' | 'save';
+    readonly trigger: 'direct' | 'timer' | 'save' | 'a2a';
     readonly autonomous: boolean;
     readonly toolTimeout: number;
     readonly delegationDepth: number;
