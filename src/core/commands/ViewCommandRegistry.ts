@@ -6,6 +6,25 @@ import { ParaViewProvider } from '../../views/ParaViewProvider';
 import { isInBatchRefresh, markRefreshNeeded } from '../../utils/refreshBatch';
 
 /**
+ * 视图刷新调度器接口，提供每个视图的独立刷新方法。
+ * 供 ConfigurationManager 及其他模块按需调用，便于未来灵活重组刷新策略。
+ *
+ * 各方法均内置防抖与批量暂停保护，可安全高频调用。
+ */
+export interface IViewRefreshDispatcher {
+    /** 问题总览：完整刷新（重读 tree.json 结构） */
+    refreshOverview(): void;
+    /** 问题总览：仅标签刷新（标题缓存已热，不重读 tree.json） */
+    refreshOverviewLabels(): void;
+    /** 最近问题视图刷新 */
+    refreshRecent(): void;
+    /** PARA 视图刷新 */
+    refreshPara(): void;
+    /** 所有视图全量刷新（等同于同时调用以上全部） */
+    refreshAll(): void;
+}
+
+/**
  * 视图操作命令注册器
  *
  * 负责注册与视图相关的命令，包括刷新、定位、搜索等操作。
@@ -53,6 +72,20 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         this.registerViewNavigationCommands();
         this.registerViewToggleCommands();
         this.registerViewRevealCommands();
+    }
+
+    /**
+     * 返回视图刷新调度器，供外部模块按视图类型精准触发刷新。
+     * @returns `IViewRefreshDispatcher` 实现，所有方法内置防抖
+     */
+    public getRefreshDispatcher(): IViewRefreshDispatcher {
+        return {
+            refreshOverview: () => this.scheduleRefreshOverview(),
+            refreshOverviewLabels: () => this.scheduleRefreshOverviewLabels(),
+            refreshRecent: () => this.scheduleRefreshRecent(),
+            refreshPara: () => this.scheduleRefreshPara(),
+            refreshAll: () => this.scheduleRefreshAllViews(),
+        };
     }
 
     /**

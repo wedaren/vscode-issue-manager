@@ -120,6 +120,16 @@ export function getSyncRetryInitialDelay(): number {
 }
 
 /**
+ * 文件变更时是否自动刷新问题总览等视图（不含 agent 系统文件）。
+ * 关闭后需手动点击刷新按钮，适合大量 agent 实验期间使用。
+ * @returns 是否启用自动视图刷新，默认 true
+ */
+export function isAutoViewRefreshEnabled(): boolean {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<boolean>('view.autoRefresh', true);
+}
+
+/**
  * 获取是否启用 LLM 生成提交消息
  */
 export function isLLMCommitMessageEnabled(): boolean {

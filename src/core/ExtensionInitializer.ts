@@ -254,6 +254,11 @@ export class ExtensionInitializer {
                 views.paraView,
                 views.markerManager
             );
+            // 视图命令已注册完毕 → 将刷新调度器注入 ConfigurationManager，
+            // 后续文件变更事件将直接调用视图方法，无需再走命令总线
+            this.configurationManager.setViewRefreshDispatcher(
+                this.commandRegistry.getViewRefreshDispatcher()
+            );
             this.logger.info('  ✓ 命令处理器注册成功');
         } catch (error) {
             this.logger.error('  ✗ 命令注册失败:', error);

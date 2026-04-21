@@ -92,6 +92,13 @@ export class CommandRegistry extends BaseCommandRegistry {
     private readonly stateCommandRegistry: StateCommandRegistry;
 
     /**
+     * 返回视图刷新调度器，供其他模块（如 ConfigurationManager）按视图精准刷新。
+     */
+    public getViewRefreshDispatcher() {
+        return this.viewCommandRegistry.getRefreshDispatcher();
+    }
+
+    /**
      * 创建命令注册管理器实例
      * 
      * @param context VS Code 扩展上下文，用于命令生命周期管理

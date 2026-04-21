@@ -1689,6 +1689,11 @@
           "default": false,
           "description": "启用 LLM 智能生成提交消息。启用后，自动同步会使用 Copilot 根据变更文件内容生成语义化的提交消息，而不是使用时间戳模板。需要已安装并登录 GitHub Copilot。"
         },
+        "issueManager.view.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "文件变更时是否自动刷新问题总览等视图（不含 agent 系统文件）。关闭后需手动点击刷新按钮，适合大量 agent 实验期间使用。"
+        },
         "issueManager.rss.enableAutoUpdate": {
           "type": "boolean",
           "default": true,

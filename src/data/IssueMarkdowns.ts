@@ -384,8 +384,13 @@ export async function getIssueMarkdown(
         _issueMarkdownCache.set(key, entry);
         updateTypeIndex(key, frontmatter);
         // 仅在标题实际变更时通知订阅者，避免正文编辑触发多余的视图刷新
+        // agent 系统文件（高频写入）走独立事件，不触发问题总览刷新
         if (!cached || cached.title !== title) {
-            scheduleOnDidUpdate();
+            if (isAgentFileFrontmatter(frontmatter as Record<string, unknown> | null | undefined)) {
+                scheduleOnAgentFileUpdate();
+            } else {
+                scheduleOnDidUpdate();
+            }
         }
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
 
@@ -499,6 +504,47 @@ const INDEXED_TYPE_KEYS = [
     'role_auto_memory',
     'chat_plan',
 ] as const;
+
+/**
+ * Agent 系统自动生成文件的 frontmatter 类型键集合。
+ * 这类文件不应触发问题总览刷新或 Git 自动提交（由 Agent 高频写入）。
+ * 注意：`chat_role` 为用户手动创建，不在此列。
+ */
+const AGENT_FILE_TYPE_KEYS: ReadonlySet<string> = new Set([
+    'chat_conversation',
+    'chat_group',
+    'chat_group_conversation',
+    'chat_execution_log',
+    'chat_tool_call',
+    'chrome_chat',
+    'role_memory',
+    'role_auto_memory',
+    'chat_plan',
+]);
+
+/**
+ * 检查 frontmatter 是否属于 agent 系统自动生成文件。
+ * @param frontmatter - 文件的 frontmatter 对象
+ * @returns 如果是 agent 系统文件则返回 true
+ */
+function isAgentFileFrontmatter(frontmatter: Record<string, unknown> | null | undefined): boolean {
+    if (!frontmatter) { return false; }
+    for (const key of AGENT_FILE_TYPE_KEYS) {
+        if (frontmatter[key] === true) { return true; }
+    }
+    return false;
+}
+
+/**
+ * 根据缓存检查 URI 对应的文件是否为 agent 系统自动生成文件。
+ * 仅查缓存，不触发磁盘读取。
+ * @param uri - 文件 URI
+ * @returns 如果是 agent 系统文件则返回 true
+ */
+export function isAgentFileUri(uri: vscode.Uri): boolean {
+    const cached = _issueMarkdownCache.get(uri.fsPath);
+    return isAgentFileFrontmatter(cached?.frontmatter as Record<string, unknown> | null | undefined);
+}
 
 type IndexedTypeKey = typeof INDEXED_TYPE_KEYS[number];
 
@@ -857,7 +903,11 @@ function fallbackTitle(uri: vscode.Uri): string {
     return getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
 }
 const onTitleUpdateEmitter = new vscode.EventEmitter<void>();
+/** agent 系统文件更新事件：仅 agent 生成文件（chat_conversation、execution_log 等）变更时触发，不影响问题总览。 */
+const onAgentFileUpdateEmitter = new vscode.EventEmitter<void>();
+
 let _debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let _agentDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 const DebounceDelayMillis = 200;
 
 function scheduleOnDidUpdate(): void {
@@ -872,7 +922,22 @@ function scheduleOnDidUpdate(): void {
     }, DebounceDelayMillis);
 }
 
+/** 调度 agent 文件更新通知（独立防抖，不触发问题总览刷新）。 */
+function scheduleOnAgentFileUpdate(): void {
+    if (_agentDebounceTimer) {
+        clearTimeout(_agentDebounceTimer);
+    }
+    _agentDebounceTimer = setTimeout(() => {
+        try {
+            onAgentFileUpdateEmitter.fire();
+        } catch {}
+        _agentDebounceTimer = undefined;
+    }, DebounceDelayMillis);
+}
+
 export const onTitleUpdate = onTitleUpdateEmitter.event;
+/** agent 系统文件更新事件（chat_conversation、execution_log、role_memory 等高频写入文件）。 */
+export const onAgentFileUpdate = onAgentFileUpdateEmitter.event;
 
 // ---- vtime 变更事件（独立于标题变更，仅影响最近问题视图排序） ----
 const onVtimeUpdatedEmitter = new vscode.EventEmitter<void>();
