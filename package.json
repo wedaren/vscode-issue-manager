@@ -1555,7 +1555,16 @@
         "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured",
         "args": {
-          "mode": "vtime"
+          "mode": "recentChat"
+        }
+      },
+      {
+        "command": "issueManager.unifiedQuickOpen",
+        "key": "ctrl+j ctrl+r",
+        "mac": "cmd+j cmd+r",
+        "when": "issueManager.isDirConfigured",
+        "args": {
+          "mode": "recentRole"
         }
       },
       {

@@ -53,7 +53,13 @@ export function registerLLMChatCommands(
         await chatService.setActiveConversation(convoUri, roleId);
 
         if (displayMode === 'editor') {
-            await vscode.window.showTextDocument(convoUri, { preview: false });
+            const editor = await vscode.window.showTextDocument(convoUri, { preview: false });
+            // 光标移到文档末尾，方便用户直接输入
+            const lastLine = editor.document.lineCount - 1;
+            const lastChar = editor.document.lineAt(lastLine).text.length;
+            const endPos = new vscode.Position(lastLine, lastChar);
+            editor.selection = new vscode.Selection(endPos, endPos);
+            editor.revealRange(new vscode.Range(endPos, endPos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
         } else {
             await ChatHistoryPanel.openOrShow(role, convoUri, context.extensionUri);
         }
