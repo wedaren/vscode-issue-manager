@@ -81,6 +81,31 @@ export class StateCommandRegistry extends BaseCommandRegistry {
             '复制文件名'
         );
 
+        // 复制文件绝对路径命令
+        this.registerCommand(
+            'issueManager.copyAbsolutePath',
+            async (...args: unknown[]) => {
+                const arg = args[0];
+                let resourceUri: vscode.Uri | undefined;
+
+                if (arg instanceof vscode.TreeItem && arg.resourceUri) {
+                    resourceUri = arg.resourceUri;
+                } else {
+                    const activeEditor = vscode.window.activeTextEditor;
+                    resourceUri = activeEditor?.document.uri;
+                }
+
+                if (resourceUri) {
+                    const absPath = resourceUri.fsPath.replace(/\\/g, '/');
+                    await vscode.env.clipboard.writeText(absPath);
+                    vscode.window.showInformationMessage(`已复制绝对路径: ${absPath}`);
+                } else {
+                    vscode.window.showWarningMessage('未找到有效的文件路径，无法复制绝对路径。');
+                }
+            },
+            '复制绝对路径'
+        );
+
         // 重置扩展状态命令
         this.registerCommand(
             'issueManager.resetState',

@@ -73,27 +73,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
 
-    // --- 复制 (文件名 / 问题 ID / IssueMarkdown 链接) ---
-    {
-        label: "复制文件名",
-        group: "复制",
-        hint: "copy filename",
-        description: "复制当前编辑器的 IssueMarkdown 真实文件名到剪贴板",
-        require: ctx => !!ctx.issueId,
-        execute: () => {
-            vscode.commands.executeCommand("issueManager.copyFilename");
-        },
-    },
-    {
-        label: "复制问题 ID",
-        group: "复制",
-        hint: "copy id",
-        description: "复制当前编辑器中的 IssueNode ID 到剪贴板",
-        require: ctx => !!ctx.issueId,
-        execute: () => {
-            vscode.commands.executeCommand("issueManager.copyIssueId");
-        },
-    },
+    // --- 复制 (IssueMarkdown 链接 / 绝对路径) ---
     {
         label: "复制 IssueMarkdown 链接",
         group: "复制",
@@ -112,6 +92,16 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         require: async ctx => !!ctx.uri && isIssueMarkdown(await getIssueMarkdown(ctx.uri)),
         execute: () => {
             vscode.commands.executeCommand("issueManager.copyIssueMarkdownLinkAbsolute");
+        },
+    },
+    {
+        label: "复制绝对路径",
+        group: "复制",
+        hint: "copy abs path",
+        description: "复制当前编辑器文件的绝对路径到剪贴板（格式: /绝对路径）",
+        require: ctx => !!ctx.uri,
+        execute: () => {
+            vscode.commands.executeCommand("issueManager.copyAbsolutePath");
         },
     },
     
