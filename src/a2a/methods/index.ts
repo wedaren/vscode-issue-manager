@@ -9,8 +9,8 @@ import { createTasksCancelHandler } from './tasksCancel';
 
 export function buildHandlers(agentId: string, store: TaskStore): Record<string, MethodHandler> {
     return {
-        'message/send': createMessageSendHandler(agentId, store),
-        'tasks/get': createTasksGetHandler(store),
-        'tasks/cancel': createTasksCancelHandler(store),
+        'SendMessage': createMessageSendHandler(agentId, store),
+        'GetTask': createTasksGetHandler(store),
+        'CancelTask': createTasksCancelHandler(store),
     };
 }

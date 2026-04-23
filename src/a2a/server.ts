@@ -185,12 +185,12 @@ export class A2AServer {
                     writeJson(res, 400, errResp);
                     return;
                 }
-                // message/stream 与 tasks/resubscribe 单独走 SSE 路径；其余方法统一 JSON 响应
-                if (request.method === 'message/stream') {
+                // SendStreamingMessage 与 SubscribeToTask 单独走 SSE 路径；其余方法统一 JSON 响应
+                if (request.method === 'SendStreamingMessage') {
                     await handleMessageStream(req, res, request, agentId, this.taskStore);
                     return;
                 }
-                if (request.method === 'tasks/resubscribe') {
+                if (request.method === 'SubscribeToTask') {
                     await handleTasksResubscribe(req, res, request, this.taskStore);
                     return;
                 }

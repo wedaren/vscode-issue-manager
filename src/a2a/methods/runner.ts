@@ -65,10 +65,10 @@ export function validateSendParams(raw: unknown): ValidatedSendParams {
 
     const textParts: A2ATextPart[] = [];
     for (const p of msg.parts) {
-        if (p && typeof p === 'object' && (p as Record<string, unknown>).kind === 'text') {
+        if (p && typeof p === 'object') {
             const text = (p as Record<string, unknown>).text;
             if (typeof text === 'string') {
-                textParts.push({ kind: 'text', text });
+                textParts.push({ text });
             }
         }
         // 非文本 part：此版本不支持；跳过
@@ -134,7 +134,7 @@ export async function runTask(
         hooks?.onStart?.(record);
 
         // 切到 working 状态并发射第一次 status-update
-        store.updateStatus(record.task.id, 'working');
+        store.updateStatus(record.task.id, 'TASK_STATE_WORKING');
         record.events.fire(statusUpdateEvent(record.task, false));
         await appendMessageToConversation(convoUri, 'user', userText);
 
@@ -181,11 +181,11 @@ export async function runTask(
             await appendMessageToConversation(convoUri, 'assistant', fullReply);
 
             const agentMessage = buildAgentMessage(record, contextId, result.text);
-            store.updateStatus(record.task.id, 'completed', agentMessage);
+            store.updateStatus(record.task.id, 'TASK_STATE_COMPLETED', agentMessage);
             execSuccess = true;
         } catch (e) {
             const isAbort = record.abortController.signal.aborted;
-            const state: A2ATaskState = isAbort ? 'canceled' : 'failed';
+            const state: A2ATaskState = isAbort ? 'TASK_STATE_CANCELED' : 'TASK_STATE_FAILED';
             const errMsg = e instanceof Error ? e.message : String(e);
             logger.warn(`[A2A] task ${record.task.id} ${state}: ${errMsg}`);
             const errorMessage = buildAgentMessage(record, contextId, errMsg);
@@ -237,11 +237,10 @@ async function ensureConversation(
 
 function buildAgentMessage(record: TaskRecord, contextId: string, text: string): A2AMessage {
     return {
-        role: 'agent',
-        parts: [{ kind: 'text', text } satisfies A2ATextPart],
+        role: 'ROLE_AGENT',
+        parts: [{ text } satisfies A2ATextPart],
         messageId: crypto.randomUUID(),
         taskId: record.task.id,
         contextId,
-        kind: 'message',
     };
 }

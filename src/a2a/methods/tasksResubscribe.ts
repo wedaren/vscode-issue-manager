@@ -1,12 +1,12 @@
 /**
- * JSON-RPC 方法 `tasks/resubscribe` — 重新订阅已有 task 的流事件。
+ * JSON-RPC 方法 `SubscribeToTask`（v1.0 §9.4.6）— 重新订阅已有 task 的流事件。
  *
  * 行为：
  *   - task 不存在 → JSON 错误响应 TaskNotFound
- *   - task 已终态 → SSE 发一次 status-update(final=true) 后关闭
- *   - task 仍在跑  → SSE 先发当前状态，再订阅 record.events，直到 final 事件
+ *   - task 已终态 → SSE 发一次 statusUpdate 后关闭
+ *   - task 仍在跑  → SSE 先发当前状态，再订阅 record.events，直到终态事件
  *
- * 与 message/stream 共用 runner 发射的事件总线。
+ * 与 SendStreamingMessage 共用 runner 发射的事件总线。
  */
 import * as http from 'http';
 import { Logger } from '../../core/utils/Logger';
@@ -51,10 +51,10 @@ export async function handleTasksResubscribe(
     writeSSEHeaders(res);
     const writeEvent = makeEventWriter(res, request.id ?? null);
 
-    // 立即推送当前状态
-    writeEvent(record.task);
+    // 立即推送当前状态（v1.0 wire 格式）
+    writeEvent({ task: record.task });
 
-    // 已终态 → 直接关闭
+    // 已终态 → 直接关闭（发一次 statusUpdate 后关流，无 final 字段）
     if (!store.isCancelable(record.task.status.state)) {
         writeEvent(serializeStreamEvent({
             kind: 'status-update',

@@ -1,20 +1,20 @@
 /**
- * A2A spec 类型（简化版，只包含 Phase 1 需要的字段）。
+ * A2A spec 类型（v1.0，只包含 Phase 1 需要的字段）。
  * 完整规范见 https://a2a-protocol.org/latest/specification/
  */
 
 export type A2ATaskState =
-    | 'submitted'
-    | 'working'
-    | 'input-required'
-    | 'completed'
-    | 'failed'
-    | 'canceled'
-    | 'rejected'
-    | 'auth-required';
+    | 'TASK_STATE_SUBMITTED'
+    | 'TASK_STATE_WORKING'
+    | 'TASK_STATE_INPUT_REQUIRED'
+    | 'TASK_STATE_COMPLETED'
+    | 'TASK_STATE_FAILED'
+    | 'TASK_STATE_CANCELED'
+    | 'TASK_STATE_REJECTED'
+    | 'TASK_STATE_AUTH_REQUIRED';
 
+/** v1.0: TextPart 通过 text 成员存在性判别，无 kind 字段 */
 export interface A2ATextPart {
-    kind: 'text';
     text: string;
 }
 
@@ -22,12 +22,11 @@ export interface A2ATextPart {
 export type A2APart = A2ATextPart;
 
 export interface A2AMessage {
-    role: 'user' | 'agent';
+    role: 'ROLE_USER' | 'ROLE_AGENT';
     parts: A2APart[];
     messageId?: string;
     taskId?: string;
     contextId?: string;
-    kind: 'message';
 }
 
 export interface A2ATaskStatus {
@@ -42,7 +41,29 @@ export interface A2ATask {
     status: A2ATaskStatus;
     history?: A2AMessage[];
     metadata?: Record<string, unknown>;
-    kind: 'task';
+}
+
+/** v1.0 wire 格式的 StreamResponse result */
+export interface A2AStreamResponse {
+    task?: A2ATask;
+    message?: A2AMessage;
+    statusUpdate?: {
+        taskId: string;
+        contextId?: string;
+        status: A2ATaskStatus;
+        metadata?: Record<string, unknown>;
+    };
+    artifactUpdate?: {
+        taskId: string;
+        contextId?: string;
+        artifact: {
+            artifactId: string;
+            name?: string;
+            parts: A2APart[];
+            append?: boolean;
+            lastChunk?: boolean;
+        };
+    };
 }
 
 // ─── JSON-RPC 2.0 ──────────────────────────────────────────────

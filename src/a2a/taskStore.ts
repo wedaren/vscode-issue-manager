@@ -57,8 +57,7 @@ export class TaskStore {
             task: {
                 id: taskId,
                 contextId,
-                status: { state: 'submitted', timestamp: new Date().toISOString() },
-                kind: 'task',
+                status: { state: 'TASK_STATE_SUBMITTED', timestamp: new Date().toISOString() },
             },
             abortController: new AbortController(),
             events: new vscode.EventEmitter<TaskStreamEvent>(),
@@ -88,14 +87,14 @@ export class TaskStore {
 
     /** 是否处于可取消状态。终态任务不能取消。 */
     isCancelable(state: A2ATaskState): boolean {
-        return state === 'submitted' || state === 'working' || state === 'input-required';
+        return state === 'TASK_STATE_SUBMITTED' || state === 'TASK_STATE_WORKING' || state === 'TASK_STATE_INPUT_REQUIRED';
     }
 
     cancelTask(taskId: string): boolean {
         const record = this.tasks.get(taskId);
         if (!record || !this.isCancelable(record.task.status.state)) { return false; }
         record.abortController.abort();
-        this.updateStatus(taskId, 'canceled');
+        this.updateStatus(taskId, 'TASK_STATE_CANCELED');
         return true;
     }
 

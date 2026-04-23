@@ -1,10 +1,9 @@
 /**
- * Agent Card 构造：从 ChatRoleInfo + A2A 暴露配置生成符合 A2A spec 的 agent card。
+ * Agent Card 构造：从 ChatRoleInfo + A2A 暴露配置生成符合 A2A v1.0 spec 的 agent card。
  *
- * 按 A2A 规范，`url` 字段指向 JSON-RPC endpoint，即 `<baseUrl>/agents/<roleId>/rpc`。
+ * v1.0 变更：顶层 `url` 改为 `supportedInterfaces` 数组（§4.4.6），每个接口声明
+ * `protocolBinding`（JSONRPC）与 `protocolVersion`（1.0）。
  * 未设置 `a2a.expose: true` 的角色会被 listExposedRoles() 排除。
- *
- * Streaming 能力：M2-1 前声明为 false；landed 后升为 true。
  */
 import type { ChatRoleInfo, A2AExposeConfig } from '../llmChat/types';
 import { getAllChatRoles } from '../llmChat/llmChatDataManager';
@@ -18,17 +17,28 @@ interface AgentSkillCard {
     examples?: string[];
 }
 
-/** A2A spec 中 agent card 字段形状 */
+/** A2A v1.0 §4.4.6 - AgentInterface */
+interface AgentInterface {
+    url: string;
+    protocolBinding: string;
+    protocolVersion: string;
+}
+
+/** A2A v1.0 §4.4.3 - AgentCapabilities */
+interface AgentCapabilities {
+    streaming: boolean;
+    pushNotifications: boolean;
+    extendedAgentCard?: boolean;
+}
+
+/** A2A v1.0 §4.4.1 - AgentCard */
 export interface AgentCard {
     name: string;
     description: string;
-    url: string;
+    /** v1.0：使用 supportedInterfaces 替代顶层 url */
+    supportedInterfaces: AgentInterface[];
     version: string;
-    capabilities: {
-        streaming: boolean;
-        pushNotifications: boolean;
-        stateTransitionHistory: boolean;
-    };
+    capabilities: AgentCapabilities;
     securitySchemes: Record<string, unknown>;
     security: Array<Record<string, string[]>>;
     defaultInputModes: string[];
@@ -79,12 +89,17 @@ export function buildAgentCard(
     return {
         name: role.a2a.name ?? role.name,
         description: role.a2a.description ?? role.description ?? role.name,
-        url: `${baseUrl}/agents/${encodeURIComponent(agentId)}/rpc`,
+        supportedInterfaces: [
+            {
+                url: `${baseUrl}/agents/${encodeURIComponent(agentId)}/rpc`,
+                protocolBinding: 'JSONRPC',
+                protocolVersion: '1.0',
+            },
+        ],
         version: CARD_VERSION,
         capabilities: {
-            streaming: true,          // 支持 message/stream SSE
+            streaming: true,          // 支持 SendStreamingMessage SSE
             pushNotifications: false, // 不计划支持
-            stateTransitionHistory: false,
         },
         securitySchemes: {
             httpBearer: { type: 'http', scheme: 'bearer' },

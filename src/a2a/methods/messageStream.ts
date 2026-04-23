@@ -1,10 +1,10 @@
 /**
- * JSON-RPC 方法 `message/stream` — SSE 流式响应。
+ * JSON-RPC 方法 `SendStreamingMessage`（v1.0 §9.4.2）— SSE 流式响应。
  *
  * 走独立路径（非 dispatch），直接写 `text/event-stream`。
  * 实际流事件由 runner.ts 通过 TaskRecord.events 发射，本函数订阅后转写为 SSE。
  *
- * 每条 SSE 事件包一层 JSON-RPC response，`result` 字段携带 A2A 事件对象。
+ * 每条 SSE 事件包一层 JSON-RPC response，`result` 字段携带 StreamResponse 对象。
  */
 import * as http from 'http';
 import { Logger } from '../../core/utils/Logger';
@@ -54,8 +54,8 @@ export async function handleMessageStream(
         await runTask(agentId, store, params, {
             onStart: (record) => {
                 activeTaskId = record.task.id;
-                // 首个事件：完整的 Task 对象（state=submitted）
-                writeEvent(record.task);
+                // 首个事件：完整的 Task 对象（state=submitted），包一层 v1.0 StreamResponse
+                writeEvent({ task: record.task });
                 // 订阅后续事件
                 record.events.event(ev => writeEvent(serializeStreamEvent(ev)));
             },
@@ -96,28 +96,29 @@ export function makeEventWriter(res: http.ServerResponse, rpcId: string | number
     };
 }
 
-/** 把内部 TaskStreamEvent 转成 A2A spec 约定的事件对象。 */
+/** 把内部 TaskStreamEvent 转成 A2A v1.0 StreamResponse 格式。 */
 export function serializeStreamEvent(ev: TaskStreamEvent): unknown {
     if (ev.kind === 'artifact-update') {
         return {
-            kind: 'artifact-update',
-            taskId: ev.taskId,
-            contextId: ev.contextId,
-            artifact: {
-                artifactId: ev.artifactId,
-                name: 'response',
-                parts: [{ kind: 'text', text: ev.text }],
+            artifactUpdate: {
+                taskId: ev.taskId,
+                contextId: ev.contextId,
+                artifact: {
+                    artifactId: ev.artifactId,
+                    name: 'response',
+                    parts: [{ text: ev.text }],
+                    append: ev.append,
+                    lastChunk: ev.lastChunk,
+                },
             },
-            append: ev.append,
-            lastChunk: ev.lastChunk,
         };
     }
-    // status-update
+    // status-update — v1.0 不含 kind / final 字段
     return {
-        kind: 'status-update',
-        taskId: ev.taskId,
-        contextId: ev.contextId,
-        status: ev.task.status,
-        final: ev.final,
+        statusUpdate: {
+            taskId: ev.taskId,
+            contextId: ev.contextId,
+            status: ev.task.status,
+        },
     };
 }
