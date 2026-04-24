@@ -24,6 +24,8 @@ import { ImageStorageService } from './services/storage/ImageStorageService';
 import { ImageDocumentLinkProvider, ImageDocumentHoverProvider, ImageLightboxPanel } from './providers/ImageDocumentLinkProvider';
 import { ConversationImagePasteEditProvider } from './providers/ConversationImagePasteEditProvider';
 import { extendMarkdownIt } from './markdown/markdownPreviewPlugin';
+import { registerChatStatusBar } from './llmChat/chatStatusBarItem';
+import { registerPendingImageStatusBar } from './llmChat/pendingImageStatusBar';
 export { extendMarkdownIt };
 
 // 当您的扩展被激活时,将调用此方法
@@ -278,6 +280,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// 注册图片相关命令
 	registerImageCommands(context, galleryProvider);
+
+	// 注册 Chat 状态栏（ChatHistoryPanel 删除后补偿正在执行的可见性）
+	registerChatStatusBar(context);
+
+	// 注册"待发送图片"状态栏（展示当前 chat 文件里未发送的 ImageDir 引用数量与合计大小）
+	registerPendingImageStatusBar(context);
 
 	await initializer.initialize();
 	return { extendMarkdownIt };
