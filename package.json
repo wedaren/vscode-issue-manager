@@ -15,7 +15,67 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "markdown.markdownItPlugins": true,
     "commands": [
+      {
+        "command": "issueManager.image.pasteImage",
+        "title": "图片库：粘贴图片到编辑器",
+        "category": "Issue Manager",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "issueManager.image.openBoard",
+        "title": "图片库：打开调查板",
+        "category": "Issue Manager",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "issueManager.board.new",
+        "title": "调查板：新建调查板",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.board.newFromIssue",
+        "title": "调查板：从此 Issue 创建调查板",
+        "category": "Issue Manager",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "issueManager.board.open",
+        "title": "调查板：打开",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.board.rename",
+        "title": "调查板：重命名",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.board.delete",
+        "title": "调查板：删除",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.image.refreshGallery",
+        "title": "图片库：刷新",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.image.deleteImage",
+        "title": "图片库：删除图片",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.image.revealInFinder",
+        "title": "图片库：在 Finder 中显示",
+        "category": "Issue Manager",
+        "icon": "$(link-external)"
+      },
       {
         "command": "issueManager.a2a.copyEndpoint",
         "title": "A2A: 复制当前 endpoint",
@@ -674,18 +734,6 @@
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "issueManager.llmChat.setDisplayMode.bubble",
-        "title": "切换到气泡模式",
-        "category": "Issue Manager",
-        "icon": "$(comment-discussion)"
-      },
-      {
-        "command": "issueManager.llmChat.setDisplayMode.editor",
-        "title": "切换到编辑器模式",
-        "category": "Issue Manager",
-        "icon": "$(file)"
-      },
-      {
         "command": "issueManager.llmChat.openConversation",
         "title": "打开对话",
         "category": "Issue Manager",
@@ -1033,6 +1081,11 @@
           "command": "issueManager.llmChat.refresh",
           "when": "view == 'issueManager.views.llmChat'",
           "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.board.new",
+          "when": "view == 'issueManager.views.boardList'",
+          "group": "navigation@1"
         }
       ],
       "editor/title": [
@@ -1057,16 +1110,6 @@
         }
       ],
       "view/item/context": [
-        {
-          "command": "issueManager.llmChat.setDisplayMode.bubble",
-          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole' && issueManager.llmChat.displayMode == 'editor'",
-          "group": "inline@1"
-        },
-        {
-          "command": "issueManager.llmChat.setDisplayMode.editor",
-          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole' && issueManager.llmChat.displayMode != 'editor'",
-          "group": "inline@2"
-        },
         {
           "command": "issueManager.llmChat.newConversation",
           "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
@@ -1496,11 +1539,47 @@
           "command": "issueManager.marker.fillFromArchived",
           "when": "view == issueManager.views.marker && viewItem == archivedTask",
           "group": "inline@2"
+        },
+        {
+          "command": "issueManager.board.open",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.board.rename",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.board.rename",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.board.delete",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "modification@2"
+        },
+        {
+          "command": "issueManager.board.delete",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.board.newFromIssue",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.related') && viewItem =~ /issueNode/",
+          "group": "board@1"
         }
       ],
       "editor/context": []
     },
     "keybindings": [
+      {
+        "command": "issueManager.image.pasteImage",
+        "key": "ctrl+v",
+        "mac": "cmd+v",
+        "when": "editorTextFocus && editorLangId == 'markdown'"
+      },
       {
         "command": "issueManager.openRecentView",
         "key": "ctrl+j ctrl+r",
@@ -1638,6 +1717,11 @@
           "type": "string",
           "default": "",
           "description": "【必须】指定一个绝对路径作为存放所有问题（.md文件）的根目录。"
+        },
+        "issueManager.imageDir": {
+          "type": "string",
+          "default": "",
+          "description": "Directory to save screenshots. Defaults to ~/Library/Mobile Documents/com~apple~CloudDocs/Screenshots if empty (iCloud Drive)."
         },
         "issueManager.a2a.enabled": {
           "type": "boolean",
@@ -1968,6 +2052,11 @@
           "id": "issue-manager",
           "title": "问题管理",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issue-manager-board",
+          "title": "调查板",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -2012,6 +2101,18 @@
           "id": "issueManager.views.llmChat",
           "name": "LLM 聊天",
           "icon": "resources/icon.svg"
+        },
+        {
+          "type": "webview",
+          "id": "issueManager.views.imageGallery",
+          "name": "图片库",
+          "icon": "$(device-camera)"
+        }
+      ],
+      "issue-manager-board": [
+        {
+          "id": "issueManager.views.boardList",
+          "name": "调查板列表"
         }
       ]
     },
