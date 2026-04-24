@@ -21,6 +21,7 @@ import { GROUP_COORDINATOR_TOOLS } from './groupTools';
 import { BROWSING_TOOLS } from './browsingTools';
 import { KNOWLEDGE_BASE_TOOLS } from './knowledgeBaseTools';
 import { SKILL_TOOLS } from './skillTools';
+import { DIAGRAM_TOOLS } from './diagramTools';
 
 const logger = Logger.getInstance();
 
@@ -40,6 +41,7 @@ const TOOL_SET_REGISTRY: Record<string, vscode.LanguageModelChatTool[]> = {
     group_coordinator:    GROUP_COORDINATOR_TOOLS,
     browsing:             BROWSING_TOOLS,
     knowledge_base:       KNOWLEDGE_BASE_TOOLS,
+    diagram:              DIAGRAM_TOOLS,
 };
 
 /**

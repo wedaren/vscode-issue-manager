@@ -4,7 +4,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { LLMChatService } from './LLMChatService';
-import { ChatHistoryPanel } from './ChatHistoryPanel';
 import {
     createChatRole,
     getChatRoleById,
@@ -26,11 +25,6 @@ import { getIssueDir } from '../config';
 
 const logger = Logger.getInstance();
 
-/** 显示模式：bubble = 气泡 Webview，editor = 直接打开 markdown */
-type DisplayMode = 'bubble' | 'editor';
-
-const DISPLAY_MODE_CTX_KEY = 'issueManager.llmChat.displayMode';
-
 /**
  * 注册所有 LLM 聊天命令
  */
@@ -41,10 +35,6 @@ export function registerLLMChatCommands(
 ): void {
     const chatService = LLMChatService.getInstance();
 
-    // ─── 显示模式管理 ──────────────────────────────────────────
-    let displayMode: DisplayMode = context.globalState.get<DisplayMode>('llmChat.displayMode') || 'bubble';
-    void vscode.commands.executeCommand('setContext', DISPLAY_MODE_CTX_KEY, displayMode);
-
     /** 打开对话的通用逻辑（单聊） */
     async function openConversation(roleId: string, convoUri: vscode.Uri): Promise<void> {
         const role = await getChatRoleById(roleId);
@@ -52,37 +42,14 @@ export function registerLLMChatCommands(
 
         await chatService.setActiveConversation(convoUri, roleId);
 
-        if (displayMode === 'editor') {
-            const editor = await vscode.window.showTextDocument(convoUri, { preview: false });
-            // 光标移到文档末尾，方便用户直接输入
-            const lastLine = editor.document.lineCount - 1;
-            const lastChar = editor.document.lineAt(lastLine).text.length;
-            const endPos = new vscode.Position(lastLine, lastChar);
-            editor.selection = new vscode.Selection(endPos, endPos);
-            editor.revealRange(new vscode.Range(endPos, endPos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-        } else {
-            await ChatHistoryPanel.openOrShow(role, convoUri, context.extensionUri);
-        }
-
+        const editor = await vscode.window.showTextDocument(convoUri, { preview: false });
+        // 光标移到文档末尾，方便用户直接输入
+        const lastLine = editor.document.lineCount - 1;
+        const lastChar = editor.document.lineAt(lastLine).text.length;
+        const endPos = new vscode.Position(lastLine, lastChar);
+        editor.selection = new vscode.Selection(endPos, endPos);
+        editor.revealRange(new vscode.Range(endPos, endPos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
-
-    // ─── 切换到气泡模式 ───────────────────────────────────────
-    context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.setDisplayMode.bubble', async () => {
-            displayMode = 'bubble';
-            await context.globalState.update('llmChat.displayMode', 'bubble');
-            void vscode.commands.executeCommand('setContext', DISPLAY_MODE_CTX_KEY, 'bubble');
-        }),
-    );
-
-    // ─── 切换到编辑器模式 ─────────────────────────────────────
-    context.subscriptions.push(
-        vscode.commands.registerCommand('issueManager.llmChat.setDisplayMode.editor', async () => {
-            displayMode = 'editor';
-            await context.globalState.update('llmChat.displayMode', 'editor');
-            void vscode.commands.executeCommand('setContext', DISPLAY_MODE_CTX_KEY, 'editor');
-        }),
-    );
 
     // ─── 打开聊天（点击角色时触发，打开最新对话） ──────────
     context.subscriptions.push(
@@ -693,6 +660,49 @@ export function registerLLMChatCommands(
 - 每次只测 **1 个角色**
 - 如果角色 role_status=disabled 或 testing，跳过`,
                 },
+                // ─── 图表助手：可视化与图表渲染 ─────────────────────
+                {
+                    label: '$(graph) 图表助手',
+                    description: '用 SVG XML 生成流程图/架构图/时序图，直接在笔记中可视化',
+                    avatar: 'graph',
+                    toolSets: ['diagram'],
+                    systemPrompt: `你是图表助手，擅长将复杂关系、流程和架构用 SVG 图表直观呈现。
+
+## 工具能力
+- \`render_diagram(code, filename?)\` — 保存 SVG XML 为图片，返回可引用路径；保存前自动做结构校验
+- \`verify_diagram(relativePath)\` — 对刚保存的 SVG 做静态分析（viewBox、溢出元素、结构平衡），返回确定性报告
+
+## 工作方式（标准流程）
+1. 理解需求后调用 \`render_diagram(code='<svg ...>...</svg>')\` 生成图表
+2. **保存成功后立即调用 \`verify_diagram(相对路径)\` 自检**
+3. 若报告出现 ❌ 或 ⚠️（尤其是溢出元素），修正 SVG 代码重新 render + verify，直到通过
+4. 在回复里用 \`![描述](ImageDir/diag_xxx.svg)\` 插入图表
+
+## 绘制要点
+- 节点用 \`<rect>\` + \`<text>\`；连线用 \`<line>\` 或 \`<path>\`，箭头用 \`<marker>\`
+- **所有元素坐标必须落在 viewBox 内**（verify_diagram 会检查）；留 10~20px 边距
+- 文字坐标指文字基线位置，注意 \`text-anchor\` 取值：居中用 \`middle\`、左对齐用 \`start\`
+- 颜色用浅色系，保证在 VSCode light/dark 主题下都可读
+- 先出能看的草图，用户满意后再精细化
+
+## SVG 快速模板（流程图）
+\`\`\`svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+    <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+  </marker></defs>
+  <!-- 节点：rect + text -->
+  <rect x="230" y="20" width="140" height="40" rx="6" fill="#4A90D9" stroke="#2c5f99"/>
+  <text x="300" y="45" text-anchor="middle" fill="white" font-size="14">开始</text>
+  <!-- 箭头 -->
+  <line x1="300" y1="60" x2="300" y2="90" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>
+\`\`\`
+
+## 核心原则
+- 每次生成后立即在回复里引用图片，让用户在预览面板中看到效果
+- 图表尺寸用 viewBox 控制，避免硬编码像素`,
+                },
             ];
 
             interface PresetItem extends vscode.QuickPickItem {
@@ -868,41 +878,18 @@ export function registerLLMChatCommands(
             });
             if (!message) { return; }
 
-            {
-                // 单聊发送
-                const historyPanel = ChatHistoryPanel.get(chatService.activeRole.id);
-                historyPanel?.appendMessage('user', message);
-                historyPanel?.setLoading(true);
-
-                await vscode.window.withProgress(
-                    { location: vscode.ProgressLocation.Notification, title: 'LLM 回复中…', cancellable: true },
-                    async (_progress, token) => {
-                        const abortController = new AbortController();
-                        token.onCancellationRequested(() => abortController.abort());
-
-                        let accumulated = '';
-                        await chatService.sendMessageStream(
-                            message,
-                            (chunk) => {
-                                accumulated += chunk;
-                                historyPanel?.streamChunk(accumulated);
-                            },
-                            {
-                                signal: abortController.signal,
-                                onToolStatus: (status) => {
-                                    historyPanel?.showToolStatus(status.toolName, status.phase);
-                                },
-                            },
-                        );
-
-                        historyPanel?.streamEnd();
-                        historyPanel?.setLoading(false);
-                        if (accumulated) {
-                            historyPanel?.appendMessage('assistant', accumulated);
-                        }
-                    },
-                );
-            }
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'LLM 回复中…', cancellable: true },
+                async (_progress, token) => {
+                    const abortController = new AbortController();
+                    token.onCancellationRequested(() => abortController.abort());
+                    await chatService.sendMessageStream(
+                        message,
+                        () => { /* streaming — result persisted to file */ },
+                        { signal: abortController.signal },
+                    );
+                },
+            );
         }),
     );
 
@@ -1436,6 +1423,7 @@ export function registerLLMChatCommands(
                 { id: 'role_management',   description: '角色管理',       detail: 'create/update/evaluate_role、read_role_execution_logs — 仅管理型角色需要' },
                 { id: 'group_coordinator', description: '群组协调者',     detail: 'ask_group_member、ask_all_group_members — 配合 group_members 配置，协调多角色并行协作' },
                 { id: 'browsing',          description: '网页抓取',       detail: 'fetch_url — 抓取网页内容并转为 Markdown，适合需要联网查资料的角色' },
+                { id: 'diagram',           description: '图表渲染',       detail: 'render_diagram、verify_diagram — 用 SVG XML 生成图表并静态校验（viewBox/溢出/结构），适合图表助手类角色' },
             ];
             const toolSetItems = BUILT_IN_SETS.map(s => ({
                 label: s.id,

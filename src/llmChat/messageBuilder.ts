@@ -5,8 +5,10 @@
  * LLMChatService（UI 交互路径）和 RoleTimerManager（定时器路径）共用此实现。
  *
  * 上下文策略：contextPipeline — 角色声明所需上下文，管道并行获取并组装。
+ * 视觉支持：扫描消息中 ![alt](images/xxx) 引用，若模型支持视觉则转为 DataPart，否则降级文本。
  */
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import {
     getRoleSystemPrompt,
     getConversationConfig,
@@ -16,6 +18,7 @@ import {
 } from './llmChatDataManager';
 import type { ChatRoleInfo } from './types';
 import { runContextPipeline } from './contextPipeline';
+import { ImageStorageService } from '../services/storage/ImageStorageService';
 
 /**
  * 为单角色对话构建 LLM 请求消息列表。
@@ -138,14 +141,88 @@ function groupRounds(history: ChatMsg[]): Round[] {
     return rounds;
 }
 
-/** 将轮次数组转为 LanguageModelChatMessage 数组 */
+/** 将轮次数组转为 LanguageModelChatMessage 数组（含视觉多模态支持） */
 function roundsToMessages(rounds: Round[]): vscode.LanguageModelChatMessage[] {
     const msgs: vscode.LanguageModelChatMessage[] = [];
     for (const r of rounds) {
-        msgs.push(vscode.LanguageModelChatMessage.User(r.user.content));
+        msgs.push(buildUserMessage(r.user.content));
         if (r.assistant) {
             msgs.push(vscode.LanguageModelChatMessage.Assistant(r.assistant.content));
         }
     }
     return msgs;
+}
+
+// ── 视觉多模态辅助 ────────────────────────────────────────────────────────────
+
+/** 检测 VSCode API 是否支持 LanguageModelDataPart（视觉能力需要 VSCode 1.93+） */
+function isDataPartSupported(): boolean {
+    return typeof (vscode as Record<string, unknown>)['LanguageModelDataPart'] !== 'undefined';
+}
+
+/**
+ * 将消息文本中的 Markdown 图片引用解析为内嵌图片列表。
+ * 仅处理 `ImageDir/xxx.png` 别名格式（由 ImageStorageService 管理），其他路径格式原样保留。
+ * @param text - 原始消息文本
+ * @returns 解析结果：{ cleanText（去图片后的文本）, imageParts（图片数据列表） }
+ */
+function parseImageRefsFromText(text: string): {
+    cleanText: string;
+    imageParts: Array<{ data: Uint8Array; mimeType: string; ref: string }>;
+} {
+    const IMAGE_REF_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const imageParts: Array<{ data: Uint8Array; mimeType: string; ref: string }> = [];
+    const cleanText = text.replace(IMAGE_REF_RE, (_match, _alt, imgPath: string) => {
+        const imgPathTrimmed = imgPath.trim();
+        // 只处理 ImageDir/ 别名格式，其余（http、相对路径等）原样保留
+        const uri = ImageStorageService.resolve(imgPathTrimmed);
+        if (!uri) { return _match; }
+        const ext = imgPathTrimmed.split('.').pop()?.toLowerCase() ?? 'png';
+        if (ext === 'svg') {
+            // SVG 是矢量文本，视觉模型不支持 DataPart；展开为内联代码块让 LLM 读取图表结构
+            try {
+                const svgContent = fs.readFileSync(uri.fsPath, 'utf-8');
+                const filename = imgPathTrimmed.split('/').pop() ?? imgPathTrimmed;
+                return `\n\`\`\`svg\n<!-- ${filename} -->\n${svgContent}\n\`\`\`\n`;
+            } catch {
+                return `[SVG 图表: ${imgPathTrimmed}]`;
+            }
+        }
+        try {
+            const data = fs.readFileSync(uri.fsPath);
+            const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+            imageParts.push({ data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength), mimeType, ref: imgPathTrimmed });
+            return ''; // 图片引用从文本中移除（将作为 DataPart 传入）
+        } catch {
+            return `[图片: ${imgPathTrimmed}]`;
+        }
+    }).trim();
+    return { cleanText, imageParts };
+}
+
+/**
+ * 构建用户消息，自动检测是否需要视觉多模态。
+ * 若 API 支持且消息含 ImageDir/ 图片引用，则返回含 DataPart 的多模态消息；否则返回纯文本消息。
+ */
+function buildUserMessage(content: string): vscode.LanguageModelChatMessage {
+    if (!isDataPartSupported()) {
+        return vscode.LanguageModelChatMessage.User(content);
+    }
+    const { cleanText, imageParts } = parseImageRefsFromText(content);
+    if (imageParts.length === 0) {
+        return vscode.LanguageModelChatMessage.User(content);
+    }
+
+    // 构建多模态 parts 数组
+    const vscodeAny = vscode as unknown as Record<string, { image: (data: Uint8Array, mimeType: string) => unknown } & (new (value: string) => unknown)>;
+    const DataPartClass = vscodeAny['LanguageModelDataPart'] as { image: (data: Uint8Array, mimeType: string) => unknown };
+    const TextPartClass = vscodeAny['LanguageModelTextPart'] as new (value: string) => unknown;
+    const parts: unknown[] = [];
+    if (cleanText) {
+        parts.push(new TextPartClass(cleanText));
+    }
+    for (const img of imageParts) {
+        parts.push(DataPartClass.image(img.data, img.mimeType));
+    }
+    return vscode.LanguageModelChatMessage.User(parts as Parameters<typeof vscode.LanguageModelChatMessage.User>[0]);
 }

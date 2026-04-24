@@ -22,6 +22,7 @@ import { BROWSING_HANDLERS } from './browsingTools';
 import { SKILL_HANDLERS } from './skillTools';
 import { ROLE_MANAGEMENT_HANDLERS } from './roleManagementTools';
 import { KNOWLEDGE_BASE_HANDLERS } from './knowledgeBaseTools';
+import { DIAGRAM_HANDLERS } from './diagramTools';
 
 const logger = Logger.getInstance();
 
@@ -37,6 +38,7 @@ const ALL_HANDLERS: Record<string, (input: Record<string, unknown>, ctx?: ToolEx
     ...SKILL_HANDLERS,
     ...ROLE_MANAGEMENT_HANDLERS,
     ...KNOWLEDGE_BASE_HANDLERS,
+    ...DIAGRAM_HANDLERS,
 };
 
 /**

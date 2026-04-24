@@ -1,6 +1,5 @@
 export { LLMChatRoleProvider, type LLMChatViewNode, ChatRoleNode, ChatConversationNode, ChatExecutionLogNode, RecentConversationRootNode, RecentConversationItemNode, McpRootNode, McpServerNode, McpToolNode } from './LLMChatRoleProvider';
 export { LLMChatService } from './LLMChatService';
-export { ChatHistoryPanel } from './ChatHistoryPanel';
 export { registerLLMChatCommands } from './llmChatCommands';
 export { CHAT_TOOLS, executeChatTool, getToolsForRole, type ToolExecContext } from './chatTools';
 export { RoleTimerManager } from './RoleTimerManager';

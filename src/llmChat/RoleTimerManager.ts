@@ -43,7 +43,6 @@ import { knowledgeCompilerHook } from './hooks/knowledgeCompilerHook';
 import { memoryCompilerHook } from './hooks/memoryCompilerHook';
 import { executeConversation as execConversation } from './ConversationExecutor';
 import { ExecutionContext } from './ExecutionContext';
-import { ChatHistoryPanel } from './ChatHistoryPanel';
 import { matchCron, isValidCron } from './cronMatcher';
 
 const logger = Logger.getInstance();
@@ -393,18 +392,6 @@ export class RoleTimerManager implements vscode.Disposable {
             ? true
             : (convoConfig?.autonomous ?? role.autonomous ?? false);
 
-        // ─── 找到当前对话对应的历史面板（如已打开）──────────────
-        // 快照仅用于执行开始时的流式回调绑定；收尾操作用 getActivePanel() 动态取，
-        // 避免执行期间用户切换对话导致快照过时。
-        const startPanel = ChatHistoryPanel.get(role.id);
-        const startPanelIsThis = startPanel?.conversationUri.fsPath === uri.fsPath;
-
-        /** 执行结束时动态查找仍指向此对话的面板 */
-        const getActivePanel = () => {
-            const p = ChatHistoryPanel.get(role.id);
-            return p?.conversationUri.fsPath === uri.fsPath ? p : undefined;
-        };
-
         // ─── 创建统一执行上下文 ──────────────────────────────────
         const ctx = await ExecutionContext.create({
             role,
@@ -415,15 +402,7 @@ export class RoleTimerManager implements vscode.Disposable {
             logEnabled: this._debugLogAll || (convoConfig?.logEnabled ?? role.logEnabled ?? false),
             toolTimeout: role.timerToolTimeout ?? 60_000,
             retryCount,
-            onChunk: startPanelIsThis ? (chunk) => startPanel?.streamChunk(chunk) : undefined,
-            onToolStatus: startPanelIsThis
-                ? (status) => startPanel?.showToolStatus(status.toolName, status.phase)
-                : undefined,
         });
-
-        if (startPanelIsThis) {
-            startPanel?.setLoading(true);
-        }
 
         // ─── 总执行时间检查（唯一的硬超时，idle timeout 已移除） ──
         // idle timeout 与 LLM API 天然的长等待（排队 + TTFT）冲突，反复误杀正常执行。
@@ -442,14 +421,9 @@ export class RoleTimerManager implements vscode.Disposable {
 
             clearTimeout(maxExecTimeoutId);
 
-            getActivePanel()?.streamEnd();
-            getActivePanel()?.setLoading(false);
 
             // ─── 成功：写入回复 + 触发 hooks ─────────────────────
             await this.removeMarkerAndAppendAssistant(uri, result.text, result.toolPrologue);
-
-            // 回复写入文件后再刷新面板，确保显示最新内容
-            void getActivePanel()?.refreshMessages();
 
             this._hookRunner.fire(
                 {
@@ -547,8 +521,6 @@ export class RoleTimerManager implements vscode.Disposable {
             this.executingAbortControllers.delete(filePath);
             this.executing.delete(filePath);
             this._onExecutingCountChange.fire(this.executing.size);
-            getActivePanel()?.streamEnd();
-            getActivePanel()?.setLoading(false);
         }
     }
 
