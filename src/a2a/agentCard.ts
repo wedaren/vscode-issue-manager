@@ -48,8 +48,8 @@ export interface AgentCard {
 }
 
 const CARD_VERSION = '1.0.0';
-const DEFAULT_INPUT_MODES = ['text/plain'];
-const DEFAULT_OUTPUT_MODES = ['text/plain'];
+const DEFAULT_INPUT_MODES = ['text/plain', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+const DEFAULT_OUTPUT_MODES = ['text/plain', 'image/png', 'image/jpeg', 'image/svg+xml'];
 
 /** 扫描所有角色，返回 a2a.expose === true 的部分（带 A2A 配置引用）。 */
 export function listExposedRoles(): Array<ChatRoleInfo & { a2a: A2AExposeConfig }> {

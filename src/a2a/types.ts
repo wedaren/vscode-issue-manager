@@ -18,8 +18,38 @@ export interface A2ATextPart {
     text: string;
 }
 
-/** Phase 1 只支持文本 part */
-export type A2APart = A2ATextPart;
+/** fileWithBytes：内联 base64 编码的文件内容（推荐，自包含） */
+export interface A2AFileWithBytes {
+    name?: string;
+    mimeType?: string;
+    bytes: string;
+}
+
+/** fileWithUri：外部 URI 引用（入方向暂不自动 fetch） */
+export interface A2AFileWithUri {
+    name?: string;
+    mimeType?: string;
+    uri: string;
+}
+
+/** v1.0: FilePart 通过 file 成员存在性判别；file 是 fileWithBytes 或 fileWithUri 二选一 */
+export interface A2AFilePart {
+    file: A2AFileWithBytes | A2AFileWithUri;
+}
+
+export type A2APart = A2ATextPart | A2AFilePart;
+
+/** Type guards — v1.0 part 通过成员存在性判别，而非 kind 字段 */
+export function isA2ATextPart(p: A2APart): p is A2ATextPart {
+    return typeof (p as A2ATextPart).text === 'string';
+}
+export function isA2AFilePart(p: A2APart): p is A2AFilePart {
+    const fp = p as A2AFilePart;
+    return !!fp.file && typeof fp.file === 'object';
+}
+export function isFileWithBytes(f: A2AFileWithBytes | A2AFileWithUri): f is A2AFileWithBytes {
+    return typeof (f as A2AFileWithBytes).bytes === 'string';
+}
 
 export interface A2AMessage {
     role: 'ROLE_USER' | 'ROLE_AGENT';
