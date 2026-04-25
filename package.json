@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "3.0.114",
+  "version": "4.0.4",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -15,7 +15,87 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "markdown.markdownItPlugins": true,
     "commands": [
+      {
+        "command": "issueManager.image.pasteImage",
+        "title": "图片库：粘贴图片到编辑器",
+        "category": "Issue Manager",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "issueManager.image.openBoard",
+        "title": "图片库：打开调查板",
+        "category": "Issue Manager",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "issueManager.board.new",
+        "title": "调查板：新建调查板",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.board.newFromIssue",
+        "title": "调查板：从此 Issue 创建调查板",
+        "category": "Issue Manager",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "issueManager.board.open",
+        "title": "调查板：打开",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.board.rename",
+        "title": "调查板：重命名",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.board.delete",
+        "title": "调查板：删除",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.image.refreshGallery",
+        "title": "图片库：刷新",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.image.deleteImage",
+        "title": "图片库：删除图片",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.image.revealInFinder",
+        "title": "图片库：在 Finder 中显示",
+        "category": "Issue Manager",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "issueManager.a2a.copyEndpoint",
+        "title": "A2A: 复制当前 endpoint",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.a2a.copyToken",
+        "title": "A2A: 复制 Bearer Token",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.a2a.rotateToken",
+        "title": "A2A: 轮换 Bearer Token",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.a2a.showStatus",
+        "title": "A2A: 查看 server 状态",
+        "category": "Issue Manager"
+      },
       {
         "command": "issueManager.createIssue",
         "title": "新建问题",
@@ -39,36 +119,6 @@
         "icon": "$(tasklist)"
       },
       {
-        "command": "issueManager.searchIssuesInFocused",
-        "title": "搜索问题",
-        "icon": "$(search)"
-      },
-      {
-        "command": "issueManager.searchIssuesInOverview",
-        "title": "搜索问题",
-        "icon": "$(search)"
-      },
-      {
-        "command": "issueManager.issueSearch.addTask",
-        "title": "新增搜索",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.issueSearch.retryTask",
-        "title": "重试搜索任务",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "issueManager.issueSearch.retrySubtask",
-        "title": "重试子任务",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "issueManager.issueSearch.deleteTask",
-        "title": "删除搜索任务",
-        "icon": "$(trash)"
-      },
-      {
         "command": "issueManager.createIssueFromOverview",
         "title": "新建问题",
         "icon": "$(add)"
@@ -76,24 +126,6 @@
       {
         "command": "issueManager.createIssueFromClipboard",
         "title": "从剪贴板创建问题",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.createIssueFromReviewTask",
-        "title": "从 Review 任务创建问题",
-        "category": "Issue Manager",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.saveReviewPlanAsDoc",
-        "title": "保存 Review 计划为文档",
-        "category": "Issue Manager",
-        "icon": "$(notebook)"
-      },
-      {
-        "command": "issueManager.openReviewPlanQuickPick",
-        "title": "打开回顾视图",
-        "category": "Issue Manager",
         "icon": "$(add)"
       },
       {
@@ -144,18 +176,6 @@
         "icon": "$(note)"
       },
       {
-        "command": "issueManager.generateProjectName",
-        "title": "生成项目名",
-        "category": "Issue Manager",
-        "icon": "$(list-ordered)"
-      },
-      {
-        "command": "issueManager.generateGitBranchName",
-        "title": "生成 Git 分支名",
-        "category": "Issue Manager",
-        "icon": "$(git-branch)"
-      },
-      {
         "command": "issueManager.unifiedQuickOpen",
         "title": "Issue Manager: 统一入口",
         "category": "Issue Manager",
@@ -167,10 +187,6 @@
       },
       {
         "command": "issueManager.focusIssueFromIssueFile",
-        "title": "添加关注"
-      },
-      {
-        "command": "issueManager.addToFocusedViewFromEditor",
         "title": "添加关注"
       },
       {
@@ -220,6 +236,12 @@
         "title": "复制问题 ID",
         "icon": "$(symbol-key)",
         "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.copyIssueMarkdownLinkAbsolute",
+        "title": "复制 IssueMarkdown 链接（绝对路径）",
+        "category": "Issue Manager",
+        "icon": "$(file)"
       },
       {
         "command": "issueManager.revealInOverviewFromEditor",
@@ -287,11 +309,6 @@
         "command": "issueManager.openIssueDir",
         "title": "在 VS Code 中打开问题目录",
         "icon": "$(home)"
-      },
-      {
-        "command": "issueManager.openFocusedView",
-        "title": "打开关注问题视图",
-        "category": "Issue Manager"
       },
       {
         "command": "issueManager.openMarkerView",
@@ -480,54 +497,6 @@
         "icon": "$(hubot)"
       },
       {
-        "command": "issueManager.deepResearchIssue",
-        "title": "深度调研问题",
-        "category": "Issue Manager",
-        "icon": "$(book)"
-      },
-      {
-        "command": "issueManager.deepResearchIssueLocal",
-        "title": "深度调研（本地笔记）",
-        "category": "Issue Manager",
-        "icon": "$(book)"
-      },
-      {
-        "command": "issueManager.deepResearchIssueLlmOnly",
-        "title": "深度调研（纯 LLM）",
-        "category": "Issue Manager",
-        "icon": "$(book)"
-      },
-      {
-        "command": "issueManager.deepResearch.refresh",
-        "title": "刷新深度调研视图",
-        "category": "Issue Manager",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "issueManager.deepResearch.addTaskLocal",
-        "title": "深度调研：新建任务（本地笔记）",
-        "category": "Issue Manager",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.deepResearch.addTaskLlmOnly",
-        "title": "深度调研：新建任务（纯 LLM）",
-        "category": "Issue Manager",
-        "icon": "$(add)"
-      },
-      {
-        "command": "issueManager.deepResearch.cancelTask",
-        "title": "取消深度调研任务",
-        "category": "Issue Manager",
-        "icon": "$(debug-stop)"
-      },
-      {
-        "command": "issueManager.deepResearch.deleteDoc",
-        "title": "删除深度调研文档",
-        "category": "Issue Manager",
-        "icon": "$(trash)"
-      },
-      {
         "command": "issueManager.copilotDiffSend",
         "title": "Copilot: 发送并展示 Diff",
         "category": "Issue Manager",
@@ -676,6 +645,16 @@
         "icon": "$(close)"
       },
       {
+        "command": "issueManager.editorGroup.closeOtherGroups",
+        "title": "关闭其他编辑组",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "issueManager.editorGroup.keepOnlyActiveEditor",
+        "title": "仅保留当前活动编辑器",
+        "icon": "$(circle-filled)"
+      },
+      {
         "command": "issueManager.editorGroup.closeTab",
         "title": "关闭标签页",
         "icon": "$(close)"
@@ -694,6 +673,173 @@
         "command": "issueManager.organizeEditorGroupsWithLLM",
         "title": "LLM 智能整理编辑器组",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "issueManager.llmChat.openPersonalAssistant",
+        "title": "打开个人助手",
+        "category": "Issue Manager",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "issueManager.llmChat.createRole",
+        "title": "新建聊天角色",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.llmChat.newConversation",
+        "title": "新建对话",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.llmChat.openConversation",
+        "title": "打开对话",
+        "category": "Issue Manager"
+      },
+      {
+        "command": "issueManager.llmChat.sendMessage",
+        "title": "发送消息到 LLM",
+        "category": "Issue Manager",
+        "icon": "$(send)"
+      },
+      {
+        "command": "issueManager.llmChat.refresh",
+        "title": "刷新聊天角色视图",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.llmChat.editRole",
+        "title": "编辑角色",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.llmChat.deleteRole",
+        "title": "删除角色",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.llmChat.cancelConversation",
+        "title": "取消执行",
+        "category": "Issue Manager",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "issueManager.llmChat.openChat",
+        "title": "打开聊天",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.openConversation",
+        "title": "打开对话",
+        "category": "Issue Manager",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "issueManager.llmChat.deleteConversation",
+        "title": "删除对话",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.llmChat.askRole",
+        "title": "发送到角色对话",
+        "category": "Issue Manager",
+        "icon": "$(send)"
+      },
+      {
+        "command": "issueManager.llmChat.configureRole",
+        "title": "配置角色",
+        "category": "Issue Manager",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "issueManager.llmChat.configureConversation",
+        "title": "配置对话",
+        "category": "Issue Manager",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "issueManager.llmChat.toggleDebugLog",
+        "title": "开启全局调试日志",
+        "category": "Issue Manager",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "issueManager.llmChat.toggleDebugLogOff",
+        "title": "关闭全局调试日志（当前已开启）",
+        "category": "Issue Manager",
+        "icon": "$(record)"
+      },
+      {
+        "command": "issueManager.llmChat.revealRecentConversation",
+        "title": "定位到对话",
+        "category": "Issue Manager",
+        "icon": "$(target)"
+      },
+      {
+        "command": "issueManager.mcp.manage",
+        "title": "MCP: 管理 Server",
+        "category": "Issue Manager",
+        "icon": "$(server)"
+      },
+      {
+        "command": "issueManager.mcp.addServer",
+        "title": "MCP: 添加 Server",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.mcp.removeServer",
+        "title": "MCP: 移除 Server",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "issueManager.mcp.restartServer",
+        "title": "MCP: 重启 Server",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.mcp.restartAll",
+        "title": "MCP: 重启所有 Server",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.mcp.openConfig",
+        "title": "MCP: 打开配置文件",
+        "category": "Issue Manager",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "issueManager.skills.refresh",
+        "title": "Skills: 刷新技能列表",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.skills.openSkillDir",
+        "title": "在 VS Code 中打开 Skill 目录",
+        "category": "Issue Manager",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "issueManager.skills.revealInExplorer",
+        "title": "在系统文件管理器中显示",
+        "category": "Issue Manager",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "issueManager.skills.importToProject",
+        "title": "Skills: 导入到笔记库",
+        "category": "Issue Manager",
+        "icon": "$(cloud-download)"
       }
     ],
     "submenus": [
@@ -761,40 +907,14 @@
     "menus": {
       "view/title": [
         {
-          "command": "issueManager.searchIssuesInOverview",
-          "when": "view == issueManager.views.overview",
-          "group": "navigation@1"
-        },
-        {
-          "command": "issueManager.openIssueDir",
-          "when": "view == issueManager.views.focused",
-          "group": "navigation@1"
-        },
-        {
-          "command": "issueManager.searchIssuesInFocused",
-          "when": "view == issueManager.views.focused",
-          "group": "navigation@2"
-        },
-        {
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.recent",
-          "group": "navigation@1"
-        },
-        {
-          "command": "issueManager.issueSearch.addTask",
-          "when": "view == issueManager.views.search",
           "group": "navigation@1"
         },
         {
           "command": "issueManager.createIssueFromOverview",
           "when": "view == issueManager.views.overview",
           "group": "navigation@1"
-        },
-        {
-          "command": "issueManager.openReviewPlanQuickPick",
-          "when": "view == issueManager.views.review",
-          "group": "navigation@1",
-          "icon": "$(add)"
         },
         {
           "command": "issueManager.setRecentIssuesViewMode.group",
@@ -841,6 +961,16 @@
           "command": "issueManager.refreshAllViews",
           "when": "view == issueManager.views.overview",
           "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.editorGroup.closeOtherGroups",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.editorGroup.keepOnlyActiveEditor",
+          "when": "view == issueManager.views.editorGroups",
+          "group": "navigation@1"
         },
         {
           "command": "issueManager.autoDeleteOnDisassociate.enable",
@@ -928,19 +1058,34 @@
           "group": "navigation@1"
         },
         {
-          "command": "issueManager.deepResearch.addTaskLocal",
-          "when": "view == issueManager.views.deepResearch",
+          "command": "issueManager.organizeEditorGroupsWithLLM",
+          "when": "view == issueManager.views.editorGroups",
           "group": "navigation@1"
         },
         {
-          "command": "issueManager.deepResearch.addTaskLlmOnly",
-          "when": "view == issueManager.views.deepResearch",
-          "group": "navigation@2"
+          "command": "issueManager.llmChat.createRole",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@1"
         },
         {
-          "command": "issueManager.deepResearch.refresh",
-          "when": "view == issueManager.views.deepResearch",
+          "command": "issueManager.llmChat.toggleDebugLog",
+          "when": "view == 'issueManager.views.llmChat' && !issueManager.llmChat.debugLogAll",
           "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.llmChat.toggleDebugLogOff",
+          "when": "view == 'issueManager.views.llmChat' && issueManager.llmChat.debugLogAll",
+          "group": "navigation@3"
+        },
+        {
+          "command": "issueManager.llmChat.refresh",
+          "when": "view == 'issueManager.views.llmChat'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "issueManager.board.new",
+          "when": "view == 'issueManager.views.boardList'",
+          "group": "navigation@1"
         }
       ],
       "editor/title": [
@@ -962,14 +1107,99 @@
         {
           "command": "issueManager.setRecentSort.vtime",
           "group": "1_sort@3"
-        },
-        {
-          "command": "issueManager.organizeEditorGroupsWithLLM",
-          "when": "view == issueManager.views.editorGroups",
-          "group": "navigation@1"
         }
       ],
       "view/item/context": [
+        {
+          "command": "issueManager.llmChat.newConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.llmChat.configureRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@4"
+        },
+        {
+          "command": "issueManager.llmChat.editRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "9_edit"
+        },
+        {
+          "command": "issueManager.llmChat.deleteRole",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatRole'",
+          "group": "inline@5"
+        },
+        {
+          "command": "issueManager.llmChat.configureConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^chatConversation/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.cancelConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'chatConversationExecuting'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.llmChat.deleteConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^chatConversation/",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.llmChat.revealRecentConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^recentConversationItem/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llmChat.cancelConversation",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'recentConversationItemExecuting'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.mcp.addServer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'mcpRoot'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.mcp.restartAll",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'mcpRoot'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.mcp.openConfig",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'mcpRoot'",
+          "group": "inline@3"
+        },
+        {
+          "command": "issueManager.mcp.restartServer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^mcpServer/",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.skills.importToProject",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillRoot'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.skills.refresh",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillRoot'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.skills.openSkillDir",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillItem'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.skills.revealInExplorer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'skillItem'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.mcp.removeServer",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^mcpServer/",
+          "group": "inline@2"
+        },
         {
           "command": "issueManager.editorGroup.rename",
           "when": "view == issueManager.views.editorGroups && viewItem =~ /^editorGroup/",
@@ -1006,53 +1236,6 @@
           "group": "navigation@4"
         },
         {
-          "command": "issueManager.deepResearch.deleteDoc",
-          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchDoc'",
-          "group": "navigation@4"
-        },
-        {
-          "command": "issueManager.deepResearch.deleteDoc",
-          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchDoc'",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.issueSearch.deleteTask",
-          "when": "view == 'issueManager.views.search' && (viewItem == 'issueSearchRecord' || viewItem == 'issueSearchRecordLoading')",
-          "group": "navigation@4"
-        },
-        {
-          "command": "issueManager.issueSearch.retryTask",
-          "when": "view == 'issueManager.views.search' && (viewItem == 'issueSearchRecord' || viewItem == 'issueSearchRecordLoading')",
-          "group": "inline",
-          "icon": "$(refresh)"
-        },
-        {
-          "command": "issueManager.issueSearch.deleteTask",
-          "when": "view == 'issueManager.views.search' && (viewItem == 'issueSearchRecord' || viewItem == 'issueSearchRecordLoading')",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.issueSearch.retrySubtask",
-          "when": "view == 'issueManager.views.search' && viewItem == 'issueSearchSubtask'",
-          "group": "inline",
-          "icon": "$(refresh)"
-        },
-        {
-          "command": "issueManager.deleteIssue",
-          "when": "view == 'issueManager.views.search' && viewItem =~ /isolatedIssue/",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.deepResearch.cancelTask",
-          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchTaskLoading'",
-          "group": "navigation@4"
-        },
-        {
-          "command": "issueManager.deepResearch.cancelTask",
-          "when": "view == 'issueManager.views.deepResearch' && viewItem == 'deepResearchTaskLoading'",
-          "group": "inline"
-        },
-        {
           "command": "issueManager.generateTitleCommand",
           "when": "view == 'issueManager.views.overview' && (viewItem =~ /issueNode/)",
           "group": "llm"
@@ -1069,27 +1252,27 @@
         },
         {
           "command": "issueManager.disassociateIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related')  && viewItem =~ /issueNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.related')  && viewItem =~ /issueNode/",
           "group": "modification@2"
         },
         {
           "command": "issueManager.createSubIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related')",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.related')",
           "group": "inline"
         },
         {
           "command": "issueManager.focusIssue",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /issueNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.related') && viewItem =~ /issueNode/",
           "group": "modification@3"
         },
         {
           "command": "issueManager.removeFocus",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && (viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.related') && (viewItem =~ /focusedNode/ || viewItem =~ /focusedNodeFirst/)",
           "group": "modification@3"
         },
         {
           "command": "issueManager.pinFocus",
-          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related') && viewItem =~ /focusedNode/",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.related') && viewItem =~ /focusedNode/",
           "group": "modification@3"
         },
         {
@@ -1114,7 +1297,7 @@
         },
         {
           "command": "issueManager.moveTo",
-          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.focused' || view == 'issueManager.views.related'",
+          "when": "view == 'issueManager.views.overview' || view == 'issueManager.views.related'",
           "group": "navigation@4"
         },
         {
@@ -1356,16 +1539,46 @@
           "command": "issueManager.marker.fillFromArchived",
           "when": "view == issueManager.views.marker && viewItem == archivedTask",
           "group": "inline@2"
+        },
+        {
+          "command": "issueManager.board.open",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "issueManager.board.rename",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "modification@1"
+        },
+        {
+          "command": "issueManager.board.rename",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.board.delete",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "modification@2"
+        },
+        {
+          "command": "issueManager.board.delete",
+          "when": "view == 'issueManager.views.boardList' && viewItem == 'boardItem'",
+          "group": "inline@2"
+        },
+        {
+          "command": "issueManager.board.newFromIssue",
+          "when": "(view == 'issueManager.views.overview' || view == 'issueManager.views.related') && viewItem =~ /issueNode/",
+          "group": "board@1"
         }
       ],
       "editor/context": []
     },
     "keybindings": [
       {
-        "command": "issueManager.openFocusedView",
-        "key": "ctrl+j ctrl+i",
-        "mac": "cmd+j cmd+i",
-        "when": "issueManager.isDirConfigured"
+        "command": "issueManager.image.pasteImage",
+        "key": "ctrl+v",
+        "mac": "cmd+v",
+        "when": "editorTextFocus && editorLangId == 'markdown'"
       },
       {
         "command": "issueManager.openRecentView",
@@ -1421,7 +1634,16 @@
         "mac": "cmd+j cmd+f",
         "when": "issueManager.isDirConfigured",
         "args": {
-          "mode": "vtime"
+          "mode": "recentChat"
+        }
+      },
+      {
+        "command": "issueManager.unifiedQuickOpen",
+        "key": "ctrl+j ctrl+r",
+        "mac": "cmd+j cmd+r",
+        "when": "issueManager.isDirConfigured",
+        "args": {
+          "mode": "recentRole"
         }
       },
       {
@@ -1480,6 +1702,12 @@
         "key": "ctrl+j ctrl+k",
         "mac": "cmd+j cmd+k",
         "when": "issueManager.isDirConfigured"
+      },
+      {
+        "command": "issueManager.llmChat.askRole",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "issueManager.isDirConfigured && editorLangId == 'markdown' && issueManager.editorIsIssueMarkdown"
       }
     ],
     "configuration": {
@@ -1490,6 +1718,21 @@
           "default": "",
           "description": "【必须】指定一个绝对路径作为存放所有问题（.md文件）的根目录。"
         },
+        "issueManager.imageDir": {
+          "type": "string",
+          "default": "",
+          "description": "Directory to save screenshots. Defaults to ~/Library/Mobile Documents/com~apple~CloudDocs/Screenshots if empty (iCloud Drive)."
+        },
+        "issueManager.a2a.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用 A2A Protocol server，把设置了 a2a.expose 的 LLM 角色暴露为标准 A2A agent，仅监听 127.0.0.1。"
+        },
+        "issueManager.a2a.port": {
+          "type": "number",
+          "default": 0,
+          "description": "A2A server 监听端口。0 表示首次使用随机端口并在下次启动时优先复用；非 0 时强制使用指定端口。"
+        },
         "issueManager.recentIssues.defaultMode": {
           "type": "string",
           "default": "grouped",
@@ -1498,12 +1741,6 @@
             "list"
           ],
           "description": "设置最近问题视图的默认显示模式，可选值为 'grouped'（分组模式）或 'list'（列表模式）。"
-        },
-        "issueManager.focused.maxItems": {
-          "type": "number",
-          "default": 10,
-          "minimum": 1,
-          "description": "关注列表中保留的最大问题数量。当添加新问题导致超过此数量时，最旧的（列表末尾的）问题会被自动移除。"
         },
         "issueManager.sync.enableAutosync": {
           "type": "boolean",
@@ -1544,6 +1781,11 @@
           "type": "boolean",
           "default": false,
           "description": "启用 LLM 智能生成提交消息。启用后，自动同步会使用 Copilot 根据变更文件内容生成语义化的提交消息，而不是使用时间戳模板。需要已安装并登录 GitHub Copilot。"
+        },
+        "issueManager.view.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "文件变更时是否自动刷新问题总览等视图（不含 agent 系统文件）。关闭后需手动点击刷新按钮，适合大量 agent 实验期间使用。"
         },
         "issueManager.rss.enableAutoUpdate": {
           "type": "boolean",
@@ -1744,7 +1986,7 @@
         },
         "issueManager.completion.maxItems": {
           "type": "number",
-          "default": 200,
+          "default": 50,
           "minimum": 10,
           "maximum": 1000,
           "description": "补全提示列表中显示的最大文件数量。"
@@ -1752,7 +1994,8 @@
         "issueManager.completion.triggers": {
           "type": "array",
           "default": [
-            "[["
+            "[",
+            "【"
           ],
           "items": {
             "type": "string"
@@ -1789,8 +2032,17 @@
         },
         "issueManager.llm.modelFamily": {
           "type": "string",
-          "default": "gpt-4.1",
-          "description": "指定用于 AI 功能（如标题生成、文档撰写）的 Copilot 模型系列。例如: gpt-4.1, gpt-4o, gpt-3.5-turbo 等。如果指定的模型不可用，将尝试使用默认模型。"
+          "default": "gpt-5-mini",
+          "enum": [
+            "gpt-5-mini",
+            "gpt-4o",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "claude-3.5-sonnet",
+            "o3-mini",
+            "o1-mini"
+          ],
+          "description": "全局默认 AI 模型（聊天角色未单独配置模型时使用）。各聊天角色可在其文件的 chat_role_model_family 字段中覆盖此设置。"
         }
       }
     },
@@ -1800,16 +2052,16 @@
           "id": "issue-manager",
           "title": "问题管理",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issue-manager-board",
+          "title": "调查板",
+          "icon": "resources/icon.svg"
         }
       ]
     },
     "views": {
       "issue-manager": [
-        {
-          "id": "issueManager.views.focused",
-          "name": "关注问题",
-          "icon": "resources/icon.svg"
-        },
         {
           "id": "issueManager.views.overview",
           "name": "问题总览",
@@ -1818,16 +2070,6 @@
         {
           "id": "issueManager.views.recent",
           "name": "最近问题",
-          "icon": "resources/icon.svg"
-        },
-        {
-          "id": "issueManager.views.search",
-          "name": "问题搜索",
-          "icon": "resources/icon.svg"
-        },
-        {
-          "id": "issueManager.views.deepResearch",
-          "name": "深度调研",
           "icon": "resources/icon.svg"
         },
         {
@@ -1851,14 +2093,26 @@
           "icon": "resources/icon.svg"
         },
         {
-          "id": "issueManager.views.review",
-          "name": "回顾视图",
-          "icon": "resources/icon.svg"
-        },
-        {
           "id": "issueManager.views.editorGroups",
           "name": "编辑器组",
           "icon": "resources/icon.svg"
+        },
+        {
+          "id": "issueManager.views.llmChat",
+          "name": "LLM 聊天",
+          "icon": "resources/icon.svg"
+        },
+        {
+          "type": "webview",
+          "id": "issueManager.views.imageGallery",
+          "name": "图片库",
+          "icon": "$(device-camera)"
+        }
+      ],
+      "issue-manager-board": [
+        {
+          "id": "issueManager.views.boardList",
+          "name": "调查板列表"
         }
       ]
     },
@@ -1869,22 +2123,7 @@
         "when": "!issueManager.isDirConfigured"
       },
       {
-        "view": "issueManager.views.focused",
-        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
-        "when": "!issueManager.isDirConfigured"
-      },
-      {
         "view": "issueManager.views.recent",
-        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
-        "when": "!issueManager.isDirConfigured"
-      },
-      {
-        "view": "issueManager.views.search",
-        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
-        "when": "!issueManager.isDirConfigured"
-      },
-      {
-        "view": "issueManager.views.deepResearch",
         "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
         "when": "!issueManager.isDirConfigured"
       },
@@ -1911,6 +2150,16 @@
       {
         "view": "issueManager.views.logicalTree",
         "contents": "当前文件没有 issue_root 字段。\n[为当前文件创建根节点](command:issueManager.logicalTree.createRoot)\n\n逻辑层级树基于当前活动文件的 Frontmatter 字段构建，显示该文件所属的完整层级结构。",
+        "when": "issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.llmChat",
+        "contents": "请先配置问题目录以激活插件功能。\n[立即配置](command:workbench.action.openSettings?%5B%22issueManager.issueDir%22%5D)",
+        "when": "!issueManager.isDirConfigured"
+      },
+      {
+        "view": "issueManager.views.llmChat",
+        "contents": "还没有聊天角色，创建一个来开始对话吧。\n[新建聊天角色](command:issueManager.llmChat.createRole)",
         "when": "issueManager.isDirConfigured"
       }
     ]
@@ -1949,14 +2198,14 @@
     "@vscode/test-electron": "^2.4.1",
     "dotenv": "^17.2.3",
     "eslint": "^9.21.0",
+    "prettier": "^2.8.8",
     "sinon": "^21.0.0",
     "ts-loader": "^9.5.2",
     "typescript": "^5.7.3",
     "vue": "^3.5.22",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1",
-    "wxt": "^0.20.11",
-    "prettier": "^2.8.8"
+    "wxt": "^0.20.11"
   },
   "dependencies": {
     "@antv/g2": "^5.4.6",
@@ -1966,6 +2215,7 @@
     "@antv/x6-plugin-keyboard": "^2.2.3",
     "@antv/x6-plugin-scroller": "^2.0.10",
     "@antv/x6-plugin-selection": "^2.2.2",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "cheerio": "^1.1.2",
     "dompurify": "^3.3.0",
     "js-yaml": "^4.1.0",

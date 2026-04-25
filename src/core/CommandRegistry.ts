@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IFocusedIssuesProvider, IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
+import { IIssueOverviewProvider, IIssueViewProvider } from './interfaces';
 import { IssueNode, readTree, isIssueNode, stripFocusedId, writeTree, findNodeById, getIssueNodeById, createIssueNodes } from '../data/issueTreeManager';
 import { ViewCommandRegistry } from './commands/ViewCommandRegistry';
 import { StateCommandRegistry } from './commands/StateCommandRegistry';
@@ -8,7 +8,6 @@ import { BaseCommandRegistry } from './commands/BaseCommandRegistry';
 import { WebviewManager } from '../webview/WebviewManager';
 import { GraphDataService } from '../services/GraphDataService';
 import { EditorContextService } from '../services/EditorContextService';
-import { addFocus } from '../data/focusedManager';
 import { ParaCategory, removeIssueFromCategory, addIssueToCategory, getCategoryLabel } from '../data/paraManager';
 import { addIssueToParaCategory } from '../commands/paraCommands';
 import { isParaIssueNode, ParaViewNode } from '../types';
@@ -28,9 +27,7 @@ const EXPAND_ANIMATION_DELAY_MS = 100;
 // 重新导入外部命令注册函数
 import { registerOpenIssueDirCommand, registerOpenvscodeIssueManagerDirCommand, registerOpenVscodeSIEMDirCommand } from '../commands/openIssueDir';
 import { registerDisassociateIssueCommand } from '../commands/disassociateIssue';
-import { registerSearchIssuesCommand } from '../commands/searchIssues';
 import { registerDeleteIssueCommand, registerDeleteIssueFromEditorCommand } from '../commands/deleteIssue';
-import { registerFocusCommands } from '../commands/focusCommands';
 import { registerCreateSubIssueCommand } from '../commands/createSubIssue';
 import { registerCreateSubIssueFromEditorCommand } from '../commands/createSubIssueFromEditor';
 import { registerCreateTranslationFromEditorCommand } from '../commands/createTranslationFromEditor';
@@ -55,7 +52,6 @@ import { selectLLMModel } from '../commands/llmCommands';
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
 import {registerGenerateTitleCommand} from '../commands/generateTitle';
 import {registerGenerateBriefSummaryCommand} from '../commands/generateBriefSummary';
-import { registerGenerateProjectNameCommand, registerGenerateGitBranchCommand } from '../commands/nameGenerators';
 import { registerUnifiedQuickOpenCommand } from '../commands/unifiedQuickOpen';
 import { registerInsertMarksCommand } from '../commands/insertMarksCommand';
 import { registerInsertTermsReferenceCommand } from '../commands/insertTermsReferenceCommand';
@@ -64,15 +60,7 @@ import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
 import { openIssueNode } from '../commands/openIssueNode';
-import { registerReviewPlanCommands } from '../commands/reviewPlanCommands';
 import { registerEditorGroupCommands } from '../commands/editorGroupManager';
-import { registerOpenReviewPlanQuickPick } from '../commands/openReviewPlanQuickPick';
-import {
-    registerDeepResearchIssueCommand,
-    registerDeepResearchIssueLocalCommand,
-    registerDeepResearchIssueLlmOnlyCommand,
-} from '../commands/deepResearchIssue';
-import { registerDeepResearchDocCommands } from '../commands/deepResearchDocCommands';
 
 
 
@@ -102,6 +90,13 @@ import { registerDeepResearchDocCommands } from '../commands/deepResearchDocComm
 export class CommandRegistry extends BaseCommandRegistry {
     private readonly viewCommandRegistry: ViewCommandRegistry;
     private readonly stateCommandRegistry: StateCommandRegistry;
+
+    /**
+     * 返回视图刷新调度器，供其他模块（如 ConfigurationManager）按视图精准刷新。
+     */
+    public getViewRefreshDispatcher() {
+        return this.viewCommandRegistry.getRefreshDispatcher();
+    }
 
     /**
      * 创建命令注册管理器实例
@@ -147,27 +142,18 @@ export class CommandRegistry extends BaseCommandRegistry {
 
     /**
      * 设置视图提供者并注册所有命令
-     * 
-     * @param focusedIssuesProvider 关注问题视图提供者
+     *
      * @param issueOverviewProvider 问题总览视图提供者
      * @param recentIssuesProvider 最近问题视图提供者
      * @param overviewView 总览树视图实例
-     * @param focusedView 关注问题树视图实例
-     * @param issueStructureProvider 问题结构视图提供者
      * @param paraViewProvider PARA 视图提供者
      * @param paraView PARA 树视图实例
      */
     public registerAllCommands(
-        focusedIssuesProvider: IFocusedIssuesProvider,
         issueOverviewProvider: IIssueOverviewProvider,
         recentIssuesProvider: IIssueViewProvider<vscode.TreeItem>,
         recentView: vscode.TreeView<vscode.TreeItem> | undefined,
         overviewView: vscode.TreeView<IssueNode>,
-        focusedView: vscode.TreeView<IssueNode>,
-        issueSearchProvider: import('../views/IssueSearchViewProvider').IssueSearchViewProvider,
-        issueSearchView: vscode.TreeView<import('../views/IssueSearchViewProvider').IssueSearchViewNode>,
-        deepResearchProvider: import('../views/DeepResearchIssuesProvider').DeepResearchIssuesProvider,
-        deepResearchView: vscode.TreeView<import('../views/DeepResearchIssuesProvider').DeepResearchViewNode>,
         // issueStructureProvider: IssueStructureProvider,
         // issueLogicalTreeProvider: IssueLogicalTreeProvider,
         paraViewProvider: ParaViewProvider,
@@ -186,23 +172,17 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 2. 设置视图提供者并注册视图命令
             this.viewCommandRegistry.setProviders({
-                focusedIssuesProvider,
                 issueOverviewProvider,
                 recentIssuesProvider,
                 recentView,
                 paraViewProvider,
                 overviewView,
-                focusedView,
-                issueSearchProvider,
-                issueSearchView,
-                deepResearchProvider,
-                deepResearchView
             });
             this.viewCommandRegistry.registerCommands();
 
             // 3. 注册状态管理命令
             this.stateCommandRegistry.registerCommands();
-            this.stateCommandRegistry.registerExpandCollapseSync(overviewView, focusedView);
+            this.stateCommandRegistry.registerExpandCollapseSync(overviewView);
 
             // 4. 注册外部定义的命令
             this.registerExternalCommands();
@@ -212,7 +192,7 @@ export class CommandRegistry extends BaseCommandRegistry {
 
             // 6. 注册“打开并定位”命令
             this.context.subscriptions.push(
-                vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueNode, type: 'focused' | 'overview') => {
+                vscode.commands.registerCommand('issueManager.openAndRevealIssue', async (node: IssueNode, _type: 'focused' | 'overview') => {
                     if (!node || !node.resourceUri) { return; }
                     // 打开文件
                     const uri = node.resourceUri;
@@ -224,16 +204,7 @@ export class CommandRegistry extends BaseCommandRegistry {
                     }
                     const revealInOverview = () => vscode.commands.executeCommand('issueManager.views.overview.reveal', node, { select: true, focus: true, expand: true });
 
-                    if (type === 'overview') {
-                        await revealInOverview();
-                    } else if (type === 'focused') {
-                        const { node: target } = focusedIssuesProvider.findFirstFocusedNodeById(node.id) || {};
-                        if (target) {
-                            await vscode.commands.executeCommand('issueManager.views.focused.reveal', target, { select: true, focus: true, expand: true });
-                        } else {
-                            await revealInOverview();
-                        }
-                    }
+                    await revealInOverview();
                 })
             );
 
@@ -270,7 +241,7 @@ export class CommandRegistry extends BaseCommandRegistry {
             );
 
 
-            this.logger.info('✅ 所有命令注册完成');
+            this.logger.info('✓ 所有命令注册完成');
 
         } catch (error) {
             this.logger.error('✗ 命令注册过程中出现错误:', error);
@@ -555,22 +526,12 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerOpenIssueDirCommand(this.context);
         registerOpenvscodeIssueManagerDirCommand(this.context);
         registerOpenVscodeSIEMDirCommand(this.context);
-        registerSearchIssuesCommand(this.context);
         registerDeleteIssueCommand(this.context);
         registerDeleteIssueFromEditorCommand(this.context);
-        registerFocusCommands(this.context);
         // 注册外部实现的子问题创建命令
         registerCreateSubIssueCommand(this.context);
         registerCreateSubIssueFromEditorCommand(this.context);
         registerCreateTranslationFromEditorCommand(this.context);
-
-        // Review/计划相关命令
-        registerReviewPlanCommands(this.context);
-        // 快捷回顾命令（QuickPick）
-        registerOpenReviewPlanQuickPick(this.context);
-
-        // 深度调研文档维护命令（例如删除）
-        registerDeepResearchDocCommands(this.context);
 
         // 编辑器组管理命令（关闭/总览/移动/合并/命名/LLM整理）
         registerEditorGroupCommands(this.context);
@@ -604,14 +565,6 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '从剪贴板创建问题'
         );
-
-        // 在关注问题中搜索
-        this.registerCommand(
-            'issueManager.searchIssuesInFocused',
-            async () => vscode.commands.executeCommand('issueManager.searchIssues', 'focused'),
-            '在关注问题中搜索'
-        );
-
 
         // 解除问题关联命令（委托到独立模块实现）
         registerDisassociateIssueCommand(this.context);
@@ -761,6 +714,38 @@ export class CommandRegistry extends BaseCommandRegistry {
             },
             '复制 IssueMarkdown 链接'
         );
+
+        // 复制 Issue Markdown 链接（绝对路径）
+        this.registerCommand(
+            'issueManager.copyIssueMarkdownLinkAbsolute',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showWarningMessage('没有激活的编辑器可复制 IssueMarkdown 链接。');
+                    return;
+                }
+
+                const md = await getIssueMarkdown(editor.document.uri);
+                if (!md) {
+                    vscode.window.showWarningMessage('当前文档不是有效的 IssueMarkdown。');
+                    return;
+                }
+
+                // 使用文件系统绝对路径（统一正斜杠）作为链接目标
+                const absPath = md.uri.fsPath.replace(/\\/g, '/');
+                const finalLink = `[${md.title}](${absPath})`;
+
+                try {
+                    await vscode.env.clipboard.writeText(finalLink);
+                    vscode.window.showInformationMessage('已复制 IssueMarkdown 绝对路径链接');
+                } catch (e) {
+                    this.logger.error('复制 IssueMarkdown 绝对路径链接失败', e);
+                    vscode.window.showErrorMessage('复制 IssueMarkdown 绝对路径链接失败');
+                }
+            },
+            '复制 IssueMarkdown 链接（绝对路径）'
+        );
+
 
         this.registerParaCategoryCommands(
             'issueManager.para.viewIn',
@@ -942,23 +927,11 @@ export class CommandRegistry extends BaseCommandRegistry {
     }
 
     /**
-     * 从 PARA 视图添加节点到关注视图
-     * @param issueId 问题节点ID
+     * 从 PARA 视图添加节点到关注视图（功能已移除）
+     * @param _issueId 问题节点ID
      */
-    private async addParaNodeToFocused(issueId: string): Promise<void> {
-        try {
-            await addFocus([issueId]);
-            await Promise.all([
-                vscode.commands.executeCommand('issueManager.focused.refresh'),
-                vscode.commands.executeCommand('issueManager.para.refresh')
-            ]);
-            vscode.window.showInformationMessage('已添加到关注问题');
-            this.logger.info(`从 PARA 视图添加到关注: ${issueId}`);
-
-        } catch (error) {
-            this.logger.error('从 PARA 视图添加到关注失败:', error);
-            vscode.window.showErrorMessage(`添加失败: ${error instanceof Error ? error.message : '未知错误'}`);
-        }
+    private async addParaNodeToFocused(_issueId: string): Promise<void> {
+        vscode.window.showInformationMessage('关注问题功能已移除');
     }
 
     /**
@@ -1024,9 +997,7 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         registerGenerateTitleCommand(this.context);
         registerGenerateBriefSummaryCommand(this.context);
-        // 注册生成名称相关命令和统一入口
-        registerGenerateProjectNameCommand(this.context);
-        registerGenerateGitBranchCommand(this.context);
+        // 注册统一入口
         registerUnifiedQuickOpenCommand(this.context);
         // marker 插入到关联问题的命令
         registerInsertMarksCommand(this.context, this.markerManager);
@@ -1053,11 +1024,6 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // LLM-based 拼音注释命令
         registerAnnotatePinyinWithLLMCommand(this.context);
-
-        // 深度调研问题（生成专业文档并落盘到 issueDir）
-        registerDeepResearchIssueCommand(this.context);
-        registerDeepResearchIssueLocalCommand(this.context);
-        registerDeepResearchIssueLlmOnlyCommand(this.context);
 
         // note: copilotDiffSaveResult command was removed per user request
     }

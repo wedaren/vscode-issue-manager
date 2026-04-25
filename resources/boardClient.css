@@ -1,0 +1,43 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--vscode-editor-background); font-family: var(--vscode-font-family); }
+#viewport { width: 100%; height: 100%; overflow: hidden; position: relative; cursor: grab; }
+#viewport.grabbing { cursor: grabbing; }
+#canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.board-item { position: absolute; cursor: move; user-select: none; border: 2px solid transparent; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,.3); transition: border-color .1s; }
+.board-item:hover, .board-item.selected { border-color: var(--vscode-focusBorder); }
+.resize-handle { position: absolute; width: 14px; height: 14px; right: -4px; bottom: -4px; cursor: nwse-resize; background: var(--vscode-focusBorder); border-radius: 2px; opacity: 0; transition: opacity .15s; }
+.board-item:hover .resize-handle, .board-item.selected .resize-handle { opacity: 1; }
+.delete-handle { position: absolute; width: 18px; height: 18px; right: -6px; top: -6px; cursor: pointer; background: var(--vscode-inputValidation-errorBackground, #c72e2e); border: 1.5px solid rgba(255,255,255,.25); border-radius: 50%; opacity: 0; transition: opacity .15s; display: flex; align-items: center; justify-content: center; color: #fff; z-index: 10; }
+.delete-handle:hover { background: #e53935; }
+.board-item:hover .delete-handle, .board-item.selected .delete-handle { opacity: 1; }
+.item-actions { position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: center; gap: 3px; padding: 3px 4px; background: rgba(0,0,0,.55); border-radius: 0 0 2px 2px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+.board-item:hover .item-actions, .board-item.selected .item-actions { opacity: 1; pointer-events: auto; }
+.ia-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.12); border: none; border-radius: 3px; cursor: pointer; color: #fff; font-size: 13px; transition: background .1s; line-height: 1; }
+.ia-btn:hover { background: rgba(255,255,255,.28); }
+.board-item.type-image img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; border-radius: 2px; background: var(--vscode-editor-background); }
+.board-item.type-issue { background: transparent; border: 1.5px solid var(--vscode-panel-border, #3c3c3c); border-radius: 6px; }
+.issue-card-inner { position: absolute; inset: 0; border-radius: 5px; overflow: hidden; background: var(--vscode-sideBar-background, #252526); display: flex; flex-direction: column; }
+.board-item.type-issue:hover, .board-item.type-issue.selected { border-color: var(--vscode-focusBorder); }
+.issue-card-header { background: var(--vscode-activityBar-background, #333); padding: 6px 10px; font-size: 11px; color: var(--vscode-descriptionForeground, #aaa); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; flex-shrink: 0; }
+.issue-card-title { padding: 8px 10px 4px; font-size: 13px; font-weight: 600; color: var(--vscode-editor-foreground); line-height: 1.4; word-break: break-word; flex-shrink: 0; }
+.issue-card-excerpt { padding: 0 10px 6px; font-size: 11px; color: var(--vscode-descriptionForeground, #aaa); line-height: 1.6; overflow-y: auto; flex: 1; min-height: 0; word-break: break-word; white-space: pre-wrap; }
+.issue-card-open { align-self: flex-start; margin: 0 10px 8px; padding: 3px 10px; background: var(--vscode-button-secondaryBackground, #3a3d41); color: var(--vscode-button-secondaryForeground, #ccc); border: none; border-radius: 3px; font-size: 11px; cursor: pointer; font-family: var(--vscode-font-family); transition: background .1s; flex-shrink: 0; }
+.issue-card-open:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
+#lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.88); z-index: 9999; align-items: center; justify-content: center; cursor: zoom-out; }
+#lightbox.active { display: flex; }
+#lightbox img { max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 4px; box-shadow: 0 8px 32px rgba(0,0,0,.6); pointer-events: none; }
+#hint { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); background: var(--vscode-editorWidget-background, rgba(30,30,30,.9)); color: var(--vscode-editorWidget-foreground, #ccc); padding: 6px 16px; border-radius: 6px; font-size: 11px; pointer-events: none; opacity: .7; white-space: nowrap; }
+#toolbar { position: fixed; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 100; flex-wrap: wrap; justify-content: flex-end; }
+.tb-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: var(--vscode-font-family); transition: background .15s; }
+.tb-btn:hover { background: var(--vscode-button-hoverBackground); }
+.tb-btn:disabled { opacity: .4; cursor: not-allowed; }
+.tb-btn.danger { background: var(--vscode-inputValidation-errorBackground, #5a1d1d); color: #f48771; }
+.tb-btn.danger:hover { background: rgba(255,80,80,.3); }
+#hud { position: fixed; bottom: 40px; right: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; z-index: 200; pointer-events: none; }
+#minimap-wrap { background: rgba(20,20,20,.75); border: 1px solid rgba(255,255,255,.12); border-radius: 5px; overflow: hidden; cursor: crosshair; pointer-events: auto; }
+#minimap { display: block; }
+#zoom-bar { display: flex; align-items: center; gap: 3px; background: var(--vscode-editorWidget-background, rgba(30,30,30,.9)); border-radius: 6px; padding: 3px 6px; pointer-events: auto; }
+.z-btn { background: rgba(255,255,255,.1); border: none; border-radius: 3px; color: var(--vscode-editorWidget-foreground, #ccc); cursor: pointer; font-size: 16px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-family: var(--vscode-font-family); }
+.z-btn.z-sm { font-size: 10px; width: auto; padding: 0 5px; }
+.z-btn:hover { background: rgba(255,255,255,.22); }
+#zoomLabel { font-size: 11px; color: var(--vscode-editorWidget-foreground, #ccc); min-width: 38px; text-align: center; }

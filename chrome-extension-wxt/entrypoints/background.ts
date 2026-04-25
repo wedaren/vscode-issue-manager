@@ -215,6 +215,30 @@ export default defineBackground(() => {
                 }
               });
             }
+          } else if (message.type === 'web-search') {
+            // VSCode 发起的网络搜索请求
+            handleWebSearch(message).catch(err => {
+              console.error('[WebSocket] web-search 处理失败:', err);
+            });
+          } else if (message.type === 'fetch-url') {
+            // VSCode 发起的 URL 内容抓取请求
+            handleFetchUrl(message).catch(err => {
+              console.error('[WebSocket] fetch-url 处理失败:', err);
+            });
+          } else if (
+            message.type === 'web-agent-started' ||
+            message.type === 'web-agent-progress' ||
+            message.type === 'web-agent-complete' ||
+            message.type === 'web-agent-error' ||
+            message.type === 'web-agent-cancelled'
+          ) {
+            // VSCode Agent 事件 → 转发到 Side Panel
+            notifySidePanel({
+              type: 'WEB_AGENT_EVENT',
+              agentEventType: message.type,
+              data: message.data,
+              taskId: (message as any).taskId,
+            } as any);
           }
         } catch (e: unknown) {
           console.error('[WebSocket] 消息解析失败:', e);
@@ -698,6 +722,77 @@ export default defineBackground(() => {
         })();
         break;
 
+      case 'LLM_REQUEST_WITH_TOOLS':
+        // 带工具调用的 LLM 请求，转发到 VSCode 端用 streamWithTools 处理
+        (async () => {
+          try {
+            const model = (message as any).model || (message.data && (message.data as any).model);
+            const prompt = (message as any).prompt || (message.data && (message.data as any).prompt);
+            const history = (message as any).history || [];
+
+            if (!prompt) {
+              sendResponse({ success: false, error: 'Missing prompt' });
+              return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              await initWebSocket();
+            }
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              sendResponse({ success: false, error: 'WebSocket not connected' });
+              return;
+            }
+
+            const msgId = generateMessageId();
+            ws.send(JSON.stringify({ type: 'llm-request-with-tools', id: msgId, data: { model, prompt, history } }));
+            sendResponse({ success: true, data: { requestId: msgId } });
+          } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      case 'START_WEB_AGENT':
+        // Side Panel → Background → VSCode: 启动 Web Research Agent
+        (async () => {
+          try {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              sendResponse({ success: false, error: 'WebSocket 未连接' });
+              return;
+            }
+            const task = (message as any).task || '';
+            if (!task) {
+              sendResponse({ success: false, error: '请输入研究任务' });
+              return;
+            }
+            ws.send(JSON.stringify({ type: 'start-web-agent', id: generateMessageId(), data: { task } }));
+            sendResponse({ success: true });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CANCEL_WEB_AGENT':
+        // Side Panel → Background → VSCode: 取消 Agent 任务
+        (async () => {
+          try {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              sendResponse({ success: false, error: 'WebSocket 未连接' });
+              return;
+            }
+            const taskId = (message as any).taskId || '';
+            ws.send(JSON.stringify({ type: 'cancel-web-agent', id: generateMessageId(), data: { taskId } }));
+            sendResponse({ success: true });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
       case 'GENERATE_TITLE':
         (async () => {
           try {
@@ -764,6 +859,99 @@ export default defineBackground(() => {
             console.error('GENERATE_BRIEF_SUMMARY failed:', e);
             const errorMessage = e instanceof Error ? e.message : String(e);
             sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        break;
+
+      // ─── Chrome 面板聊天持久化（issueMarkdown） ───
+      case 'CHROME_CHAT_LIST':
+        (async () => {
+          try {
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-list' }, 8000);
+            if (response && (response as any).type === 'chrome-chat-list-result') {
+              sendResponse({ success: true, data: (response as any).data || [] });
+            } else {
+              sendResponse({ success: false, error: (response as any)?.error || 'Unexpected response' });
+            }
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_CREATE':
+        (async () => {
+          try {
+            const title = (message as any).title;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-create', data: { title } }, 8000);
+            if (response && (response as any).type === 'chrome-chat-create-result') {
+              sendResponse({ success: true, data: (response as any).data });
+            } else {
+              sendResponse({ success: false, error: (response as any)?.error || '创建失败' });
+            }
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_DELETE':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-delete', data: { id: convId } }, 8000);
+            sendResponse({ success: response?.type === 'success', error: response?.error });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_RENAME':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const title = (message as any).title;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-rename', data: { id: convId, title } }, 8000);
+            sendResponse({ success: response?.type === 'success', error: response?.error });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_MESSAGES':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-messages', data: { id: convId } }, 8000);
+            if (response && (response as any).type === 'chrome-chat-messages-result') {
+              sendResponse({ success: true, data: (response as any).data || [] });
+            } else {
+              sendResponse({ success: false, error: (response as any)?.error || 'Unexpected response' });
+            }
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
+          }
+        })();
+        break;
+
+      case 'CHROME_CHAT_APPEND':
+        (async () => {
+          try {
+            const convId = (message as any).convId;
+            const role = (message as any).role;
+            const content = (message as any).content;
+            const response = await sendWebSocketMessage({ type: 'chrome-chat-append', data: { id: convId, role, content } }, 10000);
+            sendResponse({ success: response?.type === 'success', error: response?.error });
+          } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            sendResponse({ success: false, error: errMsg });
           }
         })();
         break;
@@ -1036,6 +1224,152 @@ export default defineBackground(() => {
       console.error('[getFocusedIssues] Failed to get focused issues via WebSocket:', error);
       throw error;
     }
+  }
+
+  // ─── VSCode → Chrome 请求处理：网络搜索 & URL 抓取 ────────
+
+  /**
+   * 处理 VSCode 发起的网络搜索请求：
+   * 1. 打开新标签页 → 搜索引擎
+   * 2. 等待页面加载
+   * 3. 提取页面文本内容
+   * 4. 通过 WebSocket 返回结果
+   */
+  async function handleWebSearch(message: WebSocketMessage): Promise<void> {
+    const data = message.data as { query?: string; engine?: string } | undefined;
+    const query = data?.query || '';
+    const engine = data?.engine || 'google';
+
+    if (!query) {
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: '搜索关键词不能为空' }));
+      return;
+    }
+
+    const searchUrls: Record<string, string> = {
+      google: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+      bing: `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+      baidu: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`,
+    };
+    const searchUrl = searchUrls[engine] || searchUrls.google;
+
+    try {
+      // 1. 打开新标签页
+      const tab = await chrome.tabs.create({ url: searchUrl, active: false });
+      if (!tab.id) {
+        throw new Error('无法创建标签页');
+      }
+
+      // 2. 等待页面加载完成
+      await waitForTabLoad(tab.id, 15000);
+
+      // 3. 注入内容脚本并获取页面内容
+      await ensureContentScriptInjected(tab.id);
+      const pageData = await getPageContent(tab.id);
+
+      // 4. 保留标签页，方便用户查看搜索过程
+      // 5. 返回结果（截取合理长度）
+      const text = (pageData.text || '').slice(0, 16000);
+      ws?.send(JSON.stringify({
+        type: 'web-search-result',
+        id: message.id,
+        data: {
+          query,
+          url: searchUrl,
+          title: pageData.title || '',
+          content: text,
+        },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleWebSearch] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `网络搜索失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 处理 VSCode 发起的 URL 内容抓取请求：
+   * 1. 打开新标签页 → 目标 URL
+   * 2. 等待页面加载
+   * 3. 提取页面文本内容
+   * 4. 通过 WebSocket 返回结果
+   */
+  async function handleFetchUrl(message: WebSocketMessage): Promise<void> {
+    const data = message.data as { url?: string } | undefined;
+    const url = data?.url || '';
+
+    if (!url) {
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: 'URL 不能为空' }));
+      return;
+    }
+
+    try {
+      // 1. 打开新标签页
+      const tab = await chrome.tabs.create({ url, active: false });
+      if (!tab.id) {
+        throw new Error('无法创建标签页');
+      }
+
+      // 2. 等待页面加载完成
+      await waitForTabLoad(tab.id, 20000);
+
+      // 3. 注入内容脚本并获取页面内容
+      await ensureContentScriptInjected(tab.id);
+      const pageData = await getPageContent(tab.id);
+
+      // 4. 保留标签页，方便用户查看抓取的页面
+      // 5. 返回结果
+      const text = (pageData.text || '').slice(0, 32000);
+      ws?.send(JSON.stringify({
+        type: 'fetch-url-result',
+        id: message.id,
+        data: {
+          url,
+          title: pageData.title || '',
+          content: text,
+        },
+      }));
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('[handleFetchUrl] 失败:', errMsg);
+      ws?.send(JSON.stringify({ type: 'error', id: message.id, error: `URL 抓取失败: ${errMsg}` }));
+    }
+  }
+
+  /**
+   * 等待标签页加载完成
+   */
+  function waitForTabLoad(tabId: number, timeoutMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        // 超时不报错，尝试继续获取内容
+        resolve();
+      }, timeoutMs);
+
+      const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+        if (updatedTabId === tabId && changeInfo.status === 'complete') {
+          clearTimeout(timer);
+          chrome.tabs.onUpdated.removeListener(listener);
+          // 额外等待一下确保动态内容渲染
+          setTimeout(resolve, 1000);
+        }
+      };
+
+      chrome.tabs.onUpdated.addListener(listener);
+
+      // 检查标签页是否已经加载完成
+      chrome.tabs.get(tabId).then(tab => {
+        if (tab.status === 'complete') {
+          clearTimeout(timer);
+          chrome.tabs.onUpdated.removeListener(listener);
+          setTimeout(resolve, 500);
+        }
+      }).catch(() => {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(listener);
+        reject(new Error('标签页不存在'));
+      });
+    });
   }
 
   async function notifySidePanel(message: SidePanelNotification) {
