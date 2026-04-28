@@ -2,7 +2,7 @@
   "name": "issue-manager",
   "displayName": "问题管理器",
   "description": "一个用于管理问题的VS Code扩展",
-  "version": "4.0.4",
+  "version": "4.0.5",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.101.0"
@@ -2096,7 +2096,11 @@
           "description": "自定义 LLM 模型列表（OpenAI 兼容 / Ollama）。API Key 通过向导安全存储，不会写入此配置文件。",
           "items": {
             "type": "object",
-            "required": ["id", "provider", "model"],
+            "required": [
+              "id",
+              "provider",
+              "model"
+            ],
             "additionalProperties": false,
             "properties": {
               "id": {
@@ -2109,7 +2113,11 @@
               },
               "provider": {
                 "type": "string",
-                "enum": ["openai", "ollama", "custom"],
+                "enum": [
+                  "openai",
+                  "ollama",
+                  "custom"
+                ],
                 "description": "提供方类型，决定 API 调用格式"
               },
               "endpoint": {
@@ -2130,7 +2138,11 @@
               },
               "thinkingBudget": {
                 "type": "string",
-                "enum": ["low", "medium", "high"],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
                 "description": "思考/推理预算档位（适用于 o-series、Claude Extended Thinking、DeepSeek-R1 等）"
               }
             }
