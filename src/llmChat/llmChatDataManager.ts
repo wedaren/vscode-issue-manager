@@ -107,7 +107,6 @@ export function getAllChatRoles(): ChatRoleInfo[] {
             timerRetryDelay: toFiniteNumber(fm.timer_retry_delay),
             timerCron: typeof fm.timer_cron === 'string' ? fm.timer_cron.trim() : undefined,
             timerCronMessage: typeof fm.timer_cron_message === 'string' ? fm.timer_cron_message : undefined,
-            maxTokens: toFiniteNumber(fm.chat_role_max_tokens),
             maxToolRounds: toFiniteNumber(fm.max_tool_rounds),
             toolSets: Array.isArray(fm.tool_sets) ? (fm.tool_sets as unknown[]).map(String) : [],
             mcpServers: Array.isArray(fm.mcp_servers) ? (fm.mcp_servers as unknown[]).map(String) : undefined,
@@ -254,7 +253,6 @@ export function getConversationsForRole(roleId: string): ChatConversationInfo[] 
             uri: md.uri,
             mtime: md.mtime,
             modelFamily: fm.chat_model_family,
-            maxTokens: fm.chat_max_tokens,
             tokenUsed: fm.chat_token_used,
             logId: fm.chat_log_id,
             planId: fm.chat_plan_id,
@@ -308,7 +306,6 @@ export async function createConversation(
         chat_role_id: roleId,
         chat_title: convoTitle,
         chat_model_family: defaultModelFamily,
-        chat_max_tokens: role?.maxTokens ?? 0,
         chat_token_used: 0,
     };
 
@@ -557,14 +554,9 @@ export async function readRoleMemoryForInjection(roleId: string): Promise<string
 export async function updateConversationTokenUsed(
     uri: vscode.Uri,
     tokenUsed: number,
-    maxTokens?: number,
 ): Promise<void> {
     try {
-        const updates: Partial<FrontmatterData> = { chat_token_used: tokenUsed };
-        if (maxTokens && maxTokens > 0) {
-            updates.chat_token_used_pct = Math.round((tokenUsed / maxTokens) * 100);
-        }
-        await updateIssueMarkdownFrontmatter(uri, updates);
+        await updateIssueMarkdownFrontmatter(uri, { chat_token_used: tokenUsed });
     } catch (e) {
         logger.error('updateConversationTokenUsed 失败', e);
     }
@@ -609,7 +601,6 @@ export async function estimateTokens(messages: vscode.LanguageModelChatMessage[]
  */
 export async function getConversationConfig(uri: vscode.Uri): Promise<{
     modelFamily?: string;
-    maxTokens?: number;
     tokenUsed?: number;
     autonomous?: boolean;
     intent?: string;
@@ -623,7 +614,6 @@ export async function getConversationConfig(uri: vscode.Uri): Promise<{
         const fm = frontmatter as Record<string, unknown>;
         return {
             modelFamily: fm.chat_model_family as string | undefined,
-            maxTokens: fm.chat_max_tokens as number | undefined,
             tokenUsed: fm.chat_token_used as number | undefined,
             autonomous: typeof fm.chat_autonomous === 'boolean' ? fm.chat_autonomous : undefined,
             intent: typeof fm.chat_intent === 'string' ? fm.chat_intent : undefined,
@@ -988,7 +978,6 @@ export async function getOrCreateGroupMemberConversation(
         chat_group_id: coordinatorConvId,
         chat_title: title,
         chat_model_family: defaultModelFamily,
-        chat_max_tokens: role?.maxTokens ?? 0,
         chat_token_used: 0,
     };
     const body = `# ${title}\n`;
@@ -1708,9 +1697,6 @@ function formatRunRecord(record: ExecutionRunRecord): string {
     }
     if (record.modelFamily) {
         md += `| 模型 | ${record.modelFamily} |\n`;
-    }
-    if (record.maxTokens !== undefined) {
-        md += `| Token 上限 | ${record.maxTokens || '无限制'} |\n`;
     }
     if (record.timeout !== undefined) {
         md += `| 超时 | ${record.timeout / 1000}s |\n`;

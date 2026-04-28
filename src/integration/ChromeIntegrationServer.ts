@@ -461,15 +461,20 @@ export class ChromeIntegrationServer {
               ws.send(JSON.stringify({ type: 'error', error: errorMessage, id: message.id }));
             }
           } else if (message.type === 'get-llm-models') {
-            // 查询当前可用的 Copilot 模型列表（供 Chrome 扩展动态展示）
+            // 查询当前可用的 Copilot 模型列表（供 Chrome 扩展动态展示，过滤禁用模型）
             try {
+              const disabledFamilies = new Set(
+                vscode.workspace.getConfiguration('issueManager').get<string[]>('llm.disabledCopilotModels') ?? []
+              );
               const allModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-              const modelList = allModels.map(m => ({
-                id: (m as any).id || m.family,
-                family: m.family,
-                vendor: m.vendor,
-                maxInputTokens: m.maxInputTokens,
-              }));
+              const modelList = allModels
+                .filter(m => !disabledFamilies.has(m.family))
+                .map(m => ({
+                  id: (m as unknown as Record<string, unknown>)['id'] as string || m.family,
+                  family: m.family,
+                  vendor: m.vendor,
+                  maxInputTokens: m.maxInputTokens,
+                }));
               ws.send(JSON.stringify({ type: 'llm-models', data: modelList, id: message.id }));
             } catch (e: unknown) {
               const errMsg = e instanceof Error ? e.message : String(e);

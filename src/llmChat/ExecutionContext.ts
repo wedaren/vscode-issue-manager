@@ -125,7 +125,6 @@ export class ExecutionContext {
                     roleName: init.role.name,
                     modelFamily: init.role.modelFamily,
                     timeout: init.toolTimeout,
-                    maxTokens: init.role.maxTokens,
                     retryCount: init.retryCount,
                 });
             } catch { /* ignore */ }

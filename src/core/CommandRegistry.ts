@@ -48,6 +48,8 @@ import { getIssueMarkdown } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
 import { formatIssueDirMarkdownLink } from '../utils/fileLinkFormatter';
 import { selectLLMModel } from '../commands/llmCommands';
+import { addModelFromTree, setDefaultModelFromTree, toggleModelDisabledFromTree, deleteModelFromTree, updateApiKeyFromTree } from '../llm/modelWizard';
+import type { ModelDescriptor } from '../llm/ModelRegistry';
 // note mapping commands removed
 import { copilotDiffSend, copilotDiffCopyResult } from '../commands/copilotDiff';
 import {registerGenerateTitleCommand} from '../commands/generateTitle';
@@ -978,6 +980,64 @@ export class CommandRegistry extends BaseCommandRegistry {
             '选择 LLM 模型'
         );
 
+        this.registerCommand(
+            'issueManager.llm.addModelWizard',
+            async () => {
+                await addModelFromTree(() => {
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                });
+            },
+            '通过向导新增 AI 模型'
+        );
+
+        this.registerCommand(
+            'issueManager.llm.setDefaultModel',
+            async (node: unknown) => {
+                // node 由树视图右键传入，类型为 ModelItemNode
+                const item = node as { descriptor?: { id: string; displayName: string } };
+                if (!item?.descriptor) { return; }
+                await setDefaultModelFromTree(item.descriptor.id, item.descriptor.displayName, () => {
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                });
+            },
+            '设为默认模型'
+        );
+
+        this.registerCommand(
+            'issueManager.llm.toggleModelDisabled',
+            async (node: unknown) => {
+                const item = node as { descriptor?: { id: string } };
+                if (!item?.descriptor) { return; }
+                await toggleModelDisabledFromTree(item.descriptor.id, () => {
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                });
+            },
+            '启用/禁用模型'
+        );
+
+        this.registerCommand(
+            'issueManager.llm.updateApiKey',
+            async (node: unknown) => {
+                const item = node as { descriptor?: ModelDescriptor };
+                if (!item?.descriptor) { return; }
+                await updateApiKeyFromTree(item.descriptor, () => {
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                });
+            },
+            '更新 API Key'
+        );
+
+        this.registerCommand(
+            'issueManager.llm.deleteCustomModel',
+            async (node: unknown) => {
+                const item = node as { descriptor?: ModelDescriptor };
+                if (!item?.descriptor) { return; }
+                await deleteModelFromTree(item.descriptor, () => {
+                    vscode.commands.executeCommand('issueManager.refreshAllViews');
+                });
+            },
+            '删除自定义模型'
+        );
 
         this.registerCommand(
             'issueManager.copilotDiffSend',

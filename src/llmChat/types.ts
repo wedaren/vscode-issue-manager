@@ -68,8 +68,6 @@ export interface ChatRoleFrontmatter {
     timer_cron?: string;
     /** Cron 触发时自动创建对话并排队的消息内容 */
     timer_cron_message?: string;
-    /** 角色级 LLM 请求最大 token 预算（可选） */
-    chat_role_max_tokens?: number;
     /** 单次执行最大工具调用轮次，默认 30。复杂任务角色可调高。 */
     max_tool_rounds?: number;
     // ─── 工具集配置 ───────────────────────────────────────────
@@ -175,12 +173,8 @@ export interface ChatConversationFrontmatter {
     chat_title?: string;
     /** 对话级模型 family（可选，覆盖角色配置） */
     chat_model_family?: string;
-    /** 对话级 LLM 请求最大 token 预算（可选，覆盖角色配置） */
-    chat_max_tokens?: number;
     /** 当前对话已消耗的估算 token 数（请求前后自动更新） */
     chat_token_used?: number;
-    /** token 使用量占 max_tokens 的百分比（有 max_tokens 时自动更新） */
-    chat_token_used_pct?: number;
     /** 关联的执行日志文件 ID（首次执行时自动创建） */
     chat_log_id?: string;
     /**
@@ -256,8 +250,6 @@ export interface ChatRoleInfo {
     timerCron?: string;
     /** Cron 触发时排队的消息 */
     timerCronMessage?: string;
-    /** 角色级最大 token 预算 */
-    maxTokens?: number;
     /** 单次执行最大工具调用轮次 */
     maxToolRounds?: number;
     // ─── 工具集配置（运行时） ────────────────────────────────
@@ -304,8 +296,6 @@ export interface ChatConversationInfo {
     mtime: number;
     /** 对话级模型 family（覆盖角色配置） */
     modelFamily?: string;
-    /** 对话级最大 token 预算 */
-    maxTokens?: number;
     /** 已消耗的估算 token 数 */
     tokenUsed?: number;
     /** 关联的执行日志 ID */
@@ -424,8 +414,6 @@ export interface ExecutionRunRecord {
     roleName?: string;
     /** 使用的模型 */
     modelFamily?: string;
-    /** 配置的 max_tokens */
-    maxTokens?: number;
     /** 配置的超时时间（ms） */
     timeout?: number;
 }

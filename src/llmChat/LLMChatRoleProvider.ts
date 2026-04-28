@@ -11,6 +11,9 @@ import { getAllChatRoles, getConversationsForRole, getExecutionLogInfo, getPlanI
 import type { ChatRoleInfo, ChatConversationInfo, ChatExecutionLogInfo, ChatPlanInfo, ChatMemoryInfo, RecentConversationEntry } from './types';
 import { RoleTimerManager } from './RoleTimerManager';
 import { McpManager, type McpServerStatus, type McpToolDescriptor } from './mcp';
+import { ModelRegistry, type ModelDescriptor } from '../llm/ModelRegistry';
+import { ModelAuthErrorRegistry } from '../llm/ModelAuthErrorRegistry';
+import { PROVIDER_PRESETS } from '../llm/modelProviderPresets';
 
 // ─── 节点类型 ────────────────────────────────────────────────
 
@@ -430,7 +433,115 @@ export class KbRoleNode extends vscode.TreeItem {
     }
 }
 
-export type LLMChatViewNode = ChatRoleNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode | KbRootNode | KbCategoryNode | KbSubCategoryNode | KbArticleNode | KbRoleNode;
+// ─── 模型节点类型 ──────────────────────────────────────────────
+
+/** 模型折叠根节点（树顶层固定节点，列出 Copilot + 自定义模型） */
+export class ModelRootNode extends vscode.TreeItem {
+    constructor(totalCount: number, customCount: number) {
+        super('AI 模型', totalCount > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.Expanded);
+        this.contextValue = 'modelRoot';
+        this.iconPath = new vscode.ThemeIcon('hubot');
+        this.description = customCount > 0 ? `${totalCount} 个 · ${customCount} 自定义` : `${totalCount} 个`;
+        this.tooltip = new vscode.MarkdownString(
+            '**AI 模型**\n\n右键可新增自定义模型\n\n- Copilot 模型：由 GitHub Copilot 扩展提供\n- 自定义模型：OpenAI 兼容 / Ollama 本地模型',
+        );
+    }
+}
+
+/** 单个模型节点（Copilot 或自定义） */
+export class ModelItemNode extends vscode.TreeItem {
+    constructor(public readonly descriptor: ModelDescriptor, isCurrent: boolean, maskedKey?: string, hasAuthError = false, dashboardUrl?: string) {
+        super(descriptor.displayName, vscode.TreeItemCollapsibleState.None);
+        this.id = `model:${descriptor.id}`;
+
+        // contextValue 编码：provider + 是否禁用 + 是否自定义（用于 when 条件）
+        const isCustom = descriptor.provider !== 'copilot';
+        const isDisabled = descriptor.disabled === true;
+        this.contextValue = [
+            isCustom ? 'modelItemCustom' : 'modelItemCopilot',
+            isCurrent ? 'Current' : '',
+            isDisabled ? 'Disabled' : 'Enabled',
+        ].join('');
+
+        // 图标：认证错误 ⚠️ / 禁用灰色 / 思考模式 / 当前模型绿色
+        let iconId: string;
+        let iconColor: vscode.ThemeColor | undefined;
+        if (hasAuthError) {
+            iconId = 'warning';
+            iconColor = new vscode.ThemeColor('problemsWarningIcon.foreground');
+        } else if (isDisabled) {
+            iconId = descriptor.provider === 'copilot' ? 'sparkle' : 'server';
+            iconColor = new vscode.ThemeColor('disabledForeground');
+        } else if (descriptor.capabilities?.supportsThinking) {
+            iconId = 'lightbulb';
+            iconColor = isCurrent ? new vscode.ThemeColor('testing.iconPassed') : undefined;
+        } else if (descriptor.provider === 'copilot') {
+            iconId = 'sparkle';
+            iconColor = isCurrent ? new vscode.ThemeColor('testing.iconPassed') : undefined;
+        } else {
+            iconId = 'server';
+            iconColor = isCurrent ? new vscode.ThemeColor('testing.iconPassed') : undefined;
+        }
+        this.iconPath = new vscode.ThemeIcon(iconId, iconColor);
+
+        // 描述行：认证错误 ⚠️ / 当前使用 · 上下文 · 倍率 · 视觉 · 思考 · 禁用
+        const parts: string[] = [];
+        if (hasAuthError) {
+            parts.push('⚠️ API Key 失效，请右键更新');
+        } else if (isDisabled) {
+            parts.push('已禁用');
+        } else {
+            if (isCurrent) { parts.push('当前使用'); }
+            if (descriptor.contextWindow) { parts.push(`上下文 ${(descriptor.contextWindow / 1000).toFixed(0)}k`); }
+            const mult = descriptor.capabilities?.requestMultiplier;
+            if (mult !== undefined) { parts.push(`${mult}x`); }
+            if (descriptor.capabilities?.supportsThinking) { parts.push('思考'); }
+            if (descriptor.capabilities?.supportsVision) { parts.push('视觉'); }
+            if (!descriptor.provider.includes('copilot') && descriptor.endpoint) { parts.push(descriptor.endpoint); }
+        }
+        this.description = parts.join(' · ') || descriptor.provider;
+
+        // tooltip 详情
+        const capLines: string[] = [];
+        if (descriptor.capabilities?.supportsTools) { capLines.push('🔧 工具调用'); }
+        if (descriptor.capabilities?.supportsVision) { capLines.push('👁 视觉'); }
+        if (descriptor.capabilities?.supportsThinking) { capLines.push(`💡 思考模式 (${descriptor.capabilities.thinkingBudget ?? 'medium'})`); }
+        const mult = descriptor.capabilities?.requestMultiplier;
+        if (mult !== undefined) { capLines.push(`💰 倍率: ${mult}x`); }
+
+        const hint = isDisabled
+            ? '\n\n⚠️ 已禁用（右键启用）'
+            : hasAuthError
+                ? '\n\n🔴 认证失败 — 请右键 → 更新 API Key'
+                : isCurrent
+                    ? '\n\n✅ 当前全局默认模型'
+                    : '\n\n💡 右键设为默认 / 禁用' + (isCustom ? ' / 删除 / 更新 API Key' : '');
+
+        // 自定义模型显示 API Key 状态
+        const keyLine = isCustom
+            ? `\n- API Key: ${maskedKey ? maskedKey : '⚠️ 未配置（右键 → 更新 API Key）'}`
+            : '';
+        const dashboardLine = dashboardUrl
+            ? `\n- [前往 API 管理后台](${dashboardUrl})`
+            : '';
+
+        this.tooltip = new vscode.MarkdownString(
+            `**${descriptor.displayName}**\n\n`
+            + `- 提供方: ${descriptor.provider}\n`
+            + `- ID: \`${descriptor.id}\`\n`
+            + (descriptor.contextWindow ? `- 上下文: ${descriptor.contextWindow.toLocaleString()} tokens\n` : '')
+            + (descriptor.endpoint ? `- Endpoint: ${descriptor.endpoint}\n` : '')
+            + keyLine
+            + dashboardLine
+            + (capLines.length > 0 ? `\n${capLines.join('\n')}\n` : '')
+            + hint,
+        );
+    }
+}
+
+export type LLMChatViewNode = ChatRoleNode | ChatConversationNode | ChatExecutionLogNode | ChatPlanNode | ChatMemoryNode | ChatToolCallNode | RecentConversationRootNode | RecentConversationItemNode | McpRootNode | McpServerNode | McpToolNode | SkillRootNode | SkillVendorNode | SkillItemNode | KbRootNode | KbCategoryNode | KbSubCategoryNode | KbArticleNode | KbRoleNode | ModelRootNode | ModelItemNode;
 
 // ─── Provider ────────────────────────────────────────────────
 
@@ -456,6 +567,18 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         // MCP server 工具变化时刷新视图
         this.context.subscriptions.push(
             McpManager.getInstance().onDidChangeTools(() => this.refresh())
+        );
+        // LLM 模型配置变更（默认模型、禁用、自定义模型增删）时刷新树视图
+        this.context.subscriptions.push(
+            vscode.workspace.onDidChangeConfiguration(e => {
+                if (e.affectsConfiguration('issueManager.llm')) {
+                    this.debouncedRefresh();
+                }
+            })
+        );
+        // 模型认证错误状态变更（401/403 标记 / 清除）时刷新树视图
+        this.context.subscriptions.push(
+            ModelAuthErrorRegistry.onDidChange(() => this.debouncedRefresh(200))
         );
     }
 
@@ -550,6 +673,11 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             const rawCat = kbTree.find(c => c.prefix === 'raw');
             nodes.push(new KbRootNode(wikiCat?.totalCount ?? 0, rawCat?.totalCount ?? 0));
 
+            // 模型根节点（知识库下方）
+            const allModels = await ModelRegistry.getAll();
+            const customModelCount = allModels.filter(m => m.provider !== 'copilot').length;
+            nodes.push(new ModelRootNode(allModels.length, customModelCount));
+
             nodes.push(...roles.map(r => new ChatRoleNode(r, this._executingRoleIds.has(r.id))));
             return nodes;
         }
@@ -587,6 +715,34 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         if (element instanceof KbRootNode) {
             const kbTree = await getKnowledgeBaseTree();
             return kbTree.map(c => new KbCategoryNode(c));
+        }
+        // ─── 模型子节点 ────────────────────────────────────────
+        if (element instanceof ModelRootNode) {
+            const allModels = await ModelRegistry.getAll();
+            const config = vscode.workspace.getConfiguration('issueManager');
+            const currentModelId = config.get<string>('llm.modelFamily') || 'copilot/gpt-5-mini';
+            const nodes: ModelItemNode[] = [];
+            const copilotModels = allModels.filter(m => m.provider === 'copilot');
+            const customModels = allModels.filter(m => m.provider !== 'copilot');
+            for (const m of copilotModels) {
+                nodes.push(new ModelItemNode(m, !m.disabled && m.id === currentModelId));
+            }
+            for (const m of customModels) {
+                const maskedKey = await ModelRegistry.getApiKeyMasked(m.provider, m.endpoint);
+                const hasAuthError = ModelAuthErrorRegistry.hasError(m.id);
+                // 按 hostname 匹配服务商预设，获取 API 管理后台链接（避免前缀误匹配）
+                const preset = m.endpoint
+                    ? PROVIDER_PRESETS.find(p => {
+                        if (!p.baseUrl) { return false; }
+                        try {
+                            return new URL(m.endpoint!).hostname === new URL(p.baseUrl).hostname;
+                        } catch { return false; }
+                    })
+                    : undefined;
+                const dashboardUrl = preset?.dashboardUrl;
+                nodes.push(new ModelItemNode(m, !m.disabled && m.id === currentModelId, maskedKey, hasAuthError, dashboardUrl));
+            }
+            return nodes;
         }
         if (element instanceof KbCategoryNode) {
             return element.category.subCategories.map(

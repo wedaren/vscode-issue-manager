@@ -22,6 +22,7 @@ import { generateDiagnosticReport } from './diagnosticReport';
 import { Logger } from '../core/utils/Logger';
 import { extractFrontmatterAndBody, updateIssueMarkdownFrontmatter, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
+import { ModelRegistry, type ModelDescriptor } from '../llm/ModelRegistry';
 
 const logger = Logger.getInstance();
 
@@ -1215,8 +1216,8 @@ export function registerLLMChatCommands(
             const skillsLabel = currentSkills.length > 0 ? currentSkills.join(', ') : '未配置';
 
             const category = await vscode.window.showQuickPick([
-                { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
-                { label: '$(tools) 工具集',           description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
+                { label: '$(sparkle) 模型',           description: '配置模型', id: 'model' },
+                { label: '$(tools) 工具集',            description: '配置 tool_sets / mcp_servers / extra / excluded', id: 'tools' },
                 { label: '$(mortar-board) Skills',   description: `当前: ${skillsLabel}`, id: 'skills' },
                 { label: '$(clock) 超时配置',          description: timeoutLabel, id: 'timeout' },
                 { label: '$(shield) 委派状态',         description: `当前: ${currentStatus}`, id: 'status' },
@@ -1541,62 +1542,57 @@ export function registerLLMChatCommands(
                 return;
             }
 
-            // 角色用 chat_role_model_family / chat_role_max_tokens
-            // 对话用 chat_model_family / chat_max_tokens（覆盖角色配置）
+            // 角色用 chat_role_model_family，对话用 chat_model_family（覆盖角色配置）
             const modelKey   = isRole ? 'chat_role_model_family' : 'chat_model_family';
-            const tokensKey  = isRole ? 'chat_role_max_tokens'   : 'chat_max_tokens';
             const fileLabel  = isRole ? '角色' : '对话';
 
             const currentModel  = String((frontmatter as Record<string, unknown>)[modelKey]  ?? '');
-            const currentTokens = Number((frontmatter as Record<string, unknown>)[tokensKey] ?? 0);
 
-            // ── Step 1: 选择模型（动态从 VS Code Copilot API 获取）──────
-            const allModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-            // 按 family 去重，保留 maxInputTokens 最大的那个
-            const familyMap = new Map<string, vscode.LanguageModelChat>();
-            for (const m of allModels) {
-                const existing = familyMap.get(m.family);
-                if (!existing || m.maxInputTokens > existing.maxInputTokens) {
-                    familyMap.set(m.family, m);
-                }
-            }
-            const dynamicModelItems: Array<vscode.QuickPickItem & { value: string; maxInput: number }> = [
-                { label: '$(globe) 继承上级默认', description: isRole ? '使用扩展设置中的默认模型' : '使用角色配置的模型', value: '', maxInput: 0 },
-                { label: '', kind: vscode.QuickPickItemKind.Separator, value: '', maxInput: 0 },
-                ...[...familyMap.values()].map(m => ({
-                    label: `$(sparkle) ${m.family}`,
-                    description: `最大输入 ${(m.maxInputTokens / 1000).toFixed(0)}k tokens`,
-                    value: m.family,
-                    maxInput: m.maxInputTokens,
-                    picked: m.family === currentModel,
+            // ── Step 1: 选择模型（Copilot 动态模型 + 自定义模型，不含禁用）──
+            const allModels = await ModelRegistry.getAllActive();
+            const copilotModels = allModels.filter((m: ModelDescriptor) => m.provider === 'copilot');
+            const customModels = allModels.filter((m: ModelDescriptor) => m.provider !== 'copilot');
+
+            type ModelItem = vscode.QuickPickItem & { value: string };
+            const modelItems: ModelItem[] = [
+                { label: '$(globe) 继承上级默认', description: isRole ? '使用扩展设置中的默认模型' : '使用角色配置的模型', value: '' },
+                { label: '', kind: vscode.QuickPickItemKind.Separator, value: '' },
+                { label: '$(sparkle) Copilot 模型', kind: vscode.QuickPickItemKind.Separator, value: '' },
+                ...copilotModels.map((m: ModelDescriptor) => ({
+                    label: `$(sparkle) ${m.displayName}`,
+                    description: m.contextWindow ? `上下文 ${(m.contextWindow / 1000).toFixed(0)}k tokens` : undefined,
+                    value: `copilot/${m.model}`,
+                    picked: `copilot/${m.model}` === currentModel || m.model === currentModel,
                 })),
+                ...(customModels.length > 0 ? [
+                    { label: '$(server) 自定义模型', kind: vscode.QuickPickItemKind.Separator, value: '' },
+                    ...customModels.map((m: ModelDescriptor) => ({
+                        label: `$(server) ${m.displayName}`,
+                        description: `${m.provider}${m.contextWindow ? ` · 上下文 ${(m.contextWindow / 1000).toFixed(0)}k` : ''}`,
+                        value: m.id,
+                        picked: m.id === currentModel,
+                    })),
+                ] : []),
+                { label: '', kind: vscode.QuickPickItemKind.Separator, value: '' },
+                { label: '$(add) 添加自定义模型...', description: '在设置中配置', value: '__add__' },
             ];
-            const selectedModel = await vscode.window.showQuickPick(dynamicModelItems, {
-                title: `配置${fileLabel}模型（第 1 步 / 共 2 步）`,
+
+            const selectedModel = await vscode.window.showQuickPick(modelItems, {
+                title: `配置${fileLabel}模型`,
                 placeHolder: `当前：${currentModel || '继承上级默认'}`,
             });
             if (selectedModel === undefined) { return; }
+            if (selectedModel.value === '__add__') {
+                await vscode.commands.executeCommand('workbench.action.openSettings', 'issueManager.llm.customModels');
+                return;
+            }
             const newModel = selectedModel.value;
 
-            // ── Step 2: 设置 max tokens ───────────────────────────
-            const suggested = currentTokens || (newModel ? 8192 : 0);
-            const tokenInput = await vscode.window.showInputBox({
-                title: `配置 ${tokensKey}（第 2 步 / 共 2 步）`,
-                prompt: '单次 LLM 请求最大 token 预算，0 表示继承上级默认',
-                value: String(suggested || currentTokens || 0),
-                placeHolder: '例如：8192',
-                validateInput: v => (v === '' || /^\d+$/.test(v) ? null : '请输入非负整数'),
-            });
-            if (tokenInput === undefined) { return; }
-            const newTokens = parseInt(tokenInput || '0', 10);
-
             const updates: Record<string, unknown> = { [modelKey]: newModel || undefined };
-            if (newTokens > 0) { updates[tokensKey] = newTokens; }
-
             await updateIssueMarkdownFrontmatter(targetUri, updates as Parameters<typeof updateIssueMarkdownFrontmatter>[1]);
 
             vscode.window.showInformationMessage(
-                `已更新${fileLabel}模型配置 — 模型：${newModel || '继承上级默认'}  max_tokens：${newTokens || '继承上级默认'}`,
+                `已更新${fileLabel}模型配置 — 模型：${newModel || '继承上级默认'}`,
             );
         }),
     );
@@ -1623,7 +1619,7 @@ export function registerLLMChatCommands(
             const logLabel = currentLog === true ? '开启' : currentLog === false ? '关闭' : '继承角色';
 
             const category = await vscode.window.showQuickPick([
-                { label: '$(sparkle) 模型 & Token',  description: '配置模型 family 和 token 预算', id: 'model' },
+                { label: '$(sparkle) 模型',        description: '配置模型', id: 'model' },
                 { label: '$(robot) 自主模式',          description: `当前: ${autoLabel}`, id: 'autonomous' },
                 { label: '$(output) 执行日志',         description: `当前: ${logLabel}`, id: 'logEnabled' },
             ], { title: '配置对话', placeHolder: '选择要配置的项目' });
@@ -1729,17 +1725,20 @@ export function registerLLMChatCommands(
 async function pickModelFamily(presetModelFamily?: string): Promise<string | undefined> {
     const config = vscode.workspace.getConfiguration('issueManager');
     const globalDefault = config.get<string>('llm.modelFamily') || 'gpt-5-mini';
+    const disabledFamilies = new Set(config.get<string[]>('llm.disabledCopilotModels') ?? []);
 
-    const allModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    // ── Copilot 模型（按 family 去重，过滤禁用） ───────────────
+    const rawCopilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
     const familyMap = new Map<string, vscode.LanguageModelChat>();
-    for (const m of allModels) {
+    for (const m of rawCopilotModels) {
+        if (disabledFamilies.has(m.family)) { continue; }
         const existing = familyMap.get(m.family);
         if (!existing || m.maxInputTokens > existing.maxInputTokens) {
             familyMap.set(m.family, m);
         }
     }
 
-    const modelItems: Array<vscode.QuickPickItem & { value: string }> = [...familyMap.values()].map(m => ({
+    const copilotItems: Array<vscode.QuickPickItem & { value: string }> = [...familyMap.values()].map(m => ({
         label: `$(sparkle) ${m.family}`,
         description: `最大输入 ${(m.maxInputTokens / 1000).toFixed(0)}k tokens`
             + (m.family === presetModelFamily ? '（预设推荐）' : ''),
@@ -1748,12 +1747,21 @@ async function pickModelFamily(presetModelFamily?: string): Promise<string | und
 
     // 预设推荐的模型排到最前面
     if (presetModelFamily) {
-        const idx = modelItems.findIndex(i => i.value === presetModelFamily);
+        const idx = copilotItems.findIndex(i => i.value === presetModelFamily);
         if (idx > 0) {
-            const [item] = modelItems.splice(idx, 1);
-            modelItems.unshift(item);
+            const [item] = copilotItems.splice(idx, 1);
+            copilotItems.unshift(item);
         }
     }
+
+    // ── 自定义模型（过滤禁用，与 configureModel 保持一致） ───────
+    const allActive = await ModelRegistry.getAllActive();
+    const customModels = allActive.filter(m => m.provider !== 'copilot');
+    const customItems: Array<vscode.QuickPickItem & { value: string }> = customModels.map(m => ({
+        label: `$(server) ${m.displayName}`,
+        description: `${m.provider}${m.contextWindow ? ` · 上下文 ${(m.contextWindow / 1000).toFixed(0)}k tokens` : ''}`,
+        value: m.id,
+    }));
 
     const items: Array<vscode.QuickPickItem & { value: string }> = [
         {
@@ -1761,7 +1769,12 @@ async function pickModelFamily(presetModelFamily?: string): Promise<string | und
             description: '跟随 issueManager.llm.modelFamily 设置',
             value: '',
         },
-        ...modelItems,
+        { label: '$(sparkle) Copilot 模型', kind: vscode.QuickPickItemKind.Separator, value: '' },
+        ...copilotItems,
+        ...(customItems.length > 0 ? [
+            { label: '$(server) 自定义模型', kind: vscode.QuickPickItemKind.Separator, value: '' },
+            ...customItems,
+        ] : []),
     ];
 
     const pick = await vscode.window.showQuickPick(items, {
@@ -1771,7 +1784,7 @@ async function pickModelFamily(presetModelFamily?: string): Promise<string | und
     });
 
     if (!pick) { return undefined; }   // 用户按 ESC → 取消整个创建流程
-    return pick.value;                 // '' = 用全局默认，其余为具体 family
+    return pick.value;                 // '' = 用全局默认，其余为具体 family/id
 }
 
 // ─── askRole: 笔记升级为对话 / 已有对话追问 ─────────────────
@@ -1951,7 +1964,6 @@ async function handleNoteUpgrade(
         chat_role_id: selectedRoleId,
         chat_title: title,
         chat_model_family: defaultModelFamily,
-        chat_max_tokens: role.maxTokens ?? 0,
         chat_token_used: 0,
     };
     const jsYaml = await import('js-yaml');

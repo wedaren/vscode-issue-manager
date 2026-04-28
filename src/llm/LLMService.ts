@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 import { getAllIssueMarkdowns } from "../data/IssueMarkdowns";
 import { Logger } from "../core/utils/Logger";
+import { ModelRegistry } from "./ModelRegistry";
+import { FetchAdapter } from "./ModelAdapter";
+import type { ModelDescriptor } from "./ModelRegistry";
 
 // ─── Abort 辅助工具 ──────────────────────────────────────────────
 
@@ -107,16 +110,29 @@ export class LLMService {
             throw new Error("请求已取消");
         }
 
-        const model = await LLMService.selectModel(options);
-        if (!model) {
+        const resolved = await LLMService._getModel(options);
+        if (!resolved) {
             logger.error('[LLM._request] 未找到可用模型');
             vscode.window.showErrorMessage(
-                "未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。"
+                "未找到可用的模型。请检查模型配置或确保已安装并登录 GitHub Copilot 扩展。"
             );
             return null;
         }
 
-        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        if (resolved.kind === 'fetch') {
+            const { adapter, descriptor } = resolved;
+            logger.info(`[LLM._request] 使用自定义模型 ${descriptor.id}`);
+            try {
+                const text = await adapter.stream(messages, () => { /* 非流式不需要 chunk 回调 */ }, options?.signal);
+                logger.info(`[LLM._request] 完成 | 模型=${descriptor.id} | 响应长度=${text.length}字 | 耗时=${Date.now() - startMs}ms`);
+                return { text, modelFamily: descriptor.id };
+            } catch (e) {
+                logger.error(`[LLM._request] 失败 | 模型=${descriptor.id}`, e as Error);
+                throw e;
+            }
+        }
+
+        const { model, family: modelFamily } = resolved;
         logger.info(`[LLM._request] 选中模型=${modelFamily}`);
 
         try {
@@ -158,14 +174,27 @@ export class LLMService {
             throw new Error('请求已取消');
         }
 
-        const model = await LLMService.selectModel(options);
-        if (!model) {
+        const resolved = await LLMService._getModel(options);
+        if (!resolved) {
             logger.error('[LLM.stream] 未找到可用模型');
-            vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
+            vscode.window.showErrorMessage('未找到可用的模型。请检查模型配置或确保已安装并登录 GitHub Copilot 扩展。');
             return null;
         }
 
-        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        if (resolved.kind === 'fetch') {
+            const { adapter, descriptor } = resolved;
+            logger.info(`[LLM.stream] 使用自定义模型 ${descriptor.id}`);
+            try {
+                const text = await adapter.stream(messages, onChunk, options?.signal);
+                logger.info(`[LLM.stream] 完成 | 模型=${descriptor.id} | 响应长度=${text.length}字 | 耗时=${Date.now() - startMs}ms`);
+                return { text, modelFamily: descriptor.id };
+            } catch (e) {
+                logger.error(`[LLM.stream] 失败 | 模型=${descriptor.id}`, e as Error);
+                throw e;
+            }
+        }
+
+        const { model, family: modelFamily } = resolved;
         logger.info(`[LLM.stream] 选中模型=${modelFamily}`);
 
         const cts = new vscode.CancellationTokenSource();
@@ -253,13 +282,29 @@ export class LLMService {
             throw new Error('请求已取消');
         }
 
-        const model = await LLMService.selectModel(options);
-        if (!model) {
-            vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
+        const resolved = await LLMService._getModel(options);
+        if (!resolved) {
+            vscode.window.showErrorMessage('未找到可用的模型。请检查模型配置或确保已安装并登录 GitHub Copilot 扩展。');
             return null;
         }
 
-        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        // ── 自定义 HTTP 模型路径 ───────────────────────────────────
+        if (resolved.kind === 'fetch') {
+            const { adapter, descriptor } = resolved;
+            logger.info(`[LLM.streamWithTools] 使用自定义模型 ${descriptor.id}`);
+            try {
+                const text = await adapter.streamWithTools(
+                    messages, tools, onChunk, onToolCall, options,
+                );
+                logger.info(`[LLM.streamWithTools] 完成 | 模型=${descriptor.id} | 耗时=${Date.now() - startMs}ms`);
+                return { text, modelFamily: descriptor.id };
+            } catch (e) {
+                logger.error(`[LLM.streamWithTools] 失败 | 模型=${descriptor.id}`, e as Error);
+                throw e;
+            }
+        }
+
+        const { model, family: modelFamily } = resolved;
         const cts = new vscode.CancellationTokenSource();
         let onAbort: (() => void) | undefined;
         if (options?.signal) {
@@ -371,6 +416,30 @@ export class LLMService {
 
         logger.info(`[LLM.streamWithTools] 完成 | 轮次=${round} | 响应长度=${fullText.length}字 | 耗时=${Date.now() - startMs}ms`);
         return { text: fullText, modelFamily };
+    }
+
+    /**
+     * 解析模型：优先走 ModelRegistry 识别自定义模型，否则回落到 Copilot 原有逻辑。
+     * 返回区分类型的联合体，供 _request / stream / streamWithTools 统一消费。
+     */
+    private static async _getModel(options?: {
+        signal?: AbortSignal;
+        modelFamily?: string;
+    }): Promise<
+        | { kind: 'copilot'; model: vscode.LanguageModelChat; family: string }
+        | { kind: 'fetch'; adapter: FetchAdapter; descriptor: ModelDescriptor }
+        | null
+    > {
+        const descriptor = await ModelRegistry.resolve(options?.modelFamily);
+        if (descriptor && descriptor.provider !== 'copilot') {
+            const apiKey = await ModelRegistry.getApiKey(ModelRegistry.buildApiKeyName(descriptor.provider, descriptor.endpoint));
+            return { kind: 'fetch', adapter: new FetchAdapter(descriptor, apiKey), descriptor };
+        }
+        // Copilot 路径
+        const model = await LLMService.selectModel(options);
+        if (!model) { return null; }
+        const family: string = ((model as unknown) as Record<string, unknown>).family as string ?? 'copilot';
+        return { kind: 'copilot', model, family };
     }
 
     private static async selectModel(options?: {

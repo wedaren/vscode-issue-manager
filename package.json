@@ -497,6 +497,36 @@
         "icon": "$(hubot)"
       },
       {
+        "command": "issueManager.llm.addModelWizard",
+        "title": "通过向导新增 AI 模型",
+        "category": "Issue Manager",
+        "icon": "$(add)"
+      },
+      {
+        "command": "issueManager.llm.setDefaultModel",
+        "title": "设为默认模型",
+        "category": "Issue Manager",
+        "icon": "$(check)"
+      },
+      {
+        "command": "issueManager.llm.toggleModelDisabled",
+        "title": "启用/禁用模型",
+        "category": "Issue Manager",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "issueManager.llm.updateApiKey",
+        "title": "更新 API Key",
+        "category": "Issue Manager",
+        "icon": "$(key)"
+      },
+      {
+        "command": "issueManager.llm.deleteCustomModel",
+        "title": "删除自定义模型",
+        "category": "Issue Manager",
+        "icon": "$(trash)"
+      },
+      {
         "command": "issueManager.copilotDiffSend",
         "title": "Copilot: 发送并展示 Diff",
         "category": "Issue Manager",
@@ -1199,6 +1229,31 @@
           "command": "issueManager.mcp.removeServer",
           "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^mcpServer/",
           "group": "inline@2"
+        },
+        {
+          "command": "issueManager.llm.addModelWizard",
+          "when": "view == 'issueManager.views.llmChat' && viewItem == 'modelRoot'",
+          "group": "inline@1"
+        },
+        {
+          "command": "issueManager.llm.setDefaultModel",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^modelItem/ && !(viewItem =~ /Current/) && !(viewItem =~ /Disabled/)",
+          "group": "1_model@1"
+        },
+        {
+          "command": "issueManager.llm.toggleModelDisabled",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^modelItem/",
+          "group": "1_model@2"
+        },
+        {
+          "command": "issueManager.llm.updateApiKey",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^modelItemCustom/",
+          "group": "1_model@3"
+        },
+        {
+          "command": "issueManager.llm.deleteCustomModel",
+          "when": "view == 'issueManager.views.llmChat' && viewItem =~ /^modelItemCustom/",
+          "group": "9_danger@1"
         },
         {
           "command": "issueManager.editorGroup.rename",
@@ -2032,17 +2087,62 @@
         },
         "issueManager.llm.modelFamily": {
           "type": "string",
-          "default": "gpt-5-mini",
-          "enum": [
-            "gpt-5-mini",
-            "gpt-4o",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "claude-3.5-sonnet",
-            "o3-mini",
-            "o1-mini"
-          ],
-          "description": "全局默认 AI 模型（聊天角色未单独配置模型时使用）。各聊天角色可在其文件的 chat_role_model_family 字段中覆盖此设置。"
+          "default": "copilot/gpt-5-mini",
+          "description": "全局默认 AI 模型 ID（格式：<provider>/<model>，如 copilot/gpt-4.1、openai/gpt-4o、ollama/qwen3:14b）。聊天角色可在 chat_role_model_family 字段中覆盖。"
+        },
+        "issueManager.llm.customModels": {
+          "type": "array",
+          "default": [],
+          "description": "自定义 LLM 模型列表（OpenAI 兼容 / Ollama）。API Key 通过向导安全存储，不会写入此配置文件。",
+          "items": {
+            "type": "object",
+            "required": ["id", "provider", "model"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "模型唯一标识（格式建议：<provider>/<modelId>，如 openai/gpt-4o）"
+              },
+              "displayName": {
+                "type": "string",
+                "description": "显示名称（可选，默认使用 model 字段值）"
+              },
+              "provider": {
+                "type": "string",
+                "enum": ["openai", "ollama", "custom"],
+                "description": "提供方类型，决定 API 调用格式"
+              },
+              "endpoint": {
+                "type": "string",
+                "description": "API 基础地址（如 https://api.openai.com/v1 或 http://localhost:11434）"
+              },
+              "model": {
+                "type": "string",
+                "description": "发送给 API 的 model 参数（如 gpt-4o、qwen3:14b）"
+              },
+              "contextWindow": {
+                "type": "number",
+                "description": "模型上下文窗口大小（tokens），用于消息历史截断（可选）"
+              },
+              "disabled": {
+                "type": "boolean",
+                "description": "是否禁用此模型（禁用后不出现在模型选择列表中，但仍显示在树视图中）"
+              },
+              "thinkingBudget": {
+                "type": "string",
+                "enum": ["low", "medium", "high"],
+                "description": "思考/推理预算档位（适用于 o-series、Claude Extended Thinking、DeepSeek-R1 等）"
+              }
+            }
+          }
+        },
+        "issueManager.llm.disabledCopilotModels": {
+          "type": "array",
+          "default": [],
+          "description": "禁用的 Copilot 模型 family 名称列表（如 [\"gpt-4o\", \"claude-sonnet-4\"]）。被禁用的模型不会出现在选择列表中，但仍显示在树视图中（灰色样式）。",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

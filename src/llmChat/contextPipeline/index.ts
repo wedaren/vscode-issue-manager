@@ -34,7 +34,7 @@ export async function runContextPipeline(
     autonomous: boolean,
     latestUserMessage: string,
     _hasHistory: boolean,
-    maxTokens?: number,
+    contextWindow?: number,
 ): Promise<ContextPipelineResult> {
     const strategy = role.contextStrategy ?? 'generous';
 
@@ -103,7 +103,7 @@ export async function runContextPipeline(
     items.sort((a, b) => b.priority - a.priority);
 
     // Token 预算修剪：system prompt 占总预算的 35%
-    const budget = maxTokens ? Math.floor(maxTokens * 0.35) : undefined;
+    const budget = contextWindow ? Math.floor(contextWindow * 0.35) : undefined;
     const { trimmedItems, trimTrace } = budget
         ? trimItems(items, budget)
         : { trimmedItems: items, trimTrace: [] };

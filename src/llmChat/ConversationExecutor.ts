@@ -83,7 +83,6 @@ export async function executeConversation(
 
     const convoConfig = await getConversationConfig(uri);
     const effectiveModelFamily = convoConfig?.modelFamily || role.modelFamily;
-    const effectiveMaxTokens = convoConfig?.maxTokens ?? role.maxTokens;
     const toolTimeout = ctx.toolTimeout;
     const isAutonomous = ctx.autonomous;
     const log = (line: string) => ctx.log(line);
@@ -101,11 +100,7 @@ export async function executeConversation(
 
     log(`🔢 预估 input: **${inputTokens}** tokens${msgBuildDur > 3000 ? ` | 消息构建耗时 ${(msgBuildDur / 1000).toFixed(1)}s` : ''}`);
 
-    // token 门禁
-    if (effectiveMaxTokens && inputTokens > effectiveMaxTokens) {
-        throw new Error(`token 预算超限：预估 ${inputTokens}，上限 ${effectiveMaxTokens}`);
-    }
-    await updateConversationTokenUsed(uri, inputTokens, effectiveMaxTokens);
+    await updateConversationTokenUsed(uri, inputTokens);
 
     // ─── 工具上下文 ──────────────────────────────────────────
     const tools = getToolsForRole(role);
@@ -336,7 +331,7 @@ export async function executeConversation(
     // ─── Token 统计 ──────────────────────────────────────────
     const outputMsg = vscode.LanguageModelChatMessage.Assistant(result.text);
     const outputTokens = await estimateTokens([outputMsg]);
-    await updateConversationTokenUsed(uri, inputTokens + outputTokens, effectiveMaxTokens);
+    await updateConversationTokenUsed(uri, inputTokens + outputTokens);
 
     // ─── 日志：完成 ──────────────────────────────────────────
     if (result.text) {

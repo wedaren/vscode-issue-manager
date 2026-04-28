@@ -44,6 +44,7 @@ import { memoryCompilerHook } from './hooks/memoryCompilerHook';
 import { executeConversation as execConversation } from './ConversationExecutor';
 import { ExecutionContext } from './ExecutionContext';
 import { matchCron, isValidCron } from './cronMatcher';
+import { ModelAuthErrorRegistry } from '../llm/ModelAuthErrorRegistry';
 
 const logger = Logger.getInstance();
 
@@ -461,6 +462,7 @@ export class RoleTimerManager implements vscode.Disposable {
 
             vscode.window.setStatusBarMessage(`$(check) ${role.name} 回复完成`, 3000);
             logger.info(`[RoleTimerManager] 对话处理成功: ${filePath}`);
+            ModelAuthErrorRegistry.clearError(role.modelFamily || '');
             this._onDidChange.fire({ uri, roleId: role.id, success: true });
         } catch (e) {
             const userCancelled = ac.signal.aborted && ac.signal.reason instanceof Error
@@ -488,27 +490,41 @@ export class RoleTimerManager implements vscode.Disposable {
                 const nextRetry = retryCount + 1;
                 const maxRetries = role.timerMaxRetries ?? 3;
 
-                // ─── 将失败原因写入执行日志 ─────────────────────────
-                try {
-                    const retryHint = nextRetry > maxRetries
-                        ? `已达最大重试次数(${maxRetries})`
-                        : `将在第 ${nextRetry} 次重试（共 ${maxRetries} 次）`;
-                    ctx.log(`❌ **执行失败** | 耗时 ${(duration / 1000).toFixed(1)}s | ${errMsg} | ${retryHint}`);
-                } catch { /* 日志写入失败不阻塞错误处理 */ }
-
-                if (nextRetry > maxRetries) {
+                // ─── 401/403 认证错误：不重试，立即通知 ───────────────
+                // 认证失败重试无意义（key 不会自动变对），应立即告知用户
+                if (/HTTP 40[13]/.test(errMsg)) {
                     await writeStateMarker(uri, { status: 'error', message: errMsg, retryCount: nextRetry });
-                    logger.error(`[RoleTimerManager] 已达最大重试次数(${maxRetries})，对话: ${filePath}，错误: ${errMsg}`);
+                    logger.error(`[RoleTimerManager] 认证错误，跳过重试: ${filePath}，错误: ${errMsg}`);
+                    try { ctx.log(`❌ **执行失败** | 耗时 ${(duration / 1000).toFixed(1)}s | ${errMsg} | 认证错误，已停止重试`); } catch { /* ignore */ }
+                    ModelAuthErrorRegistry.markError(role.modelFamily || '');
+                    const action = await vscode.window.showErrorMessage(
+                        `「${role.name}」API Key 无效或未配置，请右键模型节点 → 更新 API Key`,
+                        '前往模型配置',
+                    );
+                    if (action) { await vscode.commands.executeCommand('issueManager.views.llmChat.focus'); }
                 } else {
-                    const baseDelay = Number(role.timerRetryDelay) || 5_000;
-                    const delay = Math.max(1_000, baseDelay * Math.pow(2, retryCount));
-                    const retryAt = Number.isFinite(Date.now() + delay) ? Date.now() + delay : Date.now() + 5_000;
-                    await writeStateMarker(uri, {
-                        status: 'retrying',
-                        retryAt,
-                        retryCount: nextRetry,
-                    });
-                    logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
+                    // ─── 将失败原因写入执行日志 ─────────────────────────
+                    try {
+                        const retryHint = nextRetry > maxRetries
+                            ? `已达最大重试次数(${maxRetries})`
+                            : `将在第 ${nextRetry} 次重试（共 ${maxRetries} 次）`;
+                        ctx.log(`❌ **执行失败** | 耗时 ${(duration / 1000).toFixed(1)}s | ${errMsg} | ${retryHint}`);
+                    } catch { /* 日志写入失败不阻塞错误处理 */ }
+
+                    if (nextRetry > maxRetries) {
+                        await writeStateMarker(uri, { status: 'error', message: errMsg, retryCount: nextRetry });
+                        logger.error(`[RoleTimerManager] 已达最大重试次数(${maxRetries})，对话: ${filePath}，错误: ${errMsg}`);
+                    } else {
+                        const baseDelay = Number(role.timerRetryDelay) || 5_000;
+                        const delay = Math.max(1_000, baseDelay * Math.pow(2, retryCount));
+                        const retryAt = Number.isFinite(Date.now() + delay) ? Date.now() + delay : Date.now() + 5_000;
+                        await writeStateMarker(uri, {
+                            status: 'retrying',
+                            retryAt,
+                            retryCount: nextRetry,
+                        });
+                        logger.warn(`[RoleTimerManager] 执行失败，${delay}ms 后重试(${nextRetry}/${maxRetries}): ${errMsg}`);
+                    }
                 }
             }
 

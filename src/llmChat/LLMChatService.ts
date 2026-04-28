@@ -104,7 +104,15 @@ export class LLMChatService {
             if (options?.signal?.aborted) { return null; }
             const errMsg = e instanceof Error ? e.message : String(e);
             logger.error('[LLMChat] 发送消息失败', e);
-            vscode.window.showErrorMessage(`LLM 回复失败: ${errMsg}`);
+            if (/HTTP 40[13]/.test(errMsg)) {
+                const action = await vscode.window.showErrorMessage(
+                    'API Key 无效或未配置，请右键模型节点 → 更新 API Key',
+                    '前往模型配置',
+                );
+                if (action) { await vscode.commands.executeCommand('issueManager.views.llmChat.focus'); }
+            } else {
+                vscode.window.showErrorMessage(`LLM 回复失败: ${errMsg}`);
+            }
             return null;
         }
     }
@@ -158,7 +166,15 @@ export class LLMChatService {
             if (options?.signal?.aborted) { return null; }
             const errMsg = e instanceof Error ? e.message : String(e);
             logger.error('[LLMChat] 流式发送失败', e);
-            vscode.window.showErrorMessage(`LLM 回复失败: ${errMsg}`);
+            if (/HTTP 40[13]/.test(errMsg)) {
+                const action = await vscode.window.showErrorMessage(
+                    'API Key 无效或未配置，请右键模型节点 → 更新 API Key',
+                    '前往模型配置',
+                );
+                if (action) { await vscode.commands.executeCommand('issueManager.views.llmChat.focus'); }
+            } else {
+                vscode.window.showErrorMessage(`LLM 回复失败: ${errMsg}`);
+            }
             return null;
         }
     }

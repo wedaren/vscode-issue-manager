@@ -26,12 +26,15 @@ import { ConversationImagePasteEditProvider } from './providers/ConversationImag
 import { extendMarkdownIt } from './markdown/markdownPreviewPlugin';
 import { registerChatStatusBar } from './llmChat/chatStatusBarItem';
 import { registerPendingImageStatusBar } from './llmChat/pendingImageStatusBar';
+import { ModelRegistry } from './llm/ModelRegistry';
 export { extendMarkdownIt };
 
 // 当您的扩展被激活时,将调用此方法
 export async function activate(context: vscode.ExtensionContext) {
 	// 初始化共享配置（必须在其他服务之前）
 	SharedConfig.initialize(context);
+	// 初始化模型注册表（注入 SecretStorage，供自定义模型 API Key 安全存储）
+	ModelRegistry.init(context.secrets);
 	
 	const initializer = new ExtensionInitializer(context);
 	// 笔记映射功能已移除：不再预加载相关服务或更新上下文

@@ -19,6 +19,7 @@ import {
 import type { ChatRoleInfo } from './types';
 import { runContextPipeline } from './contextPipeline';
 import { ImageStorageService } from '../services/storage/ImageStorageService';
+import { ModelRegistry } from '../llm/ModelRegistry';
 
 /**
  * 为单角色对话构建 LLM 请求消息列表。
@@ -50,7 +51,9 @@ export async function buildConversationMessages(
     }
 
     // ─── 上下文管道 ──────────────────────────────────────────
-    const maxTokens = convoConfig?.maxTokens ?? role.maxTokens;
+    const effectiveModelFamily = convoConfig?.modelFamily || role.modelFamily;
+    const modelDescriptor = await ModelRegistry.resolve(effectiveModelFamily);
+    const contextWindow = modelDescriptor?.contextWindow;
     const latestUserMessage = getLatestUserMessage(history);
     const result = await runContextPipeline(
         identity,
@@ -60,7 +63,7 @@ export async function buildConversationMessages(
         autonomous,
         latestUserMessage,
         history.length > 0,
-        maxTokens,
+        contextWindow,
     );
 
     const systemMsg = vscode.LanguageModelChatMessage.User(result.systemPrompt);
@@ -68,15 +71,15 @@ export async function buildConversationMessages(
     // ─── 历史消息 ─────────────────────────────────────────────
     const rounds = groupRounds(history);
 
-    // 无 token 预算限制 或 轮次 ≤ 3 时，不截断
-    if (!maxTokens || rounds.length <= 3) {
+    // 无 contextWindow 限制 或 轮次 ≤ 3 时，不截断
+    if (!contextWindow || rounds.length <= 3) {
         return [systemMsg, ...roundsToMessages(rounds)];
     }
 
     // 预估全量 token
     const fullMsgs = [systemMsg, ...roundsToMessages(rounds)];
     const fullTokens = await estimateTokens(fullMsgs);
-    const threshold = maxTokens * 0.7;
+    const threshold = contextWindow * 0.7;
 
     if (fullTokens <= threshold) {
         return fullMsgs;
