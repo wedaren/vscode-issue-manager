@@ -108,6 +108,11 @@
         "icon": "$(search)"
       },
       {
+        "command": "issueManager.diagramPreview.openInPanel",
+        "title": "Diagram: 在面板查看",
+        "category": "Issue Manager"
+      },
+      {
         "command": "issueManager.selectOrCreateIssue",
         "title": "查看或新建问题",
         "icon": "$(add)"
@@ -1900,6 +1905,31 @@
           "default": [],
           "description": "为 CSV 指定可触发 Cmd+Click 搜索的列。支持列名或列索引（从 0 开始），例如 [\"Name\", \"0\"]。"
         },
+        "issueManager.diagramPreview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用 Markdown 图表预览（hover 显示渲染图、CodeLens 入口、可折叠）。当前支持 mermaid 渲染；math 仅展示源码（Phase 2 启用渲染）。"
+        },
+        "issueManager.diagramPreview.foldMermaidByDefault": {
+          "type": "boolean",
+          "default": true,
+          "description": "默认折叠 mermaid 代码块（点击 hover/CodeLens 仍可看渲染图）。"
+        },
+        "issueManager.diagramPreview.foldMathByDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "默认折叠数学公式块（` ```math ` 和 `$$..$$`）。"
+        },
+        "issueManager.diagramPreview.theme": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "default": "auto",
+          "description": "Mermaid 渲染主题。auto 跟随 VS Code 颜色主题。"
+        },
         "issueManager.rss.contentProcessing.defaultPreset": {
           "type": "string",
           "default": "concise",
@@ -2332,6 +2362,7 @@
     "dompurify": "^3.3.0",
     "js-yaml": "^4.1.0",
     "marked": "^16.4.1",
+    "mermaid": "^11.14.0",
     "simple-git": "^3.28.0",
     "uuid": "^11.1.0",
     "ws": "^8.18.0",

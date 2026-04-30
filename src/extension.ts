@@ -27,6 +27,7 @@ import { extendMarkdownIt } from './markdown/markdownPreviewPlugin';
 import { registerChatStatusBar } from './llmChat/chatStatusBarItem';
 import { registerPendingImageStatusBar } from './llmChat/pendingImageStatusBar';
 import { ModelRegistry } from './llm/ModelRegistry';
+import { activateDiagramPreview } from './diagramPreview';
 export { extendMarkdownIt };
 
 // 当您的扩展被激活时,将调用此方法
@@ -289,6 +290,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// 注册"待发送图片"状态栏（展示当前 chat 文件里未发送的 ImageDir 引用数量与合计大小）
 	registerPendingImageStatusBar(context);
+
+	// 注册 Markdown Diagram 预览（mermaid hover/codelens/折叠 + math 入口）
+	activateDiagramPreview(context);
 
 	await initializer.initialize();
 	return { extendMarkdownIt };

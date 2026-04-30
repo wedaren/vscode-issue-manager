@@ -3,6 +3,7 @@
 'use strict';
 
 const path = require('path');
+const webpack = require('webpack');
 
 //@ts-check
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
@@ -56,7 +57,8 @@ const webviewConfig = {
 
   entry: {
     'g6-graph': './webview-src/g6/index.ts',
-    'x6-mindmap': './webview-src/x6/index.ts'
+    'x6-mindmap': './webview-src/x6/index.ts',
+    'diagram-renderer': './webview-src/diagram-renderer/index.ts'
   },
   output: {
     path: path.resolve(__dirname, 'dist', 'webview'),
@@ -95,6 +97,11 @@ const webviewConfig = {
   infrastructureLogging: {
     level: "log",
   },
+  // 强制所有动态 import 合并到入口文件：webview CSP 只放行 nonce 脚本，
+  // 拆分出的运行时 chunk 会被拦截。单 bundle 略大但能用。
+  plugins: [
+    new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
+  ],
 };
 
 module.exports = [extensionConfig, webviewConfig];

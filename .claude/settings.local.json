@@ -88,7 +88,12 @@
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
       "Bash(git stash:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm ls *)",
+      "Bash(grep -E \"^\\(mermaid|katex|markdown-it|marked\\)$\")",
+      "Bash(grep -o 'isSvgPath[^;]*\\\\|currentPath[^;]\\\\{0,50\\\\}' /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/dist/extension.js)",
+      "Bash(grep -o \"isSvgPath[^,]\\\\{0,200\\\\}\" /Users/wedaren/repositoryDestinationOfGithub/vscode-issue-manager/dist/extension.js)",
+      "Read(//Users/wedaren/Library/Application Support/Code/User/globalStorage/wedaren.issue-manager/diagram-cache/**)"
     ],
     "additionalDirectories": [
       "/Users/wedaren/repositoryDestinationOfGithub/issue-notes"
