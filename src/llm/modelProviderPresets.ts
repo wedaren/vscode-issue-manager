@@ -131,6 +131,15 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
         description: 'Kimi 系列模型，长上下文',
     },
     {
+        label: 'Xiaomi MiMo（小米）',
+        provider: 'custom',
+        baseUrl: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        requiresKey: true,
+        docsUrl: 'https://platform.xiaomimimo.com/docs/zh-CN/welcome',
+        dashboardUrl: 'https://platform.xiaomimimo.com',
+        description: 'MiMo-V2.5 / V2 系列，套餐订阅制',
+    },
+    {
         label: 'OpenRouter',
         provider: 'custom',
         baseUrl: 'https://openrouter.ai/api/v1',
