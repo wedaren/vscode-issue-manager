@@ -28,6 +28,7 @@ import { registerChatStatusBar } from './llmChat/chatStatusBarItem';
 import { registerPendingImageStatusBar } from './llmChat/pendingImageStatusBar';
 import { ModelRegistry } from './llm/ModelRegistry';
 import { activateDiagramPreview } from './diagramPreview';
+import { registerWikiModule } from './wiki/registerWiki';
 export { extendMarkdownIt };
 
 // 当您的扩展被激活时,将调用此方法
@@ -293,6 +294,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// 注册 Markdown Diagram 预览（mermaid hover/codelens/折叠 + math 入口）
 	activateDiagramPreview(context);
+
+	// 注册 Wiki 模块(Today TreeView + [[wiki/...]] 链接/Hover + 状态栏 + 保存选中到 raw/)
+	registerWikiModule(context);
 
 	await initializer.initialize();
 	return { extendMarkdownIt };

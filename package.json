@@ -22,6 +22,18 @@
     "markdown.markdownItPlugins": true,
     "commands": [
       {
+        "command": "issueManager.wiki.refresh",
+        "title": "Wiki：刷新今日视图",
+        "category": "Issue Manager",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "issueManager.wiki.saveSelectionToRaw",
+        "title": "Wiki：保存选中内容到 raw/",
+        "category": "Issue Manager",
+        "icon": "$(pin)"
+      },
+      {
         "command": "issueManager.image.pasteImage",
         "title": "图片库：粘贴图片到编辑器",
         "category": "Issue Manager",
@@ -945,6 +957,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "issueManager.wiki.refresh",
+          "when": "view == issueManager.views.wikiToday",
+          "group": "navigation@1"
+        },
         {
           "command": "issueManager.createIssue",
           "when": "view == issueManager.views.recent",
@@ -2253,6 +2270,11 @@
           "id": "issueManager.views.imageGallery",
           "name": "图片库",
           "icon": "$(device-camera)"
+        },
+        {
+          "id": "issueManager.views.wikiToday",
+          "name": "Wiki 今日",
+          "icon": "$(book)"
         }
       ],
       "issue-manager-board": [
