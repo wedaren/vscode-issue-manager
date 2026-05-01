@@ -1,307 +1,32 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as jsYaml from "js-yaml";
-import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import * as os from "os";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
 import * as cacheStorage from "../data/issueMarkdownCacheStorage";
 import { generateFileName, getTimestampFromFileName } from "../utils/fileUtils";
-/**
- * 从 Markdown 文件内容中提取第一个一级标题。
- * @param content 文件内容。
- * @returns 第一个一级标题的文本，如果找不到则返回 undefined。
- */
-function extractTitleFromContent(content: string): string | undefined {
-    const match = content.match(/^#\s+(.*)/m);
-    return match ? match[1].trim() : undefined;
-}
+import {
+    extractTitleFromContent,
+    extractFrontmatterAndBody,
+    extractIssueTitleFromFrontmatter,
+    isAgentFileFrontmatter,
+} from "../services/issue-core/frontmatter";
+import { INDEXED_TYPE_KEYS, type IndexedTypeKey } from "../services/issue-core/types";
 
-/**
- * Frontmatter 数据结构
- */
-export interface TermDefinition {
-    name: string;
-    definition?: string;
-    links?: string[];
-    [key: string]: unknown;
-}
+// 重新导出纯类型与纯函数,保持原有 import 路径(`from "../data/IssueMarkdowns"`)兼容。
+export type { FrontmatterData, TermDefinition } from "../services/issue-core/types";
+export {
+    isValidObject,
+    extractFrontmatterLines,
+    normalizeYamlScalar,
+    buildTermLocationMap,
+    extractIssueTitleFromFrontmatter,
+    extractFrontmatterAndBody,
+} from "../services/issue-core/frontmatter";
 
-export interface FrontmatterData {
-    issue_root_file?: string;
-    issue_parent_file?: string | null;
-    issue_children_files?: string[];
-    /**
-     * 与该 issue 关联的外部文件列表（通常为工作文件/笔记）。
-     * - 存储为 wiki-link 形式，带 `file:` 前缀，例如: `[[file:notes/foo.md]]` 或 `[[file:/abs/path/to/file.md]]`。
-     * - 可选地包含行范围片段，例如 `[[file:notes/foo.md#L10-L12]]` 或 `[[file:/abs/path/to/file.md#L5]]`。
-     * - 优先以相对于 `issueDir` 的相对路径存储（例如 `notes/foo.md`），再使用 `file:` 前缀；如果文件不在 `issueDir` 内，则使用绝对路径并加 `file:` 前缀。
-     * - 用途：记录该问题关联的工作文件、参考笔记或其它资源，供 UI 展示或自动化脚本使用。
-     */
-    issue_linked_files?: string[];
-    /**
-     * 与该 issue 关联的工作区或项目路径（用于快速在新窗口或当前窗口打开工作区）。
-     * - 存储为 `file:` 前缀的路径或 workspace 文件路径，例如 `file:/Users/me/project` 或 `/path/to/project.code-workspace`。
-     * - 建议存储相对路径或绝对路径，UI 会将其渲染为可点击的 `[[workspace:...]]` 链接。
-     */
-    issue_linked_workspace?: string[];
-    issue_title?: string[] | string;
-    issue_description?: string;
-    issue_prompt?: boolean;
-    /**
-     * 问题的简明摘要（3-5句话），概括核心内容和关键要点。
-     * - 可以是单个字符串或多个摘要的数组（例如由不同时间生成的多个版本）。
-     * - 由 LLM 自动生成或手动编辑。
-     */
-    issue_brief_summary?: string | string[];
-    /**
-     * 术语定义列表
-     */
-    terms?: TermDefinition[];
-    /**
-     * 术语引用的 IssueMarkdown 文件列表（wiki-link 或路径）
-     */
-    terms_references?: string[];
-    [key: string]: unknown; // 支持其他字段
-}
-
-export function isValidObject(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * 提取 frontmatter 的行（不包括起始/结束的 '---'），以及 frontmatter 在文件中的起始行号
- */
-export function extractFrontmatterLines(content: string): { lines: string[]; startLineNumber: number } | null {
-    if (!content.startsWith("---")) {
-        return null;
-    }
-
-    const lines = content.split(/\r?\n/);
-    let endIndex = -1;
-    for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === "---") {
-            endIndex = i;
-            break;
-        }
-    }
-
-    if (endIndex === -1) {
-        return null;
-    }
-
-    const frontmatterLines = lines.slice(1, endIndex);
-    const startLineNumber = 2; // frontmatter 第一行在文件的第 2 行
-    return { lines: frontmatterLines, startLineNumber };
-}
-
-export function normalizeYamlScalar(value: string): string {
-    let result = value.trim();
-    if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith("'") && result.endsWith("'"))) {
-        result = result.slice(1, -1).trim();
-    }
-    return result;
-}
-
-function offsetToLineColumn(text: string, offset: number): { line: number; column: number } {
-    const safeOffset = Math.max(0, Math.min(offset, text.length));
-    let line = 1;
-    let lastLineStart = 0;
-    for (let i = 0; i < safeOffset; i++) {
-        if (text.charCodeAt(i) === 10) {
-            line += 1;
-            lastLineStart = i + 1;
-        }
-    }
-    const column = safeOffset - lastLineStart + 1;
-    return { line, column };
-}
-
-function buildTermLocationMapFromYaml(frontmatterText: string, startLineNumber: number): Map<string, { line: number; column: number }> {
-    const map = new Map<string, { line: number; column: number }>();
-    if (!frontmatterText.trim()) {
-        return map;
-    }
-
-    let doc;
-    try {
-        doc = parseDocument(frontmatterText);
-    } catch {
-        return map;
-    }
-
-    if (!doc || !doc.contents || !isMap(doc.contents)) {
-        return map;
-    }
-
-    const termsNode = doc.contents.get("terms", true);
-    if (!termsNode || !isSeq(termsNode)) {
-        return map;
-    }
-
-    for (const item of termsNode.items) {
-        if (!item || !isMap(item)) {
-            continue;
-        }
-
-        const nameNode = item.get("name", true);
-        if (!nameNode || !isScalar(nameNode)) {
-            continue;
-        }
-
-        const nameValue = nameNode.value;
-        if (typeof nameValue !== "string") {
-            continue;
-        }
-
-        const name = nameValue.trim();
-        if (!name || map.has(name)) {
-            continue;
-        }
-
-        const range = nameNode.range;
-        if (!range || range.length < 2) {
-            continue;
-        }
-
-        const pos = offsetToLineColumn(frontmatterText, range[0]);
-        const lineNumber = startLineNumber + (pos.line - 1);
-        map.set(name, { line: lineNumber, column: pos.column });
-    }
-
-    return map;
-}
-
-function buildTermLocationMapByRegex(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
-    const map = new Map<string, { line: number; column: number }>();
-
-    let termsLineIndex = -1;
-    let termsIndent = 0;
-
-    for (let i = 0; i < frontmatterLines.length; i++) {
-        const line = frontmatterLines[i];
-        const match = line.match(/^(\s*)terms\s*:\s*$/);
-        if (match) {
-            termsLineIndex = i;
-            termsIndent = match[1].length;
-            break;
-        }
-    }
-
-    if (termsLineIndex === -1) {
-        return map;
-    }
-
-    for (let i = termsLineIndex + 1; i < frontmatterLines.length; i++) {
-        const line = frontmatterLines[i];
-        if (!line.trim()) {
-            continue;
-        }
-        const indentMatch = line.match(/^(\s*)/);
-        const indent = indentMatch ? indentMatch[1].length : 0;
-
-        if (indent <= termsIndent && /^\s*\w+\s*:/u.test(line)) {
-            break;
-        }
-
-        const nameMatch = line.match(/^\s*-\s*name\s*:\s*(.+?)\s*$/u);
-        let rawName: string | undefined;
-        let valueIndex = -1;
-
-        if (nameMatch) {
-            rawName = nameMatch[1];
-            valueIndex = line.indexOf(rawName);
-        } else {
-            const inlineMatch = line.match(/\bname\s*:\s*([^,#}]+?)(?:\s*(?:,|$|\}))/u);
-            if (inlineMatch) {
-                rawName = inlineMatch[1];
-                valueIndex = line.indexOf(rawName);
-            }
-        }
-
-        if (!rawName) {
-            continue;
-        }
-
-        const name = normalizeYamlScalar(rawName);
-        if (!name || map.has(name)) {
-            continue;
-        }
-
-        const lineNumber = startLineNumber + i;
-        const columnNumber = valueIndex >= 0 ? valueIndex + 1 : 1;
-        map.set(name, { line: lineNumber, column: columnNumber });
-    }
-
-    return map;
-}
-
-/**
- * 从 frontmatter 的行中构建术语位置索引（name -> {line,column}）
- */
-export function buildTermLocationMap(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
-    const frontmatterText = frontmatterLines.join("\n");
-    const parsed = buildTermLocationMapFromYaml(frontmatterText, startLineNumber);
-    if (parsed.size > 0) {
-        return parsed;
-    }
-
-    return buildTermLocationMapByRegex(frontmatterLines, startLineNumber);
-}
-
-/**
- * 从 frontmatter 的 `issue_title` 字段安全提取字符串标题（支持 string 或 string[]）。
- */
-export function extractIssueTitleFromFrontmatter(
-    fm: FrontmatterData | null | undefined
-): string | undefined {
-    if (!fm) {
-        return undefined;
-    }
-    const issueTitle = fm.issue_title;
-    if (typeof issueTitle === "string" && issueTitle.trim()) {
-        return issueTitle.trim();
-    }
-    if (Array.isArray(issueTitle) && issueTitle.length > 0 && typeof issueTitle[0] === "string") {
-        return issueTitle[0].trim();
-    }
-    return undefined;
-}
-
-/**
- * 分离 frontmatter 与正文，返回解析后的 frontmatter（如果存在）和剩余 body 文本。
- */
-export function extractFrontmatterAndBody(content: string): {
-    frontmatter: FrontmatterData | null;
-    body: string;
-} {
-    if (!content.startsWith("---")) {
-        return { frontmatter: null, body: content };
-    }
-    const lines = content.split(/\r?\n/);
-    let endIndex = -1;
-    for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === "---") {
-            endIndex = i;
-            break;
-        }
-    }
-    if (endIndex === -1) {
-        return { frontmatter: null, body: content };
-    }
-    const body = lines.slice(endIndex + 1).join("\n");
-    const yamlContent = lines.slice(1, endIndex).join("\n");
-    try {
-        const parsed = jsYaml.load(yamlContent);
-        if (isValidObject(parsed)) {
-            return { frontmatter: parsed as FrontmatterData, body };
-        }
-    } catch (error) {
-        Logger.getInstance().warn("解析 frontmatter 失败", error);
-    }
-    return { frontmatter: null, body };
-}
+import type { FrontmatterData } from "../services/issue-core/types";
 
 export async function getIssueMarkdownContent(uri: vscode.Uri): Promise<string> {
     const contentBytes = await vscode.workspace.fs.readFile(uri);
@@ -491,50 +216,6 @@ const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], cacheStorage.IssueMark
 /** frontmatter 类型 → 文件路径集合 */
 const _typeIndex = new Map<string, Set<string>>();
 
-/** 需要被索引的 frontmatter 布尔标记字段 */
-const INDEXED_TYPE_KEYS = [
-    'chat_role',
-    'chat_conversation',
-    'chat_group',
-    'chat_group_conversation',
-    'chat_execution_log',
-    'chat_tool_call',
-    'chrome_chat',
-    'role_memory',
-    'role_auto_memory',
-    'chat_plan',
-] as const;
-
-/**
- * Agent 系统自动生成文件的 frontmatter 类型键集合。
- * 这类文件不应触发问题总览刷新或 Git 自动提交（由 Agent 高频写入）。
- * 注意：`chat_role` 为用户手动创建，不在此列。
- */
-const AGENT_FILE_TYPE_KEYS: ReadonlySet<string> = new Set([
-    'chat_conversation',
-    'chat_group',
-    'chat_group_conversation',
-    'chat_execution_log',
-    'chat_tool_call',
-    'chrome_chat',
-    'role_memory',
-    'role_auto_memory',
-    'chat_plan',
-]);
-
-/**
- * 检查 frontmatter 是否属于 agent 系统自动生成文件。
- * @param frontmatter - 文件的 frontmatter 对象
- * @returns 如果是 agent 系统文件则返回 true
- */
-function isAgentFileFrontmatter(frontmatter: Record<string, unknown> | null | undefined): boolean {
-    if (!frontmatter) { return false; }
-    for (const key of AGENT_FILE_TYPE_KEYS) {
-        if (frontmatter[key] === true) { return true; }
-    }
-    return false;
-}
-
 /**
  * 根据缓存检查 URI 对应的文件是否为 agent 系统自动生成文件。
  * 仅查缓存，不触发磁盘读取。
@@ -545,8 +226,6 @@ export function isAgentFileUri(uri: vscode.Uri): boolean {
     const cached = _issueMarkdownCache.get(uri.fsPath);
     return isAgentFileFrontmatter(cached?.frontmatter as Record<string, unknown> | null | undefined);
 }
-
-type IndexedTypeKey = typeof INDEXED_TYPE_KEYS[number];
 
 /** 更新某个文件在类型索引中的条目（先清旧、再加新） */
 function updateTypeIndex(fsPath: string, frontmatter: Record<string, unknown> | null | undefined): void {

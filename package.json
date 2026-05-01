@@ -14,6 +14,9 @@
     "*"
   ],
   "main": "./dist/extension.js",
+  "bin": {
+    "vscode-issue-manager-mcp": "./dist/mcpServer/mcpServer/index.js"
+  },
   "contributes": {
     "markdown.markdownItPlugins": true,
     "commands": [
@@ -2309,6 +2312,8 @@
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "webpack",
+    "compile:mcp": "tsc -p tsconfig.mcp.json",
+    "build:all": "npm run compile && npm run compile:mcp",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
