@@ -3,11 +3,7 @@
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
-import {
-    getAllIssueMarkdowns, getIssueMarkdown, getIssueMarkdownContent,
-    getIssueMarkdownsByType, createIssueMarkdown, extractFrontmatterAndBody,
-    updateIssueMarkdownFrontmatter, updateIssueMarkdownBody, type FrontmatterData,
-} from '../../data/IssueMarkdowns';
+import { type FrontmatterData } from '../../data/IssueMarkdowns';
 import {
     createIssueNodes, getFlatTree, getIssueData, getIssueNodesByUri,
     getSingleIssueNodeByUri, readTree, writeTree, moveNode, removeNode,
@@ -16,7 +12,8 @@ import {
 import { getIssueDir } from '../../config';
 import { Logger } from '../../core/utils/Logger';
 import type { ToolCallResult, ToolExecContext } from './types';
-import { issueLink, normalizeFileName, TYPE_FILTER_MAP, getTypeTag, formatAge, runKeywordSearch } from './shared';
+import { issueLink, normalizeFileName, TYPE_FILTER_MAP, getTypeTag, formatAge } from './shared';
+import { getIssueCoreServices } from '../../services/issue-core/extensionInstance';
 
 const logger = Logger.getInstance();
 
@@ -240,124 +237,77 @@ const ISSUE_RELATION_TOOLS: vscode.LanguageModelChatTool[] = [
 
 // ─── 工具实现 ─────────────────────────────────────────────────
 
-/** 空 query + type filter：按类型列出笔记（按修改时间倒序） */
-async function listIssuesByType(typeFilter: string, limit: number): Promise<ToolCallResult> {
-    let candidates: Awaited<ReturnType<typeof getAllIssueMarkdowns>>;
-    if (typeFilter === 'note') {
-        const allIssues = await getAllIssueMarkdowns({});
-        const systemTypeKeys = Object.values(TYPE_FILTER_MAP);
-        candidates = allIssues.filter(issue => {
-            const fm = issue.frontmatter as Record<string, unknown> | null;
-            if (!fm) { return true; }
-            return !systemTypeKeys.some(key => fm[key] === true);
-        });
-    } else if (TYPE_FILTER_MAP[typeFilter]) {
-        candidates = getIssueMarkdownsByType(TYPE_FILTER_MAP[typeFilter] as any);
-    } else {
-        return { success: false, content: `未知类型: ${typeFilter}` };
-    }
-
-    candidates.sort((a, b) => b.mtime - a.mtime);
-    const items = candidates.slice(0, limit);
-
-    if (items.length === 0) {
-        return { success: true, content: `类型 "${typeFilter}" 下没有笔记。` };
-    }
-
-    const lines = items.map((issue, i) => {
-        const fileName = path.basename(issue.uri.fsPath);
-        const age = formatAge(issue.mtime);
-        return `${i + 1}. ${issueLink(issue.title, fileName)} (${age})`;
-    });
-
-    return {
-        success: true,
-        content: `类型 "${typeFilter}" 共 ${candidates.length} 条，显示前 ${items.length} 条：\n${lines.join('\n')}`,
-    };
-}
-
 async function executeGetLibraryStats(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const services = getIssueCoreServices();
+    if (!services) { return { success: false, content: '问题目录未配置' }; }
+
     const recentLimit = typeof input.recentLimit === 'number' ? Math.min(input.recentLimit, 50) : 15;
+    const stats = await services.query.getStats({ recentLimit });
 
-    // 各系统类型计数（直接从类型索引读取，O(1)）
-    const typeCounts: Record<string, number> = {};
-    const systemTypes = Object.entries(TYPE_FILTER_MAP);
-    let systemTotal = 0;
-    for (const [label, typeKey] of systemTypes) {
-        const items = getIssueMarkdownsByType(typeKey as any);
-        typeCounts[label] = items.length;
-        systemTotal += items.length;
-    }
-
-    // 总文件数 & 用户笔记数
-    const allIssues = await getAllIssueMarkdowns({});
-    const totalFiles = allIssues.length;
-    typeCounts['note'] = totalFiles - systemTotal; // 排除所有系统类型 = 用户笔记
-
-    // 最近修改的用户笔记（排除系统文件）
-    const systemTypeKeys = new Set(Object.values(TYPE_FILTER_MAP));
-    const userNotes = allIssues.filter(issue => {
-        const fm = issue.frontmatter as Record<string, unknown> | null;
-        if (!fm) { return true; }
-        return ![...systemTypeKeys].some(key => fm[key] === true);
-    });
-    userNotes.sort((a, b) => b.mtime - a.mtime);
-
-    const recentLines = userNotes.slice(0, recentLimit).map((issue, i) => {
-        const fileName = path.basename(issue.uri.fsPath);
-        const age = formatAge(issue.mtime);
-        return `${i + 1}. ${issueLink(issue.title, fileName)} (${age})`;
-    });
-
-    // 组装输出
-    const statsLines = [
-        `笔记库统计：共 ${totalFiles} 个文件`,
+    const lines = [
+        `笔记库统计：共 ${stats.totalFiles} 个文件`,
         '',
         '**类型分布：**',
-        `- 用户笔记 (note): ${typeCounts['note']}`,
+        `- 用户笔记 (note): ${stats.typeCounts['note'] ?? 0}`,
     ];
-    for (const [label] of systemTypes) {
-        if (typeCounts[label] > 0) {
-            statsLines.push(`- ${label}: ${typeCounts[label]}`);
-        }
+    for (const [label] of Object.entries(TYPE_FILTER_MAP)) {
+        const c = stats.typeCounts[label] ?? 0;
+        if (c > 0) { lines.push(`- ${label}: ${c}`); }
     }
-    statsLines.push('', `**最近修改的笔记（前 ${recentLines.length} 条）：**`);
-    statsLines.push(...recentLines);
-
-    return { success: true, content: statsLines.join('\n') };
+    lines.push('', `**最近修改的笔记（前 ${stats.recentUserNotes.length} 条）：**`);
+    for (let i = 0; i < stats.recentUserNotes.length; i++) {
+        const issue = stats.recentUserNotes[i];
+        const age = formatAge(issue.mtime);
+        lines.push(`${i + 1}. ${issueLink(issue.title, issue.fileName)} (${age})`);
+    }
+    return { success: true, content: lines.join('\n') };
 }
 
 async function executeSearchIssues(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const services = getIssueCoreServices();
+    if (!services) { return { success: false, content: '问题目录未配置' }; }
+
     const queryRaw = String(input.query || '').trim();
     const limit = typeof input.limit === 'number' ? input.limit : 20;
-    const scope = String(input.scope || 'all');
+    const scope = (['all', 'title', 'body'].includes(String(input.scope))
+        ? String(input.scope)
+        : 'all') as 'all' | 'title' | 'body';
     const typeFilter = input.type ? String(input.type) : undefined;
 
-    // 空 query：按类型列出笔记（按修改时间倒序）
+    // 空 query：按类型列出笔记
     if (!queryRaw) {
         if (!typeFilter) {
             return { success: false, content: '请提供搜索关键词，或指定 type 按类型列出笔记。也可使用 get_library_stats 获取全局概览。' };
         }
-        return await listIssuesByType(typeFilter, limit);
-    }
-
-    // 按类型过滤候选集
-    let candidates: Awaited<ReturnType<typeof getAllIssueMarkdowns>>;
-    if (typeFilter === 'note') {
-        const allIssues = await getAllIssueMarkdowns({});
-        const systemTypeKeys = Object.values(TYPE_FILTER_MAP);
-        candidates = allIssues.filter(issue => {
-            const fm = issue.frontmatter as Record<string, unknown> | null;
-            if (!fm) { return true; }
-            return !systemTypeKeys.some(key => fm[key] === true);
+        const r = await services.query.listByType(typeFilter, limit);
+        if (r.items.length === 0) {
+            return { success: true, content: `类型 "${typeFilter}" 下没有笔记。` };
+        }
+        const itemLines = r.items.map((issue, i) => {
+            const age = formatAge(issue.mtime);
+            return `${i + 1}. ${issueLink(issue.title, issue.fileName)} (${age})`;
         });
-    } else if (typeFilter && TYPE_FILTER_MAP[typeFilter]) {
-        candidates = getIssueMarkdownsByType(TYPE_FILTER_MAP[typeFilter] as any);
-    } else {
-        candidates = await getAllIssueMarkdowns({});
+        return {
+            success: true,
+            content: `类型 "${typeFilter}" 共 ${r.totalCandidates} 条，显示前 ${r.items.length} 条：\n${itemLines.join('\n')}`,
+        };
     }
 
-    return runKeywordSearch(candidates, queryRaw, limit, typeFilter, scope);
+    const r = await services.query.searchByKeyword(queryRaw, { limit, scope, type: typeFilter });
+    if (r.matches.length === 0) {
+        const hint = typeFilter ? `（范围: ${typeFilter}）` : '';
+        return { success: true, content: `未找到匹配「${queryRaw}」的笔记${hint}。` };
+    }
+    const lines = r.matches.map((m, i) => {
+        const fm = m.issue.frontmatter as Record<string, unknown> | null;
+        const tag = getTypeTag(fm);
+        const age = formatAge(m.issue.mtime);
+        let line = `${i + 1}. ${issueLink(m.issue.title, m.issue.fileName)} \`${tag}\` (${age})`;
+        if (m.snippet) { line += `\n   > ${m.snippet}`; }
+        return line;
+    });
+    const hint = typeFilter ? ` (范围: ${typeFilter})` : '';
+    return { success: true, content: `找到 ${r.matches.length} 条匹配结果${hint}：\n${lines.join('\n')}` };
 }
 
 async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
@@ -366,21 +316,20 @@ async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCal
         return { success: false, content: '问题目录未配置' };
     }
 
+    const services = getIssueCoreServices();
+    if (!services) { return { success: false, content: '问题目录未配置' }; }
+
     const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
     if (!fileName) {
         return { success: false, content: '请提供文件名' };
     }
 
-    const filePath = path.join(issueDir, fileName);
-    const issue = await getIssueMarkdown(filePath);
+    const issue = await services.issues.get(fileName);
     if (!issue) {
         return { success: false, content: `未找到文件: ${fileName}` };
     }
 
-    // 读取完整内容
-    const contentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
-    const content = Buffer.from(contentBytes).toString('utf8');
-
+    const content = await services.issues.getRaw(fileName);
     const offset = Math.max(0, Number(input.offset) || 0);
     const maxChars = Math.max(1, Number(input.maxChars) || 15000);
     const totalLength = content.length;
@@ -419,6 +368,9 @@ async function executeReadIssue(input: Record<string, unknown>): Promise<ToolCal
 }
 
 async function executeCreateIssue(input: Record<string, unknown>): Promise<ToolCallResult> {
+    const services = getIssueCoreServices();
+    if (!services) { return { success: false, content: '问题目录未配置' }; }
+
     const title = String(input.title || '').trim();
     const description = input.description ? String(input.description).trim() : undefined;
     const body = String(input.body || '').trim();
@@ -427,32 +379,22 @@ async function executeCreateIssue(input: Record<string, unknown>): Promise<ToolC
         return { success: false, content: '请提供笔记标题' };
     }
 
-    const frontmatter: Partial<FrontmatterData> = {
-        issue_title: title,
-    };
-    if (description) {
-        frontmatter.issue_description = description;
-    }
+    const frontmatter: Partial<FrontmatterData> = { issue_title: title };
+    if (description) { frontmatter.issue_description = description; }
 
     // 正文以一级标题开头
     const fullBody = body.startsWith('# ') ? body : `# ${title}\n\n${body}`;
 
-    const uri = await createIssueMarkdown({ frontmatter, markdownBody: fullBody });
-    if (!uri) {
-        return { success: false, content: '创建笔记失败' };
-    }
+    const created = await services.issues.create({ frontmatter, body: fullBody });
+    // 挂载到 tree.json 根节点顶部,使笔记在问题总览视图可见。
+    // 这里继续走扩展端 createIssueNodes,以便 onIssueTreeUpdateEmitter 被触发,刷新 TreeView。
+    await createIssueNodes([vscode.Uri.file(created.absPath)]);
 
-    // 挂载到 tree.json 根节点顶部，使笔记在问题总览视图可见
-    await createIssueNodes([uri]);
-
-    const fileName = path.basename(uri.fsPath);
-
-    // 刷新视图
     vscode.commands.executeCommand('issueManager.refreshViews');
 
     return {
         success: true,
-        content: `✓ 已创建 ${issueLink(title, fileName)}\n> 请在回复中向用户提供上述文档链接。`,
+        content: `✓ 已创建 ${issueLink(title, created.fileName)}\n> 请在回复中向用户提供上述文档链接。`,
     };
 }
 
@@ -469,34 +411,26 @@ async function executeCreateIssueTree(input: Record<string, unknown>): Promise<T
         return { success: false, content: '请提供至少一个节点' };
     }
 
+    const services = getIssueCoreServices();
+    if (!services) { return { success: false, content: '问题目录未配置' }; }
+
     // 1. 创建所有 issueMarkdown 文件
     const createdUris: vscode.Uri[] = [];
     const createdFileNames: string[] = [];
 
     for (const node of nodes) {
-        const frontmatter: Partial<FrontmatterData> = {
-            issue_title: node.title,
-        };
-        if (node.description) {
-            frontmatter.issue_description = node.description;
-        }
+        const frontmatter: Partial<FrontmatterData> = { issue_title: node.title };
+        if (node.description) { frontmatter.issue_description = node.description; }
 
         const fullBody = node.body.startsWith('# ')
             ? node.body
             : `# ${node.title}\n\n${node.body}`;
 
-        const uri = await createIssueMarkdown({ frontmatter, markdownBody: fullBody });
-        if (!uri) {
-            return {
-                success: false,
-                content: `创建节点「${node.title}」失败，已创建 ${createdUris.length} 个节点`,
-            };
-        }
+        const created = await services.issues.create({ frontmatter, body: fullBody });
+        createdUris.push(vscode.Uri.file(created.absPath));
+        createdFileNames.push(created.fileName);
 
-        createdUris.push(uri);
-        createdFileNames.push(path.basename(uri.fsPath));
-
-        // 短暂延迟确保文件名不重复（基于时间戳）
+        // 短暂延迟确保文件名不重复（基于时间戳)
         if (nodes.length > 1) {
             await new Promise(r => setTimeout(r, 1100));
         }
@@ -591,53 +525,31 @@ async function executeUpdateIssue(input: Record<string, unknown>): Promise<ToolC
         return { success: false, content: '问题目录未配置' };
     }
 
+    const services = getIssueCoreServices();
+    if (!services) { return { success: false, content: '问题目录未配置' }; }
+
     const fileName = normalizeFileName(String(input.fileName || '').trim(), issueDir);
     if (!fileName) {
         return { success: false, content: '请提供文件名' };
     }
 
-    const filePath = path.join(issueDir, fileName);
-    const issue = await getIssueMarkdown(filePath);
+    const issue = await services.issues.get(fileName);
     if (!issue) {
         return { success: false, content: `未找到文件: ${fileName}` };
     }
 
-    const uri = vscode.Uri.file(filePath);
     const updates: Partial<FrontmatterData> = {};
-    let hasUpdate = false;
-
-    if (input.title) {
-        updates.issue_title = String(input.title);
-        hasUpdate = true;
+    if (input.title) { updates.issue_title = String(input.title); }
+    if (input.description) { updates.issue_description = String(input.description); }
+    if (Object.keys(updates).length > 0) {
+        await services.issues.updateFrontmatter(fileName, updates);
     }
-    if (input.description) {
-        updates.issue_description = String(input.description);
-        hasUpdate = true;
-    }
-
-    if (hasUpdate) {
-        const ok = await updateIssueMarkdownFrontmatter(uri, updates);
-        if (!ok) {
-            return { success: false, content: '更新 frontmatter 失败' };
-        }
-    }
-
     if (input.body) {
-        let newBody = String(input.body);
-        if (input.append) {
-            // 追加模式：读取现有正文，拼接新内容
-            const contentBytes = await vscode.workspace.fs.readFile(uri);
-            const raw = Buffer.from(contentBytes).toString('utf8');
-            const { body: existingBody } = extractFrontmatterAndBody(raw);
-            newBody = existingBody + newBody;
-        }
-        const ok = await updateIssueMarkdownBody(uri, newBody);
-        if (!ok) {
-            return { success: false, content: '更新正文失败' };
-        }
+        await services.issues.updateBody(fileName, String(input.body), {
+            append: input.append === true,
+        });
     }
 
-    // 刷新视图
     vscode.commands.executeCommand('issueManager.refreshViews');
 
     return {

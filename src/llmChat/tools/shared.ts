@@ -2,11 +2,8 @@
  * 工具系统的纯辅助函数和常量
  */
 import * as path from 'path';
-import { getIssueDir } from '../../config';
-import { getAllChatRoles, getChatRoleById } from '../llmChatDataManager';
-import { getAllIssueMarkdowns, getIssueMarkdownContent, extractFrontmatterAndBody } from '../../data/IssueMarkdowns';
+import { getAllChatRoles } from '../llmChatDataManager';
 import type { ChatRoleInfo } from '../types';
-import type { ToolCallResult } from './types';
 
 /** 生成 issueMarkdown 链接，使用约定前缀 IssueDir/，消费方按需替换为真实路径 */
 export function issueLink(title: string, fileName: string): string {
@@ -89,99 +86,6 @@ export function formatAge(mtime: number): string {
     if (hours < 24) { return `${hours}小时前`; }
     const days = Math.floor(hours / 24);
     return `${days}天前`;
-}
-
-/**
- * 多关键词评分搜索的共享实现。
- * 供 executeSearchIssues 和 executeSearchReference 复用。
- */
-export async function runKeywordSearch(
-    candidates: Awaited<ReturnType<typeof getAllIssueMarkdowns>>,
-    queryRaw: string,
-    limit: number,
-    typeLabel?: string,
-    scope = 'all',
-): Promise<ToolCallResult> {
-    const keywords = queryRaw.toLowerCase().split(/\s+/).filter(Boolean);
-    const scored: { issue: typeof candidates[number]; score: number; snippet?: string }[] = [];
-
-    for (const issue of candidates) {
-        const titleLower = issue.title.toLowerCase();
-        const fmStr = issue.frontmatter ? JSON.stringify(issue.frontmatter).toLowerCase() : '';
-
-        let score = 0;
-        let allMatched = true;
-        let snippet: string | undefined;
-
-        for (const kw of keywords) {
-            const titleCount = countOccurrences(titleLower, kw);
-            const fmCount = countOccurrences(fmStr, kw);
-
-            if (titleCount > 0) {
-                score += 10 + Math.min(titleCount - 1, 3) * 2;
-            } else if (fmCount > 0) {
-                score += 5 + Math.min(fmCount - 1, 3);
-            } else if (scope !== 'title') {
-                score = -1; // 标记需要查正文
-                break;
-            } else {
-                allMatched = false;
-                break;
-            }
-        }
-
-        if (allMatched && score > 0) {
-            scored.push({ issue, score });
-            continue;
-        }
-
-        if (score === -1 && scope !== 'title') {
-            try {
-                const bodyContent = await getIssueMarkdownContent(issue.uri);
-                const bodyLower = bodyContent.toLowerCase();
-                let bodyScore = 0;
-                let bodyAllMatched = true;
-
-                for (const kw of keywords) {
-                    const titleCount = countOccurrences(titleLower, kw);
-                    const fmCount = countOccurrences(fmStr, kw);
-                    const bodyCount = countOccurrences(bodyLower, kw);
-
-                    if (titleCount > 0) { bodyScore += 10 + Math.min(titleCount - 1, 3) * 2; }
-                    else if (fmCount > 0) { bodyScore += 5 + Math.min(fmCount - 1, 3); }
-                    else if (bodyCount > 0) {
-                        bodyScore += 1 + Math.min(bodyCount - 1, 3);
-                        if (!snippet) { snippet = extractSnippet(bodyContent, kw) ?? undefined; }
-                    } else { bodyAllMatched = false; break; }
-                }
-
-                if (bodyAllMatched && bodyScore > 0) {
-                    scored.push({ issue, score: bodyScore, snippet });
-                }
-            } catch { /* 读取失败跳过 */ }
-        }
-    }
-
-    scored.sort((a, b) => b.score - a.score || b.issue.mtime - a.issue.mtime);
-    const matches = scored.slice(0, limit);
-
-    if (matches.length === 0) {
-        const hint = typeLabel ? `（范围: ${typeLabel}）` : '';
-        return { success: true, content: `未找到匹配「${queryRaw}」的笔记${hint}。` };
-    }
-
-    const lines = matches.map((m, i) => {
-        const fileName = path.basename(m.issue.uri.fsPath);
-        const fm = m.issue.frontmatter as Record<string, unknown> | null;
-        const tag = getTypeTag(fm);
-        const age = formatAge(m.issue.mtime);
-        let line = `${i + 1}. ${issueLink(m.issue.title, fileName)} \`${tag}\` (${age})`;
-        if (m.snippet) { line += `\n   > ${m.snippet}`; }
-        return line;
-    });
-
-    const hint = typeLabel ? ` (范围: ${typeLabel})` : '';
-    return { success: true, content: `找到 ${matches.length} 条匹配结果${hint}：\n${lines.join('\n')}` };
 }
 
 /** 按名称或 ID 查找角色 */
