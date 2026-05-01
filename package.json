@@ -15,7 +15,8 @@
   ],
   "main": "./dist/extension.js",
   "bin": {
-    "vscode-issue-manager-mcp": "./dist/mcpServer/mcpServer/index.js"
+    "vscode-issue-manager-mcp": "./dist/mcpServer/mcpServer/index.js",
+    "vscode-issue-manager-acp": "./dist/acpAgent/acpAgent/index.js"
   },
   "contributes": {
     "markdown.markdownItPlugins": true,
@@ -2313,7 +2314,8 @@
     "vscode:prepublish": "npm run package",
     "compile": "webpack",
     "compile:mcp": "tsc -p tsconfig.mcp.json",
-    "build:all": "npm run compile && npm run compile:mcp",
+    "compile:acp": "tsc -p tsconfig.acp.json",
+    "build:all": "npm run compile && npm run compile:mcp && npm run compile:acp",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
