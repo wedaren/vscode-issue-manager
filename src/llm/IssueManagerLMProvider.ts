@@ -14,6 +14,8 @@ import { runAddModelWizard } from './modelWizard';
 interface OpenAIMessage {
     role: 'system' | 'user' | 'assistant' | 'tool';
     content: string | null;
+    /** DeepSeek thinking mode 多轮对话需要将上一轮的推理内容回传 */
+    reasoning_content?: string;
     tool_calls?: Array<{
         id: string;
         type: 'function';
@@ -27,6 +29,8 @@ interface OpenAIStreamChunk {
     choices: Array<{
         delta: {
             content?: string | null;
+            /** DeepSeek thinking mode 推理内容（流式分片） */
+            reasoning_content?: string | null;
             tool_calls?: Array<{
                 index: number;
                 id?: string;
@@ -51,6 +55,11 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
     readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
 
     private readonly _configWatcher: vscode.Disposable;
+    /**
+     * 缓存 thinking mode 模型的推理内容：assistantTextContent → reasoningContent
+     * 用于在多轮对话中将 reasoning_content 回传给 DeepSeek API
+     */
+    private readonly _reasoningContentCache = new Map<string, string>();
 
     constructor() {
         // 监听自定义模型配置变更，通知 VS Code 刷新模型列表
@@ -168,8 +177,23 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
         const abortCtrl = new AbortController();
         const cancelDisposable = token.onCancellationRequested(() => abortCtrl.abort());
 
+        // 包装 progress，同时累积文本内容，用于缓存 reasoning_content
+        let accumulatedText = '';
+        const wrappedProgress: vscode.Progress<vscode.LanguageModelResponsePart> = {
+            report: (part: vscode.LanguageModelResponsePart) => {
+                if (part instanceof vscode.LanguageModelTextPart) {
+                    accumulatedText += part.value;
+                }
+                progress.report(part);
+            },
+        };
+
         try {
-            await this._streamRequest(endpoint, headers, body, abortCtrl.signal, progress);
+            const reasoningContent = await this._streamRequest(endpoint, headers, body, abortCtrl.signal, wrappedProgress);
+            // 若本轮有推理内容，缓存起来供下一轮多轮对话使用
+            if (reasoningContent && accumulatedText) {
+                this._reasoningContentCache.set(accumulatedText, reasoningContent);
+            }
         } finally {
             cancelDisposable.dispose();
         }
@@ -253,7 +277,15 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
             } else if (toolCalls.length > 0) {
                 result.push({ role: 'assistant', content: textContent || null, tool_calls: toolCalls });
             } else {
-                result.push({ role, content: textContent });
+                const oaiMsg: OpenAIMessage = { role, content: textContent };
+                // 为历史助手消息注入缓存的 reasoning_content（DeepSeek thinking mode 要求）
+                if (role === 'assistant' && textContent) {
+                    const cached = this._reasoningContentCache.get(textContent);
+                    if (cached !== undefined) {
+                        oaiMsg.reasoning_content = cached;
+                    }
+                }
+                result.push(oaiMsg);
             }
         }
 
@@ -291,6 +323,7 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
      * @param body - JSON 请求体（已序列化前）
      * @param signal - AbortSignal
      * @param progress - 流式报告接口
+     * @returns 本轮累积的 reasoning_content（thinking mode 模型专用），普通模型返回空字符串
      */
     private async _streamRequest(
         endpoint: string,
@@ -298,7 +331,7 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
         body: Record<string, unknown>,
         signal: AbortSignal,
         progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-    ): Promise<void> {
+    ): Promise<string> {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers,
@@ -324,6 +357,8 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
         let buffer = '';
         // 累积工具调用（多 chunk 拼接 arguments）
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+        // 累积 DeepSeek thinking mode 的推理内容（多 chunk 拼接）
+        let reasoningContent = '';
 
         try {
             while (true) {
@@ -349,6 +384,10 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
                     if (!choice) { continue; }
 
                     const delta = choice.delta;
+                    // 推理内容（thinking mode）：累积但不上报给 VS Code（VS Code 不感知此字段）
+                    if (delta.reasoning_content) {
+                        reasoningContent += delta.reasoning_content;
+                    }
                     // 文本内容：直接流式上报
                     if (delta.content) {
                         progress.report(new vscode.LanguageModelTextPart(delta.content));
@@ -385,5 +424,7 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
             } catch { /* arguments 解析失败时保持空对象 */ }
             progress.report(new vscode.LanguageModelToolCallPart(tc.id, tc.name, input));
         }
+
+        return reasoningContent;
     }
 }
