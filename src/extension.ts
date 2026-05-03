@@ -27,6 +27,7 @@ import { extendMarkdownIt } from './markdown/markdownPreviewPlugin';
 import { registerChatStatusBar } from './llmChat/chatStatusBarItem';
 import { registerPendingImageStatusBar } from './llmChat/pendingImageStatusBar';
 import { ModelRegistry } from './llm/ModelRegistry';
+import { IssueManagerLMProvider } from './llm/IssueManagerLMProvider';
 import { activateDiagramPreview } from './diagramPreview';
 export { extendMarkdownIt };
 
@@ -36,7 +37,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	SharedConfig.initialize(context);
 	// 初始化模型注册表（注入 SecretStorage，供自定义模型 API Key 安全存储）
 	ModelRegistry.init(context.secrets);
-	
+
+	// 将自定义模型注册为 VS Code LanguageModelChatProvider（出现在 Copilot 模型选择器中）
+	const lmProvider = new IssueManagerLMProvider();
+	context.subscriptions.push(
+		vscode.lm.registerLanguageModelChatProvider('issue-manager', lmProvider),
+		lmProvider,
+	);
+
 	const initializer = new ExtensionInitializer(context);
 	// 笔记映射功能已移除：不再预加载相关服务或更新上下文
 	// 启动 Chrome 集成本地服务与 URI Handler（不阻塞激活流程）

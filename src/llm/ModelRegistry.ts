@@ -366,6 +366,15 @@ export class ModelRegistry {
         }
     }
 
+    /**
+     * 从 settings 读取自定义模型列表（公开版本）。
+     * 供 IssueManagerLMProvider 等外部模块直接读取，无需触发 Copilot 模型枚举。
+     * @returns 自定义模型描述符列表（含禁用项）
+     */
+    static getCustomModelDescriptors(): ModelDescriptor[] {
+        return ModelRegistry._getCustomModels();
+    }
+
     /** 从 settings 读取自定义模型列表，推断能力标志 */
     private static _getCustomModels(): ModelDescriptor[] {
         const config = vscode.workspace.getConfiguration('issueManager');

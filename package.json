@@ -15,6 +15,13 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "issue-manager",
+        "displayName": "问题管理器自定义模型",
+        "managementCommand": "issueManager.llm.addModelWizard"
+      }
+    ],
     "markdown.markdownItPlugins": true,
     "commands": [
       {
