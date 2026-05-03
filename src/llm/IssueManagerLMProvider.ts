@@ -262,14 +262,25 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
 
     /**
      * 构建 OpenAI /chat/completions 完整端点 URL。
-     * Ollama 本地服务同样使用 /v1/chat/completions 路径。
+     *
+     * 兼容三种常见写法：
+     * - 已是完整路径：https://api.example.com/v1/chat/completions  → 原样返回
+     * - 标准 /v1 结尾：https://api.openai.com/v1                  → 追加 /chat/completions
+     * - 非标路径结尾：https://api.kimi.com/coding                 → 追加 /chat/completions
+     *   （不强制要求 /v1，避免 404）
      */
     private _buildEndpoint(baseUrl: string, provider: string): string {
         const clean = baseUrl.replace(/\/$/, '');
+        // 已包含完整路径，直接使用
+        if (clean.endsWith('/chat/completions')) { return clean; }
+        // Ollama 本地服务：若未含 /v1 则补上
         if (provider === 'ollama') {
-            return `${clean}/v1/chat/completions`;
+            return clean.endsWith('/v1')
+                ? `${clean}/chat/completions`
+                : `${clean}/v1/chat/completions`;
         }
-        return clean.endsWith('/chat/completions') ? clean : `${clean}/chat/completions`;
+        // OpenAI 兼容服务：有 /v1 就直接追加，没有也直接追加（不强制插入 /v1）
+        return `${clean}/chat/completions`;
     }
 
     /**
@@ -297,10 +308,13 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
 
         if (!response.ok) {
             const text = await response.text().catch(() => '');
-            const hint = (response.status === 401 || response.status === 403)
-                ? ' — API Key 无效或未配置，请通过"更新 API Key"命令重新设置'
-                : '';
-            throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}${hint}`);
+            let hint = '';
+            if (response.status === 401 || response.status === 403) {
+                hint = ' — API Key 无效或未配置，请在侧边栏问题管理器 > AI 模型 > 右键"更新 API Key"';
+            } else if (response.status === 404) {
+                hint = `\n调用地址：${endpoint}\n请检查模型端点配置是否正确（右键模型节点 > 删除 > 重新添加）`;
+            }
+            throw new Error(`HTTP ${response.status}: ${text.slice(0, 300)}${hint}`);
         }
 
         if (!response.body) { throw new Error('响应体为空'); }
