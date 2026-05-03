@@ -55,19 +55,56 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
     readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
 
     private readonly _configWatcher: vscode.Disposable;
-    /**
-     * 缓存 thinking mode 模型的推理内容：assistantTextContent → reasoningContent
-     * 用于在多轮对话中将 reasoning_content 回传给 DeepSeek API
-     */
-    private readonly _reasoningContentCache = new Map<string, string>();
 
-    constructor() {
+    /**
+     * L1 内存缓存：assistantTextContent → reasoningContent
+     * 构造时从 workspaceState (L2) 恢复，以应对扩展热重载场景。
+     * 上限 _CACHE_MAX_SIZE 条，按 Map 插入顺序保留最新的条目。
+     */
+    private readonly _reasoningCache = new Map<string, string>();
+    private static readonly _CACHE_WS_KEY = 'llm.reasoningContentCache';
+    private static readonly _CACHE_MAX_SIZE = 20;
+
+    constructor(private readonly _context: vscode.ExtensionContext) {
+        // 从 workspaceState 恢复 L1 缓存（应对扩展热重载、VS Code 重启场景）
+        const stored = this._context.workspaceState.get<Record<string, string>>(
+            IssueManagerLMProvider._CACHE_WS_KEY, {},
+        );
+        for (const [k, v] of Object.entries(stored)) {
+            this._reasoningCache.set(k, v);
+        }
         // 监听自定义模型配置变更，通知 VS Code 刷新模型列表
         this._configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('issueManager.llm.customModels')) {
                 this._onDidChange.fire();
             }
         });
+    }
+
+    /**
+     * 将 reasoning_content 写入 L1 缓存，并异步持久化到 workspaceState (L2)。
+     * 超出上限时丢弃最旧的条目（Map 保持插入顺序）。
+     * 缓存键有两种形式：
+     *   - 文本响应：assistantTextContent（直接使用文本内容）
+     *   - 工具调用响应：`__tc:<firstCallId>`（避免文本为空导致无法缓存）
+     * @param key - 缓存键（文本内容或 `__tc:` 前缀的 callId）
+     * @param reasoning - 对应的推理内容
+     */
+    private _cacheReasoning(key: string, reasoning: string): void {
+        if (!key || !reasoning) { return; }
+        this._reasoningCache.set(key, reasoning);
+        // 超限时删除最旧的条目
+        if (this._reasoningCache.size > IssueManagerLMProvider._CACHE_MAX_SIZE) {
+            const oldest = this._reasoningCache.keys().next().value;
+            if (oldest !== undefined) {
+                this._reasoningCache.delete(oldest);
+            }
+        }
+        // 异步持久化到 workspaceState，不阻塞响应流程
+        void this._context.workspaceState.update(
+            IssueManagerLMProvider._CACHE_WS_KEY,
+            Object.fromEntries(this._reasoningCache),
+        );
     }
 
     /**
@@ -189,10 +226,17 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
         };
 
         try {
-            const reasoningContent = await this._streamRequest(endpoint, headers, body, abortCtrl.signal, wrappedProgress);
-            // 若本轮有推理内容，缓存起来供下一轮多轮对话使用
-            if (reasoningContent && accumulatedText) {
-                this._reasoningContentCache.set(accumulatedText, reasoningContent);
+            const { reasoningContent, toolCallIds } = await this._streamRequest(endpoint, headers, body, abortCtrl.signal, wrappedProgress);
+            if (reasoningContent) {
+                // 文本响应：以文本内容为键缓存（Turn N+1 通过文本匹配查找）
+                if (accumulatedText) {
+                    this._cacheReasoning(accumulatedText, reasoningContent);
+                }
+                // 工具调用响应：以首个 callId 为键缓存
+                // thinking mode 下 tool_call 响应通常无文本，必须走此路径
+                if (toolCallIds.length > 0) {
+                    this._cacheReasoning(`__tc:${toolCallIds[0]}`, reasoningContent);
+                }
             }
         } finally {
             cancelDisposable.dispose();
@@ -275,12 +319,20 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
                     result.push({ role: 'tool', content: tr.content, tool_call_id: tr.callId });
                 }
             } else if (toolCalls.length > 0) {
-                result.push({ role: 'assistant', content: textContent || null, tool_calls: toolCalls });
+                const tcMsg: OpenAIMessage = { role: 'assistant', content: textContent || null, tool_calls: toolCalls };
+                // 工具调用消息也需注入 reasoning_content（DeepSeek thinking mode 要求）
+                // 缓存键为 `__tc:<firstCallId>`，与 provideLanguageModelChatResponse 中写入时的格式一致
+                const cachedByTc = this._reasoningCache.get(`__tc:${toolCalls[0].id}`);
+                if (cachedByTc !== undefined) {
+                    tcMsg.reasoning_content = cachedByTc;
+                }
+                result.push(tcMsg);
             } else {
                 const oaiMsg: OpenAIMessage = { role, content: textContent };
                 // 为历史助手消息注入缓存的 reasoning_content（DeepSeek thinking mode 要求）
+                // L1 缓存已在构造时从 workspaceState 恢复，可同步读取
                 if (role === 'assistant' && textContent) {
-                    const cached = this._reasoningContentCache.get(textContent);
+                    const cached = this._reasoningCache.get(textContent);
                     if (cached !== undefined) {
                         oaiMsg.reasoning_content = cached;
                     }
@@ -323,7 +375,7 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
      * @param body - JSON 请求体（已序列化前）
      * @param signal - AbortSignal
      * @param progress - 流式报告接口
-     * @returns 本轮累积的 reasoning_content（thinking mode 模型专用），普通模型返回空字符串
+     * @returns reasoningContent：本轮思维链内容；toolCallIds：本轮上报的所有工具调用 ID
      */
     private async _streamRequest(
         endpoint: string,
@@ -331,7 +383,7 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
         body: Record<string, unknown>,
         signal: AbortSignal,
         progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-    ): Promise<string> {
+    ): Promise<{ reasoningContent: string; toolCallIds: string[] }> {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers,
@@ -416,15 +468,17 @@ export class IssueManagerLMProvider implements vscode.LanguageModelChatProvider 
             reader.releaseLock();
         }
 
-        // 流结束后，统一上报所有累积的工具调用
+        // 流结束后，统一上报所有累积的工具调用，并收集其 ID
+        const toolCallIds: string[] = [];
         for (const [, tc] of pendingToolCalls) {
             let input: Record<string, unknown> = {};
             try {
                 input = JSON.parse(tc.arguments || '{}') as Record<string, unknown>;
             } catch { /* arguments 解析失败时保持空对象 */ }
             progress.report(new vscode.LanguageModelToolCallPart(tc.id, tc.name, input));
+            toolCallIds.push(tc.id);
         }
 
-        return reasoningContent;
+        return { reasoningContent, toolCallIds };
     }
 }

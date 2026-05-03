@@ -39,7 +39,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	ModelRegistry.init(context.secrets);
 
 	// 将自定义模型注册为 VS Code LanguageModelChatProvider（出现在 Copilot 模型选择器中）
-	const lmProvider = new IssueManagerLMProvider();
+	const lmProvider = new IssueManagerLMProvider(context);
 	context.subscriptions.push(
 		vscode.lm.registerLanguageModelChatProvider('issue-manager', lmProvider),
 		lmProvider,
