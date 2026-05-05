@@ -11,9 +11,6 @@ import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
-import { GitBranchManager } from '../gitBranch/GitBranchManager';
-import { GitBranchTreeProvider } from '../gitBranch/GitBranchTreeProvider';
-import { GitBranchCommandHandler } from '../gitBranch/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueNode } from '../data/issueTreeManager';
@@ -86,9 +83,6 @@ export class ViewRegistry {
         // 注册标记视图
         const { markerManager, markerTreeProvider, markerView } = this.registerMarkerView();
 
-        // 注册 Git 分支视图
-        const { gitBranchManager, gitBranchProvider, gitBranchView } = this.registerGitBranchView();
-
         // 注册编辑器组管理视图
         const { editorGroupProvider, editorGroupView } = this.registerEditorGroupView();
 
@@ -111,41 +105,11 @@ export class ViewRegistry {
             markerManager,
             markerTreeProvider,
             markerView,
-            gitBranchManager,
-            gitBranchProvider,
-            gitBranchView,
             editorGroupProvider,
             editorGroupView,
             llmChatRoleProvider,
             llmChatRoleView,
         };
-    }
-
-    /**
-     * 注册 Git 分支视图
-     */
-    private registerGitBranchView(): {
-        gitBranchManager: GitBranchManager;
-        gitBranchProvider: GitBranchTreeProvider;
-        gitBranchView: vscode.TreeView<vscode.TreeItem>;
-    } {
-        const gitBranchManager = new GitBranchManager(this.context);
-        const gitBranchProvider = new GitBranchTreeProvider(gitBranchManager);
-
-        const gitBranchView = vscode.window.createTreeView('issueManager.views.gitBranches', {
-            treeDataProvider: gitBranchProvider,
-            showCollapseAll: true
-        });
-
-        this.context.subscriptions.push(gitBranchView);
-
-        const commandHandler = new GitBranchCommandHandler(gitBranchManager, gitBranchProvider);
-        commandHandler.registerCommands(this.context);
-
-        // 首次刷新数据
-        void gitBranchManager.refresh();
-
-        return { gitBranchManager, gitBranchProvider, gitBranchView };
     }
 
     /**

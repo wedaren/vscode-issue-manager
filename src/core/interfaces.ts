@@ -61,12 +61,6 @@ export interface IViewRegistryResult {
 
     /** 标记树视图实例 */
     markerView: vscode.TreeView<vscode.TreeItem>;
-    /** Git 分支管理器实例 */
-    gitBranchManager: import('../gitBranch/GitBranchManager').GitBranchManager;
-    /** Git 分支树视图提供者实例 */
-    gitBranchProvider: import('../gitBranch/GitBranchTreeProvider').GitBranchTreeProvider;
-    /** Git 分支树视图实例 */
-    gitBranchView: vscode.TreeView<vscode.TreeItem>;
     /** 编辑器组管理视图提供者实例 */
     editorGroupProvider: import('../views/EditorGroupTreeProvider').EditorGroupTreeProvider;
     /** 编辑器组管理树视图实例 */

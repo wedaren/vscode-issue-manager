@@ -639,41 +639,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "issueManager.gitBranch.refresh",
-        "title": "刷新 Git 分支",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "issueManager.gitBranch.checkout",
-        "title": "检出分支",
-        "icon": "$(git-fetch)"
-      },
-      {
-        "command": "issueManager.gitBranch.createBranchFrom",
-        "title": "基于该分支新建分支",
-        "icon": "$(git-pull-request-create)"
-      },
-      {
-        "command": "issueManager.gitBranch.delete",
-        "title": "删除分支",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "issueManager.gitBranch.associateIssue",
-        "title": "关联问题",
-        "icon": "$(link)"
-      },
-      {
-        "command": "issueManager.gitBranch.openIssue",
-        "title": "打开关联",
-        "icon": "$(go-to-file)"
-      },
-      {
-        "command": "issueManager.gitBranch.disassociate",
-        "title": "解除关联",
-        "icon": "$(close)"
-      },
-      {
         "command": "issueManager.linkCurrentFileToIssue",
         "title": "将当前编辑器文件关联到 IssueMarkdown",
         "category": "Issue Manager",
@@ -1094,11 +1059,6 @@
           "group": "navigation@99"
         },
         {
-          "command": "issueManager.gitBranch.refresh",
-          "when": "view == issueManager.views.gitBranches",
-          "group": "navigation@99"
-        },
-        {
           "command": "issueManager.logicalTree.addChild",
           "when": "view == issueManager.views.logicalTree",
           "group": "navigation@2"
@@ -1379,51 +1339,6 @@
         {
           "command": "issueManager.rss.removeFeed",
           "when": "view == 'issueManager.views.rss' && viewItem == 'rssFeed'",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.gitBranch.disassociate",
-          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*Branch(?:Head|Deletable)?Associated/",
-          "group": "navigation@4"
-        },
-        {
-          "command": "issueManager.gitBranch.associateIssue",
-          "when": "view == 'issueManager.views.gitBranches'",
-          "group": "navigation@3"
-        },
-        {
-          "command": "issueManager.gitBranch.checkout",
-          "when": "view == 'issueManager.views.gitBranches'",
-          "group": "navigation@2"
-        },
-        {
-          "command": "issueManager.gitBranch.createBranchFrom",
-          "when": "view == 'issueManager.views.gitBranches'",
-          "group": "navigation@1"
-        },
-        {
-          "command": "issueManager.gitBranch.checkout",
-          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*BranchDeletable/",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.gitBranch.createBranchFrom",
-          "when": "view == 'issueManager.views.gitBranches'",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.gitBranch.delete",
-          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*BranchDeletable/",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.gitBranch.associateIssue",
-          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*Branch(?:Head|Deletable)$/",
-          "group": "inline"
-        },
-        {
-          "command": "issueManager.gitBranch.openIssue",
-          "when": "view == 'issueManager.views.gitBranches' && viewItem =~ /git.*Branch(?:Head|Deletable)?Associated/",
           "group": "inline"
         },
         {
@@ -2237,11 +2152,6 @@
         {
           "id": "issueManager.views.marker",
           "name": "问题标记",
-          "icon": "resources/icon.svg"
-        },
-        {
-          "id": "issueManager.views.gitBranches",
-          "name": "Git 分支",
           "icon": "resources/icon.svg"
         },
         {
