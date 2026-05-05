@@ -218,61 +218,7 @@ const COMMAND_ITEMS: QuickPickItemWithId[] = [
         },
     },
 
-    // --- 文件 (刷新 / 强制刷新 / 编辑器组管理) ---
-    {
-        label: "编辑器组总览",
-        group: "文件",
-        hint: "group overview",
-        description: "查看所有编辑器组并快速切换聚焦",
-        execute: async () => {
-            await vscode.commands.executeCommand("issueManager.editorGroupOverview");
-        },
-    },
-    {
-        label: "移动编辑器到组",
-        group: "文件",
-        hint: "move group",
-        description: "将当前编辑器移动到指定的编辑器组或新组",
-        execute: async () => {
-            await vscode.commands.executeCommand("issueManager.moveEditorToGroup");
-        },
-    },
-    {
-        label: "关闭编辑器组",
-        group: "文件",
-        hint: "close group",
-        description: "选择并关闭指定的编辑器组（支持多选）",
-        execute: async () => {
-            await vscode.commands.executeCommand("issueManager.closeEditorGroups");
-        },
-    },
-    {
-        label: "关闭其他编辑组",
-        group: "文件",
-        hint: "close other groups",
-        description: "关闭除当前活动组之外的所有编辑组（会提示处理未保存文件）",
-        execute: async () => {
-            await vscode.commands.executeCommand("issueManager.editorGroup.closeOtherGroups");
-        },
-    },
-    {
-        label: "仅保留当前活动编辑器",
-        group: "文件",
-        hint: "keep only active",
-        description: "仅保留当前活动编辑器并关闭其它所有编辑器（会提示处理未保存文件）",
-        execute: async () => {
-            await vscode.commands.executeCommand("issueManager.editorGroup.keepOnlyActiveEditor");
-        },
-    },
-    {
-        label: "LLM 智能整理编辑器组",
-        group: "文件",
-        hint: "llm organize group",
-        description: "使用 Copilot LLM 分析标签页并自动按主题分组",
-        execute: async () => {
-            await vscode.commands.executeCommand("issueManager.organizeEditorGroupsWithLLM");
-        },
-    },
+    // --- 文件 (刷新 / 强制刷新) ---
     {
         label: "强制刷新当前编辑器",
         group: "文件",

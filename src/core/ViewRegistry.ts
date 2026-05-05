@@ -17,7 +17,6 @@ import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
-import { EditorGroupTreeProvider, type EditorGroupViewNode } from '../views/EditorGroupTreeProvider';
 import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRoleProvider';
 import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
 import { McpManager, registerMcpCommands } from '../llmChat/mcp';
@@ -83,9 +82,6 @@ export class ViewRegistry {
         // 注册标记视图
         const { markerManager, markerTreeProvider, markerView } = this.registerMarkerView();
 
-        // 注册编辑器组管理视图
-        const { editorGroupProvider, editorGroupView } = this.registerEditorGroupView();
-
         // 注册 LLM 聊天角色视图
         const { llmChatRoleProvider, llmChatRoleView } = this.registerLLMChatViews();
 
@@ -105,8 +101,6 @@ export class ViewRegistry {
             markerManager,
             markerTreeProvider,
             markerView,
-            editorGroupProvider,
-            editorGroupView,
             llmChatRoleProvider,
             llmChatRoleView,
         };
@@ -198,39 +192,6 @@ export class ViewRegistry {
     private registerRSSVirtualFileProvider(): void {
         const rssVirtualFileProvider = registerRSSVirtualFileProvider(this.context);
         this.context.subscriptions.push(rssVirtualFileProvider);
-    }
-
-    /**
-     * 注册编辑器组管理视图
-     */
-    private registerEditorGroupView(): {
-        editorGroupProvider: EditorGroupTreeProvider;
-        editorGroupView: vscode.TreeView<EditorGroupViewNode>;
-    } {
-        const editorGroupProvider = new EditorGroupTreeProvider(this.context);
-        const editorGroupView = vscode.window.createTreeView<EditorGroupViewNode>('issueManager.views.editorGroups', {
-            treeDataProvider: editorGroupProvider,
-            showCollapseAll: true,
-        });
-
-        this.context.subscriptions.push(editorGroupView);
-        this.context.subscriptions.push(editorGroupProvider);
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('issueManager.editorGroup.refresh', () => editorGroupProvider.refresh()),
-        );
-
-        // 注册编辑器组相关命令（关闭其他组 / 仅保留当前活动编辑器）
-        // 实现在 src/commands/editorGroupCommands.ts
-        try {
-            // 延迟加载以避免循环依赖
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { registerEditorGroupCommands } = require('../commands/editorGroupCommands');
-            registerEditorGroupCommands(this.context);
-        } catch (e) {
-            // ignore
-        }
-
-        return { editorGroupProvider, editorGroupView };
     }
 
     /**

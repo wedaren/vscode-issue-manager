@@ -61,10 +61,6 @@ import { ShowRelationGraphCommand } from '../commands/ShowRelationGraphCommand';
 import { ShowMindMapCommand } from '../commands/ShowMindMapCommand';
 import { registerOpenIssueBesideEditorHandler } from '../commands/openIssueBesideEditor';
 import { openIssueNode } from '../commands/openIssueNode';
-import { registerEditorGroupCommands } from '../commands/editorGroupManager';
-
-
-
 /**
  * 命令注册管理器
  * 
@@ -534,8 +530,6 @@ export class CommandRegistry extends BaseCommandRegistry {
         registerCreateSubIssueFromEditorCommand(this.context);
         registerCreateTranslationFromEditorCommand(this.context);
 
-        // 编辑器组管理命令（关闭/总览/移动/合并/命名/LLM整理）
-        registerEditorGroupCommands(this.context);
     }
 
     /**
