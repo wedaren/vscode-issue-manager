@@ -145,11 +145,6 @@
         "icon": "$(add)"
       },
       {
-        "command": "issueManager.createIssueFromClipboard",
-        "title": "从剪贴板创建问题",
-        "icon": "$(add)"
-      },
-      {
         "command": "issueManager.createIssueFromHtml",
         "title": "从 HTML 创建问题",
         "icon": "$(add)"
@@ -1746,12 +1741,6 @@
         "command": "editor.action.showContextMenu",
         "key": "ctrl+j ctrl+o",
         "mac": "cmd+j cmd+o",
-        "when": "issueManager.isDirConfigured"
-      },
-      {
-        "command": "issueManager.createIssueFromClipboard",
-        "key": "ctrl+j ctrl+b",
-        "mac": "cmd+j cmd+b",
         "when": "issueManager.isDirConfigured"
       },
       {

@@ -209,7 +209,6 @@ performManualSync()
 
 ```typescript
 // 以下操作完成后都会调用 GitSyncService.getInstance().triggerSync()
-createIssueFromClipboard   // 从剪贴板创建笔记
 createIssueFromHtml        // 从 HTML 创建笔记
 smartCreateIssue           // 智能创建笔记
 focusCommands              // 添加/移除/切换关注

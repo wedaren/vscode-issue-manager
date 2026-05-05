@@ -34,7 +34,6 @@ import { registerCreateTranslationFromEditorCommand } from '../commands/createTr
 import { smartCreateIssue } from '../commands/smartCreateIssue';
 import { selectOrCreateIssue } from '../commands/selectOrCreateIssue';
 import { executeCreateIssueFromCompletion } from '../commands/createIssueFromCompletion';
-import { createIssueFromClipboard } from '../commands/createIssueFromClipboard';
 import { createIssueFromHtml, CreateIssueFromHtmlParams } from '../commands/createIssueFromHtml';
 import { moveIssuesTo } from '../commands/moveTo';
 import { attachIssuesTo } from '../commands/attachTo';
@@ -555,17 +554,6 @@ export class CommandRegistry extends BaseCommandRegistry {
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
             },
             '从问题总览创建新问题'
-        );
-
-        // 从剪贴板智能创建问题（快捷键触发）
-        this.registerCommand(
-            'issueManager.createIssueFromClipboard',
-            async () => {
-                await createIssueFromClipboard();
-                // 刷新视图，确保新文件出现在树中（如果配置了自动添加可以进一步集成）
-                vscode.commands.executeCommand('issueManager.refreshAllViews');
-            },
-            '从剪贴板创建问题'
         );
 
         // 解除问题关联命令（委托到独立模块实现）
