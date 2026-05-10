@@ -43,6 +43,36 @@ export interface FrontmatterData {
     terms?: TermDefinition[];
     /** 术语引用的 IssueMarkdown 文件列表(wiki-link 或路径) */
     terms_references?: string[];
+
+    // ── 调查板（Board）字段 ────────────────────────────────────────────
+    /** 调查板类型标记，如 'survey' */
+    board_type?: string;
+    /** 调查板唯一标识 */
+    board_id?: string;
+    /** 调查板显示名称 */
+    board_name?: string;
+    /** 画布 X 偏移 */
+    board_canvasX?: number;
+    /** 画布 Y 偏移 */
+    board_canvasY?: number;
+    /** 画布缩放比例 */
+    board_canvasScale?: number;
+    /** 调查板上的条目列表 */
+    board_items?: Array<{
+        type: 'image' | 'issue';
+        id: string;
+        filePath: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        zIndex: number;
+        /** issue 类型条目专有 */
+        title?: string;
+        /** issue 类型条目专有 */
+        excerpt?: string;
+    }>;
+
     [key: string]: unknown;
 }
 

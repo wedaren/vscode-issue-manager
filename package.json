@@ -82,6 +82,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "issueManager.board.openFromMarkdown",
+        "title": "调查板：以调查板视图打开",
+        "category": "Issue Manager",
+        "icon": "$(layout)"
+      },
+      {
         "command": "issueManager.image.refreshGallery",
         "title": "图片库：刷新",
         "category": "Issue Manager",
@@ -1499,7 +1505,14 @@
           "group": "board@1"
         }
       ],
-      "editor/context": []
+      "editor/context": [],
+      "explorer/context": [
+        {
+          "command": "issueManager.board.openFromMarkdown",
+          "when": "resourceExtname == .md",
+          "group": "2_workspace@5"
+        }
+      ]
     },
     "keybindings": [
       {

@@ -1,12 +1,13 @@
-// 调查板编辑器（多板版本）：每块板子通过 boardId 独立持久化，
-// 支持图片条目和 Issue 文档卡片，数据由 BoardStorageService 统一管理。
-// 每个 boardId 对应一个独立 WebviewPanel，通过静态 Map 管理防止重复打开。
+// 调查板编辑器（Markdown 载体版本）：每块板子对应一个 markdown 文件，
+// 配置存储在 YAML Frontmatter 中，正文供人类/Agent 编辑资料说明。
+// 静态 open(filePath) 保证同一个文件只有一个 WebviewPanel。
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ImageStorageService } from '../services/storage/ImageStorageService';
-import { BoardStorageService, BoardItem, BoardData } from '../services/storage/BoardStorageService';
+import { BoardItem, BoardData } from '../services/storage/BoardStorageService';
+import { readBoardMarkdown, saveBoardMarkdown } from '../services/storage/MarkdownBoardService';
 import { getImageDir, getIssueDir } from '../config';
 import { getAllIssueMarkdowns } from '../data/IssueMarkdowns';
 import { getNonce } from './webviewUtils';
@@ -43,49 +44,81 @@ function readExcerpt(filePath: string): string {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 /**
- * 调查板编辑器 Provider：通过 boardId 支持多个独立调查板面板。
- * 静态 open(boardId) 保证同一块板子只有一个 WebviewPanel。
+ * 调查板编辑器 Provider：通过 markdown 文件路径支持多个独立调查板面板。
+ * 静态 open(filePath) 保证同一个文件只有一个 WebviewPanel。
  */
 export class ImageBoardEditorProvider {
-    /** 静态注册表：boardId → provider 实例 */
+    /** 静态注册表：filePath → provider 实例 */
     private static readonly _panels = new Map<string, ImageBoardEditorProvider>();
 
     private _panel?: vscode.WebviewPanel;
+    private _filePath = '';
     private _data: BoardData = {
         id: '', name: '调查板', createdAt: 0, updatedAt: 0,
         canvasX: 0, canvasY: 0, canvasScale: 1, items: [],
     };
+    private _saveDebounceTimer?: NodeJS.Timeout;
+    private static readonly SAVE_DEBOUNCE_MS = 1500;
 
     private constructor(private readonly _extensionUri: vscode.Uri) {}
 
     /**
-     * 打开或聚焦指定 boardId 的调查板面板。
-     * @param boardId - 调查板唯一 ID
+     * 防抖保存：累积多次 canvas 变更后一次性写入 markdown。
+     * 避免每次拖拽/缩放都触发文件写入和 Git 同步。
+     */
+    private _debouncedSave(): void {
+        if (this._saveDebounceTimer) {
+            clearTimeout(this._saveDebounceTimer);
+        }
+        this._saveDebounceTimer = setTimeout(() => {
+            this._saveDebounceTimer = undefined;
+            if (this._filePath) {
+                void saveBoardMarkdown(this._filePath, this._data);
+            }
+        }, ImageBoardEditorProvider.SAVE_DEBOUNCE_MS);
+    }
+
+    /**
+     * 立即保存（用于面板关闭前 flush 未保存的变更）。
+     */
+    private _flushSave(): void {
+        if (this._saveDebounceTimer) {
+            clearTimeout(this._saveDebounceTimer);
+            this._saveDebounceTimer = undefined;
+        }
+        if (this._filePath) {
+            void saveBoardMarkdown(this._filePath, this._data);
+        }
+    }
+
+    /**
+     * 打开或聚焦指定 markdown 文件的调查板面板。
+     * @param filePath - 调查板 markdown 文件的绝对路径
      * @param extensionUri - 扩展 Uri
      */
-    public static open(boardId: string, extensionUri: vscode.Uri): void {
-        const existing = ImageBoardEditorProvider._panels.get(boardId);
+    public static open(filePath: string, extensionUri: vscode.Uri): void {
+        const existing = ImageBoardEditorProvider._panels.get(filePath);
         if (existing?._panel) {
             existing._panel.reveal();
             return;
         }
         const provider = new ImageBoardEditorProvider(extensionUri);
-        ImageBoardEditorProvider._panels.set(boardId, provider);
-        provider._openPanel(boardId);
+        ImageBoardEditorProvider._panels.set(filePath, provider);
+        void provider._openPanel(filePath);
     }
 
     /**
      * 将图片文件添加到已打开的指定调查板。
-     * @param boardId - 目标调查板 ID
-     * @param filePath - 图片文件绝对路径
+     * @param filePath - 目标调查板 markdown 文件的绝对路径
+     * @param imagePath - 图片文件绝对路径
      */
-    public static addImageToBoard(boardId: string, filePath: string): void {
-        const provider = ImageBoardEditorProvider._panels.get(boardId);
+    public static addImageToBoard(filePath: string, imagePath: string): void {
+        const provider = ImageBoardEditorProvider._panels.get(filePath);
         if (!provider?._panel) { return; }
-        const uri = provider._panel.webview.asWebviewUri(vscode.Uri.file(filePath));
+        const uri = provider._panel.webview.asWebviewUri(vscode.Uri.file(imagePath));
         provider._panel.webview.postMessage({
             type: 'imageAdded',
-            filePath,
+            filePath: imagePath,
             webviewUri: uri.toString(),
             x: 100,
             y: 100,
@@ -94,13 +127,14 @@ export class ImageBoardEditorProvider {
 
     // ── 面板生命周期 ──────────────────────────────────────────────────────────
 
-    private _openPanel(boardId: string): void {
-        const data = BoardStorageService.readBoard(boardId);
+    private async _openPanel(filePath: string): Promise<void> {
+        const data = await readBoardMarkdown(filePath);
         if (!data) {
-            void vscode.window.showWarningMessage(`找不到调查板：${boardId}`);
-            ImageBoardEditorProvider._panels.delete(boardId);
+            void vscode.window.showWarningMessage(`找不到调查板：${path.basename(filePath)}`);
+            ImageBoardEditorProvider._panels.delete(filePath);
             return;
         }
+        this._filePath = filePath;
         this._data = data;
 
         const imageDir = getImageDir();
@@ -127,7 +161,8 @@ export class ImageBoardEditorProvider {
         });
 
         this._panel.onDidDispose(() => {
-            ImageBoardEditorProvider._panels.delete(boardId);
+            this._flushSave();
+            ImageBoardEditorProvider._panels.delete(filePath);
             this._panel = undefined;
         });
     }
@@ -141,7 +176,7 @@ export class ImageBoardEditorProvider {
                 this._data.canvasY = msg.canvasY;
                 this._data.canvasScale = msg.canvasScale;
                 this._data.items = msg.items;
-                BoardStorageService.saveBoard(this._data);
+                this._debouncedSave();
                 break;
             }
             case 'saveImage': {
@@ -315,7 +350,7 @@ export class ImageBoardEditorProvider {
                     this._data.canvasX = 0;
                     this._data.canvasY = 0;
                     this._data.canvasScale = 1;
-                    BoardStorageService.saveBoard(this._data);
+                    this._flushSave();
                     this._panel?.webview.postMessage({ type: 'boardCleared' });
                 }
                 break;

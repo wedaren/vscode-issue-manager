@@ -41,6 +41,7 @@ export const TYPE_FILTER_MAP: Record<string, string> = {
 /** 从 frontmatter 提取文件类型的显示标签 */
 export function getTypeTag(fm: Record<string, unknown> | null): string {
     if (!fm) { return '笔记'; }
+    if (fm.board_type === 'survey') { return '调查板'; }
     if (fm.chat_role) { return '角色'; }
     if (fm.chat_conversation) { return '对话'; }
     if (fm.chat_execution_log) { return '日志'; }

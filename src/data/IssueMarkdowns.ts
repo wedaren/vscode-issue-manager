@@ -110,8 +110,12 @@ export async function getIssueMarkdown(
         updateTypeIndex(key, frontmatter);
         // 仅在标题实际变更时通知订阅者，避免正文编辑触发多余的视图刷新
         // agent 系统文件（高频写入）走独立事件，不触发问题总览刷新
+        // 调查板文件不触发任何视图刷新（BoardList 通过 UnifiedFileWatcher 独立刷新）
+        const fm = frontmatter as Record<string, unknown> | null | undefined;
         if (!cached || cached.title !== title) {
-            if (isAgentFileFrontmatter(frontmatter as Record<string, unknown> | null | undefined)) {
+            if (fm?.board_type === 'survey') {
+                // 调查板文件：不触发任何视图刷新
+            } else if (isAgentFileFrontmatter(fm)) {
                 scheduleOnAgentFileUpdate();
             } else {
                 scheduleOnDidUpdate();

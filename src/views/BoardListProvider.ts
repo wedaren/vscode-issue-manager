@@ -1,9 +1,9 @@
 // 调查板列表视图：在独立 ActivityBar 容器中以 TreeView 展示所有调查板。
 // 支持新建、重命名、删除、从 Issue 右键菜单创建等操作。
-// 数据来源：BoardStorageService.listBoards()。
+// 数据来源：MarkdownBoardService.listBoardMarkdowns()（扫描 board_type: survey 的 markdown 文件）。
 
 import * as vscode from 'vscode';
-import { BoardStorageService, BoardMeta } from '../services/storage/BoardStorageService';
+import { listBoardMarkdowns } from '../services/storage/MarkdownBoardService';
 
 // ── TreeItem ──────────────────────────────────────────────────────────────────
 
@@ -11,7 +11,9 @@ import { BoardStorageService, BoardMeta } from '../services/storage/BoardStorage
  * 调查板列表中的单个条目 TreeItem。
  */
 export class BoardTreeItem extends vscode.TreeItem {
-    constructor(public readonly meta: BoardMeta) {
+    constructor(
+        public readonly meta: { id: string; name: string; createdAt: number; updatedAt: number; filePath: string },
+    ) {
         super(meta.name, vscode.TreeItemCollapsibleState.None);
         this.id = meta.id;
         this.contextValue = 'boardItem';
@@ -24,7 +26,7 @@ export class BoardTreeItem extends vscode.TreeItem {
         this.command = {
             command: 'issueManager.board.open',
             title: '打开调查板',
-            arguments: [meta.id],
+            arguments: [meta.filePath],
         };
     }
 }
@@ -49,7 +51,8 @@ export class BoardListProvider implements vscode.TreeDataProvider<BoardTreeItem>
         return element;
     }
 
-    getChildren(): BoardTreeItem[] {
-        return BoardStorageService.listBoards().map(meta => new BoardTreeItem(meta));
+    async getChildren(): Promise<BoardTreeItem[]> {
+        const metas = await listBoardMarkdowns();
+        return metas.map(meta => new BoardTreeItem(meta));
     }
 }

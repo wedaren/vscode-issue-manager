@@ -56,6 +56,8 @@ export class IssueQuery {
         let candidates: IssueMarkdownCore[];
         if (typeFilter === "note") {
             candidates = all.filter(i => !isSystemTypedFrontmatter(i.frontmatter));
+        } else if (typeFilter === "board") {
+            candidates = all.filter(i => i.frontmatter?.board_type === "survey");
         } else if (TYPE_FILTER_MAP[typeFilter]) {
             const typeKey = TYPE_FILTER_MAP[typeFilter];
             candidates = all.filter(i => i.frontmatter && i.frontmatter[typeKey] === true);
@@ -86,6 +88,8 @@ export class IssueQuery {
         let candidates: IssueMarkdownCore[];
         if (typeFilter === "note") {
             candidates = all.filter(i => !isSystemTypedFrontmatter(i.frontmatter));
+        } else if (typeFilter === "board") {
+            candidates = all.filter(i => i.frontmatter?.board_type === "survey");
         } else if (typeFilter && TYPE_FILTER_MAP[typeFilter]) {
             const typeKey = TYPE_FILTER_MAP[typeFilter];
             candidates = all.filter(i => i.frontmatter && i.frontmatter[typeKey] === true);
@@ -182,7 +186,9 @@ export class IssueQuery {
             typeCounts[label] = count;
             systemTotal += count;
         }
-        typeCounts["note"] = all.length - systemTotal;
+        const boardCount = all.filter(i => i.frontmatter?.board_type === "survey").length;
+        typeCounts["board"] = boardCount;
+        typeCounts["note"] = all.length - systemTotal - boardCount;
 
         const userNotes = all.filter(i => !isSystemTypedFrontmatter(i.frontmatter));
         const recentUserNotes = userNotes.slice(0, recentLimit);

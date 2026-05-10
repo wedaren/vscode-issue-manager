@@ -18,7 +18,8 @@ import { activateA2A } from './a2a';
 import { ImageGalleryViewProvider } from './views/ImageGalleryViewProvider';
 import { ImageBoardEditorProvider } from './views/ImageBoardEditorProvider';
 import { BoardListProvider } from './views/BoardListProvider';
-import { BoardStorageService } from './services/storage/BoardStorageService';
+import { createBoardMarkdown, renameBoardMarkdown, deleteBoardMarkdown, migrateLegacyBoards } from './services/storage/MarkdownBoardService';
+import { UnifiedFileWatcher } from './services/UnifiedFileWatcher';
 import { registerImageCommands } from './commands/image.commands';
 import { ImageStorageService } from './services/storage/ImageStorageService';
 import { ImageDocumentLinkProvider, ImageDocumentHoverProvider, ImageLightboxPanel } from './providers/ImageDocumentLinkProvider';
@@ -198,11 +199,33 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// ── 调查板多板系统 ────────────────────────────────────────────────────────
+	// ── 调查板多板系统（Markdown 载体）─────────────────────────────────────────
 	const boardListProvider = new BoardListProvider();
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider(BoardListProvider.viewId, boardListProvider),
 	);
+
+	// 启动时迁移旧 JSON 调查板
+	void migrateLegacyBoards().then(count => {
+		if (count > 0) {
+			void vscode.window.showInformationMessage(`已自动迁移 ${count} 个旧版调查板到 Markdown 格式。`);
+			boardListProvider.refresh();
+		}
+	});
+
+	// 复用 UnifiedFileWatcher 监听 markdown 变更，刷新调查板列表
+	// UnifiedFileWatcher 已有 200ms L1 防抖和事件合并，避免频繁扫描
+	const fileWatcher = UnifiedFileWatcher.getInstance(context);
+	const boardRefreshDisposable = fileWatcher.onMarkdownChange(async (event) => {
+		try {
+			const content = await vscode.workspace.fs.readFile(event.uri);
+			const text = Buffer.from(content).toString('utf-8');
+			if (text.includes('board_type: survey')) {
+				boardListProvider.refresh();
+			}
+		} catch { /* ignore */ }
+	});
+	context.subscriptions.push(boardRefreshDisposable);
 
 	// 新建调查板（标题栏 + 按钮）
 	context.subscriptions.push(
@@ -213,10 +236,16 @@ export async function activate(context: vscode.ExtensionContext) {
 				validateInput: v => v.trim() ? undefined : '名称不能为空',
 			});
 			if (!name) { return; }
-			const board = BoardStorageService.createBoard(name.trim());
+			const meta = await createBoardMarkdown(name.trim());
 			boardListProvider.refresh();
-			if (board) {
-				ImageBoardEditorProvider.open(board.id, context.extensionUri);
+			if (meta) {
+				// 查找刚创建的文件路径
+				const { listBoardMarkdowns } = await import('./services/storage/MarkdownBoardService');
+				const boards = await listBoardMarkdowns();
+				const found = boards.find(b => b.id === meta.id);
+				if (found) {
+					ImageBoardEditorProvider.open(found.filePath, context.extensionUri);
+				}
 			}
 		}),
 	);
@@ -233,50 +262,65 @@ export async function activate(context: vscode.ExtensionContext) {
 				validateInput: v => v.trim() ? undefined : '名称不能为空',
 			});
 			if (!name) { return; }
-			const board = BoardStorageService.createBoard(name.trim());
+			const meta = await createBoardMarkdown(name.trim());
 			boardListProvider.refresh();
-			if (board) {
-				ImageBoardEditorProvider.open(board.id, context.extensionUri);
+			if (meta) {
+				const { listBoardMarkdowns } = await import('./services/storage/MarkdownBoardService');
+				const boards = await listBoardMarkdowns();
+				const found = boards.find(b => b.id === meta.id);
+				if (found) {
+					ImageBoardEditorProvider.open(found.filePath, context.extensionUri);
+				}
 			}
 		}),
 	);
 
 	// 打开指定调查板
 	context.subscriptions.push(
-		vscode.commands.registerCommand('issueManager.board.open', (boardId: string) => {
-			ImageBoardEditorProvider.open(boardId, context.extensionUri);
+		vscode.commands.registerCommand('issueManager.board.open', (arg: string | { meta?: { filePath: string } }) => {
+			const filePath = typeof arg === 'string' ? arg : arg.meta?.filePath;
+			if (!filePath) { return; }
+			ImageBoardEditorProvider.open(filePath, context.extensionUri);
 		}),
 	);
 
 	// 重命名调查板
 	context.subscriptions.push(
-		vscode.commands.registerCommand('issueManager.board.rename', async (item: { meta?: { id: string; name: string } }) => {
+		vscode.commands.registerCommand('issueManager.board.rename', async (item: { meta?: { id: string; name: string; filePath: string } }) => {
 			const meta = item?.meta;
-			if (!meta) { return; }
+			if (!meta?.filePath) { return; }
 			const name = await vscode.window.showInputBox({
 				prompt: '新名称',
 				value: meta.name,
 				validateInput: v => v.trim() ? undefined : '名称不能为空',
 			});
 			if (!name) { return; }
-			BoardStorageService.renameBoard(meta.id, name.trim());
+			await renameBoardMarkdown(meta.filePath, name.trim());
 			boardListProvider.refresh();
 		}),
 	);
 
 	// 删除调查板
 	context.subscriptions.push(
-		vscode.commands.registerCommand('issueManager.board.delete', async (item: { meta?: { id: string; name: string } }) => {
+		vscode.commands.registerCommand('issueManager.board.delete', async (item: { meta?: { id: string; name: string; filePath: string } }) => {
 			const meta = item?.meta;
-			if (!meta) { return; }
+			if (!meta?.filePath) { return; }
 			const confirm = await vscode.window.showWarningMessage(
 				`删除调查板「${meta.name}」？此操作不可撤销。`,
 				{ modal: true },
 				'删除',
 			);
 			if (confirm !== '删除') { return; }
-			BoardStorageService.deleteBoard(meta.id);
+			await deleteBoardMarkdown(meta.filePath);
 			boardListProvider.refresh();
+		}),
+	);
+
+	// 从 Explorer 右键 markdown 文件以调查板打开
+	context.subscriptions.push(
+		vscode.commands.registerCommand('issueManager.board.openFromMarkdown', (uri: vscode.Uri) => {
+			if (!uri || !uri.fsPath.endsWith('.md')) { return; }
+			ImageBoardEditorProvider.open(uri.fsPath, context.extensionUri);
 		}),
 	);
 

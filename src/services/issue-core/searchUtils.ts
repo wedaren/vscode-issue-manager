@@ -16,6 +16,7 @@ export const TYPE_FILTER_MAP: Record<string, string> = {
 /** 从 frontmatter 提取文件类型的显示标签 */
 export function getTypeTag(fm: Record<string, unknown> | null | undefined): string {
     if (!fm) { return "笔记"; }
+    if (fm.board_type === "survey") { return "调查板"; }
     if (fm.chat_role) { return "角色"; }
     if (fm.chat_conversation) { return "对话"; }
     if (fm.chat_execution_log) { return "日志"; }
@@ -66,5 +67,6 @@ export function formatAge(mtime: number, now: number = Date.now()): string {
 /** 判断 frontmatter 是否带任何系统类型标记(用于"用户笔记"过滤) */
 export function isSystemTypedFrontmatter(fm: Record<string, unknown> | null | undefined): boolean {
     if (!fm) { return false; }
+    if (fm.board_type === "survey") { return true; }
     return Object.values(TYPE_FILTER_MAP).some(key => fm[key] === true);
 }

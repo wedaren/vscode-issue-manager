@@ -41,8 +41,8 @@ const BASE_ISSUE_TOOLS: vscode.LanguageModelChatTool[] = [
                 limit: { type: 'number', description: '最多返回条数，默认 20' },
                 type: {
                     type: 'string',
-                    enum: ['note', 'role', 'conversation', 'log', 'tool_call', 'group', 'memory', 'chrome_chat'],
-                    description: '按文件类型过滤（可选）：note=普通笔记、role=角色、conversation=对话、log=执行日志、tool_call=工具调用、group=群组、memory=记忆、chrome_chat=浏览器对话',
+                    enum: ['note', 'role', 'conversation', 'log', 'tool_call', 'group', 'memory', 'chrome_chat', 'board'],
+                    description: '按文件类型过滤（可选）：note=普通笔记、role=角色、conversation=对话、log=执行日志、tool_call=工具调用、group=群组、memory=记忆、chrome_chat=浏览器对话、board=调查板',
                 },
                 scope: {
                     type: 'string',
@@ -253,6 +253,10 @@ async function executeGetLibraryStats(input: Record<string, unknown>): Promise<T
     for (const [label] of Object.entries(TYPE_FILTER_MAP)) {
         const c = stats.typeCounts[label] ?? 0;
         if (c > 0) { lines.push(`- ${label}: ${c}`); }
+    }
+    const boardCount = stats.typeCounts['board'] ?? 0;
+    if (boardCount > 0) {
+        lines.push(`- 调查板 (board): ${boardCount}`);
     }
     lines.push('', `**最近修改的笔记（前 ${stats.recentUserNotes.length} 条）：**`);
     for (let i = 0; i < stats.recentUserNotes.length; i++) {
