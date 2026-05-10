@@ -79,7 +79,7 @@ async function testHtmlEntityDecoding() {
         console.log(entityOnlyMarkdown.substring(0, 300));
         console.log('...\n');
 
-        console.log('✅ HTML实体解码功能测试完成');
+        console.log('✓ HTML实体解码功能测试完成');
 
     } catch (error) {
         console.error('❌ 测试过程中出现错误:', error);

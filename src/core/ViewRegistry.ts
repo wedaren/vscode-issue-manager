@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { IssueOverviewProvider } from '../views/IssueOverviewProvider';
-import { FocusedIssuesProvider } from '../views/FocusedIssuesProvider';
 import { RecentIssuesProvider } from '../views/RecentIssuesProvider';
 import { IssueDragAndDropController } from '../views/IssueDragAndDropController';
 import { RSSIssuesProvider } from '../views/RSSIssuesProvider';
@@ -11,20 +11,18 @@ import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
-import { GitBranchManager } from '../gitBranch/GitBranchManager';
-import { GitBranchTreeProvider } from '../gitBranch/GitBranchTreeProvider';
-import { GitBranchCommandHandler } from '../gitBranch/GitBranchCommandHandler';
 import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
-import { registerReviewPlanView } from '../views/reviewPlanViewRegistration';
-import { IssueSearchViewProvider } from '../views/IssueSearchViewProvider';
-import type { IssueSearchViewNode } from '../views/IssueSearchViewProvider';
-import { DeepResearchIssuesProvider, type DeepResearchViewNode } from '../views/DeepResearchIssuesProvider';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
 import { ParaViewNode } from '../types';
 import { ViewContextManager } from '../services/ViewContextManager';
-import { EditorGroupTreeProvider, type EditorGroupViewNode } from '../views/EditorGroupTreeProvider';
+import { LLMChatRoleProvider, type LLMChatViewNode } from '../llmChat/LLMChatRoleProvider';
+import { registerLLMChatCommands } from '../llmChat/llmChatCommands';
+import { McpManager, registerMcpCommands } from '../llmChat/mcp';
+import { RoleTimerManager } from '../llmChat/RoleTimerManager';
+import { SkillManager } from '../llmChat/SkillManager';
+import { getIssueDir } from '../config';
 
 /**
  * 视图注册管理器
@@ -74,144 +72,38 @@ export class ViewRegistry {
     public registerAllViews(): IViewRegistryResult {
         // 注册问题总览视图
         const { issueOverviewProvider, overviewView } = this.registerOverviewView();
-        
-        // 注册关注问题视图
-        const { focusedIssuesProvider, focusedView } = this.registerFocusedView();
-        
+
         // 注册最近问题视图
         const { recentIssuesProvider, recentIssuesView } = this.registerRecentView();
 
-        // 注册问题搜索视图
-        const { issueSearchProvider, issueSearchView } = this.registerIssueSearchView();
-
-        // 注册深度调研问题视图
-        const { deepResearchProvider, deepResearchView } = this.registerDeepResearchView();
-        
-        // 注册RSS问题视图
-        // const { rssIssuesProvider, rssIssuesView } = this.registerRSSView();
-        
-        // // 注册问题结构视图
-        // const { issueStructureProvider, structureView } = this.registerStructureView();
-        
-        // 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
-        // const { issueLogicalTreeProvider, logicalTreeView } = this.registerLogicalTreeView();
-        
         // 注册 PARA 视图
         const { paraViewProvider, paraView } = this.registerParaView();
-        
-        // 笔记映射视图已移除（不再注册）
-        
+
         // 注册标记视图
         const { markerManager, markerTreeProvider, markerView } = this.registerMarkerView();
 
-        // 注册 Git 分支视图
-        const { gitBranchManager, gitBranchProvider, gitBranchView } = this.registerGitBranchView();
-        
-        // 注册编辑器组管理视图
-        const { editorGroupProvider, editorGroupView } = this.registerEditorGroupView();
+        // 注册 LLM 聊天角色视图
+        const { llmChatRoleProvider, llmChatRoleView } = this.registerLLMChatViews();
 
         // 注册相关问题视图
         this.registerRelatedView();
-        // 注册回顾视图
-        this.registerReviewView();
-        
+
         // 注册RSS虚拟文件提供器
         this.registerRSSVirtualFileProvider();
 
         return {
             issueOverviewProvider,
-            focusedIssuesProvider,
             recentIssuesProvider,
             overviewView,
-            focusedView,
             recentIssuesView,
-            issueSearchProvider,
-            issueSearchView,
-            deepResearchProvider,
-            deepResearchView,
-            // rssIssuesProvider,
-            // rssIssuesView,
-            // issueStructureProvider,
-            // structureView,
-            // issueLogicalTreeProvider,
-            // logicalTreeView,
             paraViewProvider,
             paraView,
-            // noteMappingProvider, // removed
-            // noteMappingView,     // removed
             markerManager,
             markerTreeProvider,
             markerView,
-            gitBranchManager,
-            gitBranchProvider,
-            gitBranchView,
-            editorGroupProvider,
-            editorGroupView,
+            llmChatRoleProvider,
+            llmChatRoleView,
         };
-    }
-
-    /**
-     * 注册“深度调研问题”视图
-     */
-    private registerDeepResearchView(): {
-        deepResearchProvider: DeepResearchIssuesProvider;
-        deepResearchView: vscode.TreeView<DeepResearchViewNode>;
-    } {
-        const deepResearchProvider = new DeepResearchIssuesProvider(this.context);
-        const deepResearchView = vscode.window.createTreeView<DeepResearchViewNode>('issueManager.views.deepResearch', {
-            treeDataProvider: deepResearchProvider,
-            showCollapseAll: true,
-        });
-
-        this.context.subscriptions.push(deepResearchView);
-        this.viewContextManager.registerTreeView('issueManager.views.deepResearch', deepResearchView);
-
-        return { deepResearchProvider, deepResearchView };
-    }
-
-    /**
-     * 注册问题搜索视图
-     */
-    private registerIssueSearchView(): {
-        issueSearchProvider: IssueSearchViewProvider;
-        issueSearchView: vscode.TreeView<IssueSearchViewNode>;
-    } {
-        const issueSearchProvider = new IssueSearchViewProvider(this.context);
-        const issueSearchView = vscode.window.createTreeView<IssueSearchViewNode>('issueManager.views.search', {
-            treeDataProvider: issueSearchProvider,
-            showCollapseAll: true
-        });
-
-        this.context.subscriptions.push(issueSearchView);
-
-        return { issueSearchProvider, issueSearchView };
-    }
-
-    /**
-     * 注册 Git 分支视图
-     */
-    private registerGitBranchView(): {
-        gitBranchManager: GitBranchManager;
-        gitBranchProvider: GitBranchTreeProvider;
-        gitBranchView: vscode.TreeView<vscode.TreeItem>;
-    } {
-        const gitBranchManager = new GitBranchManager(this.context);
-        const gitBranchProvider = new GitBranchTreeProvider(gitBranchManager);
-
-        const gitBranchView = vscode.window.createTreeView('issueManager.views.gitBranches', {
-            treeDataProvider: gitBranchProvider,
-            showCollapseAll: true
-        });
-
-        this.context.subscriptions.push(gitBranchView);
-
-        const commandHandler = new GitBranchCommandHandler(gitBranchManager, gitBranchProvider);
-        commandHandler.registerCommands(this.context);
-
-        // 首次刷新数据
-        void gitBranchManager.refresh();
-
-        return { gitBranchManager, gitBranchProvider, gitBranchView };
     }
 
     /**
@@ -239,33 +131,6 @@ export class ViewRegistry {
     }
 
     /**
-     * 注册关注问题视图
-     */
-    private registerFocusedView(): {
-        focusedIssuesProvider: FocusedIssuesProvider;
-        focusedView: vscode.TreeView<IssueNode>;
-    } {
-        const focusedIssuesProvider = new FocusedIssuesProvider(this.context);
-        
-        const focusedView = vscode.window.createTreeView('issueManager.views.focused', {
-            treeDataProvider: focusedIssuesProvider,
-            dragAndDropController: new IssueDragAndDropController(focusedIssuesProvider, 'focused'),
-            canSelectMany: true,
-            showCollapseAll: true
-        }) as vscode.TreeView<IssueNode>;
-        
-        this.context.subscriptions.push(focusedView);
-        
-        // 注册到视图上下文管理器
-        this.viewContextManager.registerTreeView('issueManager.views.focused', focusedView);
-        
-        // 激活时加载一次数据
-        focusedIssuesProvider.loadData();
-        
-        return { focusedIssuesProvider, focusedView };
-    }
-
-    /**
      * 注册最近问题视图
      */
     private registerRecentView(): {
@@ -287,66 +152,6 @@ export class ViewRegistry {
         
         return { recentIssuesProvider, recentIssuesView };
     }
-
-    /**
-     * 注册RSS问题视图
-     */
-    private registerRSSView(): {
-        rssIssuesProvider: RSSIssuesProvider;
-        rssIssuesView: vscode.TreeView<vscode.TreeItem>;
-    } {
-        const rssIssuesProvider = new RSSIssuesProvider(this.context);
-        
-        const rssIssuesView = vscode.window.createTreeView('issueManager.views.rss', {
-            treeDataProvider: rssIssuesProvider,
-            dragAndDropController: new RSSIssueDragAndDropController(),
-            canSelectMany: true
-        });
-        
-        this.context.subscriptions.push(rssIssuesView);
-        this.context.subscriptions.push(rssIssuesProvider);
-        
-        return { rssIssuesProvider, rssIssuesView };
-    }
-
-    /**
-     * 注册问题结构视图
-     */
-    private registerStructureView(): {
-        issueStructureProvider: IssueStructureProvider;
-        structureView: vscode.TreeView<vscode.TreeItem>;
-    } {
-        const issueStructureProvider = new IssueStructureProvider(this.context);
-        
-        const structureView = vscode.window.createTreeView('issueManager.views.structure', {
-            treeDataProvider: issueStructureProvider
-        });
-        
-        this.context.subscriptions.push(structureView);
-        this.context.subscriptions.push(issueStructureProvider);
-        
-        return { issueStructureProvider, structureView };
-    }
-
-    // /**
-    //  * 注册问题逻辑树视图（基于 issue_ frontmatter 字段）
-    //  */
-    // private registerLogicalTreeView(): {
-    //     issueLogicalTreeProvider: IssueLogicalTreeProvider;
-    //     logicalTreeView: vscode.TreeView<IssueLogicalTreeNode>;
-    // } {
-    //     const issueLogicalTreeProvider = new IssueLogicalTreeProvider(this.context);
-        
-    //     const logicalTreeView = vscode.window.createTreeView('issueManager.views.logicalTree', {
-    //         treeDataProvider: issueLogicalTreeProvider,
-    //         showCollapseAll: true
-    //     });
-        
-    //     this.context.subscriptions.push(logicalTreeView);
-    //     this.context.subscriptions.push(issueLogicalTreeProvider);
-        
-    //     return { issueLogicalTreeProvider, logicalTreeView };
-    // }
 
     /**
      * 注册 PARA 视图
@@ -382,40 +187,11 @@ export class ViewRegistry {
     }
 
     /**
-     * 注册回顾（Review）视图
-     */
-    private registerReviewView(): void {
-        registerReviewPlanView(this.context, this.viewContextManager);
-    }
-
-    /**
      * 注册RSS虚拟文件提供器
      */
     private registerRSSVirtualFileProvider(): void {
         const rssVirtualFileProvider = registerRSSVirtualFileProvider(this.context);
         this.context.subscriptions.push(rssVirtualFileProvider);
-    }
-
-    /**
-     * 注册编辑器组管理视图
-     */
-    private registerEditorGroupView(): {
-        editorGroupProvider: EditorGroupTreeProvider;
-        editorGroupView: vscode.TreeView<EditorGroupViewNode>;
-    } {
-        const editorGroupProvider = new EditorGroupTreeProvider(this.context);
-        const editorGroupView = vscode.window.createTreeView<EditorGroupViewNode>('issueManager.views.editorGroups', {
-            treeDataProvider: editorGroupProvider,
-            showCollapseAll: true,
-        });
-
-        this.context.subscriptions.push(editorGroupView);
-        this.context.subscriptions.push(editorGroupProvider);
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('issueManager.editorGroup.refresh', () => editorGroupProvider.refresh()),
-        );
-
-        return { editorGroupProvider, editorGroupView };
     }
 
     /**
@@ -441,5 +217,79 @@ export class ViewRegistry {
         commandHandler.registerCommands(this.context);
         
         return { markerManager, markerTreeProvider, markerView };
+    }
+
+    /**
+     * 注册 LLM 聊天角色视图和底部聊天输入面板
+     */
+    private registerLLMChatViews(): {
+        llmChatRoleProvider: LLMChatRoleProvider;
+        llmChatRoleView: vscode.TreeView<LLMChatViewNode>;
+    } {
+        // 侧边栏树视图：聊天角色列表
+        const llmChatRoleProvider = new LLMChatRoleProvider(this.context);
+        const llmChatRoleView = vscode.window.createTreeView<LLMChatViewNode>('issueManager.views.llmChat', {
+            treeDataProvider: llmChatRoleProvider,
+            showCollapseAll: true,
+        });
+
+        this.context.subscriptions.push(llmChatRoleView);
+        this.context.subscriptions.push(llmChatRoleProvider);
+
+        // 绑定 TreeView：选中节点时自动预览对应文件（不抢焦点）
+        llmChatRoleProvider.bindTreeView(llmChatRoleView);
+
+        // 初始化 MCP 管理器（配置存储在 issueDir/.issueManager/）
+        const mcpManager = McpManager.getInstance();
+        const issueDir = getIssueDir();
+        if (issueDir) {
+            void mcpManager.initialize(issueDir);
+            void SkillManager.getInstance().initialize(issueDir);
+        }
+        this.context.subscriptions.push(mcpManager);
+        registerMcpCommands(this.context);
+
+        // Skills 命令
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('issueManager.skills.refresh', async () => {
+                await SkillManager.getInstance().rescan();
+                llmChatRoleProvider.refresh();
+            }),
+            vscode.commands.registerCommand('issueManager.skills.openSkillDir', (node: { skill?: { filePath: string } }) => {
+                if (node?.skill?.filePath) {
+                    const dirUri = vscode.Uri.file(path.dirname(node.skill.filePath));
+                    void vscode.commands.executeCommand('vscode.openFolder', dirUri, true);
+                }
+            }),
+            vscode.commands.registerCommand('issueManager.skills.revealInExplorer', (node: { skill?: { filePath: string } }) => {
+                if (node?.skill?.filePath) {
+                    const dirPath = path.dirname(node.skill.filePath);
+                    void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dirPath));
+                }
+            }),
+            vscode.commands.registerCommand('issueManager.skills.importToProject', async () => {
+                const mgr = SkillManager.getInstance();
+                const result = await mgr.importPersonalToProject();
+                if (result.copied > 0) {
+                    await mgr.rescan();
+                    llmChatRoleProvider.refresh();
+                    vscode.window.showInformationMessage(`已导入 ${result.copied} 个 skill 到笔记库（跳过 ${result.skipped} 个已存在）`);
+                } else if (result.skipped > 0) {
+                    vscode.window.showInformationMessage(`所有 ${result.skipped} 个 skill 已存在于笔记库，无需导入`);
+                } else {
+                    vscode.window.showInformationMessage('未发现个人级 skill（~/.agents/skills/ 为空）');
+                }
+            }),
+        );
+
+        // 注册聊天相关命令
+        registerLLMChatCommands(this.context, llmChatRoleProvider, llmChatRoleView);
+
+        // 启动角色定时器管理器
+        const timerManager = RoleTimerManager.getInstance();
+        void timerManager.start();
+        this.context.subscriptions.push(timerManager);
+
+        return { llmChatRoleProvider, llmChatRoleView };
     }
 }

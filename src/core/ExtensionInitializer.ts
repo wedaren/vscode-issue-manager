@@ -8,7 +8,8 @@ import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { EditorContextService } from '../services/EditorContextService';
 import { EditorEventManager } from '../services/EditorEventManager';
-import { updateIssueVtime } from '../data/IssueMarkdowns';
+import { updateIssueVtime, whenCacheReady } from '../data/IssueMarkdowns';
+import { initRecentIssuesStore } from '../data/recentIssuesManager';
 
 const INITIALIZATION_RETRY_DELAY_MS = 2000;
 
@@ -118,11 +119,14 @@ export class ExtensionInitializer {
             this.logger.info('⌨️ 步骤 4/4: 注册命令处理器...');
             await this.registerCommandsSafely(views);
 
+            // 缓存就绪后预热最近问题增量存储（不阻塞激活流程）
+            void whenCacheReady.then(() => initRecentIssuesStore());
+
             const duration = Date.now() - startTime;
             const finalMemory = this.getMemoryUsage();
             const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed;
             
-            this.logger.info('✅ 扩展初始化完成', {
+            this.logger.info('✓ 扩展初始化完成', {
                 duration: `${duration}ms`,
                 memoryIncrease: `${memoryIncrease.toFixed(2)}MB`,
                 finalMemoryUsage: `${finalMemory.heapUsed.toFixed(2)}MB`
@@ -240,21 +244,20 @@ export class ExtensionInitializer {
     private async registerCommandsSafely(views: IViewRegistryResult): Promise<void> {
         try {
             this.commandRegistry.registerAllCommands(
-                views.focusedIssuesProvider,
                 views.issueOverviewProvider,
                 views.recentIssuesProvider,
                 views.recentIssuesView,
                 views.overviewView,
-                views.focusedView,
-                views.issueSearchProvider,
-                views.issueSearchView,
-                views.deepResearchProvider,
-                views.deepResearchView,
                 // views.issueStructureProvider,
                 // views.issueLogicalTreeProvider,
                 views.paraViewProvider,
                 views.paraView,
                 views.markerManager
+            );
+            // 视图命令已注册完毕 → 将刷新调度器注入 ConfigurationManager，
+            // 后续文件变更事件将直接调用视图方法，无需再走命令总线
+            this.configurationManager.setViewRefreshDispatcher(
+                this.commandRegistry.getViewRefreshDispatcher()
             );
             this.logger.info('  ✓ 命令处理器注册成功');
         } catch (error) {

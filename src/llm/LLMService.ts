@@ -1,6 +1,53 @@
 import * as vscode from "vscode";
 import { getAllIssueMarkdowns } from "../data/IssueMarkdowns";
 import { Logger } from "../core/utils/Logger";
+import { ModelRegistry } from "./ModelRegistry";
+import { FetchAdapter } from "./ModelAdapter";
+import type { ModelDescriptor } from "./ModelRegistry";
+
+// ─── Abort 辅助工具 ──────────────────────────────────────────────
+
+/**
+ * 将 Promise/Thenable 与 AbortSignal 竞速：signal 触发时立即 reject，无需等底层 Promise settle。
+ */
+function raceAbort<T>(promise: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return Promise.resolve(promise);
+    if (signal.aborted) return Promise.reject(signal.reason ?? new Error('请求已取消'));
+    return Promise.race([
+        Promise.resolve(promise),
+        new Promise<never>((_, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason ?? new Error('请求已取消')), { once: true });
+        }),
+    ]);
+}
+
+/**
+ * 包装 AsyncIterable，使 for-await 在 AbortSignal 触发时立即中断，
+ * 不再阻塞等待下一个 chunk。
+ */
+function abortableStream<T>(iterable: AsyncIterable<T>, signal?: AbortSignal): AsyncIterable<T> {
+    if (!signal) return iterable;
+    return {
+        [Symbol.asyncIterator]() {
+            const iter = iterable[Symbol.asyncIterator]();
+            let abortPromise: Promise<never> | undefined;
+            if (!signal.aborted) {
+                abortPromise = new Promise<never>((_, reject) => {
+                    signal.addEventListener('abort', () => reject(signal.reason ?? new Error('请求已取消')), { once: true });
+                });
+            }
+            return {
+                next() {
+                    if (signal.aborted) return Promise.reject(signal.reason ?? new Error('请求已取消'));
+                    return abortPromise ? Promise.race([iter.next(), abortPromise]) : iter.next();
+                },
+                return(value?: any) {
+                    return iter.return?.(value) ?? Promise.resolve({ done: true as const, value: undefined });
+                },
+            };
+        },
+    };
+}
 
 export class LLMService {
     // 使用 VS Code LanguageModelChat.sendRequest 并基于 response.text 聚合结果，兼容 Cancellation
@@ -26,13 +73,10 @@ export class LLMService {
             }
         }
 
-        const resp = await model.sendRequest(messages, undefined, cts.token);
+        const resp = await raceAbort(model.sendRequest(messages, undefined, cts.token), options?.signal);
         let full = "";
         try {
-            for await (const chunk of resp.text) {
-                if (cts.token.isCancellationRequested) {
-                    throw new Error("请求已取消");
-                }
+            for await (const chunk of abortableStream(resp.text, options?.signal)) {
                 full += String(chunk);
             }
         } finally {
@@ -66,16 +110,29 @@ export class LLMService {
             throw new Error("请求已取消");
         }
 
-        const model = await LLMService.selectModel(options);
-        if (!model) {
+        const resolved = await LLMService._getModel(options);
+        if (!resolved) {
             logger.error('[LLM._request] 未找到可用模型');
             vscode.window.showErrorMessage(
-                "未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。"
+                "未找到可用的模型。请检查模型配置或确保已安装并登录 GitHub Copilot 扩展。"
             );
             return null;
         }
 
-        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        if (resolved.kind === 'fetch') {
+            const { adapter, descriptor } = resolved;
+            logger.info(`[LLM._request] 使用自定义模型 ${descriptor.id}`);
+            try {
+                const text = await adapter.stream(messages, () => { /* 非流式不需要 chunk 回调 */ }, options?.signal);
+                logger.info(`[LLM._request] 完成 | 模型=${descriptor.id} | 响应长度=${text.length}字 | 耗时=${Date.now() - startMs}ms`);
+                return { text, modelFamily: descriptor.id };
+            } catch (e) {
+                logger.error(`[LLM._request] 失败 | 模型=${descriptor.id}`, e as Error);
+                throw e;
+            }
+        }
+
+        const { model, family: modelFamily } = resolved;
         logger.info(`[LLM._request] 选中模型=${modelFamily}`);
 
         try {
@@ -117,14 +174,27 @@ export class LLMService {
             throw new Error('请求已取消');
         }
 
-        const model = await LLMService.selectModel(options);
-        if (!model) {
+        const resolved = await LLMService._getModel(options);
+        if (!resolved) {
             logger.error('[LLM.stream] 未找到可用模型');
-            vscode.window.showErrorMessage('未找到可用的 Copilot 模型。请确保已安装并登录 GitHub Copilot 扩展。');
+            vscode.window.showErrorMessage('未找到可用的模型。请检查模型配置或确保已安装并登录 GitHub Copilot 扩展。');
             return null;
         }
 
-        const modelFamily = (model as any)?.family || (model as any)?.model?.family;
+        if (resolved.kind === 'fetch') {
+            const { adapter, descriptor } = resolved;
+            logger.info(`[LLM.stream] 使用自定义模型 ${descriptor.id}`);
+            try {
+                const text = await adapter.stream(messages, onChunk, options?.signal);
+                logger.info(`[LLM.stream] 完成 | 模型=${descriptor.id} | 响应长度=${text.length}字 | 耗时=${Date.now() - startMs}ms`);
+                return { text, modelFamily: descriptor.id };
+            } catch (e) {
+                logger.error(`[LLM.stream] 失败 | 模型=${descriptor.id}`, e as Error);
+                throw e;
+            }
+        }
+
+        const { model, family: modelFamily } = resolved;
         logger.info(`[LLM.stream] 选中模型=${modelFamily}`);
 
         const cts = new vscode.CancellationTokenSource();
@@ -176,13 +246,209 @@ export class LLMService {
         return { text: full, modelFamily };
     }
 
+    /**
+     * 带工具调用的流式请求。
+     * 当 LLM 请求调用工具时，自动执行工具并将结果反馈给 LLM 继续生成。
+     * 循环直到 LLM 不再调用工具为止。
+     */
+    public static async streamWithTools(
+        messages: vscode.LanguageModelChatMessage[],
+        tools: vscode.LanguageModelChatTool[],
+        onChunk: (chunk: string) => void,
+        onToolCall: (toolName: string, input: Record<string, unknown>) => Promise<string>,
+        options?: {
+            signal?: AbortSignal;
+            modelFamily?: string;
+            /** 工具调用状态回调（用于 UI 显示） */
+            onToolStatus?: (status: { toolName: string; phase: 'calling' | 'done'; result?: string }) => void;
+            /** LLM 决定调用工具时触发（每轮一次），传入本轮文本和待调用工具列表 */
+            onToolsDecided?: (info: { roundText: string; toolNames: string[]; round: number }) => void;
+            /** LLM 决定不再调用工具、进入最终回复轮时触发 */
+            onFinalRound?: (info: { round: number; toolCallsTotal: number }) => void;
+            /** 每轮 LLM 请求发出时触发（用于重置 idle timer，覆盖 TTFT 等待期） */
+            onRoundStart?: (info: { round: number }) => void;
+            /** 最大工具调用轮次（防止无限循环） */
+            maxToolRounds?: number;
+        },
+    ): Promise<{ text: string; modelFamily?: string } | null> {
+        const logger = Logger.getInstance();
+        const startMs = Date.now();
+        // maxToolRounds 限制工具调用轮数；达到上限后强制不传 tools，让模型生成最终回复
+        const maxToolRounds = options?.maxToolRounds ?? 30;
+
+        logger.info(`[LLM.streamWithTools] 开始 | 工具数=${tools.length} | 消息数=${messages.length}`);
+
+        if (options?.signal?.aborted) {
+            throw new Error('请求已取消');
+        }
+
+        const resolved = await LLMService._getModel(options);
+        if (!resolved) {
+            vscode.window.showErrorMessage('未找到可用的模型。请检查模型配置或确保已安装并登录 GitHub Copilot 扩展。');
+            return null;
+        }
+
+        // ── 自定义 HTTP 模型路径 ───────────────────────────────────
+        if (resolved.kind === 'fetch') {
+            const { adapter, descriptor } = resolved;
+            logger.info(`[LLM.streamWithTools] 使用自定义模型 ${descriptor.id}`);
+            try {
+                const text = await adapter.streamWithTools(
+                    messages, tools, onChunk, onToolCall, options,
+                );
+                logger.info(`[LLM.streamWithTools] 完成 | 模型=${descriptor.id} | 耗时=${Date.now() - startMs}ms`);
+                return { text, modelFamily: descriptor.id };
+            } catch (e) {
+                logger.error(`[LLM.streamWithTools] 失败 | 模型=${descriptor.id}`, e as Error);
+                throw e;
+            }
+        }
+
+        const { model, family: modelFamily } = resolved;
+        const cts = new vscode.CancellationTokenSource();
+        let onAbort: (() => void) | undefined;
+        if (options?.signal) {
+            onAbort = () => cts.cancel();
+            try { options.signal.addEventListener('abort', onAbort); } catch { onAbort = undefined; }
+        }
+
+        // 使用工作副本的消息列表，在工具调用循环中追加
+        const workingMessages = [...messages];
+        let fullText = '';
+        let round = 0;
+        let toolCallRounds = 0; // 实际发生工具调用的轮次计数
+
+        try {
+            // 最多 maxToolRounds 轮工具调用 + 1 轮最终回复，循环无硬上限
+            while (true) {
+                if (cts.token.isCancellationRequested) { throw new Error('请求已取消'); }
+
+                round++;
+                // 达到工具调用轮上限时，强制不传 tools 并注入降级提示
+                const activeTools = toolCallRounds >= maxToolRounds ? [] : tools;
+                if (activeTools.length === 0 && tools.length > 0) {
+                    logger.warn(`[LLM.streamWithTools] 已达工具调用上限（${maxToolRounds} 轮），第 ${round} 轮强制不传工具`);
+                    // 注入降级提示，让 LLM 用已有数据生成最终回复而非输出工具调用意图
+                    workingMessages.push(vscode.LanguageModelChatMessage.User(
+                        `[系统提示] 你已使用了全部 ${maxToolRounds} 轮工具调用额度，无法再调用任何工具。请用已获取的数据直接生成最终回复。如果任务未完成，告知用户当前进度和剩余步骤，不要在回复中输出工具调用指令或 JSON。`,
+                    ));
+                }
+                logger.info(`[LLM.streamWithTools] 第 ${round} 轮请求`);
+                try { options?.onRoundStart?.({ round }); } catch { /* 回调错误不阻塞 */ }
+
+                const resp = await raceAbort(model.sendRequest(workingMessages, { tools: activeTools }, cts.token), options?.signal);
+
+                // 收集本轮的文本和工具调用
+                let roundText = '';
+                const toolCalls: vscode.LanguageModelToolCallPart[] = [];
+
+                for await (const part of abortableStream(resp.stream, options?.signal)) {
+                    if (part instanceof vscode.LanguageModelTextPart) {
+                        roundText += part.value;
+                        try { onChunk(part.value); } catch { /* 忽略回调错误 */ }
+                    } else if (part instanceof vscode.LanguageModelToolCallPart) {
+                        toolCalls.push(part);
+                    }
+                }
+
+                fullText += roundText;
+
+                // 如果没有工具调用，表示 LLM 进入最终回复轮
+                if (toolCalls.length === 0) {
+                    try {
+                        options?.onFinalRound?.({ round, toolCallsTotal: toolCallRounds });
+                    } catch { /* 回调错误不阻塞 */ }
+                    break;
+                }
+
+                toolCallRounds++;
+
+                // 通知调用方：LLM 决定调用哪些工具
+                try {
+                    options?.onToolsDecided?.({
+                        roundText,
+                        toolNames: toolCalls.map(tc => tc.name),
+                        round,
+                    });
+                } catch { /* 回调错误不阻塞 */ }
+
+                // 处理工具调用
+                // 1. 将本轮助手回复（包含文本和工具调用）添加到消息列表
+                const assistantParts: Array<vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart> = [];
+                if (roundText) {
+                    assistantParts.push(new vscode.LanguageModelTextPart(roundText));
+                }
+                assistantParts.push(...toolCalls);
+                workingMessages.push(vscode.LanguageModelChatMessage.Assistant(assistantParts));
+
+                // 2. 执行每个工具调用并收集结果
+                const toolResultParts: vscode.LanguageModelToolResultPart[] = [];
+                for (const tc of toolCalls) {
+                    logger.info(`[LLM.streamWithTools] 调用工具: ${tc.name}`, tc.input);
+                    options?.onToolStatus?.({ toolName: tc.name, phase: 'calling' });
+
+                    try {
+                        const result = await onToolCall(tc.name, tc.input as Record<string, unknown>);
+                        toolResultParts.push(
+                            new vscode.LanguageModelToolResultPart(tc.callId, [new vscode.LanguageModelTextPart(result)]),
+                        );
+                        options?.onToolStatus?.({ toolName: tc.name, phase: 'done', result });
+                    } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        toolResultParts.push(
+                            new vscode.LanguageModelToolResultPart(tc.callId, [new vscode.LanguageModelTextPart(`工具执行失败: ${errMsg}`)]),
+                        );
+                        options?.onToolStatus?.({ toolName: tc.name, phase: 'done', result: `失败: ${errMsg}` });
+                    }
+                }
+
+                // 3. 将工具结果作为 User 消息追加
+                workingMessages.push(vscode.LanguageModelChatMessage.User(toolResultParts));
+            }
+        } finally {
+            try {
+                if (options?.signal && onAbort) {
+                    options.signal.removeEventListener('abort', onAbort);
+                }
+            } catch { /* ignore */ }
+            cts.dispose();
+        }
+
+        logger.info(`[LLM.streamWithTools] 完成 | 轮次=${round} | 响应长度=${fullText.length}字 | 耗时=${Date.now() - startMs}ms`);
+        return { text: fullText, modelFamily };
+    }
+
+    /**
+     * 解析模型：优先走 ModelRegistry 识别自定义模型，否则回落到 Copilot 原有逻辑。
+     * 返回区分类型的联合体，供 _request / stream / streamWithTools 统一消费。
+     */
+    private static async _getModel(options?: {
+        signal?: AbortSignal;
+        modelFamily?: string;
+    }): Promise<
+        | { kind: 'copilot'; model: vscode.LanguageModelChat; family: string }
+        | { kind: 'fetch'; adapter: FetchAdapter; descriptor: ModelDescriptor }
+        | null
+    > {
+        const descriptor = await ModelRegistry.resolve(options?.modelFamily);
+        if (descriptor && descriptor.provider !== 'copilot') {
+            const apiKey = await ModelRegistry.getApiKey(ModelRegistry.buildApiKeyName(descriptor.provider, descriptor.endpoint));
+            return { kind: 'fetch', adapter: new FetchAdapter(descriptor, apiKey), descriptor };
+        }
+        // Copilot 路径
+        const model = await LLMService.selectModel(options);
+        if (!model) { return null; }
+        const family: string = ((model as unknown) as Record<string, unknown>).family as string ?? 'copilot';
+        return { kind: 'copilot', model, family };
+    }
+
     private static async selectModel(options?: {
         signal?: AbortSignal;
         modelFamily?: string; // 外部传入的指定模型 family，优先级高于 VS Code 配置
     }): Promise<vscode.LanguageModelChat | undefined> {
         const logger = Logger.getInstance();
         const config = vscode.workspace.getConfiguration("issueManager");
-        const configFamily = config.get<string>("llm.modelFamily") || "gpt-4.1";
+        const configFamily = config.get<string>("llm.modelFamily") || "gpt-5-mini";
         // 如果调用方指定了 modelFamily，优先使用；否则回落到 VS Code 配置
         const preferredFamily = options?.modelFamily || configFamily;
 
@@ -199,19 +465,25 @@ export class LLMService {
             logger.warn(`[LLM.selectModel] 未找到指定模型 family="${options.modelFamily}"，尝试回落`);
         }
 
-        // 3. 回落到 gpt-4o
+        // 3. 回落到 gpt-5-mini
+        if (models.length === 0 && preferredFamily !== "gpt-5-mini") {
+            models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-5-mini" });
+            if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-5-mini'); }
+        }
+
+        // 4. 回落到 gpt-4o
         if (models.length === 0 && preferredFamily !== "gpt-4o") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4o" });
             if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4o'); }
         }
 
-        // 4. 回落到 gpt-4.1
+        // 5. 回落到 gpt-4.1
         if (models.length === 0 && preferredFamily !== "gpt-4.1") {
             models = await vscode.lm.selectChatModels({ vendor: "copilot", family: "gpt-4.1" });
             if (models.length > 0) { logger.info('[LLM.selectModel] 回落到 gpt-4.1'); }
         }
 
-        // 5. 回落到任意 Copilot 模型
+        // 6. 回落到任意 Copilot 模型
         if (models.length === 0) {
             models = await vscode.lm.selectChatModels({ vendor: "copilot" });
             if (models.length > 0) { logger.info(`[LLM.selectModel] 回落到任意可用模型: ${(models[0] as any)?.family}`); }
@@ -1077,3 +1349,4 @@ ${JSON.stringify(
         }
     }
 }
+

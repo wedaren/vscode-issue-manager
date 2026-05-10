@@ -4,11 +4,11 @@
 
 ## 🔧 前置条件
 
-1. ✅ Node.js >= 18 已安装
-2. ✅ Chrome 浏览器已安装
-3. ✅ VSCode 已安装并运行
-4. ✅ VSCode Issue Manager 扩展已启用
-5. ✅ VSCode 中已配置问题目录
+1. ✓ Node.js >= 18 已安装
+2. ✓ Chrome 浏览器已安装
+3. ✓ VSCode 已安装并运行
+4. ✓ VSCode Issue Manager 扩展已启用
+5. ✓ VSCode 中已配置问题目录
 
 ## 📦 构建扩展
 
@@ -33,7 +33,7 @@ npm run chrome:build
 5. 选择项目根目录下的 `.output/chrome-mv3` 目录
 6. 扩展应该出现在列表中，图标为紫色问号图标
 
-## ✅ 功能测试清单
+## ✓ 功能测试清单
 
 ### 1. 基础安装测试
 
@@ -112,7 +112,7 @@ npm run chrome:build
 - [ ] 选中内容后，点击"确认"按钮或按 `Enter`
 - [ ] 显示提示："✓ 内容已选取，正在创建笔记..."
 - [ ] 选取模式自动退出（1秒后）
-- [ ] Side Panel 显示："✅ 笔记创建成功！"
+- [ ] Side Panel 显示："✓ 笔记创建成功！"
 
 #### 4.5 在 VSCode 中验证
 

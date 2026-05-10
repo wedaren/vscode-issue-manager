@@ -29,7 +29,7 @@ export interface FilterKeywordResult {
 export function extractFilterKeyword(
     document: vscode.TextDocument,
     position: vscode.Position,
-    triggers: string[] = ['[['],
+    triggers: string[] = ['[', '【'],
     maxLength: number = 200
 ): FilterKeywordResult {
     // 获取当前行文本

@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+        "module": "commonjs",
+        "target": "ES2022",
+        "lib": ["ES2022"],
+        "outDir": "dist/acpAgent",
+        "rootDir": "src",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "declaration": false,
+        "sourceMap": true
+    },
+    "include": [
+        "src/acpAgent/**/*",
+        "src/services/issue-core/**/*"
+    ],
+    "exclude": [
+        "src/services/issue-core/storage/VscodeStorage.ts",
+        "src/services/issue-core/extensionInstance.ts"
+    ]
+}

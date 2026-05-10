@@ -4,9 +4,10 @@ import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 import { parseFileLink, parseFileFragment, type FileLocation } from '../utils/fileLinkFormatter';
 import { getSingleIssueNodeByUri, getFlatTree } from '../data/issueTreeManager';
-import { getIssueMarkdown } from '../data/IssueMarkdowns';
+import { getIssueMarkdown, getIssueMarkdownTitleFromCache, extractFrontmatterAndBody } from '../data/IssueMarkdowns';
 import { collectTermsForDocument } from '../utils/issueMarkdownTerms';
 import { isDocumentInDirectory } from '../utils/completionUtils';
+import { formatRelativeTime } from '../utils/dateUtils';
 
 /**
  * 解析 IssueMarkdown 文档中的链接，特别是包含 ?issueId= 查询参数的链接
@@ -294,6 +295,28 @@ export class IssueDocumentLinkProvider implements vscode.DocumentLinkProvider {
 
 }
 
+/**
+ * 为 hover 清理 Markdown 正文：将超长代码块替换为行数占位符，
+ * 并截断过长的普通行（如 SVG XML / base64），避免撑宽 tooltip。
+ */
+function sanitizeBodyForHover(body: string): string {
+    // 1. 替换超长代码块
+    const step1 = body.replace(/```[\s\S]*?```/g, (match) => {
+        if (match.length <= 400) { return match; }
+        const lines = match.split('\n');
+        const langHint = lines[0].slice(3).trim();
+        const codeLineCount = Math.max(0, lines.length - 2);
+        return `\`\`\`${langHint}\n[共 ${codeLineCount} 行，请打开文档查看完整内容]\n\`\`\``;
+    });
+    // 2. 截断过长的普通行（> 100 字符，如 SVG XML / base64）
+    return step1.split('\n').map(line => {
+        if (line.length > 100 && !line.startsWith('#') && !line.startsWith('|') && !line.startsWith('```')) {
+            return line.slice(0, 100) + '…';
+        }
+        return line;
+    }).join('\n');
+}
+
 export class IssueDocumentHoverProvider implements vscode.HoverProvider {
     async provideHover(
         document: vscode.TextDocument,
@@ -330,15 +353,71 @@ export class IssueDocumentHoverProvider implements vscode.HoverProvider {
             }
 
             const parsed = await parseIssueLinkPath(linkPath, document, issueDir);
-            if (!parsed?.issueId) {
-                return;
+            // parsed 为 null 表示外部链接或无法解析的路径，跳过继续检查下一个匹配
+            if (!parsed) {
+                continue;
             }
 
-            const evenSplitCmdUri = `command:issueManager.quickPeekIssueEvenSplit?${encodeURIComponent(JSON.stringify([parsed.issueId]))}`;
-            const tooltip = new vscode.MarkdownString(
-                `快速查看 Issue (${parsed.issueId})\n\n[$(split-horizontal) 对半打开](${evenSplitCmdUri})`,
-                true
+            // 直接解析绝对路径（不依赖索引状态，确保新建文件也能预览）
+            const absolutePath = resolveIssueLinkAbsolutePath(
+                linkPath.split('?')[0].split('#')[0],
+                document,
+                issueDir
             );
+
+            // 没有绝对路径也没有 issueId，无法展示任何有效内容
+            if (!absolutePath && !parsed.issueId) {
+                continue;
+            }
+
+            // 尝试从索引获取完整 IssueMarkdown 元数据（可能为 null，不影响正文预览）
+            const issue = absolutePath ? await getIssueMarkdown(vscode.Uri.file(absolutePath)) : null;
+
+            const parts: string[] = [];
+            if (issue) {
+                parts.push(`**${issue.title}**`);
+                parts.push('');
+                parts.push(`$(edit) 最后编辑　${formatRelativeTime(new Date(issue.mtime))}`);
+                parts.push(`$(add) 创建时间　${formatRelativeTime(new Date(issue.ctime))}`);
+                if (issue.vtime && issue.vtime !== issue.mtime) {
+                    parts.push(`$(eye) 最后查看　${formatRelativeTime(new Date(issue.vtime))}`);
+                }
+            } else {
+                // 未索引时降级：用文件名或 issueId 作为标题
+                const displayName = parsed.issueId
+                    ? (parsed.tooltip?.replace(/^快速查看 Issue: /, '') ?? parsed.issueId)
+                    : (absolutePath ? path.basename(absolutePath, '.md') : linkPath);
+                parts.push(`**${displayName}**`);
+            }
+
+            // ── 正文预览（直接读取文件，不依赖索引状态）────────────────────
+            if (absolutePath) {
+                try {
+                    const fileDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolutePath));
+                    const rawContent = fileDoc.getText();
+                    const { body } = extractFrontmatterAndBody(rawContent);
+                    const trimmedBody = body.trim();
+                    if (trimmedBody) {
+                        parts.push('');
+                        parts.push('---');
+                        parts.push(sanitizeBodyForHover(trimmedBody));
+                    }
+                } catch {
+                    // 读取文件失败时静默忽略
+                }
+            }
+
+            // ── 底部操作链接 ─────────────────────────────────────────────────
+            parts.push('');
+            if (parsed.issueId) {
+                const evenSplitCmdUri = `command:issueManager.quickPeekIssueEvenSplit?${encodeURIComponent(JSON.stringify([parsed.issueId]))}`;
+                parts.push(`[$(split-horizontal) 对半打开](${evenSplitCmdUri})`);
+            } else if (absolutePath) {
+                const openCmdUri = `command:vscode.open?${encodeURIComponent(JSON.stringify([vscode.Uri.file(absolutePath).toString()]))}`;
+                parts.push(`[$(go-to-file) 打开文档](${openCmdUri})`);
+            }
+
+            const tooltip = new vscode.MarkdownString(parts.join('\n\n'), true);
             tooltip.isTrusted = true;
             return new vscode.Hover(tooltip, range);
         }
@@ -522,10 +601,12 @@ async function parseIssueLinkPath(
             const issueIdMatch = queryString.match(/(?:^|&)issueId=([^&]+)/);
             if (issueIdMatch) {
                 const issueId = decodeURIComponent(issueIdMatch[1]);
-                return makeQuickPeek(issueId);
+                const title = getIssueMarkdownTitleFromCache(vscode.Uri.file(absolutePath));
+                return makeQuickPeek(issueId, title);
             }
         } else if (issueNode) {
-            return makeQuickPeek(issueNode.id);
+            const title = getIssueMarkdownTitleFromCache(issueNode.resourceUri);
+            return makeQuickPeek(issueNode.id, title);
         }
 
         return { uri };
@@ -536,11 +617,12 @@ async function parseIssueLinkPath(
     }
 }
 
-function makeQuickPeek(id: string): ParsedIssueLink {
+function makeQuickPeek(id: string, title?: string): ParsedIssueLink {
     const cmdUri = vscode.Uri.parse(
         `command:issueManager.quickPeekIssue?${encodeURIComponent(JSON.stringify([id]))}`
     );
-    return { uri: cmdUri, tooltip: `快速查看 Issue (${id})`, issueId: id };
+    const displayName = title || id;
+    return { uri: cmdUri, tooltip: `快速查看 Issue: ${displayName}`, issueId: id };
 };
 
 function makeOpenInSplitCommand(fileLocation: FileLocation, source: string): { uri: vscode.Uri; tooltip: string } {

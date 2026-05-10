@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { LLMService } from '../llm/LLMService';
-import { updateIssueMarkdownFrontmatter, onTitleUpdate, isIssueMarkdown, getIssueMarkdown, getIssueMarkdownContent, IssueMarkdown } from '../data/IssueMarkdowns';
+import { updateIssueMarkdownFrontmatter, isIssueMarkdown, getIssueMarkdown, getIssueMarkdownContent, IssueMarkdown } from '../data/IssueMarkdowns';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 import { getIssueNodeById, getIssueNodesBy, isIssueNode } from '../data/issueTreeManager';
@@ -142,9 +142,7 @@ export function registerGenerateTitleCommand(context: vscode.ExtensionContext) {
                 }
                 Logger.getInstance().error('generateTitleFromEditor error:', err);
             }
-        }),
-        onTitleUpdate(() => {
-            vscode.commands.executeCommand('issueManager.refreshAllViews');
         })
+        // 标题变更后的视图刷新已由 ConfigurationManager 统一处理，无需重复订阅
     );
 }

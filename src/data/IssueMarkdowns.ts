@@ -1,307 +1,32 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as jsYaml from "js-yaml";
-import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import * as os from "os";
 import { getIssueDir } from "../config";
 import { Logger } from "../core/utils/Logger";
 import { getRelativeToNoteRoot, resolveIssueUri } from "../utils/pathUtils";
 import * as cacheStorage from "../data/issueMarkdownCacheStorage";
 import { generateFileName, getTimestampFromFileName } from "../utils/fileUtils";
-/**
- * 从 Markdown 文件内容中提取第一个一级标题。
- * @param content 文件内容。
- * @returns 第一个一级标题的文本，如果找不到则返回 undefined。
- */
-function extractTitleFromContent(content: string): string | undefined {
-    const match = content.match(/^#\s+(.*)/m);
-    return match ? match[1].trim() : undefined;
-}
+import {
+    extractTitleFromContent,
+    extractFrontmatterAndBody,
+    extractIssueTitleFromFrontmatter,
+    isAgentFileFrontmatter,
+} from "../services/issue-core/frontmatter";
+import { INDEXED_TYPE_KEYS, type IndexedTypeKey } from "../services/issue-core/types";
 
-/**
- * Frontmatter 数据结构
- */
-export interface TermDefinition {
-    name: string;
-    definition?: string;
-    links?: string[];
-    [key: string]: unknown;
-}
+// 重新导出纯类型与纯函数,保持原有 import 路径(`from "../data/IssueMarkdowns"`)兼容。
+export type { FrontmatterData, TermDefinition } from "../services/issue-core/types";
+export {
+    isValidObject,
+    extractFrontmatterLines,
+    normalizeYamlScalar,
+    buildTermLocationMap,
+    extractIssueTitleFromFrontmatter,
+    extractFrontmatterAndBody,
+} from "../services/issue-core/frontmatter";
 
-export interface FrontmatterData {
-    issue_root_file?: string;
-    issue_parent_file?: string | null;
-    issue_children_files?: string[];
-    /**
-     * 与该 issue 关联的外部文件列表（通常为工作文件/笔记）。
-     * - 存储为 wiki-link 形式，带 `file:` 前缀，例如: `[[file:notes/foo.md]]` 或 `[[file:/abs/path/to/file.md]]`。
-     * - 可选地包含行范围片段，例如 `[[file:notes/foo.md#L10-L12]]` 或 `[[file:/abs/path/to/file.md#L5]]`。
-     * - 优先以相对于 `issueDir` 的相对路径存储（例如 `notes/foo.md`），再使用 `file:` 前缀；如果文件不在 `issueDir` 内，则使用绝对路径并加 `file:` 前缀。
-     * - 用途：记录该问题关联的工作文件、参考笔记或其它资源，供 UI 展示或自动化脚本使用。
-     */
-    issue_linked_files?: string[];
-    /**
-     * 与该 issue 关联的工作区或项目路径（用于快速在新窗口或当前窗口打开工作区）。
-     * - 存储为 `file:` 前缀的路径或 workspace 文件路径，例如 `file:/Users/me/project` 或 `/path/to/project.code-workspace`。
-     * - 建议存储相对路径或绝对路径，UI 会将其渲染为可点击的 `[[workspace:...]]` 链接。
-     */
-    issue_linked_workspace?: string[];
-    issue_title?: string[] | string;
-    issue_description?: string;
-    issue_prompt?: boolean;
-    /**
-     * 问题的简明摘要（3-5句话），概括核心内容和关键要点。
-     * - 可以是单个字符串或多个摘要的数组（例如由不同时间生成的多个版本）。
-     * - 由 LLM 自动生成或手动编辑。
-     */
-    issue_brief_summary?: string | string[];
-    /**
-     * 术语定义列表
-     */
-    terms?: TermDefinition[];
-    /**
-     * 术语引用的 IssueMarkdown 文件列表（wiki-link 或路径）
-     */
-    terms_references?: string[];
-    [key: string]: unknown; // 支持其他字段
-}
-
-export function isValidObject(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * 提取 frontmatter 的行（不包括起始/结束的 '---'），以及 frontmatter 在文件中的起始行号
- */
-export function extractFrontmatterLines(content: string): { lines: string[]; startLineNumber: number } | null {
-    if (!content.startsWith("---")) {
-        return null;
-    }
-
-    const lines = content.split(/\r?\n/);
-    let endIndex = -1;
-    for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === "---") {
-            endIndex = i;
-            break;
-        }
-    }
-
-    if (endIndex === -1) {
-        return null;
-    }
-
-    const frontmatterLines = lines.slice(1, endIndex);
-    const startLineNumber = 2; // frontmatter 第一行在文件的第 2 行
-    return { lines: frontmatterLines, startLineNumber };
-}
-
-export function normalizeYamlScalar(value: string): string {
-    let result = value.trim();
-    if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith("'") && result.endsWith("'"))) {
-        result = result.slice(1, -1).trim();
-    }
-    return result;
-}
-
-function offsetToLineColumn(text: string, offset: number): { line: number; column: number } {
-    const safeOffset = Math.max(0, Math.min(offset, text.length));
-    let line = 1;
-    let lastLineStart = 0;
-    for (let i = 0; i < safeOffset; i++) {
-        if (text.charCodeAt(i) === 10) {
-            line += 1;
-            lastLineStart = i + 1;
-        }
-    }
-    const column = safeOffset - lastLineStart + 1;
-    return { line, column };
-}
-
-function buildTermLocationMapFromYaml(frontmatterText: string, startLineNumber: number): Map<string, { line: number; column: number }> {
-    const map = new Map<string, { line: number; column: number }>();
-    if (!frontmatterText.trim()) {
-        return map;
-    }
-
-    let doc;
-    try {
-        doc = parseDocument(frontmatterText);
-    } catch {
-        return map;
-    }
-
-    if (!doc || !doc.contents || !isMap(doc.contents)) {
-        return map;
-    }
-
-    const termsNode = doc.contents.get("terms", true);
-    if (!termsNode || !isSeq(termsNode)) {
-        return map;
-    }
-
-    for (const item of termsNode.items) {
-        if (!item || !isMap(item)) {
-            continue;
-        }
-
-        const nameNode = item.get("name", true);
-        if (!nameNode || !isScalar(nameNode)) {
-            continue;
-        }
-
-        const nameValue = nameNode.value;
-        if (typeof nameValue !== "string") {
-            continue;
-        }
-
-        const name = nameValue.trim();
-        if (!name || map.has(name)) {
-            continue;
-        }
-
-        const range = nameNode.range;
-        if (!range || range.length < 2) {
-            continue;
-        }
-
-        const pos = offsetToLineColumn(frontmatterText, range[0]);
-        const lineNumber = startLineNumber + (pos.line - 1);
-        map.set(name, { line: lineNumber, column: pos.column });
-    }
-
-    return map;
-}
-
-function buildTermLocationMapByRegex(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
-    const map = new Map<string, { line: number; column: number }>();
-
-    let termsLineIndex = -1;
-    let termsIndent = 0;
-
-    for (let i = 0; i < frontmatterLines.length; i++) {
-        const line = frontmatterLines[i];
-        const match = line.match(/^(\s*)terms\s*:\s*$/);
-        if (match) {
-            termsLineIndex = i;
-            termsIndent = match[1].length;
-            break;
-        }
-    }
-
-    if (termsLineIndex === -1) {
-        return map;
-    }
-
-    for (let i = termsLineIndex + 1; i < frontmatterLines.length; i++) {
-        const line = frontmatterLines[i];
-        if (!line.trim()) {
-            continue;
-        }
-        const indentMatch = line.match(/^(\s*)/);
-        const indent = indentMatch ? indentMatch[1].length : 0;
-
-        if (indent <= termsIndent && /^\s*\w+\s*:/u.test(line)) {
-            break;
-        }
-
-        const nameMatch = line.match(/^\s*-\s*name\s*:\s*(.+?)\s*$/u);
-        let rawName: string | undefined;
-        let valueIndex = -1;
-
-        if (nameMatch) {
-            rawName = nameMatch[1];
-            valueIndex = line.indexOf(rawName);
-        } else {
-            const inlineMatch = line.match(/\bname\s*:\s*([^,#}]+?)(?:\s*(?:,|$|\}))/u);
-            if (inlineMatch) {
-                rawName = inlineMatch[1];
-                valueIndex = line.indexOf(rawName);
-            }
-        }
-
-        if (!rawName) {
-            continue;
-        }
-
-        const name = normalizeYamlScalar(rawName);
-        if (!name || map.has(name)) {
-            continue;
-        }
-
-        const lineNumber = startLineNumber + i;
-        const columnNumber = valueIndex >= 0 ? valueIndex + 1 : 1;
-        map.set(name, { line: lineNumber, column: columnNumber });
-    }
-
-    return map;
-}
-
-/**
- * 从 frontmatter 的行中构建术语位置索引（name -> {line,column}）
- */
-export function buildTermLocationMap(frontmatterLines: string[], startLineNumber: number): Map<string, { line: number; column: number }> {
-    const frontmatterText = frontmatterLines.join("\n");
-    const parsed = buildTermLocationMapFromYaml(frontmatterText, startLineNumber);
-    if (parsed.size > 0) {
-        return parsed;
-    }
-
-    return buildTermLocationMapByRegex(frontmatterLines, startLineNumber);
-}
-
-/**
- * 从 frontmatter 的 `issue_title` 字段安全提取字符串标题（支持 string 或 string[]）。
- */
-export function extractIssueTitleFromFrontmatter(
-    fm: FrontmatterData | null | undefined
-): string | undefined {
-    if (!fm) {
-        return undefined;
-    }
-    const issueTitle = fm.issue_title;
-    if (typeof issueTitle === "string" && issueTitle.trim()) {
-        return issueTitle.trim();
-    }
-    if (Array.isArray(issueTitle) && issueTitle.length > 0 && typeof issueTitle[0] === "string") {
-        return issueTitle[0].trim();
-    }
-    return undefined;
-}
-
-/**
- * 分离 frontmatter 与正文，返回解析后的 frontmatter（如果存在）和剩余 body 文本。
- */
-export function extractFrontmatterAndBody(content: string): {
-    frontmatter: FrontmatterData | null;
-    body: string;
-} {
-    if (!content.startsWith("---")) {
-        return { frontmatter: null, body: content };
-    }
-    const lines = content.split(/\r?\n/);
-    let endIndex = -1;
-    for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === "---") {
-            endIndex = i;
-            break;
-        }
-    }
-    if (endIndex === -1) {
-        return { frontmatter: null, body: content };
-    }
-    const body = lines.slice(endIndex + 1).join("\n");
-    const yamlContent = lines.slice(1, endIndex).join("\n");
-    try {
-        const parsed = jsYaml.load(yamlContent);
-        if (isValidObject(parsed)) {
-            return { frontmatter: parsed as FrontmatterData, body };
-        }
-    } catch (error) {
-        Logger.getInstance().warn("解析 frontmatter 失败", error);
-    }
-    return { frontmatter: null, body };
-}
+import type { FrontmatterData } from "../services/issue-core/types";
 
 export async function getIssueMarkdownContent(uri: vscode.Uri): Promise<string> {
     const contentBytes = await vscode.workspace.fs.readFile(uri);
@@ -382,12 +107,26 @@ export async function getIssueMarkdown(
             vtime: cached?.vtime ?? mtime, // 保留已有的 vtime 或使用 mtime
         };
         _issueMarkdownCache.set(key, entry);
-        scheduleOnDidUpdate();
+        updateTypeIndex(key, frontmatter);
+        // 仅在标题实际变更时通知订阅者，避免正文编辑触发多余的视图刷新
+        // agent 系统文件（高频写入）走独立事件，不触发问题总览刷新
+        // 调查板文件不触发任何视图刷新（BoardList 通过 UnifiedFileWatcher 独立刷新）
+        const fm = frontmatter as Record<string, unknown> | null | undefined;
+        if (!cached || cached.title !== title) {
+            if (fm?.board_type === 'survey') {
+                // 调查板文件：不触发任何视图刷新
+            } else if (isAgentFileFrontmatter(fm)) {
+                scheduleOnAgentFileUpdate();
+            } else {
+                scheduleOnDidUpdate();
+            }
+        }
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
 
         return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime, vtime: entry.vtime };
     } catch (err) {
         _issueMarkdownCache.delete(key);
+        removeFromTypeIndex(key);
         cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
         return null;
     }
@@ -405,13 +144,17 @@ export async function getAllIssueMarkdowns(
     const issueDir = getIssueDir();
     if (!issueDir) return [];
 
-    // 仅获取 issueDir 根目录下的 Markdown 文件（非递归）
+    // ── 热路径：缓存就绪后直接从内存返回，零文件 I/O ──
+    if (_cacheReady) {
+        return getAllFromCache(issueDir, sortBy);
+    }
+
+    // ── 冷路径：首次加载（缓存尚未就绪），走 findFiles 全扫描 ──
     const files = await vscode.workspace.findFiles(
         new vscode.RelativePattern(issueDir, "*.md"),
         "**/.issueManager/**"
     );
 
-    // 并行加载所有文件的元信息，单个文件出错时忽略
     const entries = await Promise.all(
         files.map(async f => {
             try {
@@ -424,10 +167,41 @@ export async function getAllIssueMarkdowns(
 
     const issues = entries.filter((e): e is IssueMarkdown => !!e);
 
+    return sortIssueMarkdowns(issues, sortBy);
+}
+
+/** 从内存缓存构建 IssueMarkdown 列表（零 I/O，O(N) 遍历 + O(N log N) 排序） */
+function getAllFromCache(issueDir: string, sortBy: "mtime" | "ctime" | "vtime"): IssueMarkdown[] {
+    const issueDirNorm = path.normalize(issueDir);
+    const results: IssueMarkdown[] = [];
+
+    for (const [fsPath, cached] of _issueMarkdownCache) {
+        // 仅保留 issueDir 根目录下的 .md 文件（非子目录）
+        if (!fsPath.endsWith('.md')) { continue; }
+        if (path.normalize(path.dirname(fsPath)) !== issueDirNorm) { continue; }
+
+        const uri = vscode.Uri.file(fsPath);
+        const fileName = path.basename(fsPath);
+        const ctime = getTimestampFromFileName(fileName) || cached.mtime;
+        results.push({
+            title: cached.title ?? path.basename(fsPath, '.md'),
+            uri,
+            frontmatter: (cached.frontmatter ?? null) as FrontmatterData | null,
+            mtime: cached.mtime,
+            ctime,
+            vtime: cached.vtime ?? cached.mtime,
+        });
+    }
+
+    return sortIssueMarkdowns(results, sortBy);
+}
+
+/** 按指定字段降序排序 */
+function sortIssueMarkdowns(issues: IssueMarkdown[], sortBy: "mtime" | "ctime" | "vtime"): IssueMarkdown[] {
     return issues.sort((a, b) => {
         if (sortBy === "ctime") return b.ctime - a.ctime;
         if (sortBy === "vtime") return (b.vtime ?? b.mtime) - (a.vtime ?? a.mtime);
-        return b.mtime - a.mtime; 
+        return b.mtime - a.mtime;
     });
 }
 
@@ -435,18 +209,124 @@ export async function getAllIssueMarkdowns(
 // 统一缓存：同时保存 frontmatter 与 title，基于 mtime 验证有效性
 const _issueMarkdownCache = new Map<vscode.Uri["fsPath"], cacheStorage.IssueMarkdownCacheEntry>();
 
+// ─── frontmatter 类型倒排索引 ────────────────────────────────────
+//
+// 按 frontmatter 中的布尔标记字段分类索引，如 "chat_role"、"chat_conversation" 等。
+// 查询 O(K)（K = 该类型文件数），无需 findFiles 全目录扫描。
+//
+// 索引键 = frontmatter 中值为 true 的字段名（如 "chat_role"）
+// 索引值 = 该类型所有文件的 fsPath 集合
+
+/** frontmatter 类型 → 文件路径集合 */
+const _typeIndex = new Map<string, Set<string>>();
+
+/**
+ * 根据缓存检查 URI 对应的文件是否为 agent 系统自动生成文件。
+ * 仅查缓存，不触发磁盘读取。
+ * @param uri - 文件 URI
+ * @returns 如果是 agent 系统文件则返回 true
+ */
+export function isAgentFileUri(uri: vscode.Uri): boolean {
+    const cached = _issueMarkdownCache.get(uri.fsPath);
+    return isAgentFileFrontmatter(cached?.frontmatter as Record<string, unknown> | null | undefined);
+}
+
+/** 更新某个文件在类型索引中的条目（先清旧、再加新） */
+function updateTypeIndex(fsPath: string, frontmatter: Record<string, unknown> | null | undefined): void {
+    // 先从所有类型集合中移除该路径
+    for (const typeKey of INDEXED_TYPE_KEYS) {
+        _typeIndex.get(typeKey)?.delete(fsPath);
+    }
+    // 按当前 frontmatter 重新加入
+    if (frontmatter) {
+        for (const typeKey of INDEXED_TYPE_KEYS) {
+            if (frontmatter[typeKey] === true) {
+                let set = _typeIndex.get(typeKey);
+                if (!set) { set = new Set(); _typeIndex.set(typeKey, set); }
+                set.add(fsPath);
+            }
+        }
+    }
+}
+
+/** 从类型索引中移除某个文件（文件被删除时调用） */
+function removeFromTypeIndex(fsPath: string): void {
+    for (const typeKey of INDEXED_TYPE_KEYS) {
+        _typeIndex.get(typeKey)?.delete(fsPath);
+    }
+}
+
+/**
+ * 按 frontmatter 类型查询文件列表（从索引中获取，O(K) 复杂度）。
+ *
+ * 返回的 IssueMarkdown 直接从内存缓存重建，不触发文件 I/O。
+ * 注意：如果缓存条目的 mtime 已过期，此处不做验证（由后续的
+ * getIssueMarkdown 调用负责刷新），确保查询始终 O(K)。
+ */
+export function getIssueMarkdownsByType(typeKey: IndexedTypeKey): IssueMarkdown[] {
+    const pathSet = _typeIndex.get(typeKey);
+    if (!pathSet || pathSet.size === 0) { return []; }
+
+    const results: IssueMarkdown[] = [];
+    for (const fsPath of pathSet) {
+        const cached = _issueMarkdownCache.get(fsPath);
+        if (!cached) { continue; } // 索引残留（理论上不应出现）
+        const uri = vscode.Uri.file(fsPath);
+        const fileName = path.basename(fsPath);
+        const ctime = getTimestampFromFileName(fileName) || cached.mtime;
+        results.push({
+            title: cached.title ?? path.basename(fsPath, '.md'),
+            uri,
+            frontmatter: (cached.frontmatter ?? null) as FrontmatterData | null,
+            mtime: cached.mtime,
+            ctime,
+            vtime: cached.vtime ?? cached.mtime,
+        });
+    }
+    return results.sort((a, b) => b.mtime - a.mtime);
+}
+
+/**
+ * 从缓存中按 fsPath 移除条目并同步清理类型索引。
+ * 用于文件删除场景。
+ */
+export function removeIssueMarkdownFromCache(uriOrPath: vscode.Uri | string): void {
+    const fsPath = typeof uriOrPath === 'string' ? uriOrPath : uriOrPath.fsPath;
+    _issueMarkdownCache.delete(fsPath);
+    removeFromTypeIndex(fsPath);
+    cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+}
+
 // 尝试加载磁盘缓存（不阻塞启动流程）
+// whenCacheReady 在缓存加载 + 索引重建完成后 resolve，
+// 消费方可 await 此 promise 确保首次查询有数据。
+let _resolveCacheReady!: () => void;
+export const whenCacheReady: Promise<void> = new Promise(r => { _resolveCacheReady = r; });
+let _cacheReady = false;
+
+/** 缓存是否已从磁盘加载完毕（同步查询） */
+export function isCacheReady(): boolean { return _cacheReady; }
+
 void (async () => {
-    const obj = await cacheStorage.load();
-    if (!obj) {
-        return;
+    try {
+        const obj = await cacheStorage.load();
+        if (obj) {
+            for (const [k, v] of Object.entries(obj)) {
+                const entry = v as cacheStorage.IssueMarkdownCacheEntry;
+                _issueMarkdownCache.set(k, entry);
+                updateTypeIndex(k, entry.frontmatter);
+            }
+            Logger.getInstance().debug("[IssueMarkdowns] loaded cache from storage", {
+                size: _issueMarkdownCache.size,
+                typeIndex: Object.fromEntries(
+                    [..._typeIndex.entries()].map(([k, v]) => [k, v.size]),
+                ),
+            });
+        }
+    } finally {
+        _cacheReady = true;
+        _resolveCacheReady();
     }
-    for (const [k, v] of Object.entries(obj)) {
-        _issueMarkdownCache.set(k, v as cacheStorage.IssueMarkdownCacheEntry);
-    }
-    Logger.getInstance().debug("[IssueMarkdowns] loaded cache from storage", {
-        size: _issueMarkdownCache.size,
-    });
 })();
 
 /**
@@ -632,8 +512,15 @@ export async function updateIssueMarkdownBody(
 export async function createIssueMarkdown(opts?: {
     frontmatter?: Partial<FrontmatterData> | null;
     markdownBody?: string;
+    /**
+     * 可选子目录（相对于 issueDir）。传入后文件写入 `<issueDir>/<subdir>/`。
+     * 注意：类型索引（getIssueMarkdownsByType）仅扫描 issueDir 根目录，
+     * 写入子目录的文件不会进入索引 — 这是 A2A task 等场景的隔离需求。
+     * 外部调用者需自行维护子目录下文件的查找方式。
+     */
+    subdir?: string;
 }): Promise<vscode.Uri | null> {
-    const { frontmatter = null, markdownBody = "" } = opts ?? {};
+    const { frontmatter = null, markdownBody = "", subdir } = opts ?? {};
     const issueDir = getIssueDir();
     if (!issueDir) {
         vscode.window.showErrorMessage("问题目录（issueManager.issueDir）未配置，无法创建问题。");
@@ -641,13 +528,22 @@ export async function createIssueMarkdown(opts?: {
     }
 
     try {
+        // 防御性路径校验：subdir 必须是相对路径，不得跳出 issueDir
+        const targetDir = subdir
+            ? path.resolve(issueDir, subdir)
+            : issueDir;
+        if (subdir && !targetDir.startsWith(path.resolve(issueDir) + path.sep)) {
+            Logger.getInstance().error(`createIssueMarkdown: 非法 subdir "${subdir}"`);
+            return null;
+        }
+
         // 确保目录存在
-        await vscode.workspace.fs.createDirectory(vscode.Uri.file(issueDir));
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(targetDir));
 
         // 生成文件名：使用统一的 generateFileName()
         const finalName = generateFileName();
 
-        const targetPath = path.join(issueDir, finalName);
+        const targetPath = path.join(targetDir, finalName);
         const uri = vscode.Uri.file(targetPath);
 
         // 生成内容（包含 frontmatter，如果有的话）
@@ -690,7 +586,11 @@ function fallbackTitle(uri: vscode.Uri): string {
     return getRelativeToNoteRoot(uri.fsPath) ?? uri.fsPath;
 }
 const onTitleUpdateEmitter = new vscode.EventEmitter<void>();
+/** agent 系统文件更新事件：仅 agent 生成文件（chat_conversation、execution_log 等）变更时触发，不影响问题总览。 */
+const onAgentFileUpdateEmitter = new vscode.EventEmitter<void>();
+
 let _debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let _agentDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 const DebounceDelayMillis = 200;
 
 function scheduleOnDidUpdate(): void {
@@ -705,7 +605,27 @@ function scheduleOnDidUpdate(): void {
     }, DebounceDelayMillis);
 }
 
+/** 调度 agent 文件更新通知（独立防抖，不触发问题总览刷新）。 */
+function scheduleOnAgentFileUpdate(): void {
+    if (_agentDebounceTimer) {
+        clearTimeout(_agentDebounceTimer);
+    }
+    _agentDebounceTimer = setTimeout(() => {
+        try {
+            onAgentFileUpdateEmitter.fire();
+        } catch {}
+        _agentDebounceTimer = undefined;
+    }, DebounceDelayMillis);
+}
+
 export const onTitleUpdate = onTitleUpdateEmitter.event;
+/** agent 系统文件更新事件（chat_conversation、execution_log、role_memory 等高频写入文件）。 */
+export const onAgentFileUpdate = onAgentFileUpdateEmitter.event;
+
+// ---- vtime 变更事件（独立于标题变更，仅影响最近问题视图排序） ----
+const onVtimeUpdatedEmitter = new vscode.EventEmitter<void>();
+/** vtime 变更事件：仅当查看时间更新时触发，与标题变更互不干扰 */
+export const onVtimeUpdated = onVtimeUpdatedEmitter.event;
 
 // -------------------- vtime (View Time) management --------------------
 
@@ -747,9 +667,9 @@ export function updateIssueVtime(uriOrPath: vscode.Uri | string): boolean {
     cached.vtime = now;
     _issueMarkdownCache.set(key, cached);
     
-    scheduleOnDidUpdate(); // 触发更新事件
+    onVtimeUpdatedEmitter.fire(); // 仅通知 vtime 订阅者，不触发全量视图刷新
     scheduleCacheSave(); // 安排保存缓存
-    
+
     return true;
 }
 

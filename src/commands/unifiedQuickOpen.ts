@@ -30,6 +30,16 @@ import {
     handleHistoryModeAccept,
     handleHistoryItemButton,
 } from "./unifiedQuickOpen.history";
+import {
+    enterRecentChatMode,
+    handleRecentChatModeValueChange,
+    handleRecentChatModeAccept,
+} from "./unifiedQuickOpen.recentChat";
+import {
+    enterRecentRoleMode,
+    handleRecentRoleModeValueChange,
+    handleRecentRoleModeAccept,
+} from "./unifiedQuickOpen.recentRole";
 import { HistoryService } from "./unifiedQuickOpen.history.service";
 import { getIssueNodesByUri } from "../data/issueTreeManager";
 
@@ -107,6 +117,22 @@ const MODE_CONFIG = {
         icon: 'eye',
         tooltip: '按 vtime 列出问题',
     },
+    recentChat: {
+        mode: 'recentChat' as Mode,
+        prefix: 'chat',
+        label: '最近 LLM 对话',
+        description: '按最近活跃时间列出 LLM 对话（可搜索标题 / 角色名）',
+        icon: 'comment-discussion',
+        tooltip: '搜索最近对话',
+    },
+    recentRole: {
+        mode: 'recentRole' as Mode,
+        prefix: 'role',
+        label: 'LLM 角色列表',
+        description: '列出所有 LLM 角色配置，选中后打开角色配置文件',
+        icon: 'hubot',
+        tooltip: '浏览角色列表',
+    },
 } as const;
 
 /**
@@ -138,6 +164,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
             async (initialArg?: InitialArg) => {
                 const quickPick = vscode.window.createQuickPick<QuickPickItemWithId>();
                 quickPick.matchOnDescription = true;
+                quickPick.matchOnDetail = true;
 
                 // 创建模式切换按钮
                 const modeButtons = Object.fromEntries(
@@ -159,7 +186,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     modeButtons.command,
                     modeButtons.issue,
                     modeButtons.create,
-                    modeButtons.history,  // 新增
+                    modeButtons.history,
+                    modeButtons.recentChat,
+                    modeButtons.recentRole,
                     modeButtons.mtime,
                     modeButtons.ctime,
                     modeButtons.vtime,
@@ -174,7 +203,7 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                 // 不在主文件维护 currentEditorIssueId，交由各模式按需获取
                 // 解析初始请求
                 const initialRequest: InitialArg | undefined = initialArg;
-                const wantsInlineMode = !!(initialRequest && ["issue", "llm", "create", "mtime", "ctime","vtime", "history"].includes(initialRequest.mode || ''));
+                const wantsInlineMode = !!(initialRequest && ["issue", "llm", "create", "mtime", "ctime", "vtime", "history", "recentChat", "recentRole"].includes(initialRequest.mode || ''));
 
                 // 模式切换函数（不再接受 text 参数，调用处需在调用前设置 quickPick.value）
                 const enterMode = async (mode: Mode) => {
@@ -185,7 +214,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         modeButtons.command,
                         modeButtons.issue,
                         modeButtons.create,
-                        modeButtons.history,  // 新增
+                        modeButtons.history,
+                        modeButtons.recentChat,
+                        modeButtons.recentRole,
                         modeButtons.mtime,
                         modeButtons.ctime,
                         modeButtons.vtime,
@@ -205,6 +236,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterCreateMode(quickPick, currentValue);
                     } else if (mode === 'history') {
                         await enterHistoryMode(quickPick, historyService, currentValue);
+                    } else if (mode === 'recentChat') {
+                        await enterRecentChatMode(quickPick, currentValue);
+                    } else if (mode === 'recentRole') {
+                        enterRecentRoleMode(quickPick, currentValue);
                     } else if (TIME_MODES.includes(mode as TimeMode)) {
                         await enterTimeMode(quickPick, currentValue, mode as TimeMode);
                     }
@@ -224,7 +259,9 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         modeButtons.command,
                         modeButtons.issue,
                         modeButtons.create,
-                        modeButtons.history,  // 新增
+                        modeButtons.history,
+                        modeButtons.recentChat,
+                        modeButtons.recentRole,
                         modeButtons.mtime,
                         modeButtons.ctime,
                         modeButtons.vtime,
@@ -268,6 +305,14 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         quickPick.value = text;
                         await enterMode("vtime");
                     },
+                    [MODE_CONFIG.recentChat.prefix]: async (text: string) => {
+                        quickPick.value = text;
+                        await enterMode("recentChat");
+                    },
+                    [MODE_CONFIG.recentRole.prefix]: async (text: string) => {
+                        quickPick.value = text;
+                        await enterMode("recentRole");
+                    },
                     "?": async (text: string) => openHelpInQuickPick(text),
                 };
 
@@ -297,6 +342,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterCreateMode(quickPick, initialText);
                     } else if (currentMode === 'history') {
                         await enterHistoryMode(quickPick, historyService, initialText);
+                    } else if (currentMode === 'recentChat') {
+                        await enterRecentChatMode(quickPick, initialText);
+                    } else if (currentMode === 'recentRole') {
+                        enterRecentRoleMode(quickPick, initialText);
                     } else if (TIME_MODES.includes(currentMode as TimeMode)) {
                         await enterTimeMode(quickPick, initialText, currentMode as TimeMode);
                     }
@@ -329,6 +378,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await enterMode("create");
                     } else if (btn === modeButtons.history) {
                         await enterMode("history");
+                    } else if (btn === modeButtons.recentChat) {
+                        await enterMode("recentChat");
+                    } else if (btn === modeButtons.recentRole) {
+                        await enterMode("recentRole");
                     } else if (btn === helpButton) {
                         openHelpInQuickPick("");
                     } else {
@@ -435,6 +488,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                         await handleCreateModeValueChange(quickPick, v);
                     } else if (currentMode === 'history') {
                         await handleHistoryModeValueChange(quickPick, historyService, v);
+                    } else if (currentMode === 'recentChat') {
+                        handleRecentChatModeValueChange(quickPick, v);
+                    } else if (currentMode === 'recentRole') {
+                        handleRecentRoleModeValueChange(quickPick, v);
                     } else if (TIME_MODES.includes(currentMode as TimeMode)) {
                         await handleTimeModeValueChange(quickPick, v, currentMode as TimeMode);
                     }
@@ -489,6 +546,10 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                             handled = await handleLLMModeAccept(selected, value, historyService);
                         } else if (currentMode === 'create') {
                             handled = await handleCreateModeAccept(selected, value, historyService);
+                        } else if (currentMode === 'recentChat') {
+                            handled = await handleRecentChatModeAccept(selected);
+                        } else if (currentMode === 'recentRole') {
+                            handled = await handleRecentRoleModeAccept(selected);
                         } else if (TIME_MODES.includes(currentMode as TimeMode)) {
                             handled = await handleTimeModeAccept(selected, value, currentMode as TimeMode, historyService);
                         }
@@ -499,10 +560,6 @@ export function registerUnifiedQuickOpenCommand(context: vscode.ExtensionContext
                     }
 
                     // 如果未处理，默认行为
-                    await vscode.commands.executeCommand(
-                        "issueManager.searchIssues",
-                        "overview"
-                    );
                     quickPick.hide();
                 });
 

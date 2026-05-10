@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 /**
  * 获取用户配置的 issue 目录的绝对路径。
@@ -42,6 +43,31 @@ export function getIssueDir(): string | undefined {
 
     return issueDir;
 }
+
+/** macOS iCloud 截图默认目录 */
+const ICLOUD_SCREENSHOTS = path.join(
+    os.homedir(),
+    'Library/Mobile Documents/com~apple~CloudDocs/Screenshots',
+);
+
+/**
+ * 获取图片存储目录的绝对路径。
+ * 优先使用 issueManager.imageDir 配置；未配置时 macOS 默认 iCloud Screenshots，其他平台回退到 {IssueDir}/images。
+ * @returns 图片目录绝对路径，或 undefined
+ */
+export function getImageDir(): string | undefined {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    const configured = config.get<string>('imageDir', '').trim();
+    if (configured && path.isAbsolute(configured)) {
+        return configured;
+    }
+    if (process.platform === 'darwin') {
+        return ICLOUD_SCREENSHOTS;
+    }
+    const issueDir = getIssueDir();
+    return issueDir ? path.join(issueDir, 'images') : undefined;
+}
+
 export type ViewMode = 'list' | 'grouped';
 
 /**
@@ -117,6 +143,16 @@ export function getSyncMaxRetries(): number {
 export function getSyncRetryInitialDelay(): number {
     const config = vscode.workspace.getConfiguration('issueManager');
     return config.get<number>('sync.retryInitialDelay', 5);
+}
+
+/**
+ * 文件变更时是否自动刷新问题总览等视图（不含 agent 系统文件）。
+ * 关闭后需手动点击刷新按钮，适合大量 agent 实验期间使用。
+ * @returns 是否启用自动视图刷新，默认 true
+ */
+export function isAutoViewRefreshEnabled(): boolean {
+    const config = vscode.workspace.getConfiguration('issueManager');
+    return config.get<boolean>('view.autoRefresh', true);
 }
 
 /**
