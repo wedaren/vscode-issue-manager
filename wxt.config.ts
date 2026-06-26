@@ -11,10 +11,13 @@ export default defineConfig({
     const isDev = mode === 'development';
     const iconPrefix = isDev ? 'dev/' : '';
     
+    // 读取主 package.json 版本号，保持与 VSCode 扩展同步
+    const mainVersion = require('./package.json')?.version || '4.0.10';
+    
     return {
       name: 'Issue Manager - 网页笔记选取器',
-      version: '1.0.0',
-      description: '从网页选取内容并在 VSCode Issue Manager 中创建笔记',
+      version: mainVersion,
+      description: '从网页选取内容并在 VSCode Issue Manager 中创建笔记。支持：网页内容选取、自动登录工具、账号密码管理。',
       permissions: ['activeTab', 'tabs', 'tabGroups', 'sidePanel', 'scripting', 'storage'],
       host_permissions: ['http://*/*', 'https://*/*'],
       action: {

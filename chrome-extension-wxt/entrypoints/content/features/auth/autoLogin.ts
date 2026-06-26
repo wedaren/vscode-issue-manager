@@ -57,14 +57,61 @@ async function waitForPageLoad(): Promise<void> {
 }
 
 /**
- * 查找输入框
+ * 查找输入框 - 增强版，支持回退策略
  */
 async function findInput(selectors: string[], fieldName: string): Promise<HTMLInputElement> {
+  // 1. 先尝试精确选择器
   for (const selector of selectors) {
-    const input = document.querySelector<HTMLInputElement>(selector);
-    if (input) {
-      console.log(`[Auto Login] 找到${fieldName}输入框:`, selector);
-      return input;
+    try {
+      const input = document.querySelector<HTMLInputElement>(selector);
+      if (input && input.offsetParent !== null) {
+        console.log(`[Auto Login] 找到${fieldName}输入框:`, selector);
+        return input;
+      }
+    } catch (e) {
+      // 忽略无效选择器
+      continue;
+    }
+  }
+  
+  // 2. 回退：查找所有可见的文本输入框
+  console.log(`[Auto Login] 精确选择器未找到${fieldName}，尝试回退策略...`);
+  
+  const allInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="text"], input[type="email"], input:not([type])'));
+  const visibleInputs = allInputs.filter(input => 
+    input.offsetParent !== null && 
+    !input.disabled && 
+    !input.readOnly &&
+    input.offsetWidth > 0 &&
+    input.offsetHeight > 0
+  );
+  
+  console.log(`[Auto Login] 页面上可见文本输入框数量:`, visibleInputs.length);
+  
+  if (fieldName === '用户名') {
+    // 用户名通常是第一个可见文本输入框（排除搜索框等）
+    // 优先选择不在 header/nav 中的输入框
+    const loginInputs = visibleInputs.filter(input => {
+      const parent = input.closest('header, nav, .search, [role="search"]');
+      return !parent;
+    });
+    if (loginInputs.length > 0) {
+      console.log(`[Auto Login] 回退找到用户名输入框`);
+      return loginInputs[0];
+    }
+    if (visibleInputs.length > 0) {
+      console.log(`[Auto Login] 回退找到用户名输入框(通用)`);
+      return visibleInputs[0];
+    }
+  }
+  
+  if (fieldName === '密码') {
+    // 密码框通常是 type="password"
+    const passwordInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]'));
+    const visiblePassword = passwordInputs.find(input => input.offsetParent !== null);
+    if (visiblePassword) {
+      console.log(`[Auto Login] 回退找到密码输入框`);
+      return visiblePassword;
     }
   }
   

@@ -8,10 +8,14 @@ export const SELECTORS = {
     'input[yotta-test="login-username-input"]',
     'input[type="text"][placeholder*="用户名"]',
     'input[type="text"][placeholder*="账号"]',
+    'input[type="text"][placeholder*="账户"]',
     'input[autocomplete="username"]',
     'input[id*="username"]',
     'input[id*="user"]',
-    'input[class*="username"]'
+    'input[id*="account"]',
+    'input[class*="username"]',
+    'input[class*="account"]',
+    'input[type="email"]',
   ],
   
   password: [
@@ -21,13 +25,13 @@ export const SELECTORS = {
     'input[autocomplete="current-password"]',
     'input[id*="password"]',
     'input[id*="passwd"]',
-    'input[class*="password"]'
+    'input[class*="password"]',
   ],
   
   loginButton: [
     'button[type="submit"]',
     'button[yotta-test="login-login-button"]',
     'button.yotta-button-primary',
-    'input[type="submit"]'
+    'input[type="submit"]',
   ]
 };

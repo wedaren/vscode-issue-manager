@@ -1,7 +1,7 @@
 <template>
   <div class="container fullscreen-focused">
-    <!-- 自动登录工具视图 -->
-    <AutoLoginPanel v-if="showAutoLogin" @back="showAutoLogin = false" />
+    <!-- 自动登录工具视图 - 默认显示 -->
+    <AutoLoginPanel v-if="showAutoLogin || defaultToAutoLogin" @back="showAutoLogin = false; defaultToAutoLogin = false" />
 
     <!-- LLM 对话窗口 -->
     <LLMPanel v-else-if="showLLM" @back="showLLM = false" />
@@ -234,6 +234,7 @@ const loading = ref(true);
 const wsStatus = ref<'connected' | 'connecting' | 'disconnected'>('connecting');
 const message = ref<Message>({ show: false, text: '', type: 'info' });
 const showAutoLogin = ref(false);
+const defaultToAutoLogin = ref(true); // 首次打开默认显示自动登录工具
 const showLLM = ref(false);
 const showSelectionAssist = ref(false);
 const showWebAgent = ref(false);
