@@ -42,6 +42,10 @@
           </svg>
           <span>添加账号</span>
         </button>
+        <button class="bulk-mode-btn" :class="{ active: bulkMode }" @click="toggleBulkMode" :title="bulkMode ? '退出批量管理' : '批量管理'">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 8h.01M9 8h5M6 12h.01M9 12h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span>{{ bulkMode ? '退出批量' : '批量管理' }}</span>
+        </button>
         <input ref="fileInput" type="file" accept=".json" @change="importAccounts" style="display: none;" />
       </div>
     </div>
@@ -71,6 +75,25 @@
           <button v-if="selectedTagFilter" class="tag-filter-btn clear-btn" @click="selectedTagFilter = ''">✕ 清除</button>
         </div>
       </div>
+    </div>
+
+    <!-- 批量操作栏 -->
+    <div v-if="bulkMode && accounts.length > 0" class="bulk-actions-bar">
+      <label class="select-all-control">
+        <input
+          type="checkbox"
+          :checked="allDisplayedSelected"
+          :disabled="displayedAccounts.length === 0"
+          @change="toggleDisplayedSelection"
+        />
+        <span>全选当前结果</span>
+      </label>
+      <span v-if="selectedAccountCount > 0" class="selected-count">已选 {{ selectedAccountCount }} 个</span>
+      <button v-if="selectedAccountCount > 0" class="bulk-delete-btn" @click="deleteSelectedAccounts">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4h10M6 4V2.5h4V4M5.5 4v8.5h5V4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        删除已选
+      </button>
+      <button class="bulk-cancel-btn" @click="exitBulkMode">取消</button>
     </div>
 
     <!-- 账号列表 -->
@@ -114,9 +137,18 @@
       </div>
 
       <!-- 账号卡片 -->
-      <div v-for="account in displayedAccounts" :key="account.id" class="account-card">
+      <div v-for="account in displayedAccounts" :key="account.id" class="account-card" :class="{ selected: bulkMode && selectedAccountIds.has(account.id) }">
         <div class="account-card-main">
           <div class="account-info">
+            <input
+              v-if="bulkMode"
+              class="account-checkbox"
+              type="checkbox"
+              :checked="selectedAccountIds.has(account.id)"
+              :aria-label="`选择账号 ${account.name}`"
+              @click.stop
+              @change="toggleAccountSelection(account.id)"
+            />
             <div class="account-avatar">{{ account.name.charAt(0).toUpperCase() }}</div>
             <div class="account-details">
               <div class="account-name">{{ account.name }}</div>
@@ -323,6 +355,8 @@ const editingAccount = ref<Account | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const searchQuery = ref('');
 const selectedTagFilter = ref('');
+const bulkMode = ref(false);
+const selectedAccountIds = ref<Set<string>>(new Set());
 const tagColors = ref<Record<string, string>>({});
 const newAccount = ref({ name: '', username: '', password: '', urls: '', tags: '' });
 const message = ref<Message>({ show: false, text: '', type: 'info' });
@@ -585,6 +619,37 @@ const displayedAccounts = computed(() => {
   return result;
 });
 
+const selectedAccountCount = computed(() => selectedAccountIds.value.size);
+const allDisplayedSelected = computed(() => displayedAccounts.value.length > 0
+  && displayedAccounts.value.every(account => selectedAccountIds.value.has(account.id)));
+
+function toggleBulkMode() {
+  if (bulkMode.value) exitBulkMode();
+  else bulkMode.value = true;
+}
+
+function exitBulkMode() {
+  bulkMode.value = false;
+  selectedAccountIds.value = new Set();
+}
+
+function toggleAccountSelection(id: string) {
+  const nextSelection = new Set(selectedAccountIds.value);
+  if (nextSelection.has(id)) nextSelection.delete(id);
+  else nextSelection.add(id);
+  selectedAccountIds.value = nextSelection;
+}
+
+function toggleDisplayedSelection() {
+  const nextSelection = new Set(selectedAccountIds.value);
+  if (allDisplayedSelected.value) {
+    displayedAccounts.value.forEach(account => nextSelection.delete(account.id));
+  } else {
+    displayedAccounts.value.forEach(account => nextSelection.add(account.id));
+  }
+  selectedAccountIds.value = nextSelection;
+}
+
 // ========== UI Functions ==========
 
 function showMessage(text: string, type: 'success' | 'error' | 'info' = 'info') {
@@ -789,9 +854,25 @@ async function deleteAccount(id: string) {
   try {
     if (!Array.isArray(accounts.value)) { accounts.value = []; showMessage('数据异常', 'error'); return; }
     accounts.value = accounts.value.filter(acc => acc.id !== id);
+    const nextSelection = new Set(selectedAccountIds.value);
+    nextSelection.delete(id);
+    selectedAccountIds.value = nextSelection;
     await saveAccounts();
     showMessage('账号已删除', 'success');
   } catch (error: unknown) { showMessage('删除失败', 'error'); }
+}
+
+async function deleteSelectedAccounts() {
+  const idsToDelete = new Set(selectedAccountIds.value);
+  if (idsToDelete.size === 0) return;
+  if (!confirm(`确定要删除选中的 ${idsToDelete.size} 个账号吗？此操作不可撤销。`)) return;
+  try {
+    if (!Array.isArray(accounts.value)) { accounts.value = []; showMessage('数据异常', 'error'); return; }
+    accounts.value = accounts.value.filter(account => !idsToDelete.has(account.id));
+    exitBulkMode();
+    await saveAccounts();
+    showMessage(`已删除 ${idsToDelete.size} 个账号`, 'success');
+  } catch (error: unknown) { showMessage('批量删除失败', 'error'); }
 }
 
 // ========== Import/Export ==========
@@ -989,6 +1070,23 @@ onUnmounted(() => {
 .add-btn:hover { background: rgba(56, 139, 253, 0.25); border-color: rgba(56, 139, 253, 0.55); color: #93c5fd; }
 .add-btn:active { transform: scale(0.95); }
 
+.bulk-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 11px;
+}
+.bulk-mode-btn svg { width: 14px; height: 14px; }
+.bulk-mode-btn:hover,
+.bulk-mode-btn.active { background: rgba(56, 139, 253, 0.12); border-color: rgba(56, 139, 253, 0.4); color: #60a5fa; }
+
 /* ========== 搜索栏 ========== */
 .search-bar {
   padding: 8px 10px;
@@ -1081,6 +1179,61 @@ onUnmounted(() => {
 .tag-filter-btn.clear-btn { background: rgba(248, 113, 113, 0.08); border-color: rgba(248, 113, 113, 0.25); color: #f87171; padding: 3px 8px; }
 .tag-filter-btn.clear-btn:hover { background: rgba(248, 113, 113, 0.15); border-color: rgba(248, 113, 113, 0.4); }
 
+/* ========== 批量操作 ========== */
+.bulk-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 10px 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.select-all-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+.select-all-control input,
+.account-checkbox {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #60a5fa;
+  cursor: pointer;
+}
+.select-all-control input:disabled { cursor: default; }
+.selected-count { color: #60a5fa; }
+.bulk-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: var(--radius-sm);
+  background: rgba(248, 113, 113, 0.08);
+  color: #f87171;
+  font-size: 11px;
+  cursor: pointer;
+}
+.bulk-delete-btn svg { width: 13px; height: 13px; }
+.bulk-delete-btn:hover { background: rgba(248, 113, 113, 0.16); border-color: rgba(248, 113, 113, 0.5); }
+.bulk-cancel-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.bulk-cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
 /* ========== 账号列表 ========== */
 .accounts-list {
   flex: 1;
@@ -1117,6 +1270,7 @@ onUnmounted(() => {
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 .account-card:hover { border-color: rgba(56, 139, 253, 0.3); background: var(--bg-hover); }
+.account-card.selected { border-color: rgba(96, 165, 250, 0.65); background: rgba(56, 139, 253, 0.08); }
 
 .account-card-main {
   display: flex;
@@ -1131,6 +1285,8 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
 }
+
+.account-checkbox { flex-shrink: 0; margin-top: 9px; }
 
 .account-avatar {
   width: 32px;
