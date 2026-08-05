@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { getIssueDir, isAutoViewRefreshEnabled } from '../config';
-import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { getIssueMarkdown, onTitleUpdate, onAgentFileUpdate, onVtimeUpdated, isAgentFileUri } from '../data/IssueMarkdowns';
@@ -17,7 +16,6 @@ import { IViewRefreshDispatcher } from './commands/ViewCommandRegistry';
  * 主要功能：
  * - 监听 issueManager.issueDir 配置变化
  * - 自动更新VS Code上下文状态
- * - 管理 .gitignore 文件的RSS状态规则
  * - 监听问题目录下Markdown文件的变化
  * - 防抖处理文件变化事件，避免频繁刷新
  * 
@@ -68,7 +66,7 @@ export class ConfigurationManager {
     public initializeConfiguration(): void {
         try {
             // 1. 首次激活时，立即更新上下文和Git配置
-            this.updateContextAndGitignore();
+            this.updateContext();
             
             // 2. 监听配置变化
             this.setupConfigurationListener();
@@ -84,16 +82,11 @@ export class ConfigurationManager {
     }
 
     /**
-     * 更新上下文和.gitignore
+     * 更新上下文
      */
-    private updateContextAndGitignore(): void {
+    private updateContext(): void {
         const issueDir = getIssueDir();
         vscode.commands.executeCommand('setContext', 'issueManager.isDirConfigured', !!issueDir);
-        
-        // 自动合并 .gitignore 忽略规则
-        if (issueDir) {
-            ensureGitignoreForRSSState();
-        }
     }
 
     /**
@@ -102,7 +95,7 @@ export class ConfigurationManager {
     private setupConfigurationListener(): void {
         const configListener = vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('issueManager.issueDir')) {
-                this.updateContextAndGitignore();
+                this.updateContext();
                 this.setupFileWatcher(); // 重新设置文件监听器
                 // 刷新所有视图以反映新目录的内容
                 vscode.commands.executeCommand('issueManager.refreshAllViews');

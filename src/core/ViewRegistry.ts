@@ -3,15 +3,12 @@ import * as path from 'path';
 import { IssueOverviewProvider } from '../views/IssueOverviewProvider';
 import { RecentIssuesProvider } from '../views/RecentIssuesProvider';
 import { IssueDragAndDropController } from '../views/IssueDragAndDropController';
-import { RSSIssuesProvider } from '../views/RSSIssuesProvider';
-import { RSSIssueDragAndDropController } from '../views/RSSIssueDragAndDropController';
 import { IssueStructureProvider } from '../views/IssueStructureProvider';
 import { ParaViewProvider } from '../views/ParaViewProvider';
 import { ParaDragAndDropController } from '../views/ParaDragAndDropController';
 import { MarkerManager } from '../marker/MarkerManager';
 import { MarkerTreeProvider } from '../marker/MarkerTreeProvider';
 import { MarkerCommandHandler } from '../marker/MarkerCommandHandler';
-import { registerRSSVirtualFileProvider } from '../views/RSSVirtualFileProvider';
 import { registerRelatedIssuesView } from '../views/relatedIssuesViewRegistration';
 import { IssueNode } from '../data/issueTreeManager';
 import { IViewRegistryResult } from '../core/interfaces';
@@ -34,7 +31,6 @@ import { getIssueDir } from '../config';
  * - 问题总览视图：显示完整的问题层次结构
  * - 关注问题视图：显示用户标记的重点问题
  * - 最近问题视图：显示最近访问或修改的问题
- * - RSS问题视图：显示从RSS源获取的外部问题
  * - 问题结构视图：显示问题的内部结构关系
  * - 相关问题视图：显示问题间的关联关系
  * 
@@ -87,9 +83,6 @@ export class ViewRegistry {
 
         // 注册相关问题视图
         this.registerRelatedView();
-
-        // 注册RSS虚拟文件提供器
-        this.registerRSSVirtualFileProvider();
 
         return {
             issueOverviewProvider,
@@ -184,14 +177,6 @@ export class ViewRegistry {
      */
     private registerRelatedView(): void {
         registerRelatedIssuesView(this.context, this.viewContextManager);
-    }
-
-    /**
-     * 注册RSS虚拟文件提供器
-     */
-    private registerRSSVirtualFileProvider(): void {
-        const rssVirtualFileProvider = registerRSSVirtualFileProvider(this.context);
-        this.context.subscriptions.push(rssVirtualFileProvider);
     }
 
     /**
