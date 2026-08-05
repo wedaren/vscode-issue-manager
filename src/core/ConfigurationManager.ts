@@ -121,7 +121,7 @@ export class ConfigurationManager {
         }
 
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
-        fileWatcher.onMarkdownChange((e) => {
+        this.fileWatcherDisposables.push(fileWatcher.onMarkdownChange((e) => {
             getIssueMarkdown(e.uri); // 预热标题缓存
             // agent 系统文件不写入最近问题存储（避免 agent 运行时污染最近问题列表）
             if (isAgentFileUri(e.uri)) { return; }
@@ -129,10 +129,10 @@ export class ConfigurationManager {
             const changeType = e.type === FileChangeType.Delete ? 'delete'
                 : e.type === FileChangeType.Create ? 'create' : 'change';
             void updateRecentIssue(e.uri, changeType);
-        });
+        }));
 
         // tree.json / para.json 变更 → 定向刷新对应视图
-        fileWatcher.onIssueManagerChange((e) => {
+        this.fileWatcherDisposables.push(fileWatcher.onIssueManagerChange((e) => {
             if (e.fileName === 'tree.json') {
                 invalidateRecentIssuesStore();
                 // tree 结构变更 → 问题总览完整刷新 + 最近问题重检 isolation + PARA 刷新
@@ -153,7 +153,7 @@ export class ConfigurationManager {
                     vscode.commands.executeCommand('issueManager.refreshParaView');
                 }
             }
-        });
+        }));
 
         // 标题变更 → 问题总览标签刷新（不重读 tree.json，缓存已热）
         // C: 可通过 issueManager.view.autoRefresh=false 关闭自动刷新

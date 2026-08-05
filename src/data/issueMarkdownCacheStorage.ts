@@ -54,10 +54,11 @@ async function writeToDisk(obj: Record<string, IssueMarkdownCacheEntry>): Promis
   }
 }
 
-export function save(entries: Record<string, IssueMarkdownCacheEntry>): void {
+export function save(getEntries: () => Record<string, IssueMarkdownCacheEntry>): void {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    void writeToDisk(entries);
+    // 快照延迟到防抖回调内构建，避免批量写入期间反复构建废弃的全量副本
+    void writeToDisk(getEntries());
     _saveTimer = undefined;
   }, SAVE_DEBOUNCE_MS);
 }

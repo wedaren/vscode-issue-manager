@@ -121,13 +121,13 @@ export async function getIssueMarkdown(
                 scheduleOnDidUpdate();
             }
         }
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
 
         return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime, vtime: entry.vtime };
     } catch (err) {
         _issueMarkdownCache.delete(key);
         removeFromTypeIndex(key);
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
         return null;
     }
 }
@@ -294,7 +294,7 @@ export function removeIssueMarkdownFromCache(uriOrPath: vscode.Uri | string): vo
     const fsPath = typeof uriOrPath === 'string' ? uriOrPath : uriOrPath.fsPath;
     _issueMarkdownCache.delete(fsPath);
     removeFromTypeIndex(fsPath);
-    cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+    cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
 }
 
 // 尝试加载磁盘缓存（不阻塞启动流程）
@@ -640,7 +640,7 @@ function scheduleCacheSave(): void {
         clearTimeout(_cacheSaveTimer);
     }
     _cacheSaveTimer = setTimeout(() => {
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
         _cacheSaveTimer = undefined;
     }, CACHE_SAVE_DELAY_MILLIS);
 }
