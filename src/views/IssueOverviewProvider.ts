@@ -4,6 +4,7 @@ import { readTree, TreeData, IssueNode, findParentNodeById, getIssueNodeContextV
 import { getIssueDir } from '../config';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
 import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
+import { getIssueCategory, ParaCategory } from '../data/paraManager';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode> {
   /**
@@ -96,9 +97,17 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
     item.id = element.id;
     item.resourceUri = uri;
     
-    item.contextValue = await getIssueNodeContextValue(element.id, 'issueNode');
-    
-    item.iconPath = await getIssueNodeIconPath(element.id);
+    // PARA 分类在单次 getTreeItem 内复用，避免 contextValue 与 iconPath 各自 stat 一次 para.json；
+    // 读取失败时传 undefined，保持各函数内部原有的重试与兜底逻辑
+    let paraCategory: ParaCategory | null | undefined;
+    try {
+      paraCategory = await getIssueCategory(element.id);
+    } catch {
+      paraCategory = undefined;
+    }
+    item.contextValue = await getIssueNodeContextValue(element.id, 'issueNode', paraCategory);
+
+    item.iconPath = await getIssueNodeIconPath(element.id, paraCategory);
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',

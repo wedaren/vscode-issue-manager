@@ -20,6 +20,7 @@ import { ImageBoardEditorProvider } from './views/ImageBoardEditorProvider';
 import { BoardListProvider } from './views/BoardListProvider';
 import { createBoardMarkdown, renameBoardMarkdown, deleteBoardMarkdown, migrateLegacyBoards } from './services/storage/MarkdownBoardService';
 import { UnifiedFileWatcher } from './services/UnifiedFileWatcher';
+import { getIssueMarkdown } from './data/IssueMarkdowns';
 import { registerImageCommands } from './commands/image.commands';
 import { ImageStorageService } from './services/storage/ImageStorageService';
 import { ImageDocumentLinkProvider, ImageDocumentHoverProvider, ImageLightboxPanel } from './providers/ImageDocumentLinkProvider';
@@ -218,9 +219,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	const fileWatcher = UnifiedFileWatcher.getInstance(context);
 	const boardRefreshDisposable = fileWatcher.onMarkdownChange(async (event) => {
 		try {
-			const content = await vscode.workspace.fs.readFile(event.uri);
-			const text = Buffer.from(content).toString('utf-8');
-			if (text.includes('board_type: survey')) {
+			// 走 getIssueMarkdown 缓存（同一事件的预热调用已解析过 frontmatter），避免重复全量读文件
+			const issue = await getIssueMarkdown(event.uri);
+			const fm = issue?.frontmatter as Record<string, unknown> | null;
+			if (fm?.board_type === 'survey') {
 				boardListProvider.refresh();
 			}
 		} catch { /* ignore */ }

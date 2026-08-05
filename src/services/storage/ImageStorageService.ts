@@ -161,28 +161,29 @@ export class ImageStorageService {
 
     /**
      * 列举 ImageDir 中所有图片，按修改时间倒序排列。
+     * 使用异步 I/O，避免同步 readdir/stat 阻塞扩展宿主主线程。
      */
-    public static list(): ImageInfo[] {
+    public static async list(): Promise<ImageInfo[]> {
         const dir = getImageDir();
         if (!dir || !fs.existsSync(dir)) {
             return [];
         }
 
-        const files: ImageInfo[] = [];
         let entries: fs.Dirent[];
         try {
-            entries = fs.readdirSync(dir, { withFileTypes: true });
+            entries = await fs.promises.readdir(dir, { withFileTypes: true });
         } catch {
             return [];
         }
 
-        for (const entry of entries) {
-            if (!entry.isFile()) { continue; }
+        const files: ImageInfo[] = [];
+        await Promise.all(entries.map(async (entry) => {
+            if (!entry.isFile()) { return; }
             const ext = path.extname(entry.name).toLowerCase();
-            if (!IMAGE_EXTENSIONS.has(ext)) { continue; }
+            if (!IMAGE_EXTENSIONS.has(ext)) { return; }
             const absolutePath = path.join(dir, entry.name);
             try {
-                const stat = fs.statSync(absolutePath);
+                const stat = await fs.promises.stat(absolutePath);
                 files.push({
                     name: entry.name,
                     absolutePath,
@@ -192,7 +193,7 @@ export class ImageStorageService {
             } catch {
                 // 跳过 iCloud 占位文件等无法访问的文件
             }
-        }
+        }));
 
         files.sort((a, b) => b.mtime - a.mtime);
         return files;

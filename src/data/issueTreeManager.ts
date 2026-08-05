@@ -3,7 +3,7 @@ import * as path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { getIssueDir } from "../config";
 import { getIssueFilePath, getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
-import { getCategoryIcon, getIssueCategory } from "./paraManager";
+import { getCategoryIcon, getIssueCategory, ParaCategory } from "./paraManager";
 
 /**
  * 持久化到磁盘的节点结构（tree.json 中的格式）。
@@ -809,14 +809,16 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
  */
 export async function getIssueNodeContextValue(
     nodeId: string,
-    baseContextValue: string
+    baseContextValue: string,
+    paraCategory?: ParaCategory | null
 ): Promise<string> {
     const realId = stripFocusedId(nodeId);
     try {
-        const paraCategory = await getIssueCategory(realId);
+        // 调用方已预先获取分类时直接复用，避免重复 stat para.json
+        const category = paraCategory !== undefined ? paraCategory : await getIssueCategory(realId);
         const segments: string[] = [baseContextValue];
-        if (paraCategory) {
-            segments.push(`paraAssigned:${paraCategory}`);
+        if (category) {
+            segments.push(`paraAssigned:${category}`);
         } else {
             segments.push("paraAssignable");
         }
@@ -833,7 +835,8 @@ export async function getIssueNodeContextValue(
  */
 
 export async function getIssueNodeIconPath(
-    issueId?: string
+    issueId?: string,
+    paraCategory?: ParaCategory | null
 ): Promise<vscode.ThemeIcon | undefined> {
     // 先尝试从聚焦列表中读取 focusIndex
     let focusIndex: number = -1;
@@ -862,9 +865,10 @@ export async function getIssueNodeIconPath(
     // 当提供 issueId 时，尝试异步查询其 PARA 分类并使用分类图标
     if (issueId) {
         try {
-            const paraCategory = await getIssueCategory(issueId);
-            if (paraCategory) {
-                return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+            // 调用方已预先获取分类时直接复用，避免重复 stat para.json
+            const category = paraCategory !== undefined ? paraCategory : await getIssueCategory(issueId);
+            if (category) {
+                return new vscode.ThemeIcon(getCategoryIcon(category));
             }
         } catch (e) {
             console.error("查询 PARA 分类失败:", e);
