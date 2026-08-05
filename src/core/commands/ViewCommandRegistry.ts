@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { BaseCommandRegistry } from './BaseCommandRegistry';
 import { IIssueOverviewProvider, IIssueViewProvider } from '../interfaces';
-import { IssueNode } from '../../data/issueTreeManager';
+import { IssueNode, invalidateIssueDataCache, invalidateFocusedCache } from '../../data/issueTreeManager';
+import { invalidateParaCache } from '../../data/paraManager';
 import { ParaViewProvider } from '../../views/ParaViewProvider';
 import { isInBatchRefresh, markRefreshNeeded } from '../../utils/refreshBatch';
 
@@ -156,6 +157,10 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         }
         this.refreshTimer = setTimeout(() => {
             this.refreshTimer = undefined;
+            // 全量刷新同时失效数据缓存，作为 watcher 漏事件时的手动自愈路径
+            invalidateIssueDataCache();
+            invalidateParaCache();
+            invalidateFocusedCache();
             this.issueOverviewProvider?.refresh();
             this.recentIssuesProvider?.refresh();
             this.paraViewProvider?.refresh();
@@ -170,6 +175,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         if (this.overviewTimer) { clearTimeout(this.overviewTimer); }
         this.overviewTimer = setTimeout(() => {
             this.overviewTimer = undefined;
+            // 保持“完整刷新 = 重读 tree.json”的语义（缓存已改为事件驱动失效）
+            invalidateIssueDataCache();
             this.issueOverviewProvider?.refresh();
         }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
     }
@@ -202,6 +209,8 @@ export class ViewCommandRegistry extends BaseCommandRegistry {
         if (this.paraTimer) { clearTimeout(this.paraTimer); }
         this.paraTimer = setTimeout(() => {
             this.paraTimer = undefined;
+            // 保持“刷新 = 重读 para.json”的语义（缓存已改为事件驱动失效）
+            invalidateParaCache();
             this.paraViewProvider?.refresh();
         }, ViewCommandRegistry.REFRESH_DEBOUNCE_MS);
     }

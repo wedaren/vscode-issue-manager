@@ -4,6 +4,8 @@ import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { getIssueMarkdown, onTitleUpdate, onAgentFileUpdate, onVtimeUpdated, isAgentFileUri } from '../data/IssueMarkdowns';
 import { updateRecentIssue, invalidateRecentIssuesStore, onRecentIssuesStoreUpdated } from '../data/recentIssuesManager';
+import { invalidateIssueDataCache, invalidateFocusedCache } from '../data/issueTreeManager';
+import { invalidateParaCache } from '../data/paraManager';
 import { FileChangeType } from '../services/UnifiedFileWatcher';
 import { IViewRefreshDispatcher } from './commands/ViewCommandRegistry';
 
@@ -120,6 +122,11 @@ export class ConfigurationManager {
             return;
         }
 
+        // issueDir 变更（或初始化）时使数据缓存失效，确保从新的目录重新加载
+        invalidateIssueDataCache();
+        invalidateParaCache();
+        invalidateFocusedCache();
+
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
         this.fileWatcherDisposables.push(fileWatcher.onMarkdownChange((e) => {
             getIssueMarkdown(e.uri); // 预热标题缓存
@@ -131,9 +138,10 @@ export class ConfigurationManager {
             void updateRecentIssue(e.uri, changeType);
         }));
 
-        // tree.json / para.json 变更 → 定向刷新对应视图
+        // tree.json / para.json / focused.json 变更 → 先使对应数据缓存失效，再定向刷新对应视图
         this.fileWatcherDisposables.push(fileWatcher.onIssueManagerChange((e) => {
             if (e.fileName === 'tree.json') {
+                invalidateIssueDataCache();
                 invalidateRecentIssuesStore();
                 // tree 结构变更 → 问题总览完整刷新 + 最近问题重检 isolation + PARA 刷新
                 if (this.viewRefreshDispatcher) {
@@ -147,11 +155,16 @@ export class ConfigurationManager {
                 }
             }
             if (e.fileName === 'para.json') {
+                invalidateParaCache();
                 if (this.viewRefreshDispatcher) {
                     this.viewRefreshDispatcher.refreshPara();
                 } else {
                     vscode.commands.executeCommand('issueManager.refreshParaView');
                 }
+            }
+            if (e.fileName === 'focused.json') {
+                // focused.json 仅被图标渲染读取，失效缓存即可，视图沿用原有刷新时机
+                invalidateFocusedCache();
             }
         }));
 

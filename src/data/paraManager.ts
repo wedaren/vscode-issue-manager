@@ -83,8 +83,14 @@ const defaultParaData: ParaData = {
 /**
  * 读取 para.json 文件
  */
-// para.json 缓存，基于 mtime 避免重复读取
-const paraCache: { mtime: number; data: ParaData } = { mtime: 0, data: { ...defaultParaData } };
+// para.json 缓存，事件驱动失效：由 UnifiedFileWatcher 的 .issueManager 变更事件
+// 及 writePara 写入后调用 invalidateParaCache() 置为无效，读取时无需重复 stat。
+const paraCache: { valid: boolean; data: ParaData } = { valid: false, data: { ...defaultParaData } };
+
+/** 使 para.json 缓存失效，下次 readPara 时重新从磁盘加载。 */
+export const invalidateParaCache = (): void => {
+  paraCache.valid = false;
+};
 
 export const readPara = async (): Promise<ParaData> => {
   const paraPath = await getParaDataPath();
@@ -92,14 +98,12 @@ export const readPara = async (): Promise<ParaData> => {
     return { ...defaultParaData };
   }
 
+  if (paraCache.valid) {
+    return paraCache.data;
+  }
+
   const uri = vscode.Uri.file(paraPath);
   try {
-    // 尝试读取文件状态以判断是否需要刷新缓存
-    const stat = await vscode.workspace.fs.stat(uri);
-    if (paraCache.mtime === stat.mtime) {
-      return paraCache.data;
-    }
-
     const content = await vscode.workspace.fs.readFile(uri);
     const data = JSON.parse(Buffer.from(content).toString('utf8')) as ParaData;
 
@@ -115,8 +119,8 @@ export const readPara = async (): Promise<ParaData> => {
     data.lastModified = typeof data.lastModified === 'string' ? data.lastModified : new Date().toISOString();
 
     // 更新缓存
-    paraCache.mtime = stat.mtime;
     paraCache.data = data;
+    paraCache.valid = true;
 
     return data;
   } catch (error: unknown) {
@@ -143,6 +147,8 @@ export const writePara = async (data: ParaData): Promise<void> => {
   data.lastModified = new Date().toISOString();
   const content = JSON.stringify(data, null, 2);
   await vscode.workspace.fs.writeFile(vscode.Uri.file(paraPath), Buffer.from(content, 'utf8'));
+  // 写入成功后使缓存失效，保证后续读取立即看到新数据（与原先 mtime 校验行为一致）
+  invalidateParaCache();
 };
 
 /**

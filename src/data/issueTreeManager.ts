@@ -197,7 +197,7 @@ export interface IssueDataResult {
 }
 
 export interface IssueDataCache extends IssueDataResult {
-    mtime: number;
+    valid: boolean;
 }
 
 const createDefaultIssueDataStore = (): IssueDataResult => ({
@@ -205,7 +205,15 @@ const createDefaultIssueDataStore = (): IssueDataResult => ({
     issueIdMap: new Map(),
     issueFilePathsMap: new Map(),
 });
-const cache: IssueDataCache = { mtime: 0, ...createDefaultIssueDataStore() };
+const cache: IssueDataCache = { valid: false, ...createDefaultIssueDataStore() };
+
+/**
+ * 使 tree.json 缓存失效，下次 getIssueData 时重新从磁盘加载。
+ * 由 UnifiedFileWatcher 的 tree.json 变更事件及 writeTree 写入后触发。
+ */
+export const invalidateIssueDataCache = (): void => {
+    cache.valid = false;
+};
 
 /**
  * 从缓存中获取 Issue 标题的同步方法。
@@ -280,8 +288,8 @@ export async function getIssueData(): Promise<IssueDataResult> {
         return createDefaultIssueDataStore();
     }
 
-    const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
-    if (cache.mtime === stat.mtime) {
+    // 事件驱动失效：缓存有效时直接返回，无需每次 stat 校验
+    if (cache.valid) {
         return cache;
     }
 
@@ -309,7 +317,7 @@ export async function getIssueData(): Promise<IssueDataResult> {
         issueIdMap.set(node.id, node);
     });
 
-    cache.mtime = stat.mtime;
+    cache.valid = true;
     cache.treeData = treeData;
     cache.issueIdMap = issueIdMap;
     cache.issueFilePathsMap = issueFilePathsMap;
@@ -343,6 +351,8 @@ export const writeTree = async (data: TreeData): Promise<void> => {
 
     try {
         await vscode.workspace.fs.writeFile(vscode.Uri.file(treePath), content);
+        // 写入成功后使缓存失效，保证后续读取立即看到新数据（与原先 mtime 校验行为一致）
+        invalidateIssueDataCache();
     } catch (error) {
         vscode.window.showErrorMessage(`写入 tree.json 失败: ${error}`);
     }
@@ -605,10 +615,16 @@ const defaultFocusedData: FocusedData = {
     focusList: [],
 };
 
-// focused.json 缓存，使用 mtime 避免重复读取
-const focusedCache: { mtime: number; data: FocusedData } = {
-    mtime: 0,
+// focused.json 缓存，事件驱动失效：由 UnifiedFileWatcher 的 .issueManager 变更事件
+// 调用 invalidateFocusedCache() 置为无效，读取时无需重复 stat。
+const focusedCache: { valid: boolean; data: FocusedData } = {
+    valid: false,
     data: { ...defaultFocusedData },
+};
+
+/** 使 focused.json 缓存失效，下次 readFocused 时重新从磁盘加载。 */
+export const invalidateFocusedCache = (): void => {
+    focusedCache.valid = false;
 };
 
 /**
@@ -621,13 +637,11 @@ export const readFocused = async (): Promise<FocusedData> => {
         return { ...defaultFocusedData };
     }
 
-    try {
-        // 先尝试获取文件状态以比较 mtime
-        const stat = await vscode.workspace.fs.stat(vscode.Uri.file(focusedPath));
-        if (focusedCache.mtime === stat.mtime) {
-            return focusedCache.data;
-        }
+    if (focusedCache.valid) {
+        return focusedCache.data;
+    }
 
+    try {
         const content = await vscode.workspace.fs.readFile(vscode.Uri.file(focusedPath));
         const data = JSON.parse(content.toString());
         // 简单校验
@@ -641,8 +655,8 @@ export const readFocused = async (): Promise<FocusedData> => {
         };
 
         // 更新缓存
-        focusedCache.mtime = stat.mtime;
         focusedCache.data = res;
+        focusedCache.valid = true;
 
         return res;
     } catch (error) {
