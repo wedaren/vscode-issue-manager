@@ -14,6 +14,7 @@ import {
     isAgentFileFrontmatter,
 } from "../services/issue-core/frontmatter";
 import { INDEXED_TYPE_KEYS, type IndexedTypeKey } from "../services/issue-core/types";
+import { perfMetrics } from "../services/PerfMetrics";
 
 // 重新导出纯类型与纯函数,保持原有 import 路径(`from "../data/IssueMarkdowns"`)兼容。
 export type { FrontmatterData, TermDefinition } from "../services/issue-core/types";
@@ -66,6 +67,7 @@ export async function getIssueMarkdown(
 
     const key = uri.fsPath;
     try {
+        perfMetrics.increment('io.stat.issueMarkdown');
         const stat = await vscode.workspace.fs.stat(uri);
         const mtime = stat.mtime;
         const fileName = path.basename(uri.fsPath);
@@ -76,6 +78,7 @@ export async function getIssueMarkdown(
             cached.mtime === mtime &&
             (cached.title !== undefined || cached.frontmatter !== undefined)
         ) {
+            perfMetrics.increment('cache.issueMarkdown.hit');
             return {
                 title: cached.title ?? fallbackTitle(uri),
                 uri,
@@ -86,6 +89,7 @@ export async function getIssueMarkdown(
             };
         }
 
+        perfMetrics.increment('cache.issueMarkdown.diskRead');
         const contentBytes = await vscode.workspace.fs.readFile(uri);
         const content = Buffer.from(contentBytes).toString("utf-8");
         const { frontmatter, body } = extractFrontmatterAndBody(content);

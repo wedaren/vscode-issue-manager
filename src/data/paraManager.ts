@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getIssueDir } from '../config';
+import { perfMetrics } from '../services/PerfMetrics';
 
 /**
  * 一次性读取 PARA 分类映射（id => category），用于高效同步查找。
@@ -99,9 +100,11 @@ export const readPara = async (): Promise<ParaData> => {
   }
 
   if (paraCache.valid) {
+    perfMetrics.increment('cache.para.hit');
     return paraCache.data;
   }
 
+  perfMetrics.increment('cache.para.diskRead');
   const uri = vscode.Uri.file(paraPath);
   try {
     const content = await vscode.workspace.fs.readFile(uri);

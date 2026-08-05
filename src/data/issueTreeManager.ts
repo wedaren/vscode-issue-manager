@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getIssueDir } from "../config";
 import { getIssueFilePath, getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
 import { getCategoryIcon, getIssueCategory, ParaCategory } from "./paraManager";
+import { perfMetrics } from "../services/PerfMetrics";
 
 /**
  * 持久化到磁盘的节点结构（tree.json 中的格式）。
@@ -290,9 +291,11 @@ export async function getIssueData(): Promise<IssueDataResult> {
 
     // 事件驱动失效：缓存有效时直接返回，无需每次 stat 校验
     if (cache.valid) {
+        perfMetrics.increment('cache.tree.hit');
         return cache;
     }
 
+    perfMetrics.increment('cache.tree.diskRead');
     let treeData: TreeData;
     try {
         const content = await vscode.workspace.fs.readFile(vscode.Uri.file(treePath));
@@ -638,9 +641,11 @@ export const readFocused = async (): Promise<FocusedData> => {
     }
 
     if (focusedCache.valid) {
+        perfMetrics.increment('cache.focused.hit');
         return focusedCache.data;
     }
 
+    perfMetrics.increment('cache.focused.diskRead');
     try {
         const content = await vscode.workspace.fs.readFile(vscode.Uri.file(focusedPath));
         const data = JSON.parse(content.toString());

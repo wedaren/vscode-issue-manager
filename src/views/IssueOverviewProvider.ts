@@ -5,6 +5,7 @@ import { getIssueDir } from '../config';
 import { getIssueNodeIconPath } from '../data/issueTreeManager';
 import { getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 import { getIssueCategory, ParaCategory } from '../data/paraManager';
+import { perfMetrics } from '../services/PerfMetrics';
 
 export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode> {
   /**
@@ -76,6 +77,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
   }
 
   async getTreeItem(element: IssueNode): Promise<vscode.TreeItem> {
+    return perfMetrics.timeAsync('view.overview.getTreeItem', async () => {
     const issueDir = getIssueDir();
     if (!issueDir) {
       throw new Error("Issue directory is not configured.");
@@ -116,6 +118,7 @@ export class IssueOverviewProvider implements vscode.TreeDataProvider<IssueNode>
     };
 
     return item;
+    });
   }
 
   getChildren(element?: IssueNode): vscode.ProviderResult<IssueNode[]> {

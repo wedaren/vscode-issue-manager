@@ -29,6 +29,24 @@
     "markdown.markdownItPlugins": true,
     "commands": [
       {
+        "command": "issueManager.perf.showPanel",
+        "title": "性能指标：打开面板",
+        "category": "Issue Manager",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "issueManager.perf.showReport",
+        "title": "性能指标：输出报告",
+        "category": "Issue Manager",
+        "icon": "$(output)"
+      },
+      {
+        "command": "issueManager.perf.reset",
+        "title": "性能指标：重置计数",
+        "category": "Issue Manager",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "issueManager.wiki.refresh",
         "title": "Wiki：刷新今日视图",
         "category": "Issue Manager",

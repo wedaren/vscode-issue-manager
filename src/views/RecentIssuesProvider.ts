@@ -17,6 +17,7 @@ import {
   type SortOrder,
 } from '../data/recentIssuesManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
+import { perfMetrics } from '../services/PerfMetrics';
 
 /**
  * 分组树节点
@@ -288,6 +289,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 点击时自动打开文件并查看相关联问题
    */
   private async createFileTreeItem(stat: RecentIssueStats): Promise<vscode.TreeItem> {
+    return perfMetrics.timeAsync('view.recent.getTreeItem', async () => {
     const key = this.makeCacheKey(stat.uri);
     const cached = this.itemCache.get(key);
     if (cached) { return cached; }
@@ -329,6 +331,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     
     this.itemCache.set(key, item);
     return item;
+    });
   }
 
   /**
