@@ -661,7 +661,7 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
             nodes.push(new McpRootNode(statuses.length, connectedCount));
 
             // Skills 根节点（MCP 下方）
-            const { SkillManager } = await import('./SkillManager');
+            const { SkillManager } = await import('./SkillManager.js');
             const skillMgr = SkillManager.getInstance();
             const allSkills = skillMgr.getAllSkills();
             const vendorMap = skillMgr.getVendorGroups();
@@ -696,7 +696,7 @@ export class LLMChatRoleProvider implements vscode.TreeDataProvider<LLMChatViewN
         }
         // ─── Skills 子节点（按 vendor 分组） ────────────────────
         if (element instanceof SkillRootNode) {
-            const { SkillManager } = await import('./SkillManager');
+            const { SkillManager } = await import('./SkillManager.js');
             const vendorMap = SkillManager.getInstance().getVendorGroups();
             const nodes: LLMChatViewNode[] = [];
             for (const [vendor, skills] of vendorMap) {

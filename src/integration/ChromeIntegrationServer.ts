@@ -495,7 +495,7 @@ export class ChromeIntegrationServer {
               }
 
               // 动态导入以避免循环依赖问题
-              const mod = await import('../llm/LLMService');
+              const mod = await import('../llm/LLMService.js');
               const LLMServiceClass = (mod as any).LLMService;
 
               // 将历史对话 history: {role: 'user'|'assistant', content: string}[]
@@ -554,8 +554,7 @@ export class ChromeIntegrationServer {
                 return;
               }
 
-              // @ts-ignore webpack resolves .ts directly
-              const agentMod = await import('../webAgent/WebAgentService');
+              const agentMod = await import('../webAgent/WebAgentService.js');
               const agent = agentMod.WebAgentService.getInstance();
               const taskId = `agent-${Date.now()}`;
 
@@ -632,7 +631,7 @@ export class ChromeIntegrationServer {
               const { CHAT_TOOLS, executeChatTool } = chatToolsMod;
 
               // @ts-ignore webpack resolves .ts directly
-              const mod = await import('../llm/LLMService');
+              const mod = await import('../llm/LLMService.js');
               const LLMServiceClass = (mod as any).LLMService;
 
               this.logger.info(`[ChromeChat] llm-request-with-tools | model=${requestedModelFamily ?? 'default'} | tools=${CHAT_TOOLS.length} | msgs=${chatMessages.length} | prompt=${prompt.slice(0, 80)}`);
@@ -675,8 +674,7 @@ export class ChromeIntegrationServer {
             try {
               const payload = message.data as any || {};
               const taskId = payload.taskId || '';
-              // @ts-ignore webpack resolves .ts directly
-              const agentMod = await import('../webAgent/WebAgentService');
+              const agentMod = await import('../webAgent/WebAgentService.js');
               const agent = agentMod.WebAgentService.getInstance();
               agent.cancelTask(taskId);
               ws.send(JSON.stringify({ type: 'web-agent-cancelled', id: message.id, taskId }));

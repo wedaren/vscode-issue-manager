@@ -58,7 +58,7 @@ async function executeActivateSkill(input: Record<string, unknown>, context?: To
         } else {
             const computed = new Set<string>();
             if (context?.role) {
-                const { getToolsForRole } = await import('./registry');
+                const { getToolsForRole } = await import('./registry.js');
                 for (const t of getToolsForRole(context.role)) { computed.add(t.name); }
             }
             const mcpManager = McpManager.getInstance();

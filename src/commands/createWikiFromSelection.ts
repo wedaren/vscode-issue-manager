@@ -92,7 +92,7 @@ export function registerCreateWikiFromSelectionCommand(context: vscode.Extension
 export function registerOpenOrCreateWikiCommand(context: vscode.ExtensionContext) {
     const disposable = vscode.commands.registerCommand('issueManager.openOrCreateWiki', async (title: string) => {
         if (!title || typeof title !== 'string') return;
-        const { getFlatTree } = await import('../data/issueTreeManager');
+        const { getFlatTree } = await import('../data/issueTreeManager.js');
         try {
             const flat = await getFlatTree();
             const match = flat.find(n => n.title === title) || flat.find(n => n.title?.toLowerCase() === title.toLowerCase());

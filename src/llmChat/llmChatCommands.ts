@@ -1232,7 +1232,7 @@ export function registerLLMChatCommands(
                 await vscode.commands.executeCommand('issueManager.llmChat.configureTools', targetUri);
             } else if (category.id === 'skills') {
                 // ── Skills 配置（支持 vendor 级选择） ────────────────
-                const skillMod = await import('./SkillManager');
+                const skillMod = await import('./SkillManager.js');
                 const mgr = skillMod.SkillManager.getInstance();
                 const allSkills = mgr.getAllSkills();
                 if (allSkills.length === 0) {

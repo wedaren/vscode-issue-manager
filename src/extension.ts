@@ -240,7 +240,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			boardListProvider.refresh();
 			if (meta) {
 				// 查找刚创建的文件路径
-				const { listBoardMarkdowns } = await import('./services/storage/MarkdownBoardService');
+				const { listBoardMarkdowns } = await import('./services/storage/MarkdownBoardService.js');
 				const boards = await listBoardMarkdowns();
 				const found = boards.find(b => b.id === meta.id);
 				if (found) {
@@ -265,7 +265,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			const meta = await createBoardMarkdown(name.trim());
 			boardListProvider.refresh();
 			if (meta) {
-				const { listBoardMarkdowns } = await import('./services/storage/MarkdownBoardService');
+				const { listBoardMarkdowns } = await import('./services/storage/MarkdownBoardService.js');
 				const boards = await listBoardMarkdowns();
 				const found = boards.find(b => b.id === meta.id);
 				if (found) {

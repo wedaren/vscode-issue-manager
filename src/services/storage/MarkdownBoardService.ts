@@ -70,7 +70,7 @@ function frontmatterItemsToBoardItems(rawItems: unknown[]): BoardItem[] {
 }
 
 /** 将 BoardItem[] 转为可序列化的 plain object[] */
-function boardItemsToFrontmatterItems(items: BoardItem[]): unknown[] {
+function boardItemsToFrontmatterItems(items: BoardItem[]): NonNullable<FrontmatterData['board_items']> {
     return items.map(item => {
         if (item.type === 'image') {
             return {
@@ -167,7 +167,7 @@ export async function listBoardMarkdowns(): Promise<(BoardMeta & { filePath: str
     const issueDir = getIssueDir();
     if (!issueDir) { return []; }
 
-    const results: BoardMeta[] = [];
+    const results: (BoardMeta & { filePath: string })[] = [];
 
     try {
         const entries = await fs.promises.readdir(issueDir, { withFileTypes: true });

@@ -29,7 +29,9 @@ const extensionConfig = {
   },
   resolve: {
     // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
-    extensions: ['.ts', '.js']
+    extensions: ['.ts', '.js'],
+    // Node16 模块解析要求导入带 .js 后缀，映射回对应的 .ts 源文件
+    extensionAlias: { '.js': ['.ts', '.js'] }
   },
   module: {
     rules: [

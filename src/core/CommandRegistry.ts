@@ -1048,7 +1048,7 @@ export class CommandRegistry extends BaseCommandRegistry {
 
         // Wiki from selection: 创建 Wiki（将选中文本替换为 [[Title]] 并新建 issueMarkdown）
         try {
-            import('../commands/createWikiFromSelection')
+            import('../commands/createWikiFromSelection.js')
                 .then((mod) => {
                     try {
                         mod.registerCreateWikiFromSelectionCommand(this.context);

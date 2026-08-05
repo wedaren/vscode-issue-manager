@@ -451,7 +451,7 @@ async function executeReadRoleExecutionLogs(input: Record<string, unknown>): Pro
     }
 
     // ─── 与配置对比 ──────────────────────────────────────────
-    const { getToolsForRole } = await import('./registry');
+    const { getToolsForRole } = await import('./registry.js');
     const configuredTools = getToolsForRole(role).map((t: { name: string }) => t.name);
     const usedTools = Object.keys(toolCallCounts);
     const neverUsed = configuredTools.filter((t: string) => !usedTools.includes(t));
