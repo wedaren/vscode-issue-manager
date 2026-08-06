@@ -142,6 +142,10 @@ export async function getIssueMarkdown(
  * - 参数：`{ sortBy?: "mtime" | "ctime" | "vtime" }`，默认 `{ sortBy: "mtime" }`。
  * - `"vtime"` 按最后查看时间排序，适合按访问频率排列。
  */
+// 冷路径单飞：缓存就绪前的并发调用共享同一次全扫描，
+// 避免启动期多个消费方（Wiki 状态栏等）各自触发一遍全库遍历
+let _coldScanPromise: Promise<IssueMarkdown[]> | null = null;
+
 export async function getAllIssueMarkdowns(
     { sortBy = "mtime" }: { sortBy?: "mtime" | "ctime" | "vtime" } = {}
 ): Promise<IssueMarkdown[]> {
@@ -153,25 +157,31 @@ export async function getAllIssueMarkdowns(
         return getAllFromCache(issueDir, sortBy);
     }
 
-    // ── 冷路径：首次加载（缓存尚未就绪），走 findFiles 全扫描 ──
-    const files = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(issueDir, "*.md"),
-        "**/.issueManager/**"
-    );
+    // ── 冷路径：首次加载（缓存尚未就绪），走 findFiles 全扫描（并发调用共享同一次） ──
+    if (!_coldScanPromise) {
+        _coldScanPromise = (async () => {
+            const files = await vscode.workspace.findFiles(
+                new vscode.RelativePattern(issueDir, "*.md"),
+                "**/.issueManager/**"
+            );
 
-    const entries = await Promise.all(
-        files.map(async f => {
-            try {
-                return await getIssueMarkdown(f);
-            } catch {
-                return null;
-            }
-        })
-    );
+            const entries = await Promise.all(
+                files.map(async f => {
+                    try {
+                        return await getIssueMarkdown(f);
+                    } catch {
+                        return null;
+                    }
+                })
+            );
 
-    const issues = entries.filter((e): e is IssueMarkdown => !!e);
+            return entries.filter((e): e is IssueMarkdown => !!e);
+        })();
+    }
 
-    return sortIssueMarkdowns(issues, sortBy);
+    const issues = await _coldScanPromise;
+    // 拷贝后再排序，避免不同 sortBy 的并发调用污染共享数组
+    return sortIssueMarkdowns([...issues], sortBy);
 }
 
 /** 从内存缓存构建 IssueMarkdown 列表（零 I/O，O(N) 遍历 + O(N log N) 排序） */
