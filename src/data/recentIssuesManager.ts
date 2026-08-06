@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getAllIssueMarkdowns, getIssueMarkdown } from './IssueMarkdowns';
-import { getIssueNodesByUri } from './issueTreeManager';
+import { getIssueNodesBy } from './issueTreeManager';
 
 /**
  * 最近问题统计信息
@@ -100,7 +100,8 @@ export async function updateRecentIssue(
     return;
   }
 
-  const nodes = await getIssueNodesByUri(uri);
+  // 用 getIssueNodesBy 直接传入已有的 issue，避免 getIssueNodesByUri 内部重复 getIssueMarkdown
+  const nodes = await getIssueNodesBy(issue);
   const stat: RecentIssueStats = {
     file: path.basename(fsPath),
     filePath: fsPath,
@@ -158,7 +159,8 @@ async function _fullReload(): Promise<void> {
   _store = await Promise.all(
     issues.map(async (issue) => {
       const filePath = issue.uri.fsPath;
-      const nodes = await getIssueNodesByUri(issue.uri);
+      // 用 getIssueNodesBy 直接传入已有的 issue，避免 getIssueNodesByUri 内部重复 getIssueMarkdown（每次一次 stat）
+      const nodes = await getIssueNodesBy(issue);
       return {
         file: path.basename(filePath),
         filePath,
