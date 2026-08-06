@@ -127,14 +127,14 @@ export const readPara = async (): Promise<ParaData> => {
 
     return data;
   } catch (error: unknown) {
-    // 如果是文件不存在，返回默认；其他错误也返回默认并记录
-    try {
-      if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'FileNotFound') {
-        return { ...defaultParaData };
-      }
-    } catch (_) {}
-    console.error('读取 para.json 失败:', error);
-    return { ...defaultParaData };
+    // 文件不存在或损坏：缓存默认结构并置为有效（负缓存），
+    // 避免每次调用都重试注定失败的读盘；后续变更由 watcher 事件/writePara 失效
+    if (!(error && typeof error === 'object' && 'code' in error && (error as any).code === 'FileNotFound')) {
+      console.error('读取 para.json 失败:', error);
+    }
+    paraCache.data = { ...defaultParaData };
+    paraCache.valid = true;
+    return paraCache.data;
   }
 };
 

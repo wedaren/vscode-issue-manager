@@ -301,9 +301,15 @@ export async function getIssueData(): Promise<IssueDataResult> {
         const content = await vscode.workspace.fs.readFile(vscode.Uri.file(treePath));
         treeData = JSON.parse(content.toString());
     } catch (error) {
-        // 记录错误有助于调试，特别是对于文件损坏或格式错误的情况
+        // 文件不存在或损坏：缓存默认空结构并置为有效（负缓存），
+        // 避免每次调用都重试注定失败的读盘；后续变更由 watcher 事件/writeTree 失效
         console.error(`Failed to read or parse tree data from ${treePath}:`, error);
-        return createDefaultIssueDataStore();
+        const fallback = createDefaultIssueDataStore();
+        cache.valid = true;
+        cache.treeData = fallback.treeData;
+        cache.issueIdMap = fallback.issueIdMap;
+        cache.issueFilePathsMap = fallback.issueFilePathsMap;
+        return fallback;
     }
     const issueIdMap = new Map<string, IssueNode>();
     const issueFilePathsMap = new Map<string, IssueNode[]>();
@@ -665,8 +671,11 @@ export const readFocused = async (): Promise<FocusedData> => {
 
         return res;
     } catch (error) {
-        // 文件不存在或解析失败，返回默认并不更新缓存
-        return { ...defaultFocusedData };
+        // 文件不存在或解析失败：缓存默认结构并置为有效（负缓存），
+        // 避免每次调用都重试注定失败的读盘；后续变更由 watcher 事件失效
+        focusedCache.data = { ...defaultFocusedData };
+        focusedCache.valid = true;
+        return focusedCache.data;
     }
 };
 
