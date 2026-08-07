@@ -1894,6 +1894,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,json,md,mdx}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,json,md,mdx}\"",
     "test": "vscode-test",
+    "test:unit": "npm run compile-tests && mocha --require out/test-unit/setup.js \"out/test-unit/**/*.test.js\"",
     "chrome:dev": "wxt --mode development",
     "chrome:build": "wxt build --mode production",
     "chrome:build:dev": "wxt build --mode development",
