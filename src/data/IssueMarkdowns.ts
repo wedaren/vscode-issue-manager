@@ -14,6 +14,7 @@ import {
     isAgentFileFrontmatter,
 } from "../services/issue-core/frontmatter";
 import { INDEXED_TYPE_KEYS, type IndexedTypeKey } from "../services/issue-core/types";
+import { perfMetrics } from "../services/PerfMetrics";
 
 // 重新导出纯类型与纯函数,保持原有 import 路径(`from "../data/IssueMarkdowns"`)兼容。
 export type { FrontmatterData, TermDefinition } from "../services/issue-core/types";
@@ -66,6 +67,7 @@ export async function getIssueMarkdown(
 
     const key = uri.fsPath;
     try {
+        perfMetrics.increment('io.stat.issueMarkdown');
         const stat = await vscode.workspace.fs.stat(uri);
         const mtime = stat.mtime;
         const fileName = path.basename(uri.fsPath);
@@ -76,6 +78,7 @@ export async function getIssueMarkdown(
             cached.mtime === mtime &&
             (cached.title !== undefined || cached.frontmatter !== undefined)
         ) {
+            perfMetrics.increment('cache.issueMarkdown.hit');
             return {
                 title: cached.title ?? fallbackTitle(uri),
                 uri,
@@ -86,6 +89,7 @@ export async function getIssueMarkdown(
             };
         }
 
+        perfMetrics.increment('cache.issueMarkdown.diskRead');
         const contentBytes = await vscode.workspace.fs.readFile(uri);
         const content = Buffer.from(contentBytes).toString("utf-8");
         const { frontmatter, body } = extractFrontmatterAndBody(content);
@@ -121,13 +125,13 @@ export async function getIssueMarkdown(
                 scheduleOnDidUpdate();
             }
         }
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
 
         return { title, uri, frontmatter: frontmatter ?? null, mtime, ctime, vtime: entry.vtime };
     } catch (err) {
         _issueMarkdownCache.delete(key);
         removeFromTypeIndex(key);
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
         return null;
     }
 }
@@ -138,6 +142,10 @@ export async function getIssueMarkdown(
  * - 参数：`{ sortBy?: "mtime" | "ctime" | "vtime" }`，默认 `{ sortBy: "mtime" }`。
  * - `"vtime"` 按最后查看时间排序，适合按访问频率排列。
  */
+// 冷路径单飞：缓存就绪前的并发调用共享同一次全扫描，
+// 避免启动期多个消费方（Wiki 状态栏等）各自触发一遍全库遍历
+let _coldScanPromise: Promise<IssueMarkdown[]> | null = null;
+
 export async function getAllIssueMarkdowns(
     { sortBy = "mtime" }: { sortBy?: "mtime" | "ctime" | "vtime" } = {}
 ): Promise<IssueMarkdown[]> {
@@ -149,25 +157,31 @@ export async function getAllIssueMarkdowns(
         return getAllFromCache(issueDir, sortBy);
     }
 
-    // ── 冷路径：首次加载（缓存尚未就绪），走 findFiles 全扫描 ──
-    const files = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(issueDir, "*.md"),
-        "**/.issueManager/**"
-    );
+    // ── 冷路径：首次加载（缓存尚未就绪），走 findFiles 全扫描（并发调用共享同一次） ──
+    if (!_coldScanPromise) {
+        _coldScanPromise = (async () => {
+            const files = await vscode.workspace.findFiles(
+                new vscode.RelativePattern(issueDir, "*.md"),
+                "**/.issueManager/**"
+            );
 
-    const entries = await Promise.all(
-        files.map(async f => {
-            try {
-                return await getIssueMarkdown(f);
-            } catch {
-                return null;
-            }
-        })
-    );
+            const entries = await Promise.all(
+                files.map(async f => {
+                    try {
+                        return await getIssueMarkdown(f);
+                    } catch {
+                        return null;
+                    }
+                })
+            );
 
-    const issues = entries.filter((e): e is IssueMarkdown => !!e);
+            return entries.filter((e): e is IssueMarkdown => !!e);
+        })();
+    }
 
-    return sortIssueMarkdowns(issues, sortBy);
+    const issues = await _coldScanPromise;
+    // 拷贝后再排序，避免不同 sortBy 的并发调用污染共享数组
+    return sortIssueMarkdowns([...issues], sortBy);
 }
 
 /** 从内存缓存构建 IssueMarkdown 列表（零 I/O，O(N) 遍历 + O(N log N) 排序） */
@@ -294,7 +308,7 @@ export function removeIssueMarkdownFromCache(uriOrPath: vscode.Uri | string): vo
     const fsPath = typeof uriOrPath === 'string' ? uriOrPath : uriOrPath.fsPath;
     _issueMarkdownCache.delete(fsPath);
     removeFromTypeIndex(fsPath);
-    cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+    cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
 }
 
 // 尝试加载磁盘缓存（不阻塞启动流程）
@@ -640,7 +654,7 @@ function scheduleCacheSave(): void {
         clearTimeout(_cacheSaveTimer);
     }
     _cacheSaveTimer = setTimeout(() => {
-        cacheStorage.save(Object.fromEntries(_issueMarkdownCache.entries()));
+        cacheStorage.save(() => Object.fromEntries(_issueMarkdownCache.entries()));
         _cacheSaveTimer = undefined;
     }, CACHE_SAVE_DELAY_MILLIS);
 }

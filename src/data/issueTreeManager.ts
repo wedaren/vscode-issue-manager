@@ -3,7 +3,8 @@ import * as path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { getIssueDir } from "../config";
 import { getIssueFilePath, getIssueMarkdown, getIssueMarkdownTitleFromCache, IssueMarkdown } from "./IssueMarkdowns";
-import { getCategoryIcon, getIssueCategory } from "./paraManager";
+import { getCategoryIcon, getIssueCategory, ParaCategory } from "./paraManager";
+import { perfMetrics } from "../services/PerfMetrics";
 
 /**
  * 持久化到磁盘的节点结构（tree.json 中的格式）。
@@ -197,7 +198,7 @@ export interface IssueDataResult {
 }
 
 export interface IssueDataCache extends IssueDataResult {
-    mtime: number;
+    valid: boolean;
 }
 
 const createDefaultIssueDataStore = (): IssueDataResult => ({
@@ -205,7 +206,15 @@ const createDefaultIssueDataStore = (): IssueDataResult => ({
     issueIdMap: new Map(),
     issueFilePathsMap: new Map(),
 });
-const cache: IssueDataCache = { mtime: 0, ...createDefaultIssueDataStore() };
+const cache: IssueDataCache = { valid: false, ...createDefaultIssueDataStore() };
+
+/**
+ * 使 tree.json 缓存失效，下次 getIssueData 时重新从磁盘加载。
+ * 由 UnifiedFileWatcher 的 tree.json 变更事件及 writeTree 写入后触发。
+ */
+export const invalidateIssueDataCache = (): void => {
+    cache.valid = false;
+};
 
 /**
  * 从缓存中获取 Issue 标题的同步方法。
@@ -280,19 +289,27 @@ export async function getIssueData(): Promise<IssueDataResult> {
         return createDefaultIssueDataStore();
     }
 
-    const stat = await vscode.workspace.fs.stat(vscode.Uri.file(treePath));
-    if (cache.mtime === stat.mtime) {
+    // 事件驱动失效：缓存有效时直接返回，无需每次 stat 校验
+    if (cache.valid) {
+        perfMetrics.increment('cache.tree.hit');
         return cache;
     }
 
+    perfMetrics.increment('cache.tree.diskRead');
     let treeData: TreeData;
     try {
         const content = await vscode.workspace.fs.readFile(vscode.Uri.file(treePath));
         treeData = JSON.parse(content.toString());
     } catch (error) {
-        // 记录错误有助于调试，特别是对于文件损坏或格式错误的情况
+        // 文件不存在或损坏：缓存默认空结构并置为有效（负缓存），
+        // 避免每次调用都重试注定失败的读盘；后续变更由 watcher 事件/writeTree 失效
         console.error(`Failed to read or parse tree data from ${treePath}:`, error);
-        return createDefaultIssueDataStore();
+        const fallback = createDefaultIssueDataStore();
+        cache.valid = true;
+        cache.treeData = fallback.treeData;
+        cache.issueIdMap = fallback.issueIdMap;
+        cache.issueFilePathsMap = fallback.issueFilePathsMap;
+        return fallback;
     }
     const issueIdMap = new Map<string, IssueNode>();
     const issueFilePathsMap = new Map<string, IssueNode[]>();
@@ -309,7 +326,7 @@ export async function getIssueData(): Promise<IssueDataResult> {
         issueIdMap.set(node.id, node);
     });
 
-    cache.mtime = stat.mtime;
+    cache.valid = true;
     cache.treeData = treeData;
     cache.issueIdMap = issueIdMap;
     cache.issueFilePathsMap = issueFilePathsMap;
@@ -343,6 +360,8 @@ export const writeTree = async (data: TreeData): Promise<void> => {
 
     try {
         await vscode.workspace.fs.writeFile(vscode.Uri.file(treePath), content);
+        // 写入成功后使缓存失效，保证后续读取立即看到新数据（与原先 mtime 校验行为一致）
+        invalidateIssueDataCache();
     } catch (error) {
         vscode.window.showErrorMessage(`写入 tree.json 失败: ${error}`);
     }
@@ -605,10 +624,16 @@ const defaultFocusedData: FocusedData = {
     focusList: [],
 };
 
-// focused.json 缓存，使用 mtime 避免重复读取
-const focusedCache: { mtime: number; data: FocusedData } = {
-    mtime: 0,
+// focused.json 缓存，事件驱动失效：由 UnifiedFileWatcher 的 .issueManager 变更事件
+// 调用 invalidateFocusedCache() 置为无效，读取时无需重复 stat。
+const focusedCache: { valid: boolean; data: FocusedData } = {
+    valid: false,
     data: { ...defaultFocusedData },
+};
+
+/** 使 focused.json 缓存失效，下次 readFocused 时重新从磁盘加载。 */
+export const invalidateFocusedCache = (): void => {
+    focusedCache.valid = false;
 };
 
 /**
@@ -621,13 +646,13 @@ export const readFocused = async (): Promise<FocusedData> => {
         return { ...defaultFocusedData };
     }
 
-    try {
-        // 先尝试获取文件状态以比较 mtime
-        const stat = await vscode.workspace.fs.stat(vscode.Uri.file(focusedPath));
-        if (focusedCache.mtime === stat.mtime) {
-            return focusedCache.data;
-        }
+    if (focusedCache.valid) {
+        perfMetrics.increment('cache.focused.hit');
+        return focusedCache.data;
+    }
 
+    perfMetrics.increment('cache.focused.diskRead');
+    try {
         const content = await vscode.workspace.fs.readFile(vscode.Uri.file(focusedPath));
         const data = JSON.parse(content.toString());
         // 简单校验
@@ -641,13 +666,16 @@ export const readFocused = async (): Promise<FocusedData> => {
         };
 
         // 更新缓存
-        focusedCache.mtime = stat.mtime;
         focusedCache.data = res;
+        focusedCache.valid = true;
 
         return res;
     } catch (error) {
-        // 文件不存在或解析失败，返回默认并不更新缓存
-        return { ...defaultFocusedData };
+        // 文件不存在或解析失败：缓存默认结构并置为有效（负缓存），
+        // 避免每次调用都重试注定失败的读盘；后续变更由 watcher 事件失效
+        focusedCache.data = { ...defaultFocusedData };
+        focusedCache.valid = true;
+        return focusedCache.data;
     }
 };
 
@@ -809,14 +837,16 @@ export const writeQuickPickData = async (data: QuickPickPersistedData): Promise<
  */
 export async function getIssueNodeContextValue(
     nodeId: string,
-    baseContextValue: string
+    baseContextValue: string,
+    paraCategory?: ParaCategory | null
 ): Promise<string> {
     const realId = stripFocusedId(nodeId);
     try {
-        const paraCategory = await getIssueCategory(realId);
+        // 调用方已预先获取分类时直接复用，避免重复 stat para.json
+        const category = paraCategory !== undefined ? paraCategory : await getIssueCategory(realId);
         const segments: string[] = [baseContextValue];
-        if (paraCategory) {
-            segments.push(`paraAssigned:${paraCategory}`);
+        if (category) {
+            segments.push(`paraAssigned:${category}`);
         } else {
             segments.push("paraAssignable");
         }
@@ -833,7 +863,8 @@ export async function getIssueNodeContextValue(
  */
 
 export async function getIssueNodeIconPath(
-    issueId?: string
+    issueId?: string,
+    paraCategory?: ParaCategory | null
 ): Promise<vscode.ThemeIcon | undefined> {
     // 先尝试从聚焦列表中读取 focusIndex
     let focusIndex: number = -1;
@@ -862,9 +893,10 @@ export async function getIssueNodeIconPath(
     // 当提供 issueId 时，尝试异步查询其 PARA 分类并使用分类图标
     if (issueId) {
         try {
-            const paraCategory = await getIssueCategory(issueId);
-            if (paraCategory) {
-                return new vscode.ThemeIcon(getCategoryIcon(paraCategory));
+            // 调用方已预先获取分类时直接复用，避免重复 stat para.json
+            const category = paraCategory !== undefined ? paraCategory : await getIssueCategory(issueId);
+            if (category) {
+                return new vscode.ThemeIcon(getCategoryIcon(category));
             }
         } catch (e) {
             console.error("查询 PARA 分类失败:", e);

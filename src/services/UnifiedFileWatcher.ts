@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getIssueDir } from '../config';
 import { Logger } from '../core/utils/Logger';
 import { isInBatchRefresh, onBatchEnd } from '../utils/refreshBatch';
+import { perfMetrics } from './PerfMetrics';
 
 /**
  * 文件变更事件类型
@@ -223,6 +224,8 @@ export class UnifiedFileWatcher implements vscode.Disposable {
      * 分发 Markdown 事件给所有订阅者（fire-and-forget）
      */
     private dispatchMdEvents(events: FileChangeEvent[]): void {
+        // 统计合并后（200ms 窗口去重后）实际分发的 Markdown 事件数
+        perfMetrics.increment('watcher.markdownEvent', events.length);
         for (const callback of this.mdChangeCallbacks) {
             for (const event of events) {
                 Promise.resolve(callback(event)).catch(error => {
@@ -279,6 +282,8 @@ export class UnifiedFileWatcher implements vscode.Disposable {
      * 分发 .issueManager 事件给订阅者（顺序执行）
      */
     private async dispatchIssueManagerEvents(events: FileChangeEvent[]): Promise<void> {
+        // 统计合并后（200ms 窗口去重后）实际分发的 .issueManager 事件数
+        perfMetrics.increment('watcher.issueManagerEvent', events.length);
         for (const event of events) {
             if (event.fileName === 'para.json') {
                 for (const callback of this.paraCacheCallbacks) {

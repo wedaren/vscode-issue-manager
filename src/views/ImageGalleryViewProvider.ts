@@ -23,7 +23,10 @@ export class ImageGalleryViewProvider implements vscode.WebviewViewProvider {
     /** 刷新 Gallery 视图内容 */
     public refresh(): void {
         if (this._view) {
-            this._view.webview.html = this._buildHtml(this._view.webview);
+            const view = this._view;
+            void this._buildHtml(view.webview).then(html => {
+                view.webview.html = html;
+            });
         }
     }
 
@@ -43,7 +46,9 @@ export class ImageGalleryViewProvider implements vscode.WebviewViewProvider {
             ],
         };
 
-        webviewView.webview.html = this._buildHtml(webviewView.webview);
+        void this._buildHtml(webviewView.webview).then(html => {
+            webviewView.webview.html = html;
+        });
 
         webviewView.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
             await this._handleMessage(message, webviewView.webview);
@@ -132,8 +137,8 @@ export class ImageGalleryViewProvider implements vscode.WebviewViewProvider {
 
     // ── HTML 构建 ─────────────────────────────────────────────────────────────
 
-    private _buildHtml(webview: vscode.Webview): string {
-        const images = ImageStorageService.list();
+    private async _buildHtml(webview: vscode.Webview): Promise<string> {
+        const images = await ImageStorageService.list();
         const nonce = getNonce();
 
         const imageDirUri = ImageStorageService.getImageDirUri();

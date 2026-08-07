@@ -149,18 +149,25 @@ export class WikiTodayProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const wikiToday = wikiAll.filter(i => i.mtime >= todayMs).sort((a, b) => b.mtime - a.mtime);
 
         // 桩文章:正文 < 200 字。需读 body,限制到 wikiAll 前 150 条避免大库扫描卡顿。
+        // 分批并行读取，结果按候选顺序取前 15 条，与串行逐个读取的输出完全一致。
         const stubs: IssueMarkdown[] = [];
         const candidatesForStub = wikiAll.slice(0, 150);
-        for (const issue of candidatesForStub) {
-            try {
-                const bytes = await vscode.workspace.fs.readFile(issue.uri);
-                const { body } = extractFrontmatterAndBody(Buffer.from(bytes).toString('utf8'));
-                if (body.trim().length < STUB_BODY_THRESHOLD) {
-                    stubs.push(issue);
-                    if (stubs.length >= 15) { break; }
+        const STUB_BATCH_SIZE = 20;
+        for (let i = 0; i < candidatesForStub.length && stubs.length < 15; i += STUB_BATCH_SIZE) {
+            const batch = candidatesForStub.slice(i, i + STUB_BATCH_SIZE);
+            const bodies = await Promise.all(batch.map(async (issue) => {
+                try {
+                    const bytes = await vscode.workspace.fs.readFile(issue.uri);
+                    return extractFrontmatterAndBody(Buffer.from(bytes).toString('utf8')).body;
+                } catch {
+                    return null; // 跳过读取失败
                 }
-            } catch {
-                // 跳过读取失败
+            }));
+            for (let j = 0; j < batch.length && stubs.length < 15; j++) {
+                const body = bodies[j];
+                if (body !== null && body.trim().length < STUB_BODY_THRESHOLD) {
+                    stubs.push(batch[j]);
+                }
             }
         }
 

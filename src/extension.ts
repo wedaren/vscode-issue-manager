@@ -20,6 +20,7 @@ import { ImageBoardEditorProvider } from './views/ImageBoardEditorProvider';
 import { BoardListProvider } from './views/BoardListProvider';
 import { createBoardMarkdown, renameBoardMarkdown, deleteBoardMarkdown, migrateLegacyBoards } from './services/storage/MarkdownBoardService';
 import { UnifiedFileWatcher } from './services/UnifiedFileWatcher';
+import { getIssueMarkdown } from './data/IssueMarkdowns';
 import { registerImageCommands } from './commands/image.commands';
 import { ImageStorageService } from './services/storage/ImageStorageService';
 import { ImageDocumentLinkProvider, ImageDocumentHoverProvider, ImageLightboxPanel } from './providers/ImageDocumentLinkProvider';
@@ -31,10 +32,13 @@ import { ModelRegistry } from './llm/ModelRegistry';
 import { IssueManagerLMProvider } from './llm/IssueManagerLMProvider';
 import { activateDiagramPreview } from './diagramPreview';
 import { registerWikiModule } from './wiki/registerWiki';
+import { registerPerfCommands } from './commands/perfCommands';
+import { perfMetrics } from './services/PerfMetrics';
 export { extendMarkdownIt };
 
 // 当您的扩展被激活时,将调用此方法
 export async function activate(context: vscode.ExtensionContext) {
+	const __activateStart = Date.now();
 	// 初始化共享配置（必须在其他服务之前）
 	SharedConfig.initialize(context);
 	// 初始化模型注册表（注入 SecretStorage，供自定义模型 API Key 安全存储）
@@ -218,9 +222,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	const fileWatcher = UnifiedFileWatcher.getInstance(context);
 	const boardRefreshDisposable = fileWatcher.onMarkdownChange(async (event) => {
 		try {
-			const content = await vscode.workspace.fs.readFile(event.uri);
-			const text = Buffer.from(content).toString('utf-8');
-			if (text.includes('board_type: survey')) {
+			// 走 getIssueMarkdown 缓存（同一事件的预热调用已解析过 frontmatter），避免重复全量读文件
+			const issue = await getIssueMarkdown(event.uri);
+			const fm = issue?.frontmatter as Record<string, unknown> | null;
+			if (fm?.board_type === 'survey') {
 				boardListProvider.refresh();
 			}
 		} catch { /* ignore */ }
@@ -350,7 +355,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	// 注册 Wiki 模块(Today TreeView + [[wiki/...]] 链接/Hover + 状态栏 + 保存选中到 raw/)
 	registerWikiModule(context);
 
+	// 注册性能指标命令（面板/报告/重置）
+	registerPerfCommands(context);
+
+	const __initStart = Date.now();
 	await initializer.initialize();
+	perfMetrics.recordTiming('activation.initialize', Date.now() - __initStart);
+	perfMetrics.recordTiming('activation.total', Date.now() - __activateStart);
 	return { extendMarkdownIt };
 }
 

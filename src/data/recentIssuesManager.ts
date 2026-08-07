@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getAllIssueMarkdowns, getIssueMarkdown } from './IssueMarkdowns';
-import { getIssueNodesByUri } from './issueTreeManager';
+import { getAllIssueMarkdowns, getIssueMarkdown, getIssueFilePath } from './IssueMarkdowns';
+import { getIssueData, getIssueNodesBy } from './issueTreeManager';
 
 /**
  * 最近问题统计信息
@@ -100,7 +100,8 @@ export async function updateRecentIssue(
     return;
   }
 
-  const nodes = await getIssueNodesByUri(uri);
+  // 用 getIssueNodesBy 直接传入已有的 issue，避免 getIssueNodesByUri 内部重复 getIssueMarkdown
+  const nodes = await getIssueNodesBy(issue);
   const stat: RecentIssueStats = {
     file: path.basename(fsPath),
     filePath: fsPath,
@@ -155,21 +156,22 @@ async function _fullReload(): Promise<void> {
     return;
   }
 
-  _store = await Promise.all(
-    issues.map(async (issue) => {
-      const filePath = issue.uri.fsPath;
-      const nodes = await getIssueNodesByUri(issue.uri);
-      return {
-        file: path.basename(filePath),
-        filePath,
-        mtime: new Date(issue.mtime),
-        ctime: new Date(issue.ctime),
-        vtime: issue.vtime ? new Date(issue.vtime) : undefined,
-        isIsolated: nodes.length === 0,
-        uri: issue.uri,
-      };
-    }),
-  );
+  // 节点映射只取一次，避免对全库每个 issue 都 await 一次 getIssueData
+  const { issueFilePathsMap } = await getIssueData();
+  _store = issues.map((issue) => {
+    const filePath = issue.uri.fsPath;
+    const relPath = getIssueFilePath(issue.uri);
+    const nodes = relPath ? (issueFilePathsMap.get(relPath) ?? []) : [];
+    return {
+      file: path.basename(filePath),
+      filePath,
+      mtime: new Date(issue.mtime),
+      ctime: new Date(issue.ctime),
+      vtime: issue.vtime ? new Date(issue.vtime) : undefined,
+      isIsolated: nodes.length === 0,
+      uri: issue.uri,
+    };
+  });
   _dirty = false;
 }
 

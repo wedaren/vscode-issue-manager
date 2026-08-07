@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { getIssueDir, isAutoViewRefreshEnabled } from '../config';
-import { ensureGitignoreForRSSState } from '../utils/fileUtils';
 import { Logger } from './utils/Logger';
 import { UnifiedFileWatcher } from '../services/UnifiedFileWatcher';
 import { getIssueMarkdown, onTitleUpdate, onAgentFileUpdate, onVtimeUpdated, isAgentFileUri } from '../data/IssueMarkdowns';
 import { updateRecentIssue, invalidateRecentIssuesStore, onRecentIssuesStoreUpdated } from '../data/recentIssuesManager';
+import { invalidateIssueDataCache, invalidateFocusedCache } from '../data/issueTreeManager';
+import { invalidateParaCache } from '../data/paraManager';
 import { FileChangeType } from '../services/UnifiedFileWatcher';
 import { IViewRefreshDispatcher } from './commands/ViewCommandRegistry';
 
@@ -17,7 +18,6 @@ import { IViewRefreshDispatcher } from './commands/ViewCommandRegistry';
  * 主要功能：
  * - 监听 issueManager.issueDir 配置变化
  * - 自动更新VS Code上下文状态
- * - 管理 .gitignore 文件的RSS状态规则
  * - 监听问题目录下Markdown文件的变化
  * - 防抖处理文件变化事件，避免频繁刷新
  * 
@@ -68,7 +68,7 @@ export class ConfigurationManager {
     public initializeConfiguration(): void {
         try {
             // 1. 首次激活时，立即更新上下文和Git配置
-            this.updateContextAndGitignore();
+            this.updateContext();
             
             // 2. 监听配置变化
             this.setupConfigurationListener();
@@ -84,16 +84,11 @@ export class ConfigurationManager {
     }
 
     /**
-     * 更新上下文和.gitignore
+     * 更新上下文
      */
-    private updateContextAndGitignore(): void {
+    private updateContext(): void {
         const issueDir = getIssueDir();
         vscode.commands.executeCommand('setContext', 'issueManager.isDirConfigured', !!issueDir);
-        
-        // 自动合并 .gitignore 忽略规则
-        if (issueDir) {
-            ensureGitignoreForRSSState();
-        }
     }
 
     /**
@@ -102,7 +97,7 @@ export class ConfigurationManager {
     private setupConfigurationListener(): void {
         const configListener = vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('issueManager.issueDir')) {
-                this.updateContextAndGitignore();
+                this.updateContext();
                 this.setupFileWatcher(); // 重新设置文件监听器
                 // 刷新所有视图以反映新目录的内容
                 vscode.commands.executeCommand('issueManager.refreshAllViews');
@@ -127,8 +122,13 @@ export class ConfigurationManager {
             return;
         }
 
+        // issueDir 变更（或初始化）时使数据缓存失效，确保从新的目录重新加载
+        invalidateIssueDataCache();
+        invalidateParaCache();
+        invalidateFocusedCache();
+
         const fileWatcher = UnifiedFileWatcher.getInstance(this.context);
-        fileWatcher.onMarkdownChange((e) => {
+        this.fileWatcherDisposables.push(fileWatcher.onMarkdownChange((e) => {
             getIssueMarkdown(e.uri); // 预热标题缓存
             // agent 系统文件不写入最近问题存储（避免 agent 运行时污染最近问题列表）
             if (isAgentFileUri(e.uri)) { return; }
@@ -136,11 +136,12 @@ export class ConfigurationManager {
             const changeType = e.type === FileChangeType.Delete ? 'delete'
                 : e.type === FileChangeType.Create ? 'create' : 'change';
             void updateRecentIssue(e.uri, changeType);
-        });
+        }));
 
-        // tree.json / para.json 变更 → 定向刷新对应视图
-        fileWatcher.onIssueManagerChange((e) => {
+        // tree.json / para.json / focused.json 变更 → 先使对应数据缓存失效，再定向刷新对应视图
+        this.fileWatcherDisposables.push(fileWatcher.onIssueManagerChange((e) => {
             if (e.fileName === 'tree.json') {
+                invalidateIssueDataCache();
                 invalidateRecentIssuesStore();
                 // tree 结构变更 → 问题总览完整刷新 + 最近问题重检 isolation + PARA 刷新
                 if (this.viewRefreshDispatcher) {
@@ -154,13 +155,18 @@ export class ConfigurationManager {
                 }
             }
             if (e.fileName === 'para.json') {
+                invalidateParaCache();
                 if (this.viewRefreshDispatcher) {
                     this.viewRefreshDispatcher.refreshPara();
                 } else {
                     vscode.commands.executeCommand('issueManager.refreshParaView');
                 }
             }
-        });
+            if (e.fileName === 'focused.json') {
+                // focused.json 仅被图标渲染读取，失效缓存即可，视图沿用原有刷新时机
+                invalidateFocusedCache();
+            }
+        }));
 
         // 标题变更 → 问题总览标签刷新（不重读 tree.json，缓存已热）
         // C: 可通过 issueManager.view.autoRefresh=false 关闭自动刷新

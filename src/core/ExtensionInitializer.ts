@@ -211,7 +211,6 @@ export class ExtensionInitializer {
      * - 问题总览视图
      * - 关注问题视图
      * - 最近问题视图
-     * - RSS问题视图
      * - 问题结构视图
      * 
      * @returns {Promise<IViewRegistryResult>} 注册的视图实例

@@ -5,12 +5,10 @@ import { getIssueDir } from '../config';
 import { TreeData, IssueNode, readTree, stripFocusedId, isFocusedRootId, writeTree } from '../data/issueTreeManager';
 import { IssueOverviewProvider } from './IssueOverviewProvider';
 import { RecentIssuesProvider } from './RecentIssuesProvider';
-import { RSSItem, RSSService } from '../services/RSSService';
 
 
 // 自定义拖拽数据类型
 const ISSUE_MIME_TYPE = 'application/vnd.code.tree.issue-manager';
-const RSS_MIME_TYPE = 'application/vnd.code.tree.rss-issue-manager';
 
 type DraggedItem = IssueNode | vscode.TreeItem;
 
@@ -20,7 +18,7 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
 
     constructor(private viewProvider: IssueOverviewProvider | RecentIssuesProvider, private viewMode: 'overview' | 'recent') {
         if (viewMode === 'overview') {
-            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'text/uri-list', RSS_MIME_TYPE];
+            this.dropMimeTypes = [ISSUE_MIME_TYPE, 'text/uri-list'];
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
         } else if (viewMode === 'recent') {
             this.dragMimeTypes = [ISSUE_MIME_TYPE];
@@ -68,7 +66,6 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
         const targetNodeInTree = target ? this.findNode(treeData.rootNodes, stripFocusedId(target.id)) : undefined;
         const [_, transferItem] = [...dataTransfer].filter(([mimeType, transferItem]) => mimeType === ISSUE_MIME_TYPE && transferItem.value).pop() || [];
         const fromEditor = dataTransfer.get('text/uri-list');
-        const fromRSS = dataTransfer.get(RSS_MIME_TYPE);
 
         if (transferItem) {
             const draggedItemsRaw = transferItem.value;
@@ -129,58 +126,11 @@ export class IssueDragAndDropController implements vscode.TreeDragAndDropControl
                 this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
             }
 
-        } else if (fromRSS) {
-            // 处理从RSS视图拖拽过来的文章
-            await this.handleRSSDropItems(fromRSS, targetNodeInTree || undefined, treeData);
         }
 
         await writeTree(treeData);
         // this.viewProvider.refresh();
         vscode.commands.executeCommand('issueManager.refreshAllViews');
-    }
-
-    /**
-     * 处理RSS拖拽项目
-     */
-    private async handleRSSDropItems(rssItems: vscode.DataTransferItem, targetNodeInTree: IssueNode | undefined, treeData: TreeData): Promise<void> {
-        try {
-            const rssService = RSSService.getInstance();
-            const rssItemsString = await rssItems.asString();
-            // 定义一个临时的DTO类型来处理反序列化
-            type RSSItemDTO = Omit<RSSItem, 'pubDate'> & { pubDate: string };
-            const rssItemsValue = JSON.parse(rssItemsString) as RSSItemDTO[];
-
-            for (const rssData of rssItemsValue) {
-                // 重构RSS数据为RSSItem
-                const rssItem: RSSItem = {
-                    ...rssData,  
-                    pubDate: new Date(rssData.pubDate),  
-                };
-
-                // 转换RSS文章为Markdown文件
-                const markdownUri = await rssService.convertToMarkdownUri(rssItem);
-
-                if (markdownUri) {
-                    const issueDir = getIssueDir();
-                    if (issueDir) {
-                        const relativePath = path.relative(issueDir, markdownUri.fsPath);
-                        const nodeToAdd: IssueNode = {
-                            id: uuidv4(),
-                            filePath: relativePath,
-                            children: [],
-                            resourceUri: markdownUri,
-                        };
-
-                        this.addNodeToTree(treeData, nodeToAdd, targetNodeInTree);
-                    }
-                }
-            }
-
-            vscode.window.showInformationMessage(`已成功添加 ${rssItemsValue.length} 篇RSS文章到问题管理`);
-        } catch (error) {
-            console.error('处理RSS拖拽失败:', error);
-            vscode.window.showErrorMessage('添加RSS文章失败，请重试');
-        }
     }
 
     private addNodeToTree(treeData: TreeData, nodeToAdd: IssueNode, target: IssueNode | null | undefined): void {

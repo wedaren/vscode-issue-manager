@@ -4,6 +4,7 @@ import { getIssueDir, getRecentIssuesDefaultMode, type ViewMode } from '../confi
 import { getIssueMarkdownContextValues, getIssueMarkdownTitleFromCache } from '../data/IssueMarkdowns';
 import { formatCompactDateTime, formatRelativeTime } from '../utils/dateUtils';
 import { getIssueNodeContextValue, getIssueNodeIconPath, getIssueNodesByUri, getSingleIssueNodeByUri, type IssueNode } from '../data/issueTreeManager';
+import { getIssueCategory, ParaCategory } from '../data/paraManager';
 import {
   getRecentIssuesStats,
   groupIssuesByTime,
@@ -16,6 +17,7 @@ import {
   type SortOrder,
 } from '../data/recentIssuesManager';
 import { getIssueIdFromUri } from '../utils/uriUtils';
+import { perfMetrics } from '../services/PerfMetrics';
 
 /**
  * 分组树节点
@@ -287,6 +289,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
    * 点击时自动打开文件并查看相关联问题
    */
   private async createFileTreeItem(stat: RecentIssueStats): Promise<vscode.TreeItem> {
+    return perfMetrics.timeAsync('view.recent.getTreeItem', async () => {
     const key = this.makeCacheKey(stat.uri);
     const cached = this.itemCache.get(key);
     if (cached) { return cached; }
@@ -328,6 +331,7 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
     
     this.itemCache.set(key, item);
     return item;
+    });
   }
 
   /**
@@ -405,8 +409,16 @@ export class RecentIssuesProvider implements vscode.TreeDataProvider<vscode.Tree
 
     const uri = vscode.Uri.file(path.join(issueDir, node.filePath));
     item.resourceUri = uri;
-    item.contextValue = await getIssueNodeContextValue(node.id, 'issueNode');
-    item.iconPath = await getIssueNodeIconPath(node.id);
+    // PARA 分类在单次创建 TreeItem 内复用，避免重复 stat para.json；
+    // 读取失败时传 undefined，保持各函数内部原有的重试与兜底逻辑
+    let paraCategory: ParaCategory | null | undefined;
+    try {
+      paraCategory = await getIssueCategory(node.id);
+    } catch {
+      paraCategory = undefined;
+    }
+    item.contextValue = await getIssueNodeContextValue(node.id, 'issueNode', paraCategory);
+    item.iconPath = await getIssueNodeIconPath(node.id, paraCategory);
     item.command = {
       command: 'issueManager.openAndViewRelatedIssues',
       title: '打开并查看相关联问题',

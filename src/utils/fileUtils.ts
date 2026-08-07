@@ -7,38 +7,6 @@ import { parseFileNameTimestamp } from '../services/issue-core/fileNaming';
 export { generateFileName, getTimestampFromFileName } from '../services/issue-core/fileNaming';
 
 
-/**
- * 自动合并 .gitignore，确保 .issueManager/rss-feed-states.json 被忽略
- * 如无规则则自动添加，有则不重复添加，并弹窗通知用户
- */
-export async function ensureGitignoreForRSSState(): Promise<void> {
-  const issueDir = getIssueDir();
-  if (!issueDir) { return; }
-  const gitignoreUri = vscode.Uri.joinPath(vscode.Uri.file(issueDir), '.gitignore');
-  const ignoreRule = '.issueManager/rss-feed-states.json';
-  let updated = false;
-  let content = '';
-  try {
-    const exists = await checkFileExists(gitignoreUri);
-    if (exists) {
-      content = (await readTextFile(gitignoreUri)) || '';
-      if (!content.split(/\r?\n/).some(line => line.trim() === ignoreRule)) {
-        content = content.trim() + (content.trim() ? '\n' : '') + ignoreRule + '\n';
-        await vscode.workspace.fs.writeFile(gitignoreUri, Buffer.from(content, 'utf8'));
-        updated = true;
-      }
-    } else {
-      content = ignoreRule + '\n';
-      await vscode.workspace.fs.writeFile(gitignoreUri, Buffer.from(content, 'utf8'));
-      updated = true;
-    }
-  } catch (error) {
-    vscode.window.showWarningMessage('自动配置 .gitignore 时发生错误，请手动检查。');
-    console.error('自动配置 .gitignore 失败:', error);
-  }
-}
-
-
 // 文件名时间戳工具函数已迁移至 src/services/issue-core/fileNaming.ts
 // 通过本文件顶部 re-export 保持原有 import 路径兼容。
 /**
@@ -141,38 +109,6 @@ export async function ensureIssueManagerDir(): Promise<vscode.Uri | null> {
   }
 }
 
-
-/**
- * 获取指定订阅源的历史记录文件路径（Git友好的分离存储）
- * @param feedId 订阅源ID
- * @returns 订阅源历史记录文件的 Uri，如果目录不存在则返回 null
- */
-export function getFeedHistoryFilePath(feedId: string): vscode.Uri | null {
-  // 使用安全的文件名，避免特殊字符
-  const safeFeedId = feedId.replace(/[^a-zA-Z0-9-_]/g, '_');
-  return getIssueManagerFilePath(`rss-feed-${safeFeedId}.jsonl`);
-}
-
-/**
- * 获取 .issueManager 目录下指定文件的路径
- * @param fileName 文件名
- * @returns 文件的 Uri，如果目录不存在则返回 null
- */
-function getIssueManagerFilePath(fileName: string): vscode.Uri | null {
-  const issueManagerDir = getIssueManagerDir();
-  if (!issueManagerDir) {
-    return null;
-  }
-  return vscode.Uri.joinPath(issueManagerDir, fileName);
-}
-
-/**
- * 获取RSS配置文件路径
- * @returns RSS配置文件的 Uri，如果目录不存在则返回 null
- */
-export function getRSSConfigFilePath(): vscode.Uri | null {
-  return getIssueManagerFilePath('rss-config.yaml');
-}
 
 /**
  * 读取 JSON 文件内容
@@ -369,11 +305,5 @@ export async function readLastJSONLRecords<T = any>(fileUri: vscode.Uri, maxReco
     console.error(`读取 JSONL 文件最后记录失败 ${fileUri.fsPath}:`, error);
     return null;
   }
-}
-/**
- * 获取 RSS 订阅源状态文件路径（如 lastUpdated）
- */
-export function getRSSFeedStatesFilePath(): vscode.Uri | null {
-  return getIssueManagerFilePath('rss-feed-states.json');
 }
 
