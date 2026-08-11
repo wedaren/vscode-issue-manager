@@ -1790,32 +1790,32 @@
         {
           "id": "issueManager.views.overview",
           "name": "问题总览",
-          "icon": "resources/icon.svg"
+          "icon": "$(list-tree)"
         },
         {
           "id": "issueManager.views.recent",
           "name": "最近问题",
-          "icon": "resources/icon.svg"
+          "icon": "$(history)"
         },
         {
           "id": "issueManager.views.related",
           "name": "相关联问题",
-          "icon": "resources/icon.svg"
+          "icon": "$(link)"
         },
         {
           "id": "issueManager.views.para",
           "name": "PARA",
-          "icon": "resources/icon.svg"
+          "icon": "$(folder-library)"
         },
         {
           "id": "issueManager.views.marker",
           "name": "问题标记",
-          "icon": "resources/icon.svg"
+          "icon": "$(bookmark)"
         },
         {
           "id": "issueManager.views.llmChat",
           "name": "LLM 聊天",
-          "icon": "resources/icon.svg"
+          "icon": "$(comment-discussion)"
         },
         {
           "type": "webview",
